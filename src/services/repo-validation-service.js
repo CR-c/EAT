@@ -87,6 +87,15 @@ export async function probeRepositoryStatus(repoPath, options = {}) {
   };
 }
 
+export async function resolveBranchHeadCommit(repoPath, branchName) {
+  if (typeof branchName !== "string" || branchName.trim().length === 0) {
+    return null;
+  }
+
+  const revision = await gitString(repoPath, ["rev-parse", `${branchName.trim()}^{commit}`]);
+  return revision.ok ? revision.value : null;
+}
+
 async function detectDefaultBranch(repoPath) {
   const remoteHead = await gitString(repoPath, [
     "symbolic-ref",

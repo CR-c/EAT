@@ -4,8 +4,10 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { SqliteProjectRepository } from "../repositories/project-repository.js";
+import { SqliteTaskRepository } from "../repositories/task-repository.js";
 import { AgentService } from "../services/agent-service.js";
 import { ProjectService, PROJECT_SERVICE_ERROR_CODES } from "../services/project-service.js";
+import { TaskService, TASK_SERVICE_ERROR_CODES } from "../services/task-service.js";
 
 const uiDirectoryPath = fileURLToPath(new URL("../ui/", import.meta.url));
 const STATIC_ROUTES = new Map([
@@ -17,12 +19,19 @@ const STATIC_ROUTES = new Map([
 
 export function createApp(options = {}) {
   const projectRepository = options.projectRepository ?? new SqliteProjectRepository(options.repositoryOptions);
+  const taskRepository = options.taskRepository ?? new SqliteTaskRepository(options.repositoryOptions);
   const projectService = options.projectService ?? new ProjectService({ projectRepository });
   const agentService = options.agentService ?? new AgentService(options.agentServiceOptions);
+  const taskService = options.taskService ?? new TaskService({
+    agentService,
+    projectRepository,
+    taskRepository,
+    uploadRootPath: options.uploadRootPath,
+  });
 
   const server = http.createServer(async (request, response) => {
     try {
-      await routeRequest(request, response, { agentService, projectService });
+      await routeRequest(request, response, { agentService, projectService, taskService });
     } catch (error) {
       respondJson(response, 500, {
         error: {
@@ -35,13 +44,14 @@ export function createApp(options = {}) {
 
   server.on("close", () => {
     projectRepository.close?.();
+    taskRepository.close?.();
   });
 
   return server;
 }
 
 async function routeRequest(request, response, services) {
-  const { agentService, projectService } = services;
+  const { agentService, projectService, taskService } = services;
   const url = new URL(request.url, "http://127.0.0.1");
   const pathName = url.pathname;
   const staticRoute = STATIC_ROUTES.get(pathName);
@@ -89,6 +99,17 @@ async function routeRequest(request, response, services) {
     });
   }
 
+  if (request.method === "POST" && pathName === "/api/tasks") {
+    const body = await readJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.createTask(body.value);
+    return respondServiceResult(response, result, 201);
+  }
+
   const repoStatusMatch = pathName.match(/^\/api\/projects\/([^/]+)\/repo-status$/);
 
   if (request.method === "GET" && repoStatusMatch) {
@@ -102,6 +123,22 @@ async function routeRequest(request, response, services) {
   if (request.method === "GET" && projectMatch) {
     const projectId = decodeURIComponent(projectMatch[1]);
     const result = await projectService.getProject(projectId);
+    return respondServiceResult(response, result);
+  }
+
+  const projectTasksMatch = pathName.match(/^\/api\/projects\/([^/]+)\/tasks$/);
+
+  if (request.method === "GET" && projectTasksMatch) {
+    const projectId = decodeURIComponent(projectTasksMatch[1]);
+    const result = await taskService.listProjectTasks(projectId);
+    return respondServiceResult(response, result);
+  }
+
+  const taskMatch = pathName.match(/^\/api\/tasks\/([^/]+)$/);
+
+  if (request.method === "GET" && taskMatch) {
+    const taskId = decodeURIComponent(taskMatch[1]);
+    const result = await taskService.getTask(taskId);
     return respondServiceResult(response, result);
   }
 
@@ -189,10 +226,25 @@ function mapErrorCodeToStatus(errorCode) {
   switch (errorCode) {
     case PROJECT_SERVICE_ERROR_CODES.INVALID_REQUEST_BODY:
     case PROJECT_SERVICE_ERROR_CODES.PATH_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.ATTACHMENT_CONTENT_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.ATTACHMENT_MIME_MISMATCH:
+    case TASK_SERVICE_ERROR_CODES.ATTACHMENT_NAME_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.ATTACHMENT_SIZE_EXCEEDED:
+    case TASK_SERVICE_ERROR_CODES.ATTACHMENT_TYPE_UNSUPPORTED:
+    case TASK_SERVICE_ERROR_CODES.BASE_BRANCH_NOT_FOUND:
+    case TASK_SERVICE_ERROR_CODES.BASE_BRANCH_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.DESCRIPTION_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.INVALID_ATTACHMENT_PAYLOAD:
+    case TASK_SERVICE_ERROR_CODES.LEAD_AGENT_INVALID:
+    case TASK_SERVICE_ERROR_CODES.LEAD_AGENT_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.TITLE_REQUIRED:
       return 400;
     case PROJECT_SERVICE_ERROR_CODES.PROJECT_ALREADY_REGISTERED:
       return 409;
     case PROJECT_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND:
+    case TASK_SERVICE_ERROR_CODES.ATTACHMENT_PATH_NOT_FOUND:
+    case TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND:
+    case TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND:
       return 404;
     default:
       return 400;

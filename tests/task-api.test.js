@@ -1,0 +1,260 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import http from "node:http";
+import os from "node:os";
+import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+import { createApp } from "../src/server/app.js";
+import { AgentRegistry } from "../src/agents/agent-registry.js";
+import { AgentService } from "../src/services/agent-service.js";
+import { SESSION_SANDBOX_TYPES } from "../src/agents/agent-contract.js";
+
+const execFileAsync = promisify(execFile);
+
+test("creates a task, snapshots the selected branch commit, and persists task-scoped attachments", async () => {
+  const fixture = await makeTempDir("eat-task-api-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const uploadRootPath = path.join(fixture.path, "uploads");
+    const repo = await createRepository(fixture.path, "task-repo", { defaultBranch: "main" });
+    const attachmentPath = path.join(fixture.path, "brief.md");
+    await writeFile(attachmentPath, "# brief\n", "utf8");
+
+    const server = await startServer({
+      agentService: createLeadAgentService(),
+      databasePath,
+      uploadRootPath,
+    });
+
+    try {
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+
+      const expectedSha = await git(repo.repoPath, ["rev-parse", "main^{commit}"]);
+      const createResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          attachments: [
+            {
+              fileName: "brief.md",
+              filePath: attachmentPath,
+              fileType: "DOCUMENT",
+              mimeType: "text/markdown",
+            },
+          ],
+          baseBranch: "main",
+          description: "Clarify the implementation scope.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Lead clarification",
+        },
+        method: "POST",
+      });
+
+      assert.equal(createResponse.status, 201);
+      assert.equal(createResponse.body.task.status, "DRAFT");
+      assert.equal(createResponse.body.task.baseCommitSha, expectedSha);
+      assert.equal(createResponse.body.attachments.length, 1);
+
+      const detailResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(createResponse.body.task.id)}`,
+      );
+      assert.equal(detailResponse.status, 200);
+      assert.equal(detailResponse.body.attachments.length, 1);
+      assert.match(
+        detailResponse.body.attachments[0].filePath,
+        new RegExp(`^${escapeRegExp(path.join(uploadRootPath, createResponse.body.task.id))}`),
+      );
+      assert.equal(
+        await readFile(detailResponse.body.attachments[0].filePath, "utf8"),
+        "# brief\n",
+      );
+
+      const projectTasksResponse = await requestJson(
+        server,
+        `/api/projects/${encodeURIComponent(registerResponse.body.project.id)}/tasks`,
+      );
+      assert.equal(projectTasksResponse.status, 200);
+      assert.equal(projectTasksResponse.body.tasks.length, 1);
+      assert.equal(projectTasksResponse.body.tasks[0].id, createResponse.body.task.id);
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("rejects unsupported attachments before task creation completes", async () => {
+  const fixture = await makeTempDir("eat-task-api-invalid-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const uploadRootPath = path.join(fixture.path, "uploads");
+    const repo = await createRepository(fixture.path, "invalid-task-repo", { defaultBranch: "main" });
+    const invalidAttachmentPath = path.join(fixture.path, "binary.exe");
+    await writeFile(invalidAttachmentPath, "binary\n", "utf8");
+
+    const server = await startServer({
+      agentService: createLeadAgentService(),
+      databasePath,
+      uploadRootPath,
+    });
+
+    try {
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+
+      const createResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          attachments: [
+            {
+              fileName: "binary.exe",
+              filePath: invalidAttachmentPath,
+              mimeType: "application/octet-stream",
+            },
+          ],
+          baseBranch: "main",
+          description: "This should fail before persistence.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Rejected task",
+        },
+        method: "POST",
+      });
+
+      assert.equal(createResponse.status, 400);
+      assert.equal(createResponse.body.error.code, "ATTACHMENT_TYPE_UNSUPPORTED");
+
+      const projectTasksResponse = await requestJson(
+        server,
+        `/api/projects/${encodeURIComponent(registerResponse.body.project.id)}/tasks`,
+      );
+      assert.equal(projectTasksResponse.status, 200);
+      assert.deepEqual(projectTasksResponse.body.tasks, []);
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+function createLeadAgentService() {
+  const registry = new AgentRegistry();
+  registry.register({
+    capabilities: {
+      canExecute: true,
+      canOrchestrate: true,
+      description: "Healthy lead test adapter",
+      supportedSandboxTypes: [SESSION_SANDBOX_TYPES.HOST],
+      supportsInteractiveInput: true,
+      supportsVision: true,
+    },
+    async healthCheck() {
+      return {
+        available: true,
+        version: "1.0.0-test",
+      };
+    },
+    name: "healthy-lead",
+    async spawnSession() {
+      throw new Error("not used in CRC-35 tests");
+    },
+  });
+
+  return new AgentService({ agentRegistry: registry });
+}
+
+async function startServer(options = {}) {
+  const server = createApp({
+    agentService: options.agentService,
+    repositoryOptions: {
+      databasePath: options.databasePath,
+    },
+    uploadRootPath: options.uploadRootPath,
+  });
+
+  await new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  return server;
+}
+
+async function stopServer(server) {
+  await new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
+async function requestJson(server, routePath, options = {}) {
+  const address = server.address();
+  const url = new URL(routePath, `http://127.0.0.1:${address.port}`);
+  const requestBody = options.body ? JSON.stringify(options.body) : undefined;
+
+  const response = await fetch(url, {
+    body: requestBody,
+    headers: requestBody ? { "content-type": "application/json" } : undefined,
+    method: options.method ?? "GET",
+  });
+
+  return {
+    status: response.status,
+    body: await response.json(),
+  };
+}
+
+async function createRepository(rootPath, name, options = {}) {
+  const repoPath = path.join(rootPath, name);
+  const defaultBranch = options.defaultBranch ?? "main";
+
+  await mkdir(repoPath);
+  await git(rootPath, ["init", `--initial-branch=${defaultBranch}`, repoPath]);
+  await git(repoPath, ["config", "user.name", "EAT Test"]);
+  await git(repoPath, ["config", "user.email", "eat@example.com"]);
+  await writeFile(path.join(repoPath, "README.md"), "seed\n", "utf8");
+  await git(repoPath, ["add", "README.md"]);
+  await git(repoPath, ["commit", "-m", "seed"]);
+
+  return { repoPath };
+}
+
+async function git(cwd, args) {
+  const { stdout } = await execFileAsync("git", args, {
+    cwd,
+    encoding: "utf8",
+  });
+
+  return stdout.trim();
+}
+
+async function makeTempDir(prefix) {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), prefix));
+
+  return {
+    path: tempDir,
+    async dispose() {
+      await rm(tempDir, { force: true, recursive: true });
+    },
+  };
+}
+
+function escapeRegExp(value) {
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
