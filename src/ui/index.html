@@ -3,25 +3,25 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>EAT Project Console</title>
+    <title>EAT Agent Registry Console</title>
     <link rel="stylesheet" href="/app.css">
   </head>
   <body>
     <div class="page-shell">
       <header class="hero">
         <div class="hero__copy">
-          <p class="eyebrow">Phase 01</p>
-          <h1>Project Registration And Repo Validation</h1>
+          <p class="eyebrow">Phase 02</p>
+          <h1>Agent Registry And Health Checks</h1>
           <p class="hero__summary">
-            Register a local git repository, inspect its live branch state, and catch dirty working trees before later task flows start.
+            Validate lead and worker adapters before task flows begin, while keeping the Phase 01 project registration probe available on the same console.
           </p>
         </div>
         <div class="hero__panel" aria-label="Phase scope">
           <p class="hero__panel-label">Current scope</p>
           <ul class="hero__list">
-            <li>Project list and registration</li>
-            <li>Project detail and repo status</li>
-            <li>Dirty working tree warnings</li>
+            <li>Agent capability registry and role filtering</li>
+            <li>Structured health checks and normalized failures</li>
+            <li>Unhealthy lead-agent selection gating</li>
           </ul>
         </div>
       </header>
@@ -131,6 +131,62 @@
               <div id="recent-branches" class="branches-list"></div>
             </section>
           </article>
+        </section>
+
+        <section class="panel panel--agents" aria-labelledby="agent-health-title">
+          <div class="panel__header panel__header--inline">
+            <div>
+              <p class="panel__eyebrow">Agents</p>
+              <h2 id="agent-health-title">Registry and health status</h2>
+            </div>
+            <button id="refresh-agent-health-button" class="button button--secondary" type="button">
+              Refresh health
+            </button>
+          </div>
+          <p class="panel__summary">
+            Health checks are cached briefly so the UI can poll without running adapter probes on every render.
+          </p>
+          <div id="agent-health-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
+          <dl class="stats-grid stats-grid--agents">
+            <div class="stat-card">
+              <dt>Registered agents</dt>
+              <dd id="agent-count">0</dd>
+            </div>
+            <div class="stat-card">
+              <dt>Healthy lead candidates</dt>
+              <dd id="healthy-lead-count">0</dd>
+            </div>
+            <div class="stat-card">
+              <dt>Healthy worker candidates</dt>
+              <dd id="healthy-worker-count">0</dd>
+            </div>
+            <div class="stat-card">
+              <dt>Last health refresh</dt>
+              <dd id="agent-health-checked-at">Not yet checked</dd>
+            </div>
+          </dl>
+          <div id="agent-health-empty" class="empty-state">
+            No agents registered yet. Add adapter factories to the in-process registry before task creation starts.
+          </div>
+          <div id="agent-health-list" class="agent-grid" role="list" aria-label="Agent health cards"></div>
+        </section>
+
+        <section class="panel panel--lead-selector" aria-labelledby="lead-selector-title">
+          <div class="panel__header">
+            <p class="panel__eyebrow">Task Creation Guardrail</p>
+            <h2 id="lead-selector-title">Lead agent selection</h2>
+          </div>
+          <p class="panel__summary">
+            Phase 04 task creation depends on a healthy lead agent. This preview blocks unhealthy lead-agent selection now.
+          </p>
+          <label class="field" for="lead-agent-select">
+            <span class="field__label">Lead agent</span>
+            <select id="lead-agent-select" class="field__control"></select>
+          </label>
+          <div id="lead-agent-feedback" class="feedback is-visible" role="status" aria-live="polite"></div>
+          <button id="lead-agent-continue-button" class="button button--primary" type="button">
+            Continue to task creation
+          </button>
         </section>
       </main>
     </div>

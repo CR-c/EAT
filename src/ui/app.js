@@ -1,14 +1,24 @@
 import {
+  buildAgentErrorMessage,
+  buildAgentStatusLabel,
   buildBranchList,
   buildCleanlinessLabel,
+  buildLeadSelectionState,
   buildProjectErrorMessage,
 } from "./view-model.js";
 
 const state = {
+  agentHealth: {},
+  agents: [],
   detail: null,
+  healthCheckedAt: null,
+  leadCandidates: [],
   loadingDetail: false,
+  loadingAgents: false,
   loadingList: false,
+  selectedLeadAgentName: null,
   selectedProjectId: null,
+  workerCandidates: [],
   projects: [],
 };
 
@@ -34,6 +44,17 @@ const elements = {
   currentBranch: document.querySelector("#current-branch"),
   cleanlinessBadge: document.querySelector("#cleanliness-badge"),
   recentBranches: document.querySelector("#recent-branches"),
+  refreshAgentHealthButton: document.querySelector("#refresh-agent-health-button"),
+  agentHealthFeedback: document.querySelector("#agent-health-feedback"),
+  agentHealthEmpty: document.querySelector("#agent-health-empty"),
+  agentHealthList: document.querySelector("#agent-health-list"),
+  agentCount: document.querySelector("#agent-count"),
+  healthyLeadCount: document.querySelector("#healthy-lead-count"),
+  healthyWorkerCount: document.querySelector("#healthy-worker-count"),
+  agentHealthCheckedAt: document.querySelector("#agent-health-checked-at"),
+  leadAgentSelect: document.querySelector("#lead-agent-select"),
+  leadAgentFeedback: document.querySelector("#lead-agent-feedback"),
+  leadAgentContinueButton: document.querySelector("#lead-agent-continue-button"),
 };
 
 elements.projectRegistrationForm.addEventListener("submit", onRegisterProject);
@@ -45,8 +66,15 @@ elements.refreshProjectDetailButton.addEventListener("click", () => {
     void loadProjectDetail(state.selectedProjectId);
   }
 });
+elements.refreshAgentHealthButton.addEventListener("click", () => {
+  void loadAgents({ force: true });
+});
+elements.leadAgentSelect.addEventListener("change", (event) => {
+  state.selectedLeadAgentName = event.target.value || null;
+  renderLeadSelector();
+});
 
-void loadProjects();
+void Promise.all([loadProjects(), loadAgents()]);
 
 async function onRegisterProject(event) {
   event.preventDefault();
@@ -174,6 +202,47 @@ async function loadProjectDetail(projectId) {
   }
 }
 
+async function loadAgents(options = {}) {
+  state.loadingAgents = true;
+  clearFeedback(elements.agentHealthFeedback);
+  setButtonBusy(elements.refreshAgentHealthButton, true, "Refreshing...");
+
+  try {
+    const refreshSuffix = options.force ? "?refresh=1" : "";
+    const [directory, health] = await Promise.all([
+      fetchJson(`/api/agents${refreshSuffix}`),
+      fetchJson(`/api/agents/health${refreshSuffix}`),
+    ]);
+
+    state.agents = directory.agents ?? [];
+    state.agentHealth = health.agents ?? {};
+    state.leadCandidates = health.leadCandidates ?? directory.leadCandidates ?? [];
+    state.workerCandidates = health.workerCandidates ?? directory.workerCandidates ?? [];
+    state.healthCheckedAt = health.checkedAt ?? null;
+
+    const nextLeadAgentName = state.leadCandidates.some((candidate) => candidate.agentName === state.selectedLeadAgentName)
+      ? state.selectedLeadAgentName
+      : state.leadCandidates[0]?.agentName ?? null;
+
+    state.selectedLeadAgentName = nextLeadAgentName;
+
+    renderAgentHealth();
+    renderLeadSelector();
+  } catch (error) {
+    state.agents = [];
+    state.agentHealth = {};
+    state.leadCandidates = [];
+    state.workerCandidates = [];
+    state.selectedLeadAgentName = null;
+    renderAgentHealth();
+    renderLeadSelector();
+    showFeedback(elements.agentHealthFeedback, "error", buildAgentErrorMessage(error));
+  } finally {
+    state.loadingAgents = false;
+    setButtonBusy(elements.refreshAgentHealthButton, false, "Refresh health");
+  }
+}
+
 function renderProjectDetail() {
   const detail = state.detail;
 
@@ -209,6 +278,95 @@ function clearProjectDetail() {
   elements.projectDetailEmpty.hidden = false;
   elements.dirtyWarningBanner.hidden = true;
   elements.recentBranches.replaceChildren();
+}
+
+function renderAgentHealth() {
+  elements.agentHealthList.replaceChildren();
+  elements.agentCount.textContent = String(state.agents.length);
+  elements.healthyLeadCount.textContent = String(
+    state.leadCandidates.filter((candidate) => candidate.selectable).length,
+  );
+  elements.healthyWorkerCount.textContent = String(
+    state.workerCandidates.filter((candidate) => candidate.selectable).length,
+  );
+  elements.agentHealthCheckedAt.textContent = state.healthCheckedAt
+    ? new Date(state.healthCheckedAt).toLocaleString()
+    : "Not yet checked";
+  elements.agentHealthEmpty.hidden = state.agents.length > 0;
+
+  for (const agent of state.agents) {
+    const snapshot = state.agentHealth[agent.name];
+    const article = document.createElement("article");
+    article.className = "agent-card";
+    article.setAttribute("role", "listitem");
+
+    const badges = [
+      agent.roles.leadCandidate ? '<span class="badge badge--ink">Lead</span>' : "",
+      agent.roles.workerCandidate ? '<span class="badge badge--sky">Worker</span>' : "",
+      agent.capabilities.supportsVision ? '<span class="badge badge--accent-soft">Vision</span>' : "",
+      agent.capabilities.supportsInteractiveInput ? '<span class="badge badge--outline">Interactive</span>' : "",
+      ...agent.capabilities.supportedSandboxTypes.map((sandboxType) => (
+        `<span class="badge badge--outline">${escapeHtml(sandboxType)}</span>`
+      )),
+    ].filter(Boolean).join("");
+    const checks = Array.isArray(snapshot?.checks) && snapshot.checks.length > 0
+      ? snapshot.checks.map((check) => `
+          <li class="agent-card__check">
+            <span class="agent-card__check-status agent-card__check-status--${check.status.toLowerCase()}">${escapeHtml(check.status)}</span>
+            <span>${escapeHtml(check.name)}${check.message ? `: ${escapeHtml(check.message)}` : ""}</span>
+          </li>
+        `).join("")
+      : '<li class="agent-card__check">No structured checks returned.</li>';
+    const statusLabel = buildAgentStatusLabel(snapshot);
+
+    article.innerHTML = `
+      <div class="agent-card__topline">
+        <div>
+          <p class="agent-card__title">${escapeHtml(agent.name)}</p>
+          <p class="agent-card__description">${escapeHtml(agent.capabilities.description)}</p>
+        </div>
+        <span class="badge ${snapshot?.available ? "badge--clean" : "badge--dirty"}">${escapeHtml(statusLabel)}</span>
+      </div>
+      <div class="agent-card__badges">${badges}</div>
+      <p class="agent-card__meta"><strong>Version:</strong> ${escapeHtml(snapshot?.version ?? "Unknown")}</p>
+      <p class="agent-card__meta"><strong>Failure reason:</strong> ${escapeHtml(snapshot?.failureReason?.message ?? "None")}</p>
+      <ul class="agent-card__checks">${checks}</ul>
+    `;
+
+    elements.agentHealthList.append(article);
+  }
+}
+
+function renderLeadSelector() {
+  const selectedCandidate = state.leadCandidates.find(
+    (candidate) => candidate.agentName === state.selectedLeadAgentName,
+  ) ?? null;
+  const gate = buildLeadSelectionState(selectedCandidate);
+
+  elements.leadAgentSelect.replaceChildren();
+
+  if (state.leadCandidates.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No lead agents available";
+    elements.leadAgentSelect.append(option);
+    elements.leadAgentSelect.disabled = true;
+  } else {
+    for (const candidate of state.leadCandidates) {
+      const option = document.createElement("option");
+      option.value = candidate.agentName;
+      option.textContent = candidate.selectable
+        ? candidate.agentName
+        : `${candidate.agentName} (unhealthy)`;
+      option.selected = candidate.agentName === state.selectedLeadAgentName;
+      elements.leadAgentSelect.append(option);
+    }
+
+    elements.leadAgentSelect.disabled = false;
+  }
+
+  elements.leadAgentContinueButton.disabled = gate.disabled;
+  showFeedback(elements.leadAgentFeedback, gate.tone, gate.message);
 }
 
 async function fetchJson(url, options = {}) {

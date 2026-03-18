@@ -34,3 +34,51 @@ export function buildBranchList(branches) {
 
   return branches;
 }
+
+export function buildAgentErrorMessage(error) {
+  if (!error) {
+    return "An unknown agent error occurred.";
+  }
+
+  return error.message ?? "Unable to load agent registry data.";
+}
+
+export function buildAgentStatusLabel(snapshot) {
+  if (!snapshot) {
+    return "Unknown";
+  }
+
+  if (snapshot.available !== true) {
+    return "Unavailable";
+  }
+
+  if (Array.isArray(snapshot.checks) && snapshot.checks.some((check) => check.status === "WARN")) {
+    return "Degraded";
+  }
+
+  return "Healthy";
+}
+
+export function buildLeadSelectionState(candidate) {
+  if (!candidate) {
+    return {
+      disabled: true,
+      message: "No lead-capable agents are registered yet.",
+      tone: "error",
+    };
+  }
+
+  if (candidate.selectable) {
+    return {
+      disabled: false,
+      message: `${candidate.agentName} is healthy and ready for task creation.`,
+      tone: "success",
+    };
+  }
+
+  return {
+    disabled: true,
+    message: `${candidate.agentName} is blocked: ${candidate.failureReason?.message ?? "Health check failed."}`,
+    tone: "error",
+  };
+}
