@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EAT Project Console</title>
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero__copy">
+          <p class="eyebrow">Phase 01</p>
+          <h1>Project Registration And Repo Validation</h1>
+          <p class="hero__summary">
+            Register a local git repository, inspect its live branch state, and catch dirty working trees before later task flows start.
+          </p>
+        </div>
+        <div class="hero__panel" aria-label="Phase scope">
+          <p class="hero__panel-label">Current scope</p>
+          <ul class="hero__list">
+            <li>Project list and registration</li>
+            <li>Project detail and repo status</li>
+            <li>Dirty working tree warnings</li>
+          </ul>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="panel panel--form" aria-labelledby="register-project-title">
+          <div class="panel__header">
+            <p class="panel__eyebrow">Register</p>
+            <h2 id="register-project-title">Add a local repository</h2>
+          </div>
+          <form id="project-registration-form" class="project-form">
+            <label class="field" for="project-path-input">
+              <span class="field__label">Absolute repository path</span>
+              <input
+                id="project-path-input"
+                name="path"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="/home/code/EAT"
+                required
+              >
+            </label>
+            <p class="field__hint">
+              Registration accepts clean and dirty repos. Validation rejects missing paths, non-directories, bare repos, and non-git directories.
+            </p>
+            <div id="registration-feedback" class="feedback" role="status" aria-live="polite"></div>
+            <button id="register-project-button" class="button button--primary" type="submit">
+              Register project
+            </button>
+          </form>
+        </section>
+
+        <section class="panel panel--list" aria-labelledby="project-list-title">
+          <div class="panel__header panel__header--inline">
+            <div>
+              <p class="panel__eyebrow">Projects</p>
+              <h2 id="project-list-title">Registered repositories</h2>
+            </div>
+            <button id="refresh-projects-button" class="button button--secondary" type="button">
+              Refresh list
+            </button>
+          </div>
+          <div id="project-list-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
+          <div id="project-list-empty" class="empty-state">
+            No projects registered yet. Add one with an absolute git repository path.
+          </div>
+          <div id="project-list" class="project-list" role="list" aria-label="Projects"></div>
+        </section>
+
+        <section class="panel panel--detail" aria-labelledby="project-detail-title">
+          <div class="panel__header panel__header--inline">
+            <div>
+              <p class="panel__eyebrow">Detail</p>
+              <h2 id="project-detail-title">Project status</h2>
+            </div>
+            <button id="refresh-project-detail-button" class="button button--secondary" type="button">
+              Refresh status
+            </button>
+          </div>
+          <div id="project-detail-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
+          <div id="project-detail-empty" class="empty-state">
+            Select a project to inspect its default branch, current branch, cleanliness, and recent branch activity.
+          </div>
+          <article id="project-detail" class="project-detail" hidden>
+            <div id="dirty-warning-banner" class="warning-banner" hidden>
+              <p class="warning-banner__eyebrow">Dirty working tree</p>
+              <h3>Uncommitted changes are present</h3>
+              <p>
+                Commit first if you want the cleanest baseline. If you continue later, EAT should create a fresh task worktree instead of reusing this repository checkout.
+              </p>
+            </div>
+
+            <section class="detail-hero">
+              <div>
+                <p class="detail-hero__eyebrow">Registered project</p>
+                <h3 id="project-name">Project</h3>
+                <p id="project-path" class="detail-hero__path"></p>
+              </div>
+              <div id="cleanliness-badge" class="badge"></div>
+            </section>
+
+            <dl class="stats-grid">
+              <div class="stat-card">
+                <dt>Default branch</dt>
+                <dd id="default-branch">Unknown</dd>
+              </div>
+              <div class="stat-card">
+                <dt>Current branch</dt>
+                <dd id="current-branch">Unknown</dd>
+              </div>
+              <div class="stat-card">
+                <dt>Project name</dt>
+                <dd id="registered-name">Unknown</dd>
+              </div>
+              <div class="stat-card">
+                <dt>Saved path</dt>
+                <dd id="registered-path">Unknown</dd>
+              </div>
+            </dl>
+
+            <section class="branches-card" aria-labelledby="recent-branches-title">
+              <div class="branches-card__header">
+                <p class="panel__eyebrow">Live probe</p>
+                <h3 id="recent-branches-title">Recent local branches</h3>
+              </div>
+              <div id="recent-branches" class="branches-list"></div>
+            </section>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
