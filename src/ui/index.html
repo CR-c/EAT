@@ -3,25 +3,25 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>EAT Agent Registry Console</title>
+    <title>EAT Lead Session Console</title>
     <link rel="stylesheet" href="/app.css">
   </head>
   <body>
     <div class="page-shell">
       <header class="hero">
         <div class="hero__copy">
-          <p class="eyebrow">Phase 02</p>
-          <h1>Agent Registry And Health Checks</h1>
+          <p class="eyebrow">Phase 04</p>
+          <h1>Lead Session Chat Flow</h1>
           <p class="hero__summary">
-            Validate lead and worker adapters before task flows begin, while keeping the Phase 01 project registration probe available on the same console.
+            Create a task, capture attachments, start lead clarification, persist the transcript, and gate planning behind explicit confirmation.
           </p>
         </div>
         <div class="hero__panel" aria-label="Phase scope">
           <p class="hero__panel-label">Current scope</p>
           <ul class="hero__list">
-            <li>Agent capability registry and role filtering</li>
-            <li>Structured health checks and normalized failures</li>
-            <li>Unhealthy lead-agent selection gating</li>
+            <li>Task creation with base-branch commit snapshot</li>
+            <li>Task-scoped attachment persistence and validation</li>
+            <li>Lead clarification chat with explicit requirement confirmation</li>
           </ul>
         </div>
       </header>
@@ -46,7 +46,7 @@
               >
             </label>
             <p class="field__hint">
-              Registration accepts clean and dirty repos. Validation rejects missing paths, non-directories, bare repos, and non-git directories.
+              Register a local git repository before creating a task. Dirty working trees remain allowed but are highlighted below.
             </p>
             <div id="registration-feedback" class="feedback" role="status" aria-live="polite"></div>
             <button id="register-project-button" class="button button--primary" type="submit">
@@ -67,7 +67,7 @@
           </div>
           <div id="project-list-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
           <div id="project-list-empty" class="empty-state">
-            No projects registered yet. Add one with an absolute git repository path.
+            No projects registered yet. Add one first, then continue with task creation.
           </div>
           <div id="project-list" class="project-list" role="list" aria-label="Projects"></div>
         </section>
@@ -84,14 +84,14 @@
           </div>
           <div id="project-detail-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
           <div id="project-detail-empty" class="empty-state">
-            Select a project to inspect its default branch, current branch, cleanliness, and recent branch activity.
+            Select a project to inspect branches, cleanliness, and recent task activity.
           </div>
           <article id="project-detail" class="project-detail" hidden>
             <div id="dirty-warning-banner" class="warning-banner" hidden>
               <p class="warning-banner__eyebrow">Dirty working tree</p>
               <h3>Uncommitted changes are present</h3>
               <p>
-                Commit first if you want the cleanest baseline. If you continue later, EAT should create a fresh task worktree instead of reusing this repository checkout.
+                Task creation still snapshots the chosen base branch commit, but lead and worker sessions should not depend on this checkout state.
               </p>
             </div>
 
@@ -125,7 +125,7 @@
 
             <section class="branches-card" aria-labelledby="recent-branches-title">
               <div class="branches-card__header">
-                <p class="panel__eyebrow">Live probe</p>
+                <p class="panel__eyebrow">Branch choices</p>
                 <h3 id="recent-branches-title">Recent local branches</h3>
               </div>
               <div id="recent-branches" class="branches-list"></div>
@@ -144,7 +144,7 @@
             </button>
           </div>
           <p class="panel__summary">
-            Health checks are cached briefly so the UI can poll without running adapter probes on every render.
+            Lead clarification only starts when the selected lead agent is healthy. Task creation keeps the same guard visible before you commit anything.
           </p>
           <div id="agent-health-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
           <dl class="stats-grid stats-grid--agents">
@@ -166,27 +166,154 @@
             </div>
           </dl>
           <div id="agent-health-empty" class="empty-state">
-            No agents registered yet. Add adapter factories to the in-process registry before task creation starts.
+            No registered agents were found.
           </div>
           <div id="agent-health-list" class="agent-grid" role="list" aria-label="Agent health cards"></div>
         </section>
 
-        <section class="panel panel--lead-selector" aria-labelledby="lead-selector-title">
+        <section class="panel panel--task-form" aria-labelledby="task-form-title">
           <div class="panel__header">
-            <p class="panel__eyebrow">Task Creation Guardrail</p>
-            <h2 id="lead-selector-title">Lead agent selection</h2>
+            <p class="panel__eyebrow">Create</p>
+            <h2 id="task-form-title">New clarification task</h2>
           </div>
-          <p class="panel__summary">
-            Phase 04 task creation depends on a healthy lead agent. This preview blocks unhealthy lead-agent selection now.
-          </p>
-          <label class="field" for="lead-agent-select">
-            <span class="field__label">Lead agent</span>
-            <select id="lead-agent-select" class="field__control"></select>
-          </label>
-          <div id="lead-agent-feedback" class="feedback is-visible" role="status" aria-live="polite"></div>
-          <button id="lead-agent-continue-button" class="button button--primary" type="button">
-            Continue to task creation
-          </button>
+          <form id="task-creation-form" class="task-form">
+            <label class="field" for="base-branch-select">
+              <span class="field__label">Base branch</span>
+              <select id="base-branch-select" class="field__control"></select>
+            </label>
+            <label class="field" for="lead-agent-select">
+              <span class="field__label">Lead agent</span>
+              <select id="lead-agent-select" class="field__control"></select>
+            </label>
+            <div id="lead-agent-feedback" class="feedback" role="status" aria-live="polite"></div>
+            <label class="field" for="task-title-input">
+              <span class="field__label">Task title</span>
+              <input id="task-title-input" name="title" type="text" maxlength="160" required>
+            </label>
+            <label class="field" for="task-description-input">
+              <span class="field__label">Requirement description</span>
+              <textarea id="task-description-input" name="description" rows="6" required></textarea>
+            </label>
+            <label class="field" for="task-attachments-input">
+              <span class="field__label">Attachments</span>
+              <input id="task-attachments-input" name="attachments" type="file" multiple>
+            </label>
+            <p class="field__hint">
+              Supported types: images, PDF/Markdown/text documents, and text-based code files. Unsupported or oversized files are rejected before task creation completes.
+            </p>
+            <div id="task-attachment-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
+            <ul id="task-attachment-list" class="attachment-list attachment-list--draft"></ul>
+            <div id="task-form-feedback" class="feedback" role="status" aria-live="polite"></div>
+            <button id="create-task-button" class="button button--primary" type="submit">
+              Create task
+            </button>
+          </form>
+        </section>
+
+        <section class="panel panel--tasks" aria-labelledby="task-list-title">
+          <div class="panel__header panel__header--inline">
+            <div>
+              <p class="panel__eyebrow">Tasks</p>
+              <h2 id="task-list-title">Project tasks</h2>
+            </div>
+            <button id="refresh-tasks-button" class="button button--secondary" type="button">
+              Refresh tasks
+            </button>
+          </div>
+          <div id="task-list-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
+          <div id="task-list-empty" class="empty-state">
+            No tasks exist for the selected project yet.
+          </div>
+          <div id="task-list" class="task-list" role="list" aria-label="Tasks"></div>
+        </section>
+
+        <section class="panel panel--clarification" aria-labelledby="clarification-title">
+          <div class="panel__header panel__header--inline">
+            <div>
+              <p class="panel__eyebrow">Clarification</p>
+              <h2 id="clarification-title">Lead session transcript</h2>
+            </div>
+            <button id="refresh-task-detail-button" class="button button--secondary" type="button">
+              Refresh task
+            </button>
+          </div>
+          <div id="task-detail-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
+          <div id="task-detail-empty" class="empty-state">
+            Select a task to inspect its attachments, live transcript, and clarification state.
+          </div>
+          <article id="task-detail" class="task-detail" hidden>
+            <section class="task-detail__hero">
+              <div>
+                <p class="task-detail__eyebrow">Selected task</p>
+                <h3 id="task-detail-title">Task title</h3>
+                <p id="task-detail-description" class="task-detail__description"></p>
+              </div>
+              <div class="task-detail__hero-meta">
+                <span id="task-status-badge" class="badge"></span>
+                <span id="task-base-branch-badge" class="badge badge--outline"></span>
+              </div>
+            </section>
+
+            <dl class="stats-grid stats-grid--task">
+              <div class="stat-card">
+                <dt>Lead agent</dt>
+                <dd id="task-lead-agent">Unknown</dd>
+              </div>
+              <div class="stat-card">
+                <dt>Base commit</dt>
+                <dd id="task-base-commit">Unknown</dd>
+              </div>
+              <div class="stat-card">
+                <dt>Latest session</dt>
+                <dd id="task-session-status">None</dd>
+              </div>
+              <div class="stat-card">
+                <dt>Messages persisted</dt>
+                <dd id="task-message-count">0</dd>
+              </div>
+            </dl>
+
+            <section class="task-detail__attachments" aria-labelledby="task-attachments-title">
+              <div class="panel__header">
+                <p class="panel__eyebrow">Attachments</p>
+                <h3 id="task-attachments-title">Task-scoped files</h3>
+              </div>
+              <div id="task-attachments-empty" class="empty-state">
+                No attachments were added for this task.
+              </div>
+              <ul id="task-attachments-list" class="attachment-list"></ul>
+            </section>
+
+            <section class="task-detail__transcript" aria-labelledby="task-transcript-title">
+              <div class="panel__header">
+                <p class="panel__eyebrow">Transcript</p>
+                <h3 id="task-transcript-title">Persisted clarification messages</h3>
+              </div>
+              <div id="task-transcript-empty" class="empty-state">
+                Start clarification to create the first lead session and transcript entries.
+              </div>
+              <div id="task-transcript" class="transcript"></div>
+            </section>
+
+            <div class="task-actions">
+              <button id="start-clarification-button" class="button button--primary" type="button">
+                Start clarification
+              </button>
+              <button id="confirm-requirements-button" class="button button--secondary" type="button">
+                Requirements confirmed
+              </button>
+            </div>
+
+            <form id="task-message-form" class="message-form">
+              <label class="field" for="task-message-input">
+                <span class="field__label">Send a clarification reply</span>
+                <textarea id="task-message-input" name="message" rows="3" placeholder="Clarify requirements, constraints, or acceptance criteria."></textarea>
+              </label>
+              <button id="send-task-message-button" class="button button--primary" type="submit">
+                Send message
+              </button>
+            </form>
+          </article>
         </section>
       </main>
     </div>

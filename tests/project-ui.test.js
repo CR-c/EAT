@@ -5,13 +5,16 @@ import path from "node:path";
 import { createApp } from "../src/server/app.js";
 import {
   buildAgentStatusLabel,
+  buildAttachmentCaption,
   buildBranchList,
   buildCleanlinessLabel,
   buildLeadSelectionState,
   buildProjectErrorMessage,
+  buildTaskErrorMessage,
+  buildTaskStatusLabel,
 } from "../src/ui/view-model.js";
 
-test("serves the Phase 02 agent registry UI shell and static assets", async () => {
+test("serves the Phase 04 lead-session UI shell and static assets", async () => {
   const server = createApp({
     repositoryOptions: {
       databasePath: path.join(process.cwd(), ".tmp-projects.db"),
@@ -29,16 +32,17 @@ test("serves the Phase 02 agent registry UI shell and static assets", async () =
 
     assert.equal(rootResponse.status, 200);
     assert.match(rootResponse.headers.get("content-type"), /^text\/html/);
-    assert.match(rootResponse.body, /Agent Registry And Health Checks/);
-    assert.match(rootResponse.body, /Lead agent selection/i);
+    assert.match(rootResponse.body, /Lead Session Chat Flow/);
+    assert.match(rootResponse.body, /New clarification task/i);
+    assert.match(rootResponse.body, /Lead session transcript/i);
 
     assert.equal(cssResponse.status, 200);
     assert.match(cssResponse.headers.get("content-type"), /^text\/css/);
-    assert.match(cssResponse.body, /agent-card/);
+    assert.match(cssResponse.body, /transcript__message/);
 
     assert.equal(jsResponse.status, 200);
     assert.match(jsResponse.headers.get("content-type"), /^text\/javascript/);
-    assert.match(jsResponse.body, /loadAgents/);
+    assert.match(jsResponse.body, /loadTaskDetail/);
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => {
@@ -53,7 +57,7 @@ test("serves the Phase 02 agent registry UI shell and static assets", async () =
   }
 });
 
-test("formats project, agent health, and lead gating UI messages", () => {
+test("formats project, task, agent health, and attachment UI messages", () => {
   assert.equal(
     buildProjectErrorMessage({
       code: "PROJECT_ALREADY_REGISTERED",
@@ -75,6 +79,21 @@ test("formats project, agent health, and lead gating UI messages", () => {
   assert.deepEqual(buildBranchList(["main", "feature/ui"]), ["main", "feature/ui"]);
   assert.equal(buildAgentStatusLabel({ available: true, checks: [] }), "Healthy");
   assert.equal(buildAgentStatusLabel({ available: false, checks: [] }), "Unavailable");
+  assert.equal(buildTaskStatusLabel("CLARIFYING"), "Clarifying");
+  assert.equal(
+    buildTaskErrorMessage({
+      code: "ATTACHMENT_TYPE_UNSUPPORTED",
+    }),
+    "One or more attachments use an unsupported type.",
+  );
+  assert.equal(
+    buildAttachmentCaption({
+      fileType: "DOCUMENT",
+      mimeType: "text/markdown",
+      size: 2048,
+    }),
+    "DOCUMENT · text/markdown · 2 KB",
+  );
   assert.deepEqual(
     buildLeadSelectionState({
       agentName: "codex-cli",

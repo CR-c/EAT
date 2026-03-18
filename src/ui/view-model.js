@@ -23,6 +23,33 @@ export function buildProjectErrorMessage(error) {
   }
 }
 
+export function buildTaskErrorMessage(error) {
+  if (!error) {
+    return "An unknown task error occurred.";
+  }
+
+  switch (error.code) {
+    case "BASE_BRANCH_NOT_FOUND":
+      return `The selected base branch ${error.details?.baseBranch ?? ""} could not be resolved.`;
+    case "LEAD_AGENT_UNHEALTHY":
+      return `${error.details?.leadAgentType ?? "Lead agent"} is unhealthy: ${error.details?.failureReason?.message ?? "health check failed"}.`;
+    case "TASK_NOT_DRAFT":
+      return "Clarification can only start from a draft task.";
+    case "TASK_NOT_CLARIFYING":
+      return "This action is only available while the task is clarifying.";
+    case "ATTACHMENT_TYPE_UNSUPPORTED":
+      return "One or more attachments use an unsupported type.";
+    case "ATTACHMENT_SIZE_EXCEEDED":
+      return "One or more attachments exceed the current size limit.";
+    case "ATTACHMENT_MIME_MISMATCH":
+      return "One or more attachments do not match the supplied type or MIME metadata.";
+    case "TASK_MESSAGE_REQUIRED":
+      return "Write a message before sending it to the lead agent.";
+    default:
+      return error.message ?? "An unexpected task error occurred.";
+  }
+}
+
 export function buildCleanlinessLabel(isDirty) {
   return isDirty ? "Dirty working tree" : "Clean working tree";
 }
@@ -81,4 +108,35 @@ export function buildLeadSelectionState(candidate) {
     message: `${candidate.agentName} is blocked: ${candidate.failureReason?.message ?? "Health check failed."}`,
     tone: "error",
   };
+}
+
+export function buildTaskStatusLabel(status) {
+  switch (status) {
+    case "DRAFT":
+      return "Draft";
+    case "CLARIFYING":
+      return "Clarifying";
+    case "PLANNING":
+      return "Planning";
+    case "ACTION_REQUIRED":
+      return "Action required";
+    case "FAILED":
+      return "Failed";
+    case "CANCELLED":
+      return "Cancelled";
+    default:
+      return status ?? "Unknown";
+  }
+}
+
+export function buildAttachmentCaption(attachment) {
+  if (!attachment) {
+    return "Unknown attachment";
+  }
+
+  const size = typeof attachment.size === "number"
+    ? `${Math.max(1, Math.round(attachment.size / 1024))} KB`
+    : "size unknown";
+
+  return `${attachment.fileType} · ${attachment.mimeType} · ${size}`;
 }
