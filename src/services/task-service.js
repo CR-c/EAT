@@ -4,7 +4,12 @@ import { randomUUID } from "node:crypto";
 
 import { ATTACHMENT_TYPES } from "../agents/agent-contract.js";
 import { resolveBranchHeadCommit } from "./repo-validation-service.js";
-import { TASK_STATUS } from "../repositories/task-repository.js";
+import {
+  MESSAGE_ROLE,
+  SESSION_STATUS,
+  SESSION_TYPE,
+  TASK_STATUS,
+} from "../repositories/task-repository.js";
 
 const DEFAULT_UPLOAD_ROOT = path.resolve(process.cwd(), "uploads");
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -50,7 +55,13 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   DESCRIPTION_REQUIRED: "DESCRIPTION_REQUIRED",
   INVALID_ATTACHMENT_PAYLOAD: "INVALID_ATTACHMENT_PAYLOAD",
   LEAD_AGENT_INVALID: "LEAD_AGENT_INVALID",
+  LEAD_AGENT_UNHEALTHY: "LEAD_AGENT_UNHEALTHY",
   LEAD_AGENT_REQUIRED: "LEAD_AGENT_REQUIRED",
+  REQUIREMENTS_ALREADY_CONFIRMED: "REQUIREMENTS_ALREADY_CONFIRMED",
+  SESSION_NOT_RUNNING: "SESSION_NOT_RUNNING",
+  TASK_MESSAGE_REQUIRED: "TASK_MESSAGE_REQUIRED",
+  TASK_NOT_CLARIFYING: "TASK_NOT_CLARIFYING",
+  TASK_NOT_DRAFT: "TASK_NOT_DRAFT",
   PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
   TASK_NOT_FOUND: "TASK_NOT_FOUND",
   TITLE_REQUIRED: "TITLE_REQUIRED",
@@ -61,7 +72,9 @@ export class TaskService {
     this.projectRepository = options.projectRepository;
     this.taskRepository = options.taskRepository;
     this.agentService = options.agentService;
+    this.eventBus = options.eventBus ?? null;
     this.uploadRootPath = options.uploadRootPath ?? DEFAULT_UPLOAD_ROOT;
+    this.runningLeadSessions = new Map();
   }
 
   async createTask(input) {
@@ -180,6 +193,247 @@ export class TaskService {
     };
   }
 
+  async startClarification(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (task.status !== TASK_STATUS.DRAFT) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_NOT_DRAFT,
+        "Clarification can only start from DRAFT.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const project = await this.projectRepository.findProjectById(task.projectId);
+
+    if (!project) {
+      return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project not found.", { projectId: task.projectId });
+    }
+
+    const agentFactory = this.agentService.agentRegistry.get(task.leadAgentType);
+    const health = await this.agentService.getHealth();
+    const agentHealth = health.agents?.[task.leadAgentType] ?? null;
+
+    if (!agentFactory?.capabilities?.canOrchestrate) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.LEAD_AGENT_INVALID,
+        "Lead agent must be a registered orchestrator.",
+        { leadAgentType: task.leadAgentType },
+      );
+    }
+
+    if (!agentHealth?.available) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.LEAD_AGENT_UNHEALTHY,
+        "Lead agent is unhealthy and cannot start clarification.",
+        {
+          failureReason: agentHealth?.failureReason ?? null,
+          leadAgentType: task.leadAgentType,
+        },
+      );
+    }
+
+    const session = await this.taskRepository.createSession({
+      agentType: task.leadAgentType,
+      sandboxType: selectLeadSandboxType(agentFactory.capabilities.supportedSandboxTypes),
+      sessionType: SESSION_TYPE.LEAD,
+      status: SESSION_STATUS.STARTING,
+      taskId: task.id,
+    });
+
+    try {
+      const runtime = await agentFactory.spawnSession({
+        attachments: (await this.taskRepository.listAttachmentsByTaskId(task.id)).map((attachment) => ({
+          fileName: attachment.fileName,
+          filePath: attachment.filePath,
+          fileType: attachment.fileType,
+        })),
+        branchName: task.baseBranch,
+        prompt: buildClarificationPrompt(task),
+        sandbox: {
+          type: session.sandboxType,
+        },
+        workDir: project.path,
+      });
+
+      const startedAt = new Date().toISOString();
+      const runningSession = await this.taskRepository.updateSession(session.id, {
+        containerId: runtime.containerId ?? null,
+        pid: runtime.pid ?? null,
+        startedAt,
+        status: SESSION_STATUS.RUNNING,
+      });
+      const clarifyingTask = await this.taskRepository.updateTask(task.id, {
+        lastError: null,
+        status: TASK_STATUS.CLARIFYING,
+      });
+
+      if ((await this.taskRepository.listMessagesByTaskId(task.id)).length === 0) {
+        await this.taskRepository.createMessage({
+          content: buildInitialUserMessage(task),
+          role: MESSAGE_ROLE.USER,
+          taskId: task.id,
+        });
+      }
+
+      this.runningLeadSessions.set(task.id, {
+        runtime,
+        sessionId: session.id,
+      });
+
+      runtime.onOutput((chunk) => {
+        void this.#handleLeadOutput(task.id, session.id, chunk);
+      });
+      runtime.onExit((exitCode) => {
+        void this.#handleLeadExit(task.id, session.id, exitCode);
+      });
+
+      this.#publish(task.id, "task:status", {
+        taskId: task.id,
+        status: clarifyingTask.status,
+      });
+      this.#publish(task.id, "session:started", {
+        sessionId: runningSession.id,
+        taskId: task.id,
+        status: runningSession.status,
+      });
+
+      return {
+        ok: true,
+        session: runningSession,
+        task: clarifyingTask,
+      };
+    } catch (error) {
+      await this.taskRepository.updateSession(session.id, {
+        endedAt: new Date().toISOString(),
+        exitCode: null,
+        status: SESSION_STATUS.FAILED,
+      });
+      const failedTask = await this.taskRepository.updateTask(task.id, {
+        lastError: error?.message ?? "Lead session failed to start.",
+      });
+
+      return {
+        ok: false,
+        error: {
+          code: TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING,
+          details: { taskId },
+          message: failedTask?.lastError ?? "Lead session failed to start.",
+        },
+      };
+    }
+  }
+
+  async sendTaskMessage(taskId, input) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (task.status !== TASK_STATUS.CLARIFYING) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_NOT_CLARIFYING,
+        "Messages can only be sent while the task is clarifying.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const content = normalizeRequiredString(input?.content);
+
+    if (!content) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_MESSAGE_REQUIRED,
+        "Message content is required.",
+        { taskId },
+      );
+    }
+
+    const activeSession = this.runningLeadSessions.get(taskId);
+
+    if (!activeSession) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING,
+        "Lead session is not running.",
+        { taskId },
+      );
+    }
+
+    const message = await this.taskRepository.createMessage({
+      content,
+      role: MESSAGE_ROLE.USER,
+      taskId,
+    });
+
+    await activeSession.runtime.sendInput(content);
+
+    return {
+      ok: true,
+      message,
+    };
+  }
+
+  async confirmRequirements(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (task.status === TASK_STATUS.PLANNING) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.REQUIREMENTS_ALREADY_CONFIRMED,
+        "Requirements are already confirmed for this task.",
+        { taskId },
+      );
+    }
+
+    if (task.status !== TASK_STATUS.CLARIFYING) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_NOT_CLARIFYING,
+        "Requirements can only be confirmed from CLARIFYING.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const confirmedTask = await this.taskRepository.updateTask(taskId, {
+      lastError: null,
+      status: TASK_STATUS.PLANNING,
+    });
+    const confirmationMessage = await this.taskRepository.createMessage({
+      content: "User confirmed that requirements are clear.",
+      role: MESSAGE_ROLE.SYSTEM,
+      taskId,
+    });
+
+    const activeSession = this.runningLeadSessions.get(taskId);
+
+    if (activeSession) {
+      try {
+        await activeSession.runtime.sendInput(
+          "Requirements are confirmed. Planning will continue in Phase 05.",
+        );
+      } catch {
+        // Confirmation already advanced the task; keep planning state stable for the next phase.
+      }
+    }
+
+    this.#publish(taskId, "task:status", {
+      taskId,
+      status: confirmedTask.status,
+    });
+
+    return {
+      ok: true,
+      message: confirmationMessage,
+      task: confirmedTask,
+    };
+  }
+
   async #persistAttachments(task, attachmentsInput) {
     if (!Array.isArray(attachmentsInput) || attachmentsInput.length === 0) {
       return [];
@@ -210,6 +464,68 @@ export class TaskService {
     }
 
     return attachments;
+  }
+
+  async #handleLeadOutput(taskId, sessionId, chunk) {
+    const normalizedChunk = normalizeOutputChunk(chunk);
+
+    if (!normalizedChunk) {
+      return;
+    }
+
+    await this.taskRepository.appendSessionOutput(sessionId, normalizedChunk);
+    const message = await this.taskRepository.createMessage({
+      content: normalizedChunk.trim(),
+      role: MESSAGE_ROLE.LEAD_AGENT,
+      taskId,
+    });
+
+    this.#publish(taskId, "session:output", {
+      chunk: normalizedChunk,
+      sessionId,
+      taskId,
+    });
+    this.#publish(taskId, "task:lead-message", {
+      content: message.content,
+      messageId: message.id,
+      taskId,
+    });
+  }
+
+  async #handleLeadExit(taskId, sessionId, exitCode) {
+    this.runningLeadSessions.delete(taskId);
+
+    const sessionStatus = exitCode === 0 ? SESSION_STATUS.COMPLETED : SESSION_STATUS.FAILED;
+    const nextSession = await this.taskRepository.updateSession(sessionId, {
+      endedAt: new Date().toISOString(),
+      exitCode,
+      status: sessionStatus,
+    });
+
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (task?.status === TASK_STATUS.CLARIFYING && exitCode !== 0) {
+      const actionRequiredTask = await this.taskRepository.updateTask(taskId, {
+        lastError: "Lead session ended unexpectedly during clarification.",
+        status: TASK_STATUS.ACTION_REQUIRED,
+      });
+
+      this.#publish(taskId, "task:status", {
+        taskId,
+        status: actionRequiredTask.status,
+      });
+    }
+
+    this.#publish(taskId, "session:ended", {
+      exitCode,
+      sessionId,
+      status: nextSession?.status ?? sessionStatus,
+      taskId,
+    });
+  }
+
+  #publish(taskId, eventName, data) {
+    this.eventBus?.publish(taskId, eventName, data);
   }
 }
 
@@ -345,6 +661,39 @@ function inferAttachmentType(fileName, mimeType) {
 
 function cryptoRandomId() {
   return `att_${randomUUID()}`;
+}
+
+function buildClarificationPrompt(task) {
+  return [
+    "You are the lead agent for EAT clarification.",
+    `Task title: ${task.title}`,
+    `Requirement description: ${task.description}`,
+    "Ask concise clarification questions until the user explicitly confirms requirements.",
+  ].join("\n");
+}
+
+function buildInitialUserMessage(task) {
+  return [
+    `Task title: ${task.title}`,
+    `Requirement description: ${task.description}`,
+  ].join("\n");
+}
+
+function normalizeOutputChunk(chunk) {
+  if (typeof chunk !== "string") {
+    return null;
+  }
+
+  const normalized = chunk.replaceAll(/\r\n/g, "\n");
+  return normalized.trim().length > 0 ? normalized : null;
+}
+
+function selectLeadSandboxType(supportedSandboxTypes) {
+  if (supportedSandboxTypes.includes("HOST")) {
+    return "HOST";
+  }
+
+  return supportedSandboxTypes[0] ?? "DOCKER";
 }
 
 function sanitizeFileName(fileName) {

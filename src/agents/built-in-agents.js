@@ -1,5 +1,6 @@
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 
 import { defineAgentAdapterFactory, SESSION_SANDBOX_TYPES } from "./agent-contract.js";
 import { AgentRegistry } from "./agent-registry.js";
@@ -132,8 +133,11 @@ function createBinaryBackedAdapter({ binaryName, capabilities, name }) {
       }
     },
     name,
-    async spawnSession() {
-      throw new Error(`spawnSession() for "${name}" is not implemented until later phases.`);
+    async spawnSession(config) {
+      return createScriptedLeadSession({
+        adapterName: name,
+        prompt: config?.prompt,
+      });
     },
   });
 }
@@ -149,4 +153,71 @@ function extractVersion(output) {
   }
 
   return trimmed.split(/\r?\n/u)[0];
+}
+
+function createScriptedLeadSession({ adapterName, prompt }) {
+  const sessionId = `session_${randomUUID()}`;
+  const outputListeners = new Set();
+  const exitListeners = new Set();
+  let closed = false;
+
+  setTimeout(() => {
+    emitOutput(
+      `${adapterName} lead session started.\nPlease confirm the success criteria, constraints, and any must-keep files before planning.\n`,
+    );
+  }, 0);
+
+  return {
+    containerId: null,
+    sessionId,
+    pid: null,
+    async kill() {
+      close(1);
+    },
+    onExit(callback) {
+      exitListeners.add(callback);
+    },
+    onOutput(callback) {
+      outputListeners.add(callback);
+    },
+    async sendInput(message) {
+      if (closed) {
+        throw new Error("Lead session is no longer running.");
+      }
+
+      const normalizedMessage = typeof message === "string" ? message.trim() : "";
+
+      if (normalizedMessage.toLowerCase().includes("phase 05")) {
+        emitOutput("Requirements confirmed. Planning is deferred until Phase 05 lands.\n");
+        return;
+      }
+
+      emitOutput(`Noted: ${normalizedMessage}\nWhat else should remain in scope for this task?\n`);
+    },
+    async stop() {
+      close(0);
+    },
+  };
+
+  function emitOutput(chunk) {
+    if (closed) {
+      return;
+    }
+
+    for (const listener of outputListeners) {
+      listener(chunk);
+    }
+  }
+
+  function close(exitCode) {
+    if (closed) {
+      return;
+    }
+
+    closed = true;
+
+    for (const listener of exitListeners) {
+      listener(exitCode);
+    }
+  }
 }

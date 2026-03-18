@@ -8,6 +8,7 @@ import { SqliteTaskRepository } from "../repositories/task-repository.js";
 import { AgentService } from "../services/agent-service.js";
 import { ProjectService, PROJECT_SERVICE_ERROR_CODES } from "../services/project-service.js";
 import { TaskService, TASK_SERVICE_ERROR_CODES } from "../services/task-service.js";
+import { TaskEventBus } from "../services/task-event-bus.js";
 
 const uiDirectoryPath = fileURLToPath(new URL("../ui/", import.meta.url));
 const STATIC_ROUTES = new Map([
@@ -22,8 +23,10 @@ export function createApp(options = {}) {
   const taskRepository = options.taskRepository ?? new SqliteTaskRepository(options.repositoryOptions);
   const projectService = options.projectService ?? new ProjectService({ projectRepository });
   const agentService = options.agentService ?? new AgentService(options.agentServiceOptions);
+  const eventBus = options.eventBus ?? new TaskEventBus();
   const taskService = options.taskService ?? new TaskService({
     agentService,
+    eventBus,
     projectRepository,
     taskRepository,
     uploadRootPath: options.uploadRootPath,
@@ -142,6 +145,43 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const taskEventsMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/events$/);
+
+  if (request.method === "GET" && taskEventsMatch) {
+    const taskId = decodeURIComponent(taskEventsMatch[1]);
+    return respondTaskEventStream(request, response, eventBus, taskId);
+  }
+
+  const taskStartClarificationMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/start-clarification$/);
+
+  if (request.method === "POST" && taskStartClarificationMatch) {
+    const taskId = decodeURIComponent(taskStartClarificationMatch[1]);
+    const result = await taskService.startClarification(taskId);
+    return respondServiceResult(response, result);
+  }
+
+  const taskMessagesMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/messages$/);
+
+  if (request.method === "POST" && taskMessagesMatch) {
+    const taskId = decodeURIComponent(taskMessagesMatch[1]);
+    const body = await readJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.sendTaskMessage(taskId, body.value);
+    return respondServiceResult(response, result, 201);
+  }
+
+  const taskConfirmRequirementsMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/confirm-requirements$/);
+
+  if (request.method === "POST" && taskConfirmRequirementsMatch) {
+    const taskId = decodeURIComponent(taskConfirmRequirementsMatch[1]);
+    const result = await taskService.confirmRequirements(taskId);
+    return respondServiceResult(response, result);
+  }
+
   return respondJson(response, 404, {
     error: {
       code: "NOT_FOUND",
@@ -236,7 +276,13 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.DESCRIPTION_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.INVALID_ATTACHMENT_PAYLOAD:
     case TASK_SERVICE_ERROR_CODES.LEAD_AGENT_INVALID:
+    case TASK_SERVICE_ERROR_CODES.LEAD_AGENT_UNHEALTHY:
     case TASK_SERVICE_ERROR_CODES.LEAD_AGENT_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.REQUIREMENTS_ALREADY_CONFIRMED:
+    case TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING:
+    case TASK_SERVICE_ERROR_CODES.TASK_MESSAGE_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.TASK_NOT_CLARIFYING:
+    case TASK_SERVICE_ERROR_CODES.TASK_NOT_DRAFT:
     case TASK_SERVICE_ERROR_CODES.TITLE_REQUIRED:
       return 400;
     case PROJECT_SERVICE_ERROR_CODES.PROJECT_ALREADY_REGISTERED:
@@ -249,4 +295,26 @@ function mapErrorCodeToStatus(errorCode) {
     default:
       return 400;
   }
+}
+
+function respondTaskEventStream(request, response, eventBus, taskId) {
+  response.writeHead(200, {
+    "cache-control": "no-cache, no-transform",
+    connection: "keep-alive",
+    "content-type": "text/event-stream; charset=utf-8",
+  });
+  response.write(": connected\n\n");
+
+  const unsubscribe = eventBus.subscribe(taskId, (event) => {
+    response.write(`event: ${event.eventName}\n`);
+    response.write(`data: ${JSON.stringify(event.data)}\n\n`);
+  });
+  const keepAlive = setInterval(() => {
+    response.write(": keep-alive\n\n");
+  }, 15_000);
+
+  response.on("close", () => {
+    clearInterval(keepAlive);
+    unsubscribe();
+  });
 }

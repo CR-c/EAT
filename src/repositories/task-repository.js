@@ -125,6 +125,54 @@ export class SqliteTaskRepository {
       .get(taskId) ?? null;
   }
 
+  async updateTask(taskId, updates) {
+    const existingTask = await this.findTaskById(taskId);
+
+    if (!existingTask) {
+      return null;
+    }
+
+    const nextTask = {
+      ...existingTask,
+      ...updates,
+      updatedAt: updates.updatedAt ?? new Date().toISOString(),
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        UPDATE tasks
+        SET
+          title = ?,
+          description = ?,
+          lead_agent_type = ?,
+          base_branch = ?,
+          base_commit_sha = ?,
+          status = ?,
+          plan_version = ?,
+          current_plan_json = ?,
+          approved_plan_json = ?,
+          last_error = ?,
+          updated_at = ?
+        WHERE id = ?
+      `)
+      .run(
+        nextTask.title,
+        nextTask.description,
+        nextTask.leadAgentType,
+        nextTask.baseBranch,
+        nextTask.baseCommitSha,
+        nextTask.status,
+        nextTask.planVersion,
+        nextTask.currentPlanJson,
+        nextTask.approvedPlanJson,
+        nextTask.lastError,
+        nextTask.updatedAt,
+        taskId,
+      );
+
+    return nextTask;
+  }
+
   async listTasksByProjectId(projectId) {
     return this.#getDatabase()
       .prepare(`
@@ -323,6 +371,101 @@ export class SqliteTaskRepository {
       );
 
     return session;
+  }
+
+  async findSessionById(sessionId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          sub_task_id AS subTaskId,
+          agent_type AS agentType,
+          session_type AS sessionType,
+          sandbox_type AS sandboxType,
+          container_id AS containerId,
+          status,
+          pid,
+          started_at AS startedAt,
+          ended_at AS endedAt,
+          exit_code AS exitCode,
+          log_path AS logPath,
+          output_buffer AS outputBuffer,
+          output_buffer_max_bytes AS outputBufferMaxBytes,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM agent_sessions
+        WHERE id = ?
+      `)
+      .get(sessionId) ?? null;
+  }
+
+  async updateSession(sessionId, updates) {
+    const existingSession = await this.findSessionById(sessionId);
+
+    if (!existingSession) {
+      return null;
+    }
+
+    const nextSession = {
+      ...existingSession,
+      ...updates,
+      updatedAt: updates.updatedAt ?? new Date().toISOString(),
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        UPDATE agent_sessions
+        SET
+          agent_type = ?,
+          session_type = ?,
+          sandbox_type = ?,
+          container_id = ?,
+          status = ?,
+          pid = ?,
+          started_at = ?,
+          ended_at = ?,
+          exit_code = ?,
+          log_path = ?,
+          output_buffer = ?,
+          output_buffer_max_bytes = ?,
+          updated_at = ?
+        WHERE id = ?
+      `)
+      .run(
+        nextSession.agentType,
+        nextSession.sessionType,
+        nextSession.sandboxType,
+        nextSession.containerId,
+        nextSession.status,
+        nextSession.pid,
+        nextSession.startedAt,
+        nextSession.endedAt,
+        nextSession.exitCode,
+        nextSession.logPath,
+        nextSession.outputBuffer,
+        nextSession.outputBufferMaxBytes,
+        nextSession.updatedAt,
+        sessionId,
+      );
+
+    return nextSession;
+  }
+
+  async appendSessionOutput(sessionId, chunk) {
+    const existingSession = await this.findSessionById(sessionId);
+
+    if (!existingSession) {
+      return null;
+    }
+
+    const appendedOutput = `${existingSession.outputBuffer ?? ""}${chunk}`;
+    const maxBytes = existingSession.outputBufferMaxBytes ?? 65_536;
+    const boundedOutput = Buffer.from(appendedOutput, "utf8").subarray(-maxBytes).toString("utf8");
+
+    return this.updateSession(sessionId, {
+      outputBuffer: boundedOutput,
+    });
   }
 
   async listSessionsByTaskId(taskId) {
