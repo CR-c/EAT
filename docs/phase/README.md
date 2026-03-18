@@ -30,6 +30,8 @@ This folder breaks [PRD.md](/home/code/EAT/docs/PRD.md) into implementation phas
 - [CHECKLISTS.md](/home/code/EAT/docs/phase/CHECKLISTS.md)
 - [PRISMA-MIGRATIONS.md](/home/code/EAT/docs/phase/PRISMA-MIGRATIONS.md)
 - [API-EVENT-EXAMPLES.md](/home/code/EAT/docs/phase/API-EVENT-EXAMPLES.md)
+- [ISSUE-WORKSPACE-PLAYBOOK.md](/home/code/EAT/docs/phase/ISSUE-WORKSPACE-PLAYBOOK.md)
+- [ISSUE-WORKSPACE-PLAYBOOK.zh-CN.md](/home/code/EAT/docs/phase/ISSUE-WORKSPACE-PLAYBOOK.zh-CN.md)
 
 ## Definition Of Done For Every Phase
 

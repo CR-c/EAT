@@ -12,6 +12,7 @@ Read documents in this order before making implementation decisions:
 4. `docs/phase/API-EVENT-EXAMPLES.md`
 5. `docs/phase/CHECKLISTS.md`
 6. The currently active phase doc in `docs/phase/`
+7. If working from Vibe Kanban issues, `docs/phase/ISSUE-WORKSPACE-PLAYBOOK.md`
 
 If documents conflict:
 
@@ -77,6 +78,7 @@ At the end of a phase-oriented implementation task, report:
 - Phase tasks: `docs/phase/CHECKLISTS.md`
 - Schema rollout: `docs/phase/PRISMA-MIGRATIONS.md`
 - API and event examples: `docs/phase/API-EVENT-EXAMPLES.md`
+- Issue/workspace execution guide: `docs/phase/ISSUE-WORKSPACE-PLAYBOOK.md`
 
 ## Notes For Codex
 
