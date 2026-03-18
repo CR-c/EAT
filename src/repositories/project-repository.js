@@ -1,13 +1,6 @@
-import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
-import { fileURLToPath } from "node:url";
-
-const DEFAULT_DATABASE_PATH = path.resolve(process.cwd(), ".eat", "eat.db");
-const MIGRATION_FILE_PATH = fileURLToPath(
-  new URL("../../prisma/migrations/20260318000000_phase01_project/migration.sql", import.meta.url),
-);
+import { createDatabaseConnection, DEFAULT_DATABASE_PATH } from "./database.js";
 
 export class SqliteProjectRepository {
   constructor(options = {}) {
@@ -106,9 +99,7 @@ export class SqliteProjectRepository {
 
   #getDatabase() {
     if (!this.database) {
-      mkdirSync(path.dirname(this.databasePath), { recursive: true });
-      this.database = new DatabaseSync(this.databasePath);
-      this.database.exec(readFileSync(MIGRATION_FILE_PATH, "utf8"));
+      this.database = createDatabaseConnection(this.databasePath);
     }
 
     return this.database;
