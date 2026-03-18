@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { AgentRegistry } from "../src/agents/agent-registry.js";
 import {
   AGENT_HEALTH_FAILURE_CODES,
-  AgentRegistry,
   normalizeAgentHealthSnapshot,
   normalizeHealthFailureReason,
   runAgentHealthCheck,

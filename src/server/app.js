@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { SqliteProjectRepository } from "../repositories/project-repository.js";
+import { AgentService } from "../services/agent-service.js";
 import { ProjectService, PROJECT_SERVICE_ERROR_CODES } from "../services/project-service.js";
 
 const uiDirectoryPath = fileURLToPath(new URL("../ui/", import.meta.url));
@@ -17,10 +18,11 @@ const STATIC_ROUTES = new Map([
 export function createApp(options = {}) {
   const projectRepository = options.projectRepository ?? new SqliteProjectRepository(options.repositoryOptions);
   const projectService = options.projectService ?? new ProjectService({ projectRepository });
+  const agentService = options.agentService ?? new AgentService(options.agentServiceOptions);
 
   const server = http.createServer(async (request, response) => {
     try {
-      await routeRequest(request, response, projectService);
+      await routeRequest(request, response, { agentService, projectService });
     } catch (error) {
       respondJson(response, 500, {
         error: {
@@ -38,7 +40,8 @@ export function createApp(options = {}) {
   return server;
 }
 
-async function routeRequest(request, response, projectService) {
+async function routeRequest(request, response, services) {
+  const { agentService, projectService } = services;
   const url = new URL(request.url, "http://127.0.0.1");
   const pathName = url.pathname;
   const staticRoute = STATIC_ROUTES.get(pathName);
@@ -61,6 +64,29 @@ async function routeRequest(request, response, projectService) {
   if (request.method === "GET" && pathName === "/api/projects") {
     const result = await projectService.listProjects();
     return respondServiceResult(response, result);
+  }
+
+  if (request.method === "GET" && pathName === "/api/agents") {
+    const result = await agentService.getAgentDirectory({
+      force: url.searchParams.get("refresh") === "1",
+    });
+    return respondJson(response, 200, result);
+  }
+
+  if (request.method === "GET" && pathName === "/api/agents/health") {
+    const health = await agentService.getHealth({
+      force: url.searchParams.get("refresh") === "1",
+    });
+    const selection = await agentService.getAgentDirectory();
+
+    return respondJson(response, 200, {
+      agents: health.agents,
+      checkedAt: health.checkedAt,
+      leadCandidates: selection.leadCandidates,
+      staleAt: health.staleAt,
+      ttlMs: health.ttlMs,
+      workerCandidates: selection.workerCandidates,
+    });
   }
 
   const repoStatusMatch = pathName.match(/^\/api\/projects\/([^/]+)\/repo-status$/);

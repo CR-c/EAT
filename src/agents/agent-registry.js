@@ -2,6 +2,7 @@ import {
   AgentContractError,
   defineAgentAdapterFactory,
 } from "./agent-contract.js";
+import { runAgentHealthCheck } from "../services/agent-runtime.js";
 
 export const AGENT_REGISTRY_ERROR_CODES = Object.freeze({
   AGENT_ALREADY_REGISTERED: "AGENT_ALREADY_REGISTERED",
@@ -54,6 +55,18 @@ export class AgentRegistry {
 
   listWorkerCandidates() {
     return this.listAll().filter((factory) => factory.capabilities.canExecute);
+  }
+
+  async healthCheckAll(options = {}) {
+    const checkedAt = options.checkedAt ?? new Date().toISOString();
+    const entries = await Promise.all(
+      this.listAll().map(async (factory) => [
+        factory.name,
+        await runAgentHealthCheck(factory, { checkedAt }),
+      ]),
+    );
+
+    return Object.fromEntries(entries);
   }
 }
 

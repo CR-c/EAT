@@ -1,4 +1,6 @@
-const VALID_SANDBOX_TYPES = new Set(["HOST", "DOCKER"]);
+import { SESSION_SANDBOX_TYPES } from "../agents/agent-contract.js";
+
+const VALID_SANDBOX_TYPES = new Set(Object.values(SESSION_SANDBOX_TYPES));
 const VALID_CHECK_STATUSES = new Set(["PASS", "FAIL", "WARN", "SKIP"]);
 
 export const AGENT_HEALTH_FAILURE_CODES = Object.freeze({
@@ -31,51 +33,6 @@ const HEALTH_FAILURE_METADATA = Object.freeze({
     message: "Agent does not support the requested sandbox type.",
   },
 });
-
-export function createAgentRegistry() {
-  return new AgentRegistry();
-}
-
-export class AgentRegistry {
-  #factories = new Map();
-
-  register(factory) {
-    validateAgentFactory(factory);
-    this.#factories.set(factory.name, factory);
-  }
-
-  unregister(name) {
-    this.#factories.delete(name);
-  }
-
-  get(name) {
-    return this.#factories.get(name) ?? null;
-  }
-
-  listAll() {
-    return Array.from(this.#factories.values());
-  }
-
-  listLeadCandidates() {
-    return this.listAll().filter((factory) => factory.capabilities.canOrchestrate);
-  }
-
-  listWorkerCandidates() {
-    return this.listAll().filter((factory) => factory.capabilities.canExecute);
-  }
-
-  async healthCheckAll(options = {}) {
-    const checkedAt = options.checkedAt ?? new Date().toISOString();
-    const entries = await Promise.all(
-      this.listAll().map(async (factory) => [
-        factory.name,
-        await runAgentHealthCheck(factory, { checkedAt }),
-      ]),
-    );
-
-    return Object.fromEntries(entries);
-  }
-}
 
 export async function runAgentHealthCheck(factory, options = {}) {
   const checkedAt = options.checkedAt ?? new Date().toISOString();
@@ -147,52 +104,6 @@ export function normalizeHealthFailureReason(input) {
     details: details.details,
     message: normalizeMessage(details.message, metadata.message),
   };
-}
-
-function validateAgentFactory(factory) {
-  if (!factory || typeof factory !== "object") {
-    throw new TypeError("Agent factory must be an object.");
-  }
-
-  if (typeof factory.name !== "string" || factory.name.trim().length === 0) {
-    throw new TypeError("Agent factory name must be a non-empty string.");
-  }
-
-  if (typeof factory.healthCheck !== "function") {
-    throw new TypeError(`Agent "${factory.name}" must provide a healthCheck() function.`);
-  }
-
-  if (typeof factory.spawnSession !== "function") {
-    throw new TypeError(`Agent "${factory.name}" must provide a spawnSession() function.`);
-  }
-
-  validateCapabilities(factory.capabilities, factory.name);
-}
-
-function validateCapabilities(capabilities, agentName) {
-  if (!capabilities || typeof capabilities !== "object") {
-    throw new TypeError(`Agent "${agentName}" must define capabilities.`);
-  }
-
-  for (const field of ["canOrchestrate", "canExecute", "supportsVision", "supportsInteractiveInput"]) {
-    if (typeof capabilities[field] !== "boolean") {
-      throw new TypeError(`Agent "${agentName}" capability "${field}" must be boolean.`);
-    }
-  }
-
-  if (typeof capabilities.description !== "string" || capabilities.description.trim().length === 0) {
-    throw new TypeError(`Agent "${agentName}" capability "description" must be a non-empty string.`);
-  }
-
-  if (!Array.isArray(capabilities.supportedSandboxTypes) || capabilities.supportedSandboxTypes.length === 0) {
-    throw new TypeError(`Agent "${agentName}" must declare supportedSandboxTypes.`);
-  }
-
-  for (const sandboxType of capabilities.supportedSandboxTypes) {
-    if (!VALID_SANDBOX_TYPES.has(sandboxType)) {
-      throw new TypeError(`Agent "${agentName}" has unsupported sandbox type "${sandboxType}".`);
-    }
-  }
 }
 
 function normalizeHealthChecks(checks) {
