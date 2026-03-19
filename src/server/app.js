@@ -141,6 +141,11 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  if (request.method === "GET" && pathName === "/api/task-templates") {
+    const result = await taskService.listPlanTemplates();
+    return respondServiceResult(response, result);
+  }
+
   if (request.method === "POST" && pathName === "/api/tasks") {
     const body = await readJsonBody(request);
 
@@ -254,6 +259,20 @@ async function routeRequest(request, response, services) {
     }
 
     const result = await taskService.updateCurrentPlanDraft(taskId, body.value);
+    return respondServiceResult(response, result);
+  }
+
+  const taskPlanSeedMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/plan-seed$/);
+
+  if (request.method === "POST" && taskPlanSeedMatch) {
+    const taskId = decodeURIComponent(taskPlanSeedMatch[1]);
+    const body = await readOptionalJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.applyPlanTemplateSeed(taskId, body.value);
     return respondServiceResult(response, result);
   }
 
@@ -498,6 +517,7 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.MAILBOX_MESSAGE_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.MAILBOX_NOT_AVAILABLE:
     case TASK_SERVICE_ERROR_CODES.MAILBOX_TARGET_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.PLAN_TEMPLATE_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.REQUIREMENTS_ALREADY_CONFIRMED:
     case TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING:
     case TASK_SERVICE_ERROR_CODES.TASK_MESSAGE_REQUIRED:
@@ -512,6 +532,7 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.ATTACHMENT_PATH_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND:
+    case TASK_SERVICE_ERROR_CODES.PLAN_TEMPLATE_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.PLAN_SNAPSHOT_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND:
       return 404;

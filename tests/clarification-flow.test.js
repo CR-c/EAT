@@ -337,6 +337,94 @@ test("revalidates edited drafts on save and blocks approval when the stored plan
   }
 });
 
+test("lists plan templates and seeds a role-aware DAG draft that can be approved", async () => {
+  const fixture = await makeTempDir("eat-plan-template-seed-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const server = await startServer({
+      agentService: createClarificationAgentService(),
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "plan-template-repo", { defaultBranch: "main" });
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Need a full-stack team seed before approval.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Template seeded plan",
+        },
+        method: "POST",
+      });
+
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+        { method: "POST" },
+      );
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/confirm-requirements`,
+        { method: "POST" },
+      );
+
+      const templatesResponse = await requestJson(server, "/api/task-templates");
+      assert.equal(templatesResponse.status, 200);
+      assert.ok(templatesResponse.body.templates.some((template) => template.id === "full-stack-web-app"));
+
+      const seedResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/plan-seed`,
+        {
+          body: { templateId: "full-stack-web-app" },
+          method: "POST",
+        },
+      );
+      assert.equal(seedResponse.status, 200);
+      assert.equal(seedResponse.body.currentPlan.template_id, "full-stack-web-app");
+      assert.equal(seedResponse.body.currentPlan.nodes.length, 5);
+      assert.equal(seedResponse.body.currentPlan.nodes[0].role, "architect");
+      assert.equal(seedResponse.body.currentPlan.nodes.at(-1).branch_suffix, "tester");
+
+      const approvalResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/approve-plan`,
+        { method: "POST" },
+      );
+      assert.equal(approvalResponse.status, 200);
+      assert.equal(approvalResponse.body.subTasks.length, 5);
+      assert.deepEqual(
+        approvalResponse.body.subTasks.map((subTask) => subTask.role),
+        ["architect", "backend", "database", "frontend", "tester"],
+      );
+      assert.equal(approvalResponse.body.subTasks[0].status, "PENDING");
+      assert.equal(approvalResponse.body.subTasks[1].status, "BLOCKED");
+      assert.equal(approvalResponse.body.subTasks.at(-1).status, "BLOCKED");
+
+      const detailResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+      );
+      assert.equal(detailResponse.status, 200);
+      assert.equal(JSON.parse(detailResponse.body.task.approvedPlanJson).template_id, "full-stack-web-app");
+      assert.equal(JSON.parse(detailResponse.body.task.approvedPlanJson).nodes.length, 5);
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("restores a historical plan snapshot into the current draft and appends restore audit history", async () => {
   const fixture = await makeTempDir("eat-plan-restore-");
 

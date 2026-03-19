@@ -5,13 +5,17 @@ export const PLAN_DRAFT_PARSE_ERROR_CODES = Object.freeze({
 });
 
 export const PLAN_VALIDATION_ERROR_CODES = Object.freeze({
+  ACCEPTANCE_CRITERIA_REQUIRED: "ACCEPTANCE_CRITERIA_REQUIRED",
   BRANCH_SUFFIX_DUPLICATE: "BRANCH_SUFFIX_DUPLICATE",
   BRANCH_SUFFIX_INVALID: "BRANCH_SUFFIX_INVALID",
   DEPENDS_ON_INVALID: "DEPENDS_ON_INVALID",
+  DELIVERABLE_REQUIRED: "DELIVERABLE_REQUIRED",
   PLAN_NOT_OBJECT: "PLAN_NOT_OBJECT",
   RECOMMENDED_AGENT_UNHEALTHY: "RECOMMENDED_AGENT_UNHEALTHY",
+  ROLE_REQUIRED: "ROLE_REQUIRED",
   SUBTASK_DESCRIPTION_REQUIRED: "SUBTASK_DESCRIPTION_REQUIRED",
   SUBTASKS_REQUIRED: "SUBTASKS_REQUIRED",
+  TEMPLATE_HINT_REQUIRED: "TEMPLATE_HINT_REQUIRED",
   SUBTASK_TITLE_REQUIRED: "SUBTASK_TITLE_REQUIRED",
 });
 
@@ -20,9 +24,10 @@ const BRANCH_SUFFIX_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export function buildPlanningPrompt(task) {
   return [
     "Requirements are confirmed. Generate the execution plan as JSON only.",
-    "Return an object with a non-empty `subtasks` array.",
-    "Each subtask must include `title`, `description`, `recommended_agent`, and `branch_suffix`.",
-    "Optional per-subtask field: `depends_on`, an array of earlier subtask `branch_suffix` values.",
+    "Return an object with a non-empty `nodes` array.",
+    "Each node must include `title`, `description`, `role`, `recommended_agent`, `branch_suffix`, `deliverable`, `acceptance_criteria`, and `template_hint`.",
+    "`acceptance_criteria` must be a non-empty string array.",
+    "Optional per-node fields: `depends_on` (array of earlier `branch_suffix` values) and `estimated_scope`.",
     "Optional top-level field: `notes`.",
     "Do not wrap the response in prose outside the JSON payload.",
     `Task title: ${task.title}`,
@@ -68,10 +73,17 @@ export function validatePlanDraft(payload, options = {}) {
     );
   }
 
-  if (!Array.isArray(payload.subtasks) || payload.subtasks.length === 0) {
+  const rawNodes = Array.isArray(payload.nodes)
+    ? payload.nodes
+    : Array.isArray(payload.subtasks)
+      ? payload.subtasks
+      : null;
+  const requiresRoleAwareFields = Array.isArray(payload.nodes);
+
+  if (!Array.isArray(rawNodes) || rawNodes.length === 0) {
     return validationFailure(
       PLAN_VALIDATION_ERROR_CODES.SUBTASKS_REQUIRED,
-      "Plan must include at least one subtask.",
+      "Plan must include at least one executable node.",
     );
   }
 
@@ -80,8 +92,8 @@ export function validatePlanDraft(payload, options = {}) {
   const duplicates = new Set();
   const subtasks = [];
 
-  for (const [index, subtask] of payload.subtasks.entries()) {
-    const title = normalizeRequiredString(subtask?.title);
+  for (const [index, rawNode] of rawNodes.entries()) {
+    const title = normalizeRequiredString(rawNode?.title);
 
     if (!title) {
       return validationFailure(
@@ -91,7 +103,7 @@ export function validatePlanDraft(payload, options = {}) {
       );
     }
 
-    const description = normalizeRequiredString(subtask?.description);
+    const description = normalizeRequiredString(rawNode?.description);
 
     if (!description) {
       return validationFailure(
@@ -101,7 +113,7 @@ export function validatePlanDraft(payload, options = {}) {
       );
     }
 
-    const recommendedAgent = normalizeRequiredString(subtask?.recommended_agent);
+    const recommendedAgent = normalizeRequiredString(rawNode?.recommended_agent);
     const snapshot = recommendedAgent ? agentHealth[recommendedAgent] ?? null : null;
 
     if (!recommendedAgent || snapshot?.available !== true) {
@@ -116,7 +128,7 @@ export function validatePlanDraft(payload, options = {}) {
       );
     }
 
-    const branchSuffix = normalizeRequiredString(subtask?.branch_suffix);
+    const branchSuffix = normalizeRequiredString(rawNode?.branch_suffix);
 
     if (!branchSuffix || !BRANCH_SUFFIX_PATTERN.test(branchSuffix)) {
       return validationFailure(
@@ -133,7 +145,7 @@ export function validatePlanDraft(payload, options = {}) {
       duplicates.add(branchSuffix);
     }
 
-    const dependencyBranchSuffixes = normalizeDependsOn(subtask?.depends_on);
+    const dependencyBranchSuffixes = normalizeDependsOn(rawNode?.depends_on);
 
     if (!dependencyBranchSuffixes.ok) {
       return validationFailure(
@@ -169,12 +181,83 @@ export function validatePlanDraft(payload, options = {}) {
       }
     }
 
+    const role = normalizeRoleAwareString(
+      rawNode?.role,
+      requiresRoleAwareFields
+        ? {
+            code: PLAN_VALIDATION_ERROR_CODES.ROLE_REQUIRED,
+            index,
+            message: `Node ${index + 1} must include a non-empty role.`,
+          }
+        : null,
+      branchSuffix,
+    );
+
+    if (!role.ok) {
+      return role;
+    }
+
+    const deliverable = normalizeRoleAwareString(
+      rawNode?.deliverable,
+      requiresRoleAwareFields
+        ? {
+            code: PLAN_VALIDATION_ERROR_CODES.DELIVERABLE_REQUIRED,
+            index,
+            message: `Node ${index + 1} must include a non-empty deliverable.`,
+          }
+        : null,
+      description,
+    );
+
+    if (!deliverable.ok) {
+      return deliverable;
+    }
+
+    const acceptanceCriteria = normalizeAcceptanceCriteria(
+      rawNode?.acceptance_criteria,
+      requiresRoleAwareFields
+        ? {
+            code: PLAN_VALIDATION_ERROR_CODES.ACCEPTANCE_CRITERIA_REQUIRED,
+            index,
+            message: `Node ${index + 1} must include non-empty acceptance_criteria.`,
+          }
+        : null,
+      [description],
+    );
+
+    if (!acceptanceCriteria.ok) {
+      return acceptanceCriteria;
+    }
+
+    const templateHint = normalizeRoleAwareString(
+      rawNode?.template_hint,
+      requiresRoleAwareFields
+        ? {
+            code: PLAN_VALIDATION_ERROR_CODES.TEMPLATE_HINT_REQUIRED,
+            index,
+            message: `Node ${index + 1} must include a non-empty template_hint.`,
+          }
+        : null,
+      "custom",
+    );
+
+    if (!templateHint.ok) {
+      return templateHint;
+    }
+
+    const estimatedScope = normalizeOptionalString(rawNode?.estimated_scope);
+
     seenBranchSuffixes.add(branchSuffix);
     subtasks.push({
+      acceptance_criteria: acceptanceCriteria.value,
       branch_suffix: branchSuffix,
       ...(dependencyBranchSuffixes.value.length > 0 ? { depends_on: dependencyBranchSuffixes.value } : {}),
+      deliverable: deliverable.value,
       description,
+      ...(estimatedScope ? { estimated_scope: estimatedScope } : {}),
       recommended_agent: recommendedAgent,
+      role: role.value,
+      template_hint: templateHint.value,
       title,
     });
   }
@@ -190,14 +273,36 @@ export function validatePlanDraft(payload, options = {}) {
   }
 
   const notes = normalizeOptionalString(payload.notes);
+  const templateId = normalizeOptionalString(payload.template_id);
+  const templateLabel = normalizeOptionalString(payload.template_label);
+  const nodes = subtasks;
 
   return {
     ok: true,
     plan: {
       ...(notes ? { notes } : {}),
-      subtasks,
+      ...(templateId ? { template_id: templateId } : {}),
+      ...(templateLabel ? { template_label: templateLabel } : {}),
+      nodes,
+      subtasks: nodes,
     },
   };
+}
+
+export function getPlanNodes(plan) {
+  if (!plan || typeof plan !== "object") {
+    return [];
+  }
+
+  if (Array.isArray(plan.nodes)) {
+    return plan.nodes;
+  }
+
+  if (Array.isArray(plan.subtasks)) {
+    return plan.subtasks;
+  }
+
+  return [];
 }
 
 export function looksLikeCompletePlanText(text) {
@@ -301,5 +406,67 @@ function normalizeDependsOn(value) {
   return {
     ok: true,
     value: normalizedValues,
+  };
+}
+
+function normalizeAcceptanceCriteria(value, requiredError, fallback = []) {
+  if (value === undefined || value === null) {
+    if (requiredError) {
+      return validationFailure(requiredError.code, requiredError.message, { index: requiredError.index });
+    }
+
+    const normalizedFallback = fallback
+      .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+      .map((entry) => entry.trim());
+
+    return {
+      ok: true,
+      value: normalizedFallback.length > 0 ? normalizedFallback : ["Reviewable completion evidence is produced."],
+    };
+  }
+
+  if (!Array.isArray(value)) {
+    return validationFailure(
+      requiredError?.code ?? PLAN_VALIDATION_ERROR_CODES.ACCEPTANCE_CRITERIA_REQUIRED,
+      requiredError?.message ?? "acceptance_criteria must be a non-empty string array.",
+      { index: requiredError?.index },
+    );
+  }
+
+  const normalizedValues = [...new Set(value
+    .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim()))];
+
+  if (normalizedValues.length === 0) {
+    return validationFailure(
+      requiredError?.code ?? PLAN_VALIDATION_ERROR_CODES.ACCEPTANCE_CRITERIA_REQUIRED,
+      requiredError?.message ?? "acceptance_criteria must be a non-empty string array.",
+      { index: requiredError?.index },
+    );
+  }
+
+  return {
+    ok: true,
+    value: normalizedValues,
+  };
+}
+
+function normalizeRoleAwareString(value, requiredError, fallback) {
+  const normalizedValue = normalizeRequiredString(value);
+
+  if (normalizedValue) {
+    return {
+      ok: true,
+      value: normalizedValue,
+    };
+  }
+
+  if (requiredError) {
+    return validationFailure(requiredError.code, requiredError.message, { index: requiredError.index });
+  }
+
+  return {
+    ok: true,
+    value: fallback,
   };
 }

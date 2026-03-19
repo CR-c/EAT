@@ -40,6 +40,10 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /新建需求澄清任务/);
     assert.match(rootResponse.body, /Lead 会话转录/);
     assert.match(rootResponse.body, /当前计划草稿/);
+    assert.match(rootResponse.body, /模板种子/);
+    assert.match(rootResponse.body, /应用模板/);
+    assert.match(rootResponse.body, /图谱视图/);
+    assert.match(rootResponse.body, /列表视图/);
     assert.match(rootResponse.body, /添加子任务/);
     assert.match(rootResponse.body, /保存草稿/);
     assert.match(rootResponse.body, /批准草稿/);
@@ -165,6 +169,12 @@ test("formats project, task, agent health, and attachment UI messages", () => {
       code: "PLAN_SNAPSHOT_NOT_FOUND",
     }),
     "所选计划快照已不存在。",
+  );
+  assert.equal(
+    buildTaskErrorMessage({
+      code: "PLAN_TEMPLATE_REQUIRED",
+    }),
+    "请先选择一个计划模板。",
   );
   assert.equal(
     buildAttachmentCaption({

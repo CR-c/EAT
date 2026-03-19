@@ -38,6 +38,8 @@ const MESSAGES = {
     mailboxMessageRequired: "发送交接说明前请先填写内容。",
     mailboxNotAvailable: "只有计划批准后且任务仍处于活动状态时，才能使用信箱说明。",
     mailboxTargetRequired: "发送交接说明前请先选择目标子任务。",
+    planTemplateRequired: "请先选择一个计划模板。",
+    planTemplateNotFound: "所选计划模板已不存在。",
     dirtyWorkingTree: "工作区有未提交改动",
     cleanWorkingTree: "工作区干净",
     noRecentBranches: "未检测到最近的本地分支。",
@@ -121,6 +123,8 @@ const MESSAGES = {
     mailboxMessageRequired: "Write a handoff note before sending it.",
     mailboxNotAvailable: "Mailbox notes are only available after plan approval while the task is active.",
     mailboxTargetRequired: "Select a subtask target before sending a handoff note.",
+    planTemplateRequired: "Select a plan template before seeding.",
+    planTemplateNotFound: "The selected plan template no longer exists.",
     dirtyWorkingTree: "Dirty working tree",
     cleanWorkingTree: "Clean working tree",
     noRecentBranches: "No recent local branches detected.",
@@ -295,6 +299,10 @@ export function buildTaskErrorMessage(error) {
       return translate("mailboxNotAvailable");
     case "MAILBOX_TARGET_REQUIRED":
       return translate("mailboxTargetRequired");
+    case "PLAN_TEMPLATE_REQUIRED":
+      return translate("planTemplateRequired");
+    case "PLAN_TEMPLATE_NOT_FOUND":
+      return translate("planTemplateNotFound");
     default:
       return error.message ?? translate("unknownTaskError");
   }

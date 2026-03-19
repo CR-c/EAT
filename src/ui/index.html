@@ -484,7 +484,28 @@
               <div id="task-plan-detail" class="plan-detail" hidden>
                 <p id="task-plan-summary" class="plan-detail__summary"></p>
                 <div id="task-plan-editor" class="plan-editor" hidden>
+                  <div class="plan-editor__controls">
+                    <label class="field" for="task-plan-template-select">
+                      <span class="field__label" data-i18n="planTemplateLabel">模板种子</span>
+                      <select id="task-plan-template-select" class="field__control"></select>
+                    </label>
+                    <button id="task-plan-apply-template-button" class="button button--secondary" type="button" data-i18n="applyTemplateButton">
+                      应用模板
+                    </button>
+                  </div>
+                  <p class="field__hint" data-i18n="planTemplateHint">
+                    用常见团队骨架快速初始化 DAG 草稿，之后仍需人工审阅和批准。
+                  </p>
                   <div class="plan-editor__toolbar">
+                    <div class="segmented-control" role="group" aria-label="Plan view">
+                      <span class="segmented-control__label" data-i18n="planViewLabel">计划视图</span>
+                      <button id="task-plan-graph-view-button" class="button button--ghost" type="button" data-i18n="planGraphViewButton">
+                        图谱视图
+                      </button>
+                      <button id="task-plan-list-view-button" class="button button--ghost" type="button" data-i18n="planListViewButton">
+                        列表视图
+                      </button>
+                    </div>
                     <p class="plan-editor__hint" data-i18n="planEditorHint">
                       批准前可先编辑草稿。变更仅保存在当前浏览器，直到草稿同步功能上线。
                     </p>
@@ -526,6 +547,7 @@
                   </div>
                   <div id="task-plan-history-list" class="plan-history__list"></div>
                 </div>
+                <div id="task-plan-graph" class="plan-graph" hidden></div>
                 <div id="task-plan-list" class="plan-list"></div>
               </div>
             </section>

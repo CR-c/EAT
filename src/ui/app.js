@@ -133,12 +133,35 @@ const UI_MESSAGES = {
     currentPlanDraftTitle: "当前计划草稿",
     planEmpty: "确认需求后会触发计划生成、校验与草稿持久化。",
     planEditorHint: "批准前可先编辑草稿。变更仅保存在当前浏览器，直到草稿同步功能上线。",
+    planViewLabel: "计划视图",
+    planGraphViewButton: "图谱视图",
+    planListViewButton: "列表视图",
+    planTemplateLabel: "模板种子",
+    applyTemplateButton: "应用模板",
+    planTemplateHint: "用常见团队骨架快速初始化 DAG 草稿，之后仍需人工审阅和批准。",
     saveDraftButton: "保存草稿",
     addSubtaskButton: "添加子任务",
     resetLocalEditsButton: "重置本地修改",
     approveDraftButton: "批准草稿",
     planningNotesLabel: "规划备注",
     planningNotesPlaceholder: "可选：为当前草稿补充执行备注。",
+    roleField: "角色",
+    deliverableField: "交付物",
+    acceptanceCriteriaField: "验收标准",
+    acceptanceCriteriaPlaceholder: "每行一条验收标准",
+    templateHintField: "模板提示",
+    estimatedScopeField: "预估范围",
+    deliverableLabel: "交付物",
+    acceptanceCriteriaTitle: "验收标准",
+    templateHintLabel: "模板提示",
+    roleLabel: "角色",
+    noDependenciesLabel: "无依赖",
+    noAcceptanceCriteria: "尚未定义验收标准。",
+    graphColumnLabel: "阶段 {count}",
+    nodeCountOne: "{count} 个节点",
+    nodeCountOther: "{count} 个节点",
+    templateSummary: "模板 {template}",
+    applyTemplateConfirm: "应用模板会覆盖当前未保存的 DAG 草稿，是否继续？",
     historyEyebrow: "历史",
     planSnapshotsTitle: "计划快照",
     planHistoryEmpty: "暂无可恢复的历史快照。",
@@ -170,6 +193,7 @@ const UI_MESSAGES = {
     cancelling: "取消中...",
     rebasing: "Rebase 中...",
     resuming: "恢复中...",
+    applying: "应用中...",
     notConfigured: "未配置",
     notYetChecked: "尚未检查",
     dockerReadyReason: "Docker 沙箱健康，可供 worker 会话使用。",
@@ -219,6 +243,7 @@ const UI_MESSAGES = {
     includedCount: "{count} 个纳入",
     excludedCount: "{count} 个排除",
     planDraftReady: "计划草稿已可审阅。版本 {version} 已保存，可进入下一阶段。",
+    planTemplateApplied: "模板骨架已写入当前计划草稿，可继续编辑后再批准。",
     planningRetryingOne: "计划正在重试，此前已有 {count} 次校验失败。",
     planningRetryingOther: "计划正在重试，此前已有 {count} 次校验失败。",
     planningInProgress: "规划进行中，正在等待 lead agent 输出有效的 JSON 草稿。",
@@ -417,12 +442,35 @@ const UI_MESSAGES = {
     currentPlanDraftTitle: "Current plan draft",
     planEmpty: "Confirm requirements to trigger plan generation, validation, and draft persistence.",
     planEditorHint: "Edit the draft before approval. Changes stay in this browser until plan draft sync is enabled.",
+    planViewLabel: "Plan view",
+    planGraphViewButton: "Graph view",
+    planListViewButton: "List view",
+    planTemplateLabel: "Template seed",
+    applyTemplateButton: "Apply template",
+    planTemplateHint: "Start from a common team DAG skeleton, then keep review and approval under operator control.",
     saveDraftButton: "Save draft",
     addSubtaskButton: "Add subtask",
     resetLocalEditsButton: "Reset local edits",
     approveDraftButton: "Approve draft",
     planningNotesLabel: "Planning notes",
     planningNotesPlaceholder: "Optional execution notes for the current draft.",
+    roleField: "Role",
+    deliverableField: "Deliverable",
+    acceptanceCriteriaField: "Acceptance criteria",
+    acceptanceCriteriaPlaceholder: "One acceptance criterion per line",
+    templateHintField: "Template hint",
+    estimatedScopeField: "Estimated scope",
+    deliverableLabel: "Deliverable",
+    acceptanceCriteriaTitle: "Acceptance criteria",
+    templateHintLabel: "Template hint",
+    roleLabel: "Role",
+    noDependenciesLabel: "No dependencies",
+    noAcceptanceCriteria: "No acceptance criteria defined yet.",
+    graphColumnLabel: "Stage {count}",
+    nodeCountOne: "{count} node",
+    nodeCountOther: "{count} nodes",
+    templateSummary: "Template {template}",
+    applyTemplateConfirm: "Applying a template will replace the current unsaved DAG draft. Continue?",
     historyEyebrow: "History",
     planSnapshotsTitle: "Plan snapshots",
     planHistoryEmpty: "No historical snapshots are available for restore yet.",
@@ -454,6 +502,7 @@ const UI_MESSAGES = {
     cancelling: "Cancelling...",
     rebasing: "Rebasing...",
     resuming: "Resuming...",
+    applying: "Applying...",
     notConfigured: "Not configured",
     notYetChecked: "Not yet checked",
     dockerReadyReason: "Docker sandbox health is ready for worker sessions.",
@@ -503,6 +552,7 @@ const UI_MESSAGES = {
     includedCount: "{count} included",
     excludedCount: "{count} excluded",
     planDraftReady: "Plan draft ready for review. Version {version} is saved and available for the next phase.",
+    planTemplateApplied: "Template skeleton applied to the current plan draft. Edit it before approval.",
     planningRetryingOne: "Planning is retrying after {count} validation failure.",
     planningRetryingOther: "Planning is retrying after {count} validation failures.",
     planningInProgress: "Planning is in progress. Waiting for a valid JSON draft from the lead agent.",
@@ -595,6 +645,39 @@ const UI_MESSAGES = {
   },
 };
 
+const PLAN_TEMPLATE_COPY = {
+  "full-stack-web-app": {
+    "zh-CN": {
+      description: "适合带认证、数据库、前端和测试协作的全栈需求。",
+      title: "全栈 Web 应用",
+    },
+    en: {
+      description: "Best for full-stack tasks with auth, data, frontend, and end-to-end validation.",
+      title: "Full-stack web app",
+    },
+  },
+  "backend-api-service": {
+    "zh-CN": {
+      description: "面向 API、数据库和服务测试的后端任务骨架。",
+      title: "后端 API 服务",
+    },
+    en: {
+      description: "A backend service skeleton for API, database, and service validation work.",
+      title: "Backend API service",
+    },
+  },
+  "frontend-feature": {
+    "zh-CN": {
+      description: "适合前端功能、集成接线与体验验收。",
+      title: "前端功能开发",
+    },
+    en: {
+      description: "Suited to frontend feature delivery, integration, and UX validation.",
+      title: "Frontend feature",
+    },
+  },
+};
+
 const state = {
   agentHealth: {},
   agents: [],
@@ -603,6 +686,7 @@ const state = {
   leadCandidates: [],
   locale: normalizeLocale(readStorage(STORAGE_KEYS.locale)),
   liveSessionOutputs: new Map(),
+  planTemplates: [],
   projectDetail: null,
   projects: [],
   selectedBaseBranch: null,
@@ -617,6 +701,7 @@ const state = {
   taskPlanDraft: null,
   taskPlanDraftState: null,
   taskPlanNotice: null,
+  taskPlanView: "graph",
   tasks: [],
   taskStream: null,
   workerCandidates: [],
@@ -737,6 +822,7 @@ const elements = {
   taskMessageInput: document.querySelector("#task-message-input"),
   taskPlanDetail: document.querySelector("#task-plan-detail"),
   taskPlanEditor: document.querySelector("#task-plan-editor"),
+  taskPlanGraph: document.querySelector("#task-plan-graph"),
   taskPlanHistory: document.querySelector("#task-plan-history"),
   taskPlanHistoryEmpty: document.querySelector("#task-plan-history-empty"),
   taskPlanHistoryList: document.querySelector("#task-plan-history-list"),
@@ -744,12 +830,16 @@ const elements = {
   taskPlanEmpty: document.querySelector("#task-plan-empty"),
   taskPlanFeedback: document.querySelector("#task-plan-feedback"),
   taskPlanAddSubtaskButton: document.querySelector("#task-plan-add-subtask-button"),
+  taskPlanApplyTemplateButton: document.querySelector("#task-plan-apply-template-button"),
+  taskPlanGraphViewButton: document.querySelector("#task-plan-graph-view-button"),
   taskPlanList: document.querySelector("#task-plan-list"),
+  taskPlanListViewButton: document.querySelector("#task-plan-list-view-button"),
   taskPlanNotesInput: document.querySelector("#task-plan-notes-input"),
   taskPlanResetDraftButton: document.querySelector("#task-plan-reset-draft-button"),
   taskPlanSaveDraftButton: document.querySelector("#task-plan-save-draft-button"),
   taskPlanSnapshotCount: document.querySelector("#task-plan-snapshot-count"),
   taskPlanSummary: document.querySelector("#task-plan-summary"),
+  taskPlanTemplateSelect: document.querySelector("#task-plan-template-select"),
   taskPlanVersion: document.querySelector("#task-plan-version"),
   taskSessionStatus: document.querySelector("#task-session-status"),
   taskStatusBadge: document.querySelector("#task-status-badge"),
@@ -797,7 +887,10 @@ elements.startClarificationButton.addEventListener("click", onStartClarification
 elements.confirmRequirementsButton.addEventListener("click", onConfirmRequirements);
 elements.taskMessageForm.addEventListener("submit", onSendTaskMessage);
 elements.taskPlanAddSubtaskButton.addEventListener("click", onAddPlanSubtask);
+elements.taskPlanApplyTemplateButton.addEventListener("click", onApplyPlanTemplate);
 elements.taskPlanApproveButton.addEventListener("click", onApprovePlanDraft);
+elements.taskPlanGraphViewButton.addEventListener("click", () => onSetPlanView("graph"));
+elements.taskPlanListViewButton.addEventListener("click", () => onSetPlanView("list"));
 elements.taskPlanResetDraftButton.addEventListener("click", onResetPlanDraft);
 elements.taskPlanSaveDraftButton.addEventListener("click", onSavePlanDraft);
 elements.taskPlanNotesInput.addEventListener("input", onPlanNotesInput);
@@ -813,7 +906,7 @@ elements.taskExecutionReworkDescription.addEventListener("input", onExecutionDra
 elements.taskExecutionMailboxForm.addEventListener("submit", onSendMailboxMessage);
 
 renderLocale();
-void Promise.all([loadProjects({ preserveSelection: true }), loadAgents()]);
+void Promise.all([loadProjects({ preserveSelection: true }), loadAgents(), loadTaskTemplates()]);
 
 async function onRegisterProject(event) {
   event.preventDefault();
@@ -1125,6 +1218,19 @@ async function loadAgents(options = {}) {
     showFeedback(elements.agentHealthFeedback, "error", buildAgentErrorMessage(error));
   } finally {
     setButtonBusy(elements.refreshAgentHealthButton, false, t("refreshHealthButton"));
+  }
+}
+
+async function loadTaskTemplates() {
+  try {
+    const response = await fetchJson("/api/task-templates");
+    state.planTemplates = response.templates ?? [];
+
+    if (state.taskDetail) {
+      renderTaskDetail();
+    }
+  } catch {
+    state.planTemplates = [];
   }
 }
 
@@ -1589,9 +1695,10 @@ function renderSubTaskExecution(detail) {
 
 function renderPlanDraft(detail) {
   elements.taskPlanList.replaceChildren();
+  elements.taskPlanGraph.replaceChildren();
   clearFeedback(elements.taskPlanFeedback);
 
-  const parsedPlan = parseCurrentPlanJson(detail.task.currentPlanJson);
+  const parsedPlan = normalizePlanDraft(parseCurrentPlanJson(detail.task.currentPlanJson));
   const editableDraft = detail.task.status === "PLAN_REVIEW" ? state.taskPlanDraft : null;
   const failedAttempts = countPlanValidationFailures(detail.messages ?? []);
   const hasPlanningState = detail.task.status === "PLANNING"
@@ -1635,12 +1742,14 @@ function renderPlanDraft(detail) {
   elements.taskPlanEditor.hidden = detail.task.status !== "PLAN_REVIEW" || !editableDraft;
   elements.taskPlanSummary.textContent = buildPlanSummary(detail, failedAttempts, editableDraft ?? parsedPlan);
   renderPlanHistory(detail);
+  renderPlanTemplateOptions(editableDraft ?? parsedPlan);
+  updatePlanViewToggle();
 
   if (editableDraft) {
     elements.taskPlanNotesInput.value = editableDraft.notes ?? "";
   }
 
-  const subtasks = editableDraft?.subtasks ?? parsedPlan?.subtasks ?? [];
+  const planNodes = getPlanNodes(editableDraft ?? parsedPlan);
   const hasUnsavedDraft = editableDraft ? isEditablePlanDirty(detail) : false;
   const hasStaleDraft = state.taskPlanDraftState?.stale === true;
 
@@ -1655,34 +1764,50 @@ function renderPlanDraft(detail) {
   elements.taskPlanSaveDraftButton.disabled = !editableDraft || !hasUnsavedDraft || hasStaleDraft;
   elements.taskPlanApproveButton.disabled = !editableDraft || hasUnsavedDraft || hasStaleDraft;
   elements.taskPlanApproveButton.textContent = hasUnsavedDraft ? t("saveBeforeApprovalButton") : t("approveDraftButton");
+  elements.taskPlanApplyTemplateButton.disabled = detail.task.status !== "PLAN_REVIEW" || state.planTemplates.length === 0;
+  elements.taskPlanTemplateSelect.disabled = detail.task.status !== "PLAN_REVIEW" || state.planTemplates.length === 0;
+  elements.taskPlanList.hidden = state.taskPlanView === "graph";
+  elements.taskPlanGraph.hidden = state.taskPlanView !== "graph";
 
-  if (!subtasks.length) {
+  if (!planNodes.length) {
     return;
   }
 
-  for (const [index, subtask] of subtasks.entries()) {
+  if (state.taskPlanView === "graph") {
+    renderPlanGraph(planNodes, Boolean(editableDraft));
+    return;
+  }
+
+  for (const [index, node] of planNodes.entries()) {
     if (editableDraft) {
-      elements.taskPlanList.append(renderEditablePlanSubtask(index, subtask));
+      elements.taskPlanList.append(renderEditablePlanNodeCard(index, node));
       continue;
     }
 
-    const article = document.createElement("article");
-    article.className = "plan-card";
-    article.innerHTML = `
-      <div class="plan-card__header">
-        <div>
-          <p class="plan-card__title">${escapeHtml(`${index + 1}. ${subtask.title}`)}</p>
-          <p class="plan-card__meta">${escapeHtml(`${t("agentMetaLabel")}: ${subtask.recommended_agent}`)}</p>
-          ${Array.isArray(subtask.depends_on) && subtask.depends_on.length > 0
-            ? `<p class="plan-card__meta">${escapeHtml(`${t("dependsOnLabel")}: ${subtask.depends_on.join(", ")}`)}</p>`
-            : ""}
-        </div>
-        <span class="badge badge--outline">${escapeHtml(subtask.branch_suffix)}</span>
-      </div>
-      <p class="plan-card__description">${escapeHtml(subtask.description)}</p>
-    `;
-    elements.taskPlanList.append(article);
+    elements.taskPlanList.append(renderReadonlyPlanNodeCard(index, node));
   }
+}
+
+function renderPlanTemplateOptions(activePlan) {
+  const selectedTemplateId = activePlan?.template_id ?? "";
+  const options = [
+    `<option value="">${escapeHtml(t("planTemplateLabel"))}</option>`,
+    ...state.planTemplates.map((template) => {
+      const copy = getPlanTemplateCopy(template.id);
+      const suffix = template.nodeCount ? ` · ${template.nodeCount}` : "";
+
+      return `<option value="${escapeHtmlAttribute(template.id)}"${template.id === selectedTemplateId ? " selected" : ""}>${escapeHtml(copy.title + suffix)}</option>`;
+    }),
+  ];
+
+  elements.taskPlanTemplateSelect.innerHTML = options.join("");
+}
+
+function updatePlanViewToggle() {
+  elements.taskPlanGraphViewButton.classList.toggle("is-active", state.taskPlanView === "graph");
+  elements.taskPlanListViewButton.classList.toggle("is-active", state.taskPlanView === "list");
+  elements.taskPlanGraphViewButton.setAttribute("aria-pressed", state.taskPlanView === "graph" ? "true" : "false");
+  elements.taskPlanListViewButton.setAttribute("aria-pressed", state.taskPlanView === "list" ? "true" : "false");
 }
 
 function renderPlanHistory(detail) {
@@ -1717,13 +1842,43 @@ function renderPlanHistory(detail) {
   }
 }
 
-function renderEditablePlanSubtask(index, subtask) {
+function renderPlanGraph(planNodes, editable) {
+  const columns = buildPlanGraphColumns(planNodes);
+
+  for (const column of columns) {
+    const section = document.createElement("section");
+    section.className = "plan-graph__column";
+    section.innerHTML = `
+      <div class="plan-graph__column-header">
+        <p class="panel__eyebrow">${escapeHtml(t("graphColumnLabel", { count: column.level + 1 }))}</p>
+        <span class="badge badge--outline">${escapeHtml(countLabel(column.nodes.length, "nodeCountOne", "nodeCountOther"))}</span>
+      </div>
+    `;
+
+    const list = document.createElement("div");
+    list.className = "plan-graph__column-list";
+
+    for (const entry of column.nodes) {
+      list.append(editable
+        ? renderEditablePlanNodeCard(entry.index, entry.node, true)
+        : renderReadonlyPlanNodeCard(entry.index, entry.node, true));
+    }
+
+    section.append(list);
+    elements.taskPlanGraph.append(section);
+  }
+}
+
+function renderEditablePlanNodeCard(index, node, graphMode = false) {
   const article = document.createElement("article");
-  article.className = "plan-subtask";
+  article.className = graphMode ? "plan-subtask plan-subtask--graph" : "plan-subtask";
 
   article.innerHTML = `
     <div class="plan-subtask__header">
-      <p class="plan-subtask__index">${escapeHtml(t("subtaskNumberLabel", { count: index + 1 }))}</p>
+      <div>
+        <p class="plan-subtask__index">${escapeHtml(t("subtaskNumberLabel", { count: index + 1 }))}</p>
+        <p class="plan-card__meta">${escapeHtml(`${t("roleLabel")}: ${node.role ?? node.branch_suffix}`)}</p>
+      </div>
       <button class="button button--ghost" type="button" data-remove-subtask="${index}">
         ${escapeHtml(t("removeButton"))}
       </button>
@@ -1731,34 +1886,59 @@ function renderEditablePlanSubtask(index, subtask) {
     <div class="plan-subtask__grid">
       <label class="field">
         <span class="field__label">${escapeHtml(t("titleField"))}</span>
-        <input type="text" value="${escapeHtmlAttribute(subtask.title ?? "")}" data-plan-field="title" data-subtask-index="${index}">
+        <input type="text" value="${escapeHtmlAttribute(node.title ?? "")}" data-plan-field="title" data-subtask-index="${index}">
+      </label>
+      <label class="field">
+        <span class="field__label">${escapeHtml(t("roleField"))}</span>
+        <input type="text" value="${escapeHtmlAttribute(node.role ?? "")}" data-plan-field="role" data-subtask-index="${index}">
       </label>
       <label class="field">
         <span class="field__label">${escapeHtml(t("workerAgentField"))}</span>
         <select class="field__control" data-plan-field="recommended_agent" data-subtask-index="${index}">
-          ${buildWorkerAgentOptions(subtask.recommended_agent)}
+          ${buildWorkerAgentOptions(node.recommended_agent)}
         </select>
       </label>
       <label class="field">
         <span class="field__label">${escapeHtml(t("descriptionField"))}</span>
-        <textarea rows="4" data-plan-field="description" data-subtask-index="${index}">${escapeHtml(subtask.description ?? "")}</textarea>
+        <textarea rows="4" data-plan-field="description" data-subtask-index="${index}">${escapeHtml(node.description ?? "")}</textarea>
+      </label>
+      <label class="field">
+        <span class="field__label">${escapeHtml(t("deliverableField"))}</span>
+        <textarea rows="3" data-plan-field="deliverable" data-subtask-index="${index}">${escapeHtml(node.deliverable ?? "")}</textarea>
+      </label>
+      <label class="field">
+        <span class="field__label">${escapeHtml(t("acceptanceCriteriaField"))}</span>
+        <textarea
+          rows="4"
+          placeholder="${escapeHtmlAttribute(t("acceptanceCriteriaPlaceholder"))}"
+          data-plan-field="acceptance_criteria"
+          data-subtask-index="${index}"
+        >${escapeHtml(Array.isArray(node.acceptance_criteria) ? node.acceptance_criteria.join("\n") : "")}</textarea>
       </label>
       <label class="field">
         <span class="field__label">${escapeHtml(t("branchSuffixField"))}</span>
         <div class="plan-subtask__branch">
-          <input type="text" value="${escapeHtmlAttribute(subtask.branch_suffix ?? "")}" data-plan-field="branch_suffix" data-subtask-index="${index}">
-          <span class="badge badge--outline">${escapeHtml(subtask.branch_suffix ?? t("missingSuffix"))}</span>
+          <input type="text" value="${escapeHtmlAttribute(node.branch_suffix ?? "")}" data-plan-field="branch_suffix" data-subtask-index="${index}">
+          <span class="badge badge--outline">${escapeHtml(node.branch_suffix ?? t("missingSuffix"))}</span>
         </div>
       </label>
       <label class="field">
         <span class="field__label">${escapeHtml(t("dependsOnField"))}</span>
         <input
           type="text"
-          value="${escapeHtmlAttribute(Array.isArray(subtask.depends_on) ? subtask.depends_on.join(", ") : "")}"
+          value="${escapeHtmlAttribute(Array.isArray(node.depends_on) ? node.depends_on.join(", ") : "")}"
           placeholder="${escapeHtmlAttribute(t("dependsOnPlaceholder"))}"
           data-plan-field="depends_on"
           data-subtask-index="${index}"
         >
+      </label>
+      <label class="field">
+        <span class="field__label">${escapeHtml(t("templateHintField"))}</span>
+        <input type="text" value="${escapeHtmlAttribute(node.template_hint ?? "")}" data-plan-field="template_hint" data-subtask-index="${index}">
+      </label>
+      <label class="field">
+        <span class="field__label">${escapeHtml(t("estimatedScopeField"))}</span>
+        <input type="text" value="${escapeHtmlAttribute(node.estimated_scope ?? "")}" data-plan-field="estimated_scope" data-subtask-index="${index}">
       </label>
     </div>
   `;
@@ -1768,6 +1948,37 @@ function renderEditablePlanSubtask(index, subtask) {
     input.addEventListener("change", onPlanSubtaskInput);
   });
   article.querySelector("[data-remove-subtask]")?.addEventListener("click", onRemovePlanSubtask);
+
+  return article;
+}
+
+function renderReadonlyPlanNodeCard(index, node, graphMode = false) {
+  const article = document.createElement("article");
+  article.className = graphMode ? "plan-card plan-card--graph" : "plan-card";
+  article.innerHTML = `
+    <div class="plan-card__header">
+      <div>
+        <p class="plan-card__title">${escapeHtml(`${index + 1}. ${node.title}`)}</p>
+        <p class="plan-card__meta">${escapeHtml(`${t("roleLabel")}: ${node.role ?? node.branch_suffix}`)}</p>
+        <p class="plan-card__meta">${escapeHtml(`${t("agentMetaLabel")}: ${node.recommended_agent}`)}</p>
+        <p class="plan-card__meta">${escapeHtml(`${t("deliverableLabel")}: ${node.deliverable ?? node.description}`)}</p>
+      </div>
+      <div class="plan-card__badges">
+        <span class="badge badge--outline">${escapeHtml(node.branch_suffix)}</span>
+        <span class="badge badge--outline">${escapeHtml(node.template_hint ?? "custom")}</span>
+      </div>
+    </div>
+    <p class="plan-card__description">${escapeHtml(node.description)}</p>
+    <div class="plan-card__stack">
+      <p class="plan-card__meta">${escapeHtml(`${t("dependsOnLabel")}: ${Array.isArray(node.depends_on) && node.depends_on.length > 0 ? node.depends_on.join(", ") : t("noDependenciesLabel")}`)}</p>
+      <div class="plan-card__criteria">
+        <p class="plan-card__meta">${escapeHtml(t("acceptanceCriteriaTitle"))}</p>
+        <ul class="plan-card__criteria-list">
+          ${buildPlanAcceptanceCriteriaItems(node.acceptance_criteria)}
+        </ul>
+      </div>
+    </div>
+  `;
 
   return article;
 }
@@ -1846,6 +2057,7 @@ function clearTaskDetail() {
   elements.taskExecutionMailboxInput.value = "";
   elements.taskExecutionSessionList.replaceChildren();
   elements.taskPlanHistoryList.replaceChildren();
+  elements.taskPlanGraph.replaceChildren();
   elements.taskPlanList.replaceChildren();
 }
 
@@ -1912,6 +2124,9 @@ function connectTaskStream(taskId) {
     void loadTaskDetail(taskId, { preserveStream: true });
   });
   stream.addEventListener("task:plan-generated", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
+  stream.addEventListener("task:plan-seeded", () => {
     void loadTaskDetail(taskId, { preserveStream: true });
   });
   stream.addEventListener("task:plan-restored", (event) => {
@@ -1999,20 +2214,20 @@ function syncEditablePlanDraft(detail) {
     && persistedDraft.taskUpdatedAt === detail.task.updatedAt;
 
   const hasUnsavedPersistedDraft = persistedDraft
-    && JSON.stringify(persistedDraft.draft) !== persistedDraft.serverFingerprint;
+    && JSON.stringify(normalizePlanDraft(persistedDraft.draft)) !== persistedDraft.serverFingerprint;
 
   if (canReusePersistedDraft) {
-    state.taskPlanDraft = persistedDraft.draft;
+    state.taskPlanDraft = normalizePlanDraft(persistedDraft.draft);
     state.taskPlanDraftState = {
       stale: false,
     };
   } else if (hasUnsavedPersistedDraft) {
-    state.taskPlanDraft = persistedDraft.draft;
+    state.taskPlanDraft = normalizePlanDraft(persistedDraft.draft);
     state.taskPlanDraftState = {
       stale: true,
     };
   } else {
-    state.taskPlanDraft = clonePlanDraft(serverPlan);
+    state.taskPlanDraft = normalizePlanDraft(serverPlan);
     state.taskPlanDraftState = {
       stale: false,
     };
@@ -2027,9 +2242,7 @@ function onPlanNotesInput(event) {
   }
 
   const value = normalizeOptionalText(event.target.value);
-  const nextDraft = {
-    ...state.taskPlanDraft,
-  };
+  const nextDraft = normalizePlanDraft(state.taskPlanDraft);
 
   if (value) {
     nextDraft.notes = value;
@@ -2049,27 +2262,25 @@ function onPlanSubtaskInput(event) {
 
   const index = Number.parseInt(event.target.dataset.subtaskIndex ?? "", 10);
   const field = event.target.dataset.planField;
+  const currentNodes = getPlanNodes(state.taskPlanDraft);
 
-  if (!Number.isInteger(index) || !field || !state.taskPlanDraft.subtasks[index]) {
+  if (!Number.isInteger(index) || !field || !currentNodes[index]) {
     return;
   }
 
-  state.taskPlanDraft = {
-    ...state.taskPlanDraft,
-    subtasks: state.taskPlanDraft.subtasks.map((subtask, subtaskIndex) => (
-      subtaskIndex === index
-        ? {
-            ...subtask,
-            [field]: field === "depends_on"
-              ? event.target.value
-                .split(",")
-                .map((value) => value.trim())
-                .filter(Boolean)
+  const nextNodes = currentNodes.map((subtask, subtaskIndex) => (
+    subtaskIndex === index
+      ? {
+          ...subtask,
+          [field]: field === "depends_on"
+            ? splitPlanDependencies(event.target.value)
+            : field === "acceptance_criteria"
+              ? splitAcceptanceCriteria(event.target.value)
               : event.target.value,
-          }
-        : subtask
-    )),
-  };
+        }
+      : subtask
+  ));
+  state.taskPlanDraft = updatePlanNodes(state.taskPlanDraft, nextNodes);
   persistCurrentTaskDraft();
   renderPlanDraft(state.taskDetail);
 }
@@ -2079,13 +2290,11 @@ function onAddPlanSubtask() {
     return;
   }
 
-  state.taskPlanDraft = {
-    ...state.taskPlanDraft,
-    subtasks: [
-      ...state.taskPlanDraft.subtasks,
-      createDefaultPlanSubtask(state.taskPlanDraft.subtasks.length),
-    ],
-  };
+  const currentNodes = getPlanNodes(state.taskPlanDraft);
+  state.taskPlanDraft = updatePlanNodes(state.taskPlanDraft, [
+    ...currentNodes,
+    createDefaultPlanNode(currentNodes.length),
+  ]);
   persistCurrentTaskDraft();
   renderPlanDraft(state.taskDetail);
 }
@@ -2101,11 +2310,20 @@ function onRemovePlanSubtask(event) {
     return;
   }
 
-  state.taskPlanDraft = {
-    ...state.taskPlanDraft,
-    subtasks: state.taskPlanDraft.subtasks.filter((_, subtaskIndex) => subtaskIndex !== index),
-  };
+  state.taskPlanDraft = updatePlanNodes(
+    state.taskPlanDraft,
+    getPlanNodes(state.taskPlanDraft).filter((_, subtaskIndex) => subtaskIndex !== index),
+  );
   persistCurrentTaskDraft();
+  renderPlanDraft(state.taskDetail);
+}
+
+function onSetPlanView(view) {
+  if (!["graph", "list"].includes(view)) {
+    return;
+  }
+
+  state.taskPlanView = view;
   renderPlanDraft(state.taskDetail);
 }
 
@@ -2150,6 +2368,48 @@ async function onSavePlanDraft() {
     showFeedback(elements.taskPlanFeedback, "error", buildTaskErrorMessage(error));
   } finally {
     setButtonBusy(elements.taskPlanSaveDraftButton, false, t("saveDraftButton"));
+  }
+}
+
+async function onApplyPlanTemplate() {
+  if (!state.taskDetail?.task?.id) {
+    return;
+  }
+
+  const templateId = elements.taskPlanTemplateSelect.value;
+
+  if (!templateId) {
+    showFeedback(elements.taskPlanFeedback, "error", buildTaskErrorMessage({ code: "PLAN_TEMPLATE_REQUIRED" }));
+    return;
+  }
+
+  if (state.taskPlanDraft && isEditablePlanDirty(state.taskDetail)) {
+    const confirmed = window.confirm(t("applyTemplateConfirm"));
+
+    if (!confirmed) {
+      return;
+    }
+  }
+
+  clearFeedback(elements.taskPlanFeedback);
+  setButtonBusy(elements.taskPlanApplyTemplateButton, true, t("applying"));
+
+  try {
+    const response = await fetchJson(
+      `/api/tasks/${encodeURIComponent(state.taskDetail.task.id)}/plan-seed`,
+      {
+        body: { templateId },
+        method: "POST",
+      },
+    );
+
+    state.taskDetail.task = response.task;
+    await loadTaskDetail(state.taskDetail.task.id, { preserveStream: true });
+    showFeedback(elements.taskPlanFeedback, "success", t("planTemplateApplied"));
+  } catch (error) {
+    showFeedback(elements.taskPlanFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskPlanApplyTemplateButton, false, t("applyTemplateButton"));
   }
 }
 
@@ -2617,6 +2877,15 @@ function t(key, values) {
   return translate(key, values);
 }
 
+function getPlanTemplateCopy(templateId) {
+  return PLAN_TEMPLATE_COPY[templateId]?.[state.locale]
+    ?? PLAN_TEMPLATE_COPY[templateId]?.en
+    ?? {
+      description: templateId,
+      title: templateId,
+    };
+}
+
 function onToggleLanguage() {
   state.locale = state.locale === "zh-CN" ? "en" : "zh-CN";
   setLocale(state.locale);
@@ -2784,7 +3053,7 @@ function parseCurrentPlanJson(currentPlanJson) {
 
   try {
     const parsed = JSON.parse(currentPlanJson);
-    return parsed && typeof parsed === "object" ? parsed : null;
+    return parsed && typeof parsed === "object" ? normalizePlanDraft(parsed) : null;
   } catch {
     return null;
   }
@@ -2798,9 +3067,11 @@ function countPlanValidationFailures(messages) {
 
 function buildPlanSummary(detail, failedAttempts, parsedPlan) {
   const snapshotCount = detail.planSnapshots?.length ?? 0;
+  const nodeCount = getPlanNodes(parsedPlan).length;
   const summaryParts = [
     t("versionSummary", { version: detail.task.planVersion ?? 0 }),
     countLabel(snapshotCount, "snapshotCountOne", "snapshotCountOther"),
+    countLabel(nodeCount, "nodeCountOne", "nodeCountOther"),
   ];
 
   if (failedAttempts > 0) {
@@ -2809,6 +3080,11 @@ function buildPlanSummary(detail, failedAttempts, parsedPlan) {
 
   if (parsedPlan?.notes) {
     summaryParts.push(t("notesSummary", { notes: parsedPlan.notes }));
+  }
+
+  if (parsedPlan?.template_id) {
+    const copy = getPlanTemplateCopy(parsedPlan.template_id);
+    summaryParts.push(t("templateSummary", { template: copy.title }));
   }
 
   return summaryParts.join(" · ");
@@ -2834,20 +3110,25 @@ function buildWorkerAgentOptions(selectedAgentName) {
   return options.join("");
 }
 
-function createDefaultPlanSubtask(index) {
+function createDefaultPlanNode(index) {
   return {
+    acceptance_criteria: [],
     branch_suffix: `draft-subtask-${index + 1}`,
+    deliverable: "",
     depends_on: [],
     description: "",
+    estimated_scope: "",
     recommended_agent: state.workerCandidates.find((candidate) => candidate.selectable)?.agentName
       ?? state.taskDetail?.task?.leadAgentType
       ?? "",
+    role: `worker-${index + 1}`,
+    template_hint: "custom",
     title: "",
   };
 }
 
 function clonePlanDraft(plan) {
-  return JSON.parse(JSON.stringify(plan));
+  return normalizePlanDraft(JSON.parse(JSON.stringify(plan)));
 }
 
 function getTaskDraftStorageKey(taskId) {
@@ -2879,6 +3160,123 @@ function readStoredPlanDraft(storageKey) {
   } catch {
     return null;
   }
+}
+
+function getPlanNodes(plan) {
+  if (!plan || typeof plan !== "object") {
+    return [];
+  }
+
+  if (Array.isArray(plan.nodes)) {
+    return plan.nodes;
+  }
+
+  if (Array.isArray(plan.subtasks)) {
+    return plan.subtasks;
+  }
+
+  return [];
+}
+
+function normalizePlanDraft(plan) {
+  if (!plan || typeof plan !== "object") {
+    return null;
+  }
+
+  const normalizedNodes = getPlanNodes(plan).map((node, index) => ({
+    acceptance_criteria: Array.isArray(node?.acceptance_criteria)
+      ? node.acceptance_criteria.filter((entry) => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean)
+      : [],
+    branch_suffix: normalizeOptionalText(node?.branch_suffix) ?? `draft-subtask-${index + 1}`,
+    deliverable: normalizeOptionalText(node?.deliverable) ?? "",
+    depends_on: Array.isArray(node?.depends_on)
+      ? node.depends_on.filter((entry) => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean)
+      : [],
+    description: normalizeOptionalText(node?.description) ?? "",
+    estimated_scope: normalizeOptionalText(node?.estimated_scope) ?? "",
+    recommended_agent: normalizeOptionalText(node?.recommended_agent) ?? "",
+    role: normalizeOptionalText(node?.role) ?? normalizeOptionalText(node?.branch_suffix) ?? `worker-${index + 1}`,
+    template_hint: normalizeOptionalText(node?.template_hint) ?? "custom",
+    title: normalizeOptionalText(node?.title) ?? "",
+  }));
+
+  return {
+    ...(normalizeOptionalText(plan.notes) ? { notes: normalizeOptionalText(plan.notes) } : {}),
+    ...(normalizeOptionalText(plan.template_id) ? { template_id: normalizeOptionalText(plan.template_id) } : {}),
+    ...(normalizeOptionalText(plan.template_label) ? { template_label: normalizeOptionalText(plan.template_label) } : {}),
+    nodes: normalizedNodes,
+    subtasks: normalizedNodes,
+  };
+}
+
+function updatePlanNodes(plan, nodes) {
+  const nextPlan = normalizePlanDraft({
+    ...plan,
+    nodes,
+  });
+
+  if (!nextPlan) {
+    return plan;
+  }
+
+  return nextPlan;
+}
+
+function splitPlanDependencies(value) {
+  return String(value ?? "")
+    .split(/[\n,]/u)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function splitAcceptanceCriteria(value) {
+  return String(value ?? "")
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function buildPlanGraphColumns(planNodes) {
+  const nodesByBranchSuffix = new Map(planNodes.map((node) => [node.branch_suffix, node]));
+  const levelCache = new Map();
+
+  const resolveLevel = (node) => {
+    if (levelCache.has(node.branch_suffix)) {
+      return levelCache.get(node.branch_suffix);
+    }
+
+    const dependencies = Array.isArray(node.depends_on) ? node.depends_on : [];
+    const level = dependencies.length === 0
+      ? 0
+      : Math.max(...dependencies.map((dependency) => resolveLevel(nodesByBranchSuffix.get(dependency) ?? { branch_suffix: dependency, depends_on: [] }))) + 1;
+
+    levelCache.set(node.branch_suffix, level);
+    return level;
+  };
+
+  const columns = new Map();
+
+  planNodes.forEach((node, index) => {
+    const level = resolveLevel(node);
+
+    if (!columns.has(level)) {
+      columns.set(level, []);
+    }
+
+    columns.get(level).push({ index, node });
+  });
+
+  return [...columns.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([level, nodes]) => ({ level, nodes }));
+}
+
+function buildPlanAcceptanceCriteriaItems(criteria) {
+  if (!Array.isArray(criteria) || criteria.length === 0) {
+    return `<li>${escapeHtml(t("noAcceptanceCriteria"))}</li>`;
+  }
+
+  return criteria.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
 }
 
 function hydrateExecutionState(detail) {

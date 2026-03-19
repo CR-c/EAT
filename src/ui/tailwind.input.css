@@ -218,6 +218,8 @@
   .agent-grid,
   .transcript,
   .plan-list,
+  .plan-graph,
+  .plan-graph__column-list,
   .execution-list,
   .execution-board,
   .team-shell,
@@ -415,9 +417,11 @@
   }
 
   .plan-editor__toolbar,
+  .plan-editor__controls,
   .plan-editor__actions,
   .plan-subtask__header,
   .plan-subtask__branch,
+  .plan-card__badges,
   .review-panel__header,
   .review-panel__actions,
   .merge-history__header,
@@ -440,6 +444,47 @@
 
   .plan-card__header {
     @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  }
+
+  .plan-card__stack,
+  .plan-card__criteria,
+  .plan-card__criteria-list,
+  .plan-graph__column,
+  .segmented-control {
+    @apply grid gap-3;
+  }
+
+  .segmented-control {
+    @apply rounded-[1.25rem] border border-white/45 bg-white/55 p-3 shadow-soft backdrop-blur-xl;
+  }
+
+  .segmented-control__label {
+    @apply text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-slate-500;
+  }
+
+  .plan-graph {
+    @apply gap-4;
+  }
+
+  .plan-graph__column {
+    @apply rounded-[1.5rem] border border-white/35 bg-white/45 p-4 shadow-soft backdrop-blur-2xl;
+  }
+
+  .plan-graph__column-header {
+    @apply mb-3 flex flex-wrap items-center justify-between gap-2;
+  }
+
+  .plan-subtask--graph,
+  .plan-card--graph {
+    @apply border-white/55 bg-white/75;
+  }
+
+  .button.is-active {
+    @apply border-sky-200 bg-sky-100/85 text-sky-800 ring-2 ring-sky-100;
+  }
+
+  .plan-card__criteria-list {
+    @apply m-0 list-disc pl-5 text-sm leading-6 text-slate-700;
   }
 
   .plan-card__title,
@@ -545,6 +590,12 @@
   }
 
   @screen lg {
+    .plan-editor__controls,
+    .plan-graph {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
+    }
+
     .execution-board {
       grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.92fr);
       align-items: start;

@@ -25,10 +25,12 @@ import {
 import { resolveBranchHeadCommit } from "./repo-validation-service.js";
 import {
   buildPlanningPrompt,
+  getPlanNodes,
   looksLikeCompletePlanText,
   parsePlanDraftText,
   validatePlanDraft,
 } from "./plan-draft.js";
+import { buildPlanSeedFromTemplate, listPlanTemplates } from "./task-templates.js";
 import {
   MAILBOX_PARTICIPANT_TYPE,
   MAILBOX_TARGET_TYPE,
@@ -119,7 +121,9 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   MAILBOX_MESSAGE_REQUIRED: "MAILBOX_MESSAGE_REQUIRED",
   MAILBOX_NOT_AVAILABLE: "MAILBOX_NOT_AVAILABLE",
   MAILBOX_TARGET_REQUIRED: "MAILBOX_TARGET_REQUIRED",
+  PLAN_TEMPLATE_NOT_FOUND: "PLAN_TEMPLATE_NOT_FOUND",
   PLAN_SNAPSHOT_NOT_FOUND: "PLAN_SNAPSHOT_NOT_FOUND",
+  PLAN_TEMPLATE_REQUIRED: "PLAN_TEMPLATE_REQUIRED",
   REQUIREMENTS_ALREADY_CONFIRMED: "REQUIREMENTS_ALREADY_CONFIRMED",
   SESSION_NOT_RUNNING: "SESSION_NOT_RUNNING",
   TASK_MESSAGE_REQUIRED: "TASK_MESSAGE_REQUIRED",
@@ -340,6 +344,77 @@ export class TaskService {
     return {
       ok: true,
       team: this.#buildTaskTeamView(task, decoratedSessions, decoratedSubTasks),
+    };
+  }
+
+  async listPlanTemplates() {
+    return {
+      ok: true,
+      templates: listPlanTemplates(),
+    };
+  }
+
+  async applyPlanTemplateSeed(taskId, input = {}) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (task.status !== TASK_STATUS.PLAN_REVIEW) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_NOT_PLAN_REVIEW,
+        "Plan template seeding is only available during PLAN_REVIEW.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const templateId = normalizeRequiredString(input?.templateId);
+
+    if (!templateId) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.PLAN_TEMPLATE_REQUIRED,
+        "A plan template must be selected before seeding.",
+      );
+    }
+
+    const workerAgentType = await this.#resolveDefaultTemplateAgentType(task, input?.agentType);
+    const seededPlan = buildPlanSeedFromTemplate(templateId, {
+      agentType: workerAgentType,
+      description: task.description,
+      title: task.title,
+    });
+
+    if (!seededPlan) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.PLAN_TEMPLATE_NOT_FOUND,
+        "Requested plan template was not found.",
+        { templateId },
+      );
+    }
+
+    const validation = await this.#validatePlanPayload(seededPlan.plan);
+
+    if (!validation.ok) {
+      return validation;
+    }
+
+    const nextTask = await this.taskRepository.updateTask(taskId, {
+      currentPlanJson: JSON.stringify(validation.plan),
+      lastError: null,
+    });
+
+    this.#publish(taskId, "task:plan-seeded", {
+      currentPlan: validation.plan,
+      taskId,
+      templateId,
+    });
+
+    return {
+      ok: true,
+      currentPlan: validation.plan,
+      task: nextTask,
+      template: seededPlan.template,
     };
   }
 
@@ -764,7 +839,7 @@ export class TaskService {
       const subTasks = [];
       const subTaskSeedTime = Date.now();
 
-      for (const [index, subtask] of validation.plan.subtasks.entries()) {
+      for (const [index, subtask] of getPlanNodes(validation.plan).entries()) {
         const dependencyBranchSuffixes = subtask.depends_on ?? [];
         subTasks.push(await repository.createSubTask({
           agentType: subtask.recommended_agent,
@@ -777,7 +852,7 @@ export class TaskService {
           description: subtask.description,
           displayName: subtask.title,
           executionOrder: index + 1,
-          role: subtask.branch_suffix,
+          role: subtask.role,
           status: dependencyBranchSuffixes.length > 0 ? SUBTASK_STATUS.BLOCKED : SUBTASK_STATUS.PENDING,
           taskId,
           title: subtask.title,
@@ -3110,6 +3185,23 @@ export class TaskService {
     }
 
     return validation;
+  }
+
+  async #resolveDefaultTemplateAgentType(task, requestedAgentType) {
+    const explicitAgentType = normalizeRequiredString(requestedAgentType);
+
+    if (explicitAgentType) {
+      return explicitAgentType;
+    }
+
+    const directory = await this.agentService.getAgentDirectory();
+    const selectableWorker = directory.workerCandidates?.find((candidate) => candidate.selectable);
+
+    if (selectableWorker?.agentName) {
+      return selectableWorker.agentName;
+    }
+
+    return task.leadAgentType;
   }
 
   close() {
