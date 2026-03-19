@@ -13,14 +13,587 @@ import {
   buildSubTaskStatusLabel,
   buildTaskErrorMessage,
   buildTaskStatusLabel,
+  setLocale,
+  translate,
 } from "./view-model.js";
 
 const STORAGE_KEYS = {
   draftPrefix: "eat.phase06.planDraft",
+  locale: "eat.ui.locale",
   selectedProjectId: "eat.phase04.selectedProjectId",
   selectedTaskId: "eat.phase04.selectedTaskId",
 };
 const DEFAULT_OUTPUT_BUFFER_MAX_BYTES = 65_536;
+const UI_MESSAGES = {
+  "zh-CN": {
+    heroEyebrow: "EAT 控制台",
+    heroTitle: "可通过 Web 操控的 Agent 编排",
+    heroSummary: "从浏览器中创建任务、审阅计划、启动真实 Codex worker，并在隔离 worktree 间完成交接协作。",
+    heroPanelLabel: "当前能力",
+    heroCapabilityLead: "真实 Codex lead 与 worker 执行",
+    heroCapabilityScheduling: "具备依赖感知的多 worktree 调度",
+    heroCapabilityMailbox: "通过 Web 信箱完成 lead 与子任务交接",
+    registerEyebrow: "注册",
+    registerTitle: "添加本地仓库",
+    projectPathLabel: "仓库绝对路径",
+    projectPathHint: "创建任务前请先注册本地 Git 仓库。允许脏工作区，但会在下方明确提示。",
+    registerProjectButton: "注册项目",
+    projectsEyebrow: "项目",
+    projectsTitle: "已注册仓库",
+    refreshListButton: "刷新列表",
+    projectsEmpty: "还没有已注册项目。请先添加一个仓库，再继续创建任务。",
+    detailEyebrow: "详情",
+    projectStatusTitle: "项目状态",
+    refreshStatusButton: "刷新状态",
+    projectDetailEmpty: "选择一个项目以查看分支、工作区清洁度和最近任务活动。",
+    dirtyBannerEyebrow: "脏工作区",
+    dirtyBannerTitle: "存在未提交改动",
+    dirtyBannerBody: "创建任务时仍会快照所选基线分支提交，但 lead 和 worker 会话不应依赖当前 checkout 状态。",
+    registeredProjectEyebrow: "已注册项目",
+    defaultBranchStat: "默认分支",
+    currentBranchStat: "当前分支",
+    projectNameStat: "项目名称",
+    savedPathStat: "保存路径",
+    branchChoicesEyebrow: "分支选项",
+    recentBranchesTitle: "最近本地分支",
+    agentsEyebrow: "Agent",
+    agentHealthTitle: "注册表与健康状态",
+    refreshHealthButton: "刷新健康状态",
+    agentHealthSummary: "只有所选 lead agent 健康时，才会开始需求澄清。创建任务前会持续显示同样的保护信息。",
+    registeredAgentsStat: "已注册 Agent",
+    healthyLeadStat: "健康的 lead 候选",
+    healthyWorkerStat: "健康的 worker 候选",
+    healthCheckedAtStat: "上次健康检查",
+    defaultRuntimeStat: "默认运行时",
+    dockerSandboxStat: "Docker 沙箱",
+    dockerHealthReasonDefault: "Docker 沙箱健康状态会随 Agent 目录一并加载。",
+    agentHealthEmpty: "没有找到已注册 Agent。",
+    createEyebrow: "创建",
+    taskFormTitle: "新建需求澄清任务",
+    baseBranchLabel: "基线分支",
+    leadAgentLabel: "Lead Agent",
+    taskTitleLabel: "任务标题",
+    taskDescriptionLabel: "需求描述",
+    attachmentsLabelStatic: "附件",
+    attachmentsHint: "支持图片、PDF/Markdown/文本文件，以及基于文本的代码文件。不支持或超限文件会在任务创建完成前被拒绝。",
+    createTaskButton: "创建任务",
+    tasksEyebrow: "任务",
+    taskListTitle: "项目任务",
+    refreshTasksButton: "刷新任务",
+    taskListEmpty: "当前所选项目还没有任务。",
+    clarificationEyebrow: "澄清",
+    clarificationTitle: "Lead 会话转录",
+    refreshTaskButton: "刷新任务",
+    taskDetailEmpty: "选择一个任务以查看附件、实时转录与澄清状态。",
+    selectedTaskEyebrow: "当前任务",
+    cleanupWarningsEyebrow: "清理警告",
+    cleanupWarningsTitle: "可能仍需手动清理",
+    leadAgentStat: "Lead Agent",
+    baseCommitStat: "基线提交",
+    latestSessionStat: "最近会话",
+    messagesPersistedStat: "已持久化消息",
+    planVersionStat: "计划版本",
+    snapshotsStat: "快照数",
+    leaderOrchestrationEyebrow: "Leader 编排",
+    teamLifecycleTitle: "Lead 与团队生命周期",
+    teamLifecycleSummary: "先查看 lead 协调者和所有具名 worker，再进入聚焦执行与恢复操作。",
+    teamEmpty: "计划批准并物化为可执行子任务后，团队成员会显示在这里。",
+    leadEyebrow: "Lead",
+    coordinatorTitle: "协调者",
+    attachmentsEyebrow: "附件",
+    taskAttachmentsTitle: "任务范围文件",
+    taskAttachmentsEmpty: "这个任务没有附加文件。",
+    executionEyebrow: "执行",
+    executionBoardTitle: "摘要优先的 worker 看板",
+    executionBoardSummary: "先通过紧凑摘要监控全部子任务，再在需要时聚焦某个会话流获取更深层输出。",
+    executionEmpty: "计划批准后，已批准的子任务和 worker 会话会显示在这里。",
+    focusedSessionEyebrow: "聚焦会话",
+    selectSubtaskTitle: "选择一个子任务",
+    reworkDescriptionLabel: "返工描述",
+    reworkDescriptionPlaceholder: "可选：在重新启动前进一步细化子任务描述。",
+    replacementAgentLabel: "替换 Agent",
+    rebaseRetryButton: "Rebase 并重试",
+    resumeMergeButton: "恢复合并",
+    reworkNowButton: "立即返工",
+    reassignMemberButton: "重新派发成员",
+    cancelMemberButton: "取消成员",
+    replaceWorkerButton: "替换 worker",
+    confirmDiscardButton: "确认丢弃",
+    mergeHistoryEyebrow: "合并历史",
+    attemptTimelineTitle: "尝试时间线",
+    mergeHistoryEmpty: "这个子任务还没有记录任何 merge 或 rebase 尝试。",
+    mailboxEyebrow: "信箱",
+    handoffNotesTitle: "交接说明",
+    mailboxEmpty: "目前还没有发往这个子任务的信箱说明。",
+    sendLeadHandoffLabel: "向该子任务发送 lead 交接说明",
+    sendLeadHandoffPlaceholder: "补充约束、上游预期或集成细节。",
+    sendHandoffNoteButton: "发送交接说明",
+    executionFocusEmpty: "选择一个子任务摘要，即可查看最新 worker 会话，而不必同时挂载所有终端。",
+    planDraftEyebrow: "计划草稿",
+    currentPlanDraftTitle: "当前计划草稿",
+    planEmpty: "确认需求后会触发计划生成、校验与草稿持久化。",
+    planEditorHint: "批准前可先编辑草稿。变更仅保存在当前浏览器，直到草稿同步功能上线。",
+    saveDraftButton: "保存草稿",
+    addSubtaskButton: "添加子任务",
+    resetLocalEditsButton: "重置本地修改",
+    approveDraftButton: "批准草稿",
+    planningNotesLabel: "规划备注",
+    planningNotesPlaceholder: "可选：为当前草稿补充执行备注。",
+    historyEyebrow: "历史",
+    planSnapshotsTitle: "计划快照",
+    planHistoryEmpty: "暂无可恢复的历史快照。",
+    transcriptEyebrow: "转录",
+    transcriptTitle: "已持久化的澄清消息",
+    transcriptEmpty: "开始澄清后，这里会创建首个 lead 会话和转录消息。",
+    startClarificationButton: "开始澄清",
+    confirmRequirementsButton: "已确认需求",
+    sendClarificationReplyLabel: "发送澄清回复",
+    sendClarificationReplyPlaceholder: "补充需求、约束条件或验收标准。",
+    sendMessageButton: "发送消息",
+    documentTitle: "EAT 编排控制台",
+    switchToEnglish: "切换到英文界面",
+    switchToChinese: "切换到中文界面",
+    registering: "注册中...",
+    projectRegistered: "已注册项目 {name}。",
+    creating: "创建中...",
+    taskCreated: "已创建任务 {title}。准备好后即可开始澄清。",
+    starting: "启动中...",
+    sending: "发送中...",
+    confirming: "确认中...",
+    refreshing: "刷新中...",
+    checking: "检查中...",
+    saving: "保存中...",
+    restoring: "恢复中...",
+    relaunching: "重新启动中...",
+    switching: "切换中...",
+    reassigning: "重新派发中...",
+    cancelling: "取消中...",
+    rebasing: "Rebase 中...",
+    resuming: "恢复中...",
+    notConfigured: "未配置",
+    notYetChecked: "尚未检查",
+    dockerReadyReason: "Docker 沙箱健康，可供 worker 会话使用。",
+    capabilityLead: "Lead",
+    capabilityWorker: "Worker",
+    capabilityVision: "视觉",
+    capabilityNoVision: "无视觉",
+    capabilityInteractive: "交互式",
+    capabilityOneShot: "单次执行",
+    sandboxCapability: "{type} 沙箱",
+    runtimeLabel: "运行时",
+    capabilitiesLabel: "能力",
+    failureReasonLabel: "失败原因",
+    none: "无",
+    noLeadAgentsAvailableOption: "没有可用的 lead Agent",
+    unsupportedAttachmentNamed: "{name} 不是受支持的附件类型。",
+    pathMetaLabel: "路径",
+    baseBranchMetaLabel: "基线分支",
+    detachedHead: "游离 HEAD",
+    latestSessionNone: "无",
+    teamMemberCountOne: "{count} 个成员",
+    teamMemberCountOther: "{count} 个成员",
+    leadSessionPending: "待定",
+    leadSessionNotStarted: "Lead 会话尚未开始。",
+    leadVisibleSummary: "随着澄清、规划和审查流程推进，lead agent 会显示在这里。",
+    sessionPending: "会话待启动",
+    sessionIdLabel: "会话 {id}",
+    leadAttentionNeeded: "Lead 需要关注：{error}",
+    leadCoordinatorSummary: "Lead 会作为规划、审查和编排决策中的可见协调者持续存在。",
+    teamMemberFallback: "团队成员",
+    unknownAgent: "未知 Agent",
+    waitingTeamLifecycle: "等待团队生命周期事件。",
+    branchLabel: "分支",
+    worktreeLabel: "Worktree",
+    selectMemberHint: "选择该成员即可查看会话或在下方执行运维操作。",
+    cleanupWarningSummaryOne: "记录了 {count} 条 worktree 清理警告。任务虽已结束，但你可能仍需手动删除残留路径。",
+    cleanupWarningSummaryOther: "记录了 {count} 条 worktree 清理警告。任务虽已结束，但你可能仍需手动删除残留路径。",
+    unknownPath: "未知路径",
+    cleanupFailed: "清理失败。",
+    latestSessionLabel: "最近会话",
+    retriesLabel: "重试次数",
+    sessionsLabelOne: "{count} 次会话",
+    sessionsLabelOther: "{count} 次会话",
+    mergeAttemptsLabel: "合并尝试",
+    latestMergeLabel: "最近合并",
+    attachmentsLabel: "附件",
+    includedCount: "{count} 个纳入",
+    excludedCount: "{count} 个排除",
+    planDraftReady: "计划草稿已可审阅。版本 {version} 已保存，可进入下一阶段。",
+    planningRetryingOne: "计划正在重试，此前已有 {count} 次校验失败。",
+    planningRetryingOther: "计划正在重试，此前已有 {count} 次校验失败。",
+    planningInProgress: "规划进行中，正在等待 lead agent 输出有效的 JSON 草稿。",
+    staleDraftNotice: "服务端草稿已在其他标签页或恢复操作后变更。继续前请先重置本地修改。",
+    saveBeforeApprovalButton: "先保存再批准",
+    agentMetaLabel: "Agent",
+    dependsOnLabel: "依赖于",
+    restoreSnapshotButton: "恢复快照",
+    subtaskNumberLabel: "子任务 {count}",
+    removeButton: "移除",
+    titleField: "标题",
+    workerAgentField: "Worker Agent",
+    descriptionField: "描述",
+    branchSuffixField: "分支后缀",
+    missingSuffix: "缺少后缀",
+    dependsOnField: "依赖项",
+    dependsOnPlaceholder: "backend-contract, auth-api",
+    transcriptRoleOperator: "操作员",
+    transcriptRoleLead: "Lead",
+    transcriptRoleSystem: "系统",
+    latestServerDraftFirst: "请先重置本地修改，再查看最新服务端草稿。",
+    draftSaved: "草稿已保存，服务端校验通过。",
+    latestServerDraftBeforeApproval: "批准前请先将本地修改重置为最新服务端草稿。",
+    saveDraftBeforeApproval: "请先保存草稿，再执行批准。",
+    planApprovedIdempotent: "计划此前已批准，现复用已物化的子任务。",
+    planApprovedNew: "计划已批准，子任务已物化并准备进入执行。",
+    restoreSnapshotConfirm: "将此快照恢复到当前草稿吗？此标签页中未保存的本地修改将被替换。",
+    snapshotRestored: "快照已恢复到当前草稿。",
+    snapshotRestoredNotice: "快照 {snapshotId} 已恢复到当前草稿。",
+    reworkRelaunched: "已在相同分支与 worktree 上重新启动返工。",
+    workerChangedRelaunched: "已切换 worker agent，并在相同分支与 worktree 上重新启动。",
+    memberReassignedRelaunched: "成员已重新派发并重新启动。",
+    memberReassignedQueued: "成员已重新派发。依赖解除后会自动开始。",
+    memberCancelled: "成员已取消。",
+    discardConfirmed: "已确认丢弃该子任务。",
+    rebaseRetrySucceeded: "Rebase 重试成功，合并流程已恢复。",
+    rebaseRetryConflict: "Rebase 重试后仍有冲突，请查看更新后的冲突摘要。",
+    mergeResumed: "合并流程已恢复。",
+    leadHandoffSent: "已发送 lead 交接说明。",
+    readFileError: "无法读取 {name}。",
+    noBranchesAvailable: "没有可用分支",
+    workerCurrentlyAssigned: "{name}（当前已分配）",
+    recoveryDecision: "恢复",
+    launchRecoveryPhase: "启动恢复",
+    replacementWorkerNeeded: "该子任务需要先替换 worker，之后才能重新启动。",
+    sessionTabLabel: "会话 {index} · {status}",
+    waitingWorkerOutput: "等待 worker 输出...",
+    attemptCountOne: "{count} 次尝试",
+    attemptCountOther: "{count} 次尝试",
+    noteCountOne: "{count} 条说明",
+    noteCountOther: "{count} 条说明",
+    snapshotCountOne: "{count} 个快照",
+    snapshotCountOther: "{count} 个快照",
+    regenerationCountOne: "{count} 次重新生成",
+    regenerationCountOther: "{count} 次重新生成",
+    versionSummary: "版本 {version}",
+    notesSummary: "备注：{notes}",
+    unknownSource: "未知来源",
+    unknownTarget: "未知目标",
+    mergeStatusSucceeded: "成功",
+    mergeStatusConflict: "冲突",
+    mergeStatusAborted: "已中止",
+    mergeStatusPending: "待定",
+    mergeOperationMerge: "合并",
+    mergeOperationRebase: "Rebase",
+    mergeNone: "无",
+    resultCommitSummary: "结果提交 {sha}。",
+    mergeFinishedSummary: "{operation} 已结束，状态为{status}。",
+    rebaseSucceededSummary: "{name} 的 Rebase 已成功，系统会自动重试合并。",
+    mergeSucceededSummary: "已将 {name} 合并到任务基线分支。",
+    reviewAcceptedSummary: "最终审查已接受该子任务，可进入合并集合。",
+    reviewReworkSummary: "最终审查要求该子任务再执行一次 worker 返工后才能合并。",
+    reviewDiscardSummary: "最终审查已将该子任务标记为待丢弃。任务继续前需要先确认。",
+    reviewPendingSummary: "worker 成功运行后，这里会出现增量审查结果。",
+    reviewUnavailableSummary: "暂无审查摘要。",
+    mailboxSenderSubtask: "子任务",
+    mailboxSenderSystem: "系统",
+    mailboxSenderLead: "Lead",
+    mailboxLeadTarget: "Lead",
+    assignmentOperator: "操作员指派",
+    assignmentLead: "Lead 指派",
+    logPending: "日志待生成",
+    logPathLabel: "日志 {path}",
+    errorMetaLabel: "错误：{error}",
+    unknownTime: "未知时间",
+    snapshotSourceRestored: "已恢复",
+    snapshotSourceApproved: "已批准",
+    snapshotSourceLeadGenerated: "Lead 生成",
+    snapshotVersionLabel: "版本 {version} · {source}",
+  },
+  en: {
+    heroEyebrow: "EAT Console",
+    heroTitle: "Web-Controlled Agent Orchestration",
+    heroSummary: "Create tasks, review plans, launch real Codex workers, and coordinate handoffs across isolated worktrees from the browser.",
+    heroPanelLabel: "Current capabilities",
+    heroCapabilityLead: "Real Codex lead and worker execution",
+    heroCapabilityScheduling: "Dependency-aware multi-worktree scheduling",
+    heroCapabilityMailbox: "Web mailbox handoff between lead and subtasks",
+    registerEyebrow: "Register",
+    registerTitle: "Add a local repository",
+    projectPathLabel: "Absolute repository path",
+    projectPathHint: "Register a local git repository before creating a task. Dirty working trees are allowed, but clearly flagged below.",
+    registerProjectButton: "Register project",
+    projectsEyebrow: "Projects",
+    projectsTitle: "Registered repositories",
+    refreshListButton: "Refresh list",
+    projectsEmpty: "No projects are registered yet. Add one first, then continue with task creation.",
+    detailEyebrow: "Detail",
+    projectStatusTitle: "Project status",
+    refreshStatusButton: "Refresh status",
+    projectDetailEmpty: "Select a project to inspect branches, cleanliness, and recent task activity.",
+    dirtyBannerEyebrow: "Dirty working tree",
+    dirtyBannerTitle: "Uncommitted changes are present",
+    dirtyBannerBody: "Task creation still snapshots the selected base branch commit, but lead and worker sessions should not depend on the current checkout state.",
+    registeredProjectEyebrow: "Registered project",
+    defaultBranchStat: "Default branch",
+    currentBranchStat: "Current branch",
+    projectNameStat: "Project name",
+    savedPathStat: "Saved path",
+    branchChoicesEyebrow: "Branch choices",
+    recentBranchesTitle: "Recent local branches",
+    agentsEyebrow: "Agents",
+    agentHealthTitle: "Registry and health status",
+    refreshHealthButton: "Refresh health",
+    agentHealthSummary: "Lead clarification only starts when the selected lead agent is healthy. The same guard remains visible before task creation.",
+    registeredAgentsStat: "Registered agents",
+    healthyLeadStat: "Healthy lead candidates",
+    healthyWorkerStat: "Healthy worker candidates",
+    healthCheckedAtStat: "Last health refresh",
+    defaultRuntimeStat: "Default runtime",
+    dockerSandboxStat: "Docker sandbox",
+    dockerHealthReasonDefault: "Docker sandbox health is loaded with the agent directory.",
+    agentHealthEmpty: "No registered agents were found.",
+    createEyebrow: "Create",
+    taskFormTitle: "New clarification task",
+    baseBranchLabel: "Base branch",
+    leadAgentLabel: "Lead agent",
+    taskTitleLabel: "Task title",
+    taskDescriptionLabel: "Requirement description",
+    attachmentsLabelStatic: "Attachments",
+    attachmentsHint: "Supported types: images, PDF/Markdown/text documents, and text-based code files. Unsupported or oversized files are rejected before task creation finishes.",
+    createTaskButton: "Create task",
+    tasksEyebrow: "Tasks",
+    taskListTitle: "Project tasks",
+    refreshTasksButton: "Refresh tasks",
+    taskListEmpty: "No tasks exist for the selected project yet.",
+    clarificationEyebrow: "Clarification",
+    clarificationTitle: "Lead session transcript",
+    refreshTaskButton: "Refresh task",
+    taskDetailEmpty: "Select a task to inspect attachments, live transcript, and clarification state.",
+    selectedTaskEyebrow: "Selected task",
+    cleanupWarningsEyebrow: "Cleanup warnings",
+    cleanupWarningsTitle: "Manual cleanup may still be required",
+    leadAgentStat: "Lead agent",
+    baseCommitStat: "Base commit",
+    latestSessionStat: "Latest session",
+    messagesPersistedStat: "Messages persisted",
+    planVersionStat: "Plan version",
+    snapshotsStat: "Snapshots",
+    leaderOrchestrationEyebrow: "Leader orchestration",
+    teamLifecycleTitle: "Lead and team lifecycle",
+    teamLifecycleSummary: "See the lead coordinator and every named worker before drilling into focused execution and recovery actions.",
+    teamEmpty: "Team members will appear here after plan approval materializes executable subtasks.",
+    leadEyebrow: "Lead",
+    coordinatorTitle: "Coordinator",
+    attachmentsEyebrow: "Attachments",
+    taskAttachmentsTitle: "Task-scoped files",
+    taskAttachmentsEmpty: "No attachments were added for this task.",
+    executionEyebrow: "Execution",
+    executionBoardTitle: "Summary-first worker board",
+    executionBoardSummary: "Monitor every subtask from compact live summaries, then focus a single session stream when you need deeper output.",
+    executionEmpty: "Approved subtasks and worker sessions will appear here after plan approval.",
+    focusedSessionEyebrow: "Focused session",
+    selectSubtaskTitle: "Select a subtask",
+    reworkDescriptionLabel: "Rework description",
+    reworkDescriptionPlaceholder: "Optionally refine the subtask description before relaunch.",
+    replacementAgentLabel: "Replacement agent",
+    rebaseRetryButton: "Rebase & retry",
+    resumeMergeButton: "Resume merge",
+    reworkNowButton: "Rework now",
+    reassignMemberButton: "Reassign member",
+    cancelMemberButton: "Cancel member",
+    replaceWorkerButton: "Replace worker",
+    confirmDiscardButton: "Confirm discard",
+    mergeHistoryEyebrow: "Merge history",
+    attemptTimelineTitle: "Attempt timeline",
+    mergeHistoryEmpty: "No merge or rebase attempts have been recorded for this subtask yet.",
+    mailboxEyebrow: "Mailbox",
+    handoffNotesTitle: "Handoff notes",
+    mailboxEmpty: "No mailbox notes are targeting this subtask yet.",
+    sendLeadHandoffLabel: "Send a lead handoff note to this subtask",
+    sendLeadHandoffPlaceholder: "Share constraints, upstream expectations, or integration details.",
+    sendHandoffNoteButton: "Send handoff note",
+    executionFocusEmpty: "Pick a subtask summary to inspect the latest worker session without mounting every terminal at once.",
+    planDraftEyebrow: "Plan draft",
+    currentPlanDraftTitle: "Current plan draft",
+    planEmpty: "Confirm requirements to trigger plan generation, validation, and draft persistence.",
+    planEditorHint: "Edit the draft before approval. Changes stay in this browser until plan draft sync is enabled.",
+    saveDraftButton: "Save draft",
+    addSubtaskButton: "Add subtask",
+    resetLocalEditsButton: "Reset local edits",
+    approveDraftButton: "Approve draft",
+    planningNotesLabel: "Planning notes",
+    planningNotesPlaceholder: "Optional execution notes for the current draft.",
+    historyEyebrow: "History",
+    planSnapshotsTitle: "Plan snapshots",
+    planHistoryEmpty: "No historical snapshots are available for restore yet.",
+    transcriptEyebrow: "Transcript",
+    transcriptTitle: "Persisted clarification messages",
+    transcriptEmpty: "Start clarification to create the first lead session and transcript entries.",
+    startClarificationButton: "Start clarification",
+    confirmRequirementsButton: "Requirements confirmed",
+    sendClarificationReplyLabel: "Send a clarification reply",
+    sendClarificationReplyPlaceholder: "Clarify requirements, constraints, or acceptance criteria.",
+    sendMessageButton: "Send message",
+    documentTitle: "EAT Orchestration Console",
+    switchToEnglish: "Switch to English",
+    switchToChinese: "Switch to Chinese",
+    registering: "Registering...",
+    projectRegistered: "Registered {name}.",
+    creating: "Creating...",
+    taskCreated: "Created task {title}. Start clarification when you are ready.",
+    starting: "Starting...",
+    sending: "Sending...",
+    confirming: "Confirming...",
+    refreshing: "Refreshing...",
+    checking: "Checking...",
+    saving: "Saving...",
+    restoring: "Restoring...",
+    relaunching: "Relaunching...",
+    switching: "Switching...",
+    reassigning: "Reassigning...",
+    cancelling: "Cancelling...",
+    rebasing: "Rebasing...",
+    resuming: "Resuming...",
+    notConfigured: "Not configured",
+    notYetChecked: "Not yet checked",
+    dockerReadyReason: "Docker sandbox health is ready for worker sessions.",
+    capabilityLead: "Lead",
+    capabilityWorker: "Worker",
+    capabilityVision: "Vision",
+    capabilityNoVision: "No vision",
+    capabilityInteractive: "Interactive",
+    capabilityOneShot: "One-shot",
+    sandboxCapability: "{type} sandbox",
+    runtimeLabel: "Runtime",
+    capabilitiesLabel: "Capabilities",
+    failureReasonLabel: "Failure reason",
+    none: "None",
+    noLeadAgentsAvailableOption: "No lead agents available",
+    unsupportedAttachmentNamed: "{name} is not a supported attachment type.",
+    pathMetaLabel: "Path",
+    baseBranchMetaLabel: "Base branch",
+    detachedHead: "Detached HEAD",
+    latestSessionNone: "None",
+    teamMemberCountOne: "{count} member",
+    teamMemberCountOther: "{count} members",
+    leadSessionPending: "Pending",
+    leadSessionNotStarted: "Lead session has not started yet.",
+    leadVisibleSummary: "The lead agent becomes visible here as clarification, planning, and review runs happen.",
+    sessionPending: "session pending",
+    sessionIdLabel: "session {id}",
+    leadAttentionNeeded: "Lead attention needed: {error}",
+    leadCoordinatorSummary: "Lead remains the visible coordinator for planning, review, and orchestration decisions.",
+    teamMemberFallback: "Team member",
+    unknownAgent: "unknown agent",
+    waitingTeamLifecycle: "Waiting for team lifecycle events.",
+    branchLabel: "Branch",
+    worktreeLabel: "Worktree",
+    selectMemberHint: "Select this member to inspect sessions or run operator actions below.",
+    cleanupWarningSummaryOne: "{count} worktree cleanup warning was recorded. The task is terminal, but you may still need to remove stale paths manually.",
+    cleanupWarningSummaryOther: "{count} worktree cleanup warnings were recorded. The task is terminal, but you may still need to remove stale paths manually.",
+    unknownPath: "Unknown path",
+    cleanupFailed: "Cleanup failed.",
+    latestSessionLabel: "Latest session",
+    retriesLabel: "Retries",
+    sessionsLabelOne: "{count} session",
+    sessionsLabelOther: "{count} sessions",
+    mergeAttemptsLabel: "Merge attempts",
+    latestMergeLabel: "Latest merge",
+    attachmentsLabel: "Attachments",
+    includedCount: "{count} included",
+    excludedCount: "{count} excluded",
+    planDraftReady: "Plan draft ready for review. Version {version} is saved and available for the next phase.",
+    planningRetryingOne: "Planning is retrying after {count} validation failure.",
+    planningRetryingOther: "Planning is retrying after {count} validation failures.",
+    planningInProgress: "Planning is in progress. Waiting for a valid JSON draft from the lead agent.",
+    staleDraftNotice: "Server draft changed in another tab or after a restore. Reset local edits before continuing.",
+    saveBeforeApprovalButton: "Save before approval",
+    agentMetaLabel: "Agent",
+    dependsOnLabel: "Depends on",
+    restoreSnapshotButton: "Restore snapshot",
+    subtaskNumberLabel: "Subtask {count}",
+    removeButton: "Remove",
+    titleField: "Title",
+    workerAgentField: "Worker agent",
+    descriptionField: "Description",
+    branchSuffixField: "Branch suffix",
+    missingSuffix: "missing-suffix",
+    dependsOnField: "Depends on",
+    dependsOnPlaceholder: "backend-contract, auth-api",
+    transcriptRoleOperator: "Operator",
+    transcriptRoleLead: "Lead",
+    transcriptRoleSystem: "System",
+    latestServerDraftFirst: "Reset local edits to review the latest server draft first.",
+    draftSaved: "Draft saved. Server validation passed.",
+    latestServerDraftBeforeApproval: "Reset local edits to the latest server draft before approval.",
+    saveDraftBeforeApproval: "Save the draft before approval.",
+    planApprovedIdempotent: "Plan was already approved. Materialized subtasks were reused.",
+    planApprovedNew: "Plan approved. Subtasks are materialized and ready for execution.",
+    restoreSnapshotConfirm: "Restore this snapshot into the current draft? Unsaved local edits in this tab will be replaced.",
+    snapshotRestored: "Snapshot restored into the current draft.",
+    snapshotRestoredNotice: "Snapshot {snapshotId} was restored into the current draft.",
+    reworkRelaunched: "Rework relaunched on the same branch and worktree.",
+    workerChangedRelaunched: "Worker agent changed and relaunched on the same branch and worktree.",
+    memberReassignedRelaunched: "Member reassigned and relaunched.",
+    memberReassignedQueued: "Member reassigned. It will start automatically after dependencies clear.",
+    memberCancelled: "Member cancelled.",
+    discardConfirmed: "Subtask discard confirmed.",
+    rebaseRetrySucceeded: "Rebase retry succeeded. Merge flow resumed.",
+    rebaseRetryConflict: "Rebase retry still conflicted. Review the updated conflict summary.",
+    mergeResumed: "Merge flow resumed.",
+    leadHandoffSent: "Lead handoff note sent.",
+    readFileError: "Unable to read {name}.",
+    noBranchesAvailable: "No branches available",
+    workerCurrentlyAssigned: "{name} (currently assigned)",
+    recoveryDecision: "Recovery",
+    launchRecoveryPhase: "Launch recovery",
+    replacementWorkerNeeded: "This subtask needs a replacement worker before it can relaunch.",
+    sessionTabLabel: "Session {index} · {status}",
+    waitingWorkerOutput: "Waiting for worker output...",
+    attemptCountOne: "{count} attempt",
+    attemptCountOther: "{count} attempts",
+    noteCountOne: "{count} note",
+    noteCountOther: "{count} notes",
+    snapshotCountOne: "{count} snapshot",
+    snapshotCountOther: "{count} snapshots",
+    regenerationCountOne: "{count} regeneration",
+    regenerationCountOther: "{count} regenerations",
+    versionSummary: "Version {version}",
+    notesSummary: "Notes: {notes}",
+    unknownSource: "unknown source",
+    unknownTarget: "unknown target",
+    mergeStatusSucceeded: "Succeeded",
+    mergeStatusConflict: "Conflict",
+    mergeStatusAborted: "Aborted",
+    mergeStatusPending: "Pending",
+    mergeOperationMerge: "Merge",
+    mergeOperationRebase: "Rebase",
+    mergeNone: "None",
+    resultCommitSummary: "Result commit {sha}.",
+    mergeFinishedSummary: "{operation} finished with {status}.",
+    rebaseSucceededSummary: "Rebase succeeded for {name}. Merge will retry automatically.",
+    mergeSucceededSummary: "Merged {name} into the task base branch.",
+    reviewAcceptedSummary: "Final review accepted this subtask for the merge set.",
+    reviewReworkSummary: "Final review requires another worker pass before this subtask can merge.",
+    reviewDiscardSummary: "Final review marked this subtask for discard. Confirm before the task can continue.",
+    reviewPendingSummary: "Incremental review will appear after a successful worker run.",
+    reviewUnavailableSummary: "No review summary available.",
+    mailboxSenderSubtask: "Subtask",
+    mailboxSenderSystem: "System",
+    mailboxSenderLead: "Lead",
+    mailboxLeadTarget: "Lead",
+    assignmentOperator: "Operator assigned",
+    assignmentLead: "Lead assigned",
+    logPending: "log pending",
+    logPathLabel: "log {path}",
+    errorMetaLabel: "error: {error}",
+    unknownTime: "Unknown time",
+    snapshotSourceRestored: "Restored",
+    snapshotSourceApproved: "Approved",
+    snapshotSourceLeadGenerated: "Lead generated",
+    snapshotVersionLabel: "Version {version} · {source}",
+  },
+};
 
 const state = {
   agentHealth: {},
@@ -28,6 +601,7 @@ const state = {
   executionDrafts: new Map(),
   healthCheckedAt: null,
   leadCandidates: [],
+  locale: normalizeLocale(readStorage(STORAGE_KEYS.locale)),
   liveSessionOutputs: new Map(),
   projectDetail: null,
   projects: [],
@@ -66,6 +640,7 @@ const elements = {
   dirtyWarningBanner: document.querySelector("#dirty-warning-banner"),
   healthyLeadCount: document.querySelector("#healthy-lead-count"),
   healthyWorkerCount: document.querySelector("#healthy-worker-count"),
+  languageToggle: document.querySelector("#language-toggle"),
   leadAgentFeedback: document.querySelector("#lead-agent-feedback"),
   leadAgentSelect: document.querySelector("#lead-agent-select"),
   projectDetail: document.querySelector("#project-detail"),
@@ -116,9 +691,11 @@ const elements = {
   taskExecutionAgentField: document.querySelector("#task-execution-agent-field"),
   taskExecutionAgentSelect: document.querySelector("#task-execution-agent-select"),
   taskExecutionChangeAgentButton: document.querySelector("#task-execution-change-agent-button"),
+  taskExecutionCancelButton: document.querySelector("#task-execution-cancel-button"),
   taskExecutionConfirmDiscardButton: document.querySelector("#task-execution-confirm-discard-button"),
   taskExecutionReworkButton: document.querySelector("#task-execution-rework-button"),
   taskExecutionRebaseRetryButton: document.querySelector("#task-execution-rebase-retry-button"),
+  taskExecutionReassignButton: document.querySelector("#task-execution-reassign-button"),
   taskExecutionReworkDescription: document.querySelector("#task-execution-rework-description"),
   taskExecutionReworkField: document.querySelector("#task-execution-rework-field"),
   taskExecutionResumeMergeButton: document.querySelector("#task-execution-resume-merge-button"),
@@ -126,6 +703,14 @@ const elements = {
   taskExecutionMergeHistoryCount: document.querySelector("#task-execution-merge-history-count"),
   taskExecutionMergeHistoryEmpty: document.querySelector("#task-execution-merge-history-empty"),
   taskExecutionMergeHistoryList: document.querySelector("#task-execution-merge-history-list"),
+  taskExecutionMailbox: document.querySelector("#task-execution-mailbox"),
+  taskExecutionMailboxCount: document.querySelector("#task-execution-mailbox-count"),
+  taskExecutionMailboxEmpty: document.querySelector("#task-execution-mailbox-empty"),
+  taskExecutionMailboxFeedback: document.querySelector("#task-execution-mailbox-feedback"),
+  taskExecutionMailboxForm: document.querySelector("#task-execution-mailbox-form"),
+  taskExecutionMailboxInput: document.querySelector("#task-execution-mailbox-input"),
+  taskExecutionMailboxList: document.querySelector("#task-execution-mailbox-list"),
+  taskExecutionMailboxSendButton: document.querySelector("#task-execution-mailbox-send-button"),
   taskExecutionReviewActions: document.querySelector("#task-execution-review-actions"),
   taskExecutionReview: document.querySelector("#task-execution-review"),
   taskExecutionReviewDecision: document.querySelector("#task-execution-review-decision"),
@@ -135,6 +720,13 @@ const elements = {
   taskExecutionFocusTitle: document.querySelector("#task-execution-focus-title"),
   taskExecutionSessionList: document.querySelector("#task-execution-session-list"),
   taskExecutionList: document.querySelector("#task-execution-list"),
+  taskTeamEmpty: document.querySelector("#task-team-empty"),
+  taskTeamLeadMeta: document.querySelector("#task-team-lead-meta"),
+  taskTeamLeadStatus: document.querySelector("#task-team-lead-status"),
+  taskTeamLeadSummary: document.querySelector("#task-team-lead-summary"),
+  taskTeamMemberCount: document.querySelector("#task-team-member-count"),
+  taskTeamMemberList: document.querySelector("#task-team-member-list"),
+  taskTeamShell: document.querySelector("#task-team-shell"),
   taskFormFeedback: document.querySelector("#task-form-feedback"),
   taskLeadAgent: document.querySelector("#task-lead-agent"),
   taskList: document.querySelector("#task-list"),
@@ -167,6 +759,8 @@ const elements = {
   taskAttachmentsInput: document.querySelector("#task-attachments-input"),
 };
 
+setLocale(state.locale);
+
 elements.projectRegistrationForm.addEventListener("submit", onRegisterProject);
 elements.refreshProjectsButton.addEventListener("click", () => {
   void loadProjects({ preserveSelection: true });
@@ -179,6 +773,7 @@ elements.refreshProjectDetailButton.addEventListener("click", () => {
 elements.refreshAgentHealthButton.addEventListener("click", () => {
   void loadAgents({ force: true });
 });
+elements.languageToggle?.addEventListener("click", onToggleLanguage);
 elements.leadAgentSelect.addEventListener("change", (event) => {
   state.selectedLeadAgentName = event.target.value || null;
   renderLeadSelector();
@@ -208,18 +803,22 @@ elements.taskPlanSaveDraftButton.addEventListener("click", onSavePlanDraft);
 elements.taskPlanNotesInput.addEventListener("input", onPlanNotesInput);
 elements.taskExecutionAgentSelect.addEventListener("change", onExecutionDraftAgentInput);
 elements.taskExecutionChangeAgentButton.addEventListener("click", onChangeSubTaskAgent);
+elements.taskExecutionCancelButton.addEventListener("click", onCancelSubTask);
 elements.taskExecutionConfirmDiscardButton.addEventListener("click", onConfirmDiscardSubTask);
 elements.taskExecutionRebaseRetryButton.addEventListener("click", onRebaseRetrySubTask);
+elements.taskExecutionReassignButton.addEventListener("click", onReassignSubTask);
 elements.taskExecutionReworkButton.addEventListener("click", onReworkSubTask);
 elements.taskExecutionResumeMergeButton.addEventListener("click", onResumeTaskMerge);
 elements.taskExecutionReworkDescription.addEventListener("input", onExecutionDraftDescriptionInput);
+elements.taskExecutionMailboxForm.addEventListener("submit", onSendMailboxMessage);
 
+renderLocale();
 void Promise.all([loadProjects({ preserveSelection: true }), loadAgents()]);
 
 async function onRegisterProject(event) {
   event.preventDefault();
   clearFeedback(elements.registrationFeedback);
-  setButtonBusy(elements.registerProjectButton, true, "Registering...");
+  setButtonBusy(elements.registerProjectButton, true, t("registering"));
 
   try {
     const response = await fetchJson("/api/projects", {
@@ -230,7 +829,7 @@ async function onRegisterProject(event) {
     showFeedback(
       elements.registrationFeedback,
       "success",
-      `Registered ${response.project.name}.`,
+      t("projectRegistered", { name: response.project.name }),
     );
 
     elements.projectRegistrationForm.reset();
@@ -238,7 +837,7 @@ async function onRegisterProject(event) {
   } catch (error) {
     showFeedback(elements.registrationFeedback, "error", buildProjectErrorMessage(error));
   } finally {
-    setButtonBusy(elements.registerProjectButton, false, "Register project");
+    setButtonBusy(elements.registerProjectButton, false, t("registerProjectButton"));
   }
 }
 
@@ -246,7 +845,7 @@ async function onCreateTask(event) {
   event.preventDefault();
   clearFeedback(elements.taskFormFeedback);
   clearFeedback(elements.taskAttachmentFeedback);
-  setButtonBusy(elements.createTaskButton, true, "Creating...");
+  setButtonBusy(elements.createTaskButton, true, t("creating"));
 
   try {
     const attachments = await readDraftAttachments();
@@ -266,7 +865,7 @@ async function onCreateTask(event) {
     showFeedback(
       elements.taskFormFeedback,
       "success",
-      `Created task ${response.task.title}. Start clarification when you are ready.`,
+      t("taskCreated", { title: response.task.title }),
     );
 
     elements.taskCreationForm.reset();
@@ -283,7 +882,7 @@ async function onCreateTask(event) {
 
     showFeedback(feedbackTarget, "error", message);
   } finally {
-    setButtonBusy(elements.createTaskButton, false, "Create task");
+    setButtonBusy(elements.createTaskButton, false, t("createTaskButton"));
   }
 }
 
@@ -293,7 +892,7 @@ async function onStartClarification() {
   }
 
   clearFeedback(elements.taskDetailFeedback);
-  setButtonBusy(elements.startClarificationButton, true, "Starting...");
+  setButtonBusy(elements.startClarificationButton, true, t("starting"));
 
   try {
     connectTaskStream(state.selectedTaskId);
@@ -309,7 +908,7 @@ async function onStartClarification() {
   } catch (error) {
     showFeedback(elements.taskDetailFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.startClarificationButton, false, "Start clarification");
+    setButtonBusy(elements.startClarificationButton, false, t("startClarificationButton"));
   }
 }
 
@@ -321,7 +920,7 @@ async function onSendTaskMessage(event) {
   }
 
   clearFeedback(elements.taskDetailFeedback);
-  setButtonBusy(elements.sendTaskMessageButton, true, "Sending...");
+  setButtonBusy(elements.sendTaskMessageButton, true, t("sending"));
 
   try {
     await fetchJson(`/api/tasks/${encodeURIComponent(state.selectedTaskId)}/messages`, {
@@ -333,7 +932,7 @@ async function onSendTaskMessage(event) {
   } catch (error) {
     showFeedback(elements.taskDetailFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.sendTaskMessageButton, false, "Send message");
+    setButtonBusy(elements.sendTaskMessageButton, false, t("sendMessageButton"));
   }
 }
 
@@ -343,7 +942,7 @@ async function onConfirmRequirements() {
   }
 
   clearFeedback(elements.taskDetailFeedback);
-  setButtonBusy(elements.confirmRequirementsButton, true, "Confirming...");
+  setButtonBusy(elements.confirmRequirementsButton, true, t("confirming"));
 
   try {
     const response = await fetchJson(
@@ -358,13 +957,13 @@ async function onConfirmRequirements() {
   } catch (error) {
     showFeedback(elements.taskDetailFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.confirmRequirementsButton, false, "Requirements confirmed");
+    setButtonBusy(elements.confirmRequirementsButton, false, t("confirmRequirementsButton"));
   }
 }
 
 async function loadProjects(options = {}) {
   clearFeedback(elements.projectListFeedback);
-  setButtonBusy(elements.refreshProjectsButton, true, "Refreshing...");
+  setButtonBusy(elements.refreshProjectsButton, true, t("refreshing"));
 
   try {
     const response = await fetchJson("/api/projects");
@@ -394,7 +993,7 @@ async function loadProjects(options = {}) {
     clearTaskDetail();
     showFeedback(elements.projectListFeedback, "error", buildProjectErrorMessage(error));
   } finally {
-    setButtonBusy(elements.refreshProjectsButton, false, "Refresh list");
+    setButtonBusy(elements.refreshProjectsButton, false, t("refreshListButton"));
   }
 }
 
@@ -411,7 +1010,7 @@ async function selectProject(projectId, options = {}) {
 
 async function loadProjectDetail(projectId) {
   clearFeedback(elements.projectDetailFeedback);
-  setButtonBusy(elements.refreshProjectDetailButton, true, "Refreshing...");
+  setButtonBusy(elements.refreshProjectDetailButton, true, t("refreshing"));
 
   try {
     const response = await fetchJson(`/api/projects/${encodeURIComponent(projectId)}`);
@@ -423,13 +1022,13 @@ async function loadProjectDetail(projectId) {
     clearProjectDetail();
     showFeedback(elements.projectDetailFeedback, "error", buildProjectErrorMessage(error));
   } finally {
-    setButtonBusy(elements.refreshProjectDetailButton, false, "Refresh status");
+    setButtonBusy(elements.refreshProjectDetailButton, false, t("refreshStatusButton"));
   }
 }
 
 async function loadProjectTasks(projectId, options = {}) {
   clearFeedback(elements.taskListFeedback);
-  setButtonBusy(elements.refreshTasksButton, true, "Refreshing...");
+  setButtonBusy(elements.refreshTasksButton, true, t("refreshing"));
 
   try {
     const response = await fetchJson(`/api/projects/${encodeURIComponent(projectId)}/tasks`);
@@ -453,7 +1052,7 @@ async function loadProjectTasks(projectId, options = {}) {
     clearTaskDetail();
     showFeedback(elements.taskListFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.refreshTasksButton, false, "Refresh tasks");
+    setButtonBusy(elements.refreshTasksButton, false, t("refreshTasksButton"));
   }
 }
 
@@ -464,7 +1063,7 @@ async function loadTaskDetail(taskId, options = {}) {
   }
 
   clearFeedback(elements.taskDetailFeedback);
-  setButtonBusy(elements.refreshTaskDetailButton, true, "Refreshing...");
+  setButtonBusy(elements.refreshTaskDetailButton, true, t("refreshing"));
 
   try {
     const response = await fetchJson(`/api/tasks/${encodeURIComponent(taskId)}`);
@@ -482,13 +1081,13 @@ async function loadTaskDetail(taskId, options = {}) {
     clearTaskDetail();
     showFeedback(elements.taskDetailFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.refreshTaskDetailButton, false, "Refresh task");
+    setButtonBusy(elements.refreshTaskDetailButton, false, t("refreshTaskButton"));
   }
 }
 
 async function loadAgents(options = {}) {
   clearFeedback(elements.agentHealthFeedback);
-  setButtonBusy(elements.refreshAgentHealthButton, true, "Refreshing...");
+  setButtonBusy(elements.refreshAgentHealthButton, true, t("refreshing"));
 
   try {
     const refreshSuffix = options.force ? "?refresh=1" : "";
@@ -525,7 +1124,7 @@ async function loadAgents(options = {}) {
     renderLeadSelector();
     showFeedback(elements.agentHealthFeedback, "error", buildAgentErrorMessage(error));
   } finally {
-    setButtonBusy(elements.refreshAgentHealthButton, false, "Refresh health");
+    setButtonBusy(elements.refreshAgentHealthButton, false, t("refreshHealthButton"));
   }
 }
 
@@ -546,9 +1145,9 @@ function renderProjectList() {
     button.innerHTML = `
       <div class="project-list__topline">
         <p class="project-list__title">${escapeHtml(project.name)}</p>
-        <span class="badge badge--clean">${escapeHtml(project.defaultBranch ?? "Unknown")}</span>
+        <span class="badge badge--clean">${escapeHtml(project.defaultBranch ?? t("unknown"))}</span>
       </div>
-      <p class="project-list__meta"><strong>Path:</strong> <span class="project-list__path">${escapeHtml(project.path)}</span></p>
+      <p class="project-list__meta"><strong>${escapeHtml(t("pathMetaLabel"))}:</strong> <span class="project-list__path">${escapeHtml(project.path)}</span></p>
     `;
 
     button.addEventListener("click", () => {
@@ -574,8 +1173,8 @@ function renderProjectDetail() {
   elements.projectPath.textContent = project.path;
   elements.registeredName.textContent = project.name;
   elements.registeredPath.textContent = project.path;
-  elements.defaultBranch.textContent = repoStatus.defaultBranch ?? "Unknown";
-  elements.currentBranch.textContent = repoStatus.currentBranch ?? "Detached HEAD";
+  elements.defaultBranch.textContent = repoStatus.defaultBranch ?? t("unknown");
+  elements.currentBranch.textContent = repoStatus.currentBranch ?? t("detachedHead");
   elements.cleanlinessBadge.textContent = buildCleanlinessLabel(repoStatus.isDirty);
   elements.cleanlinessBadge.className = `badge ${repoStatus.isDirty ? "badge--dirty" : "badge--clean"}`;
   elements.dirtyWarningBanner.hidden = !repoStatus.isDirty;
@@ -596,24 +1195,24 @@ function renderAgentHealth() {
   elements.healthyWorkerCount.textContent = String(state.workerCandidates.filter((candidate) => candidate.selectable).length);
   elements.agentRuntimeSummary.textContent = state.systemSandboxPolicy?.defaultWorkerImage
     ? `${state.systemSandboxPolicy.defaultSandboxType} · ${state.systemSandboxPolicy.defaultWorkerImage}`
-    : "Not configured";
+    : t("notConfigured");
   elements.agentHealthCheckedAt.textContent = state.healthCheckedAt
-    ? new Date(state.healthCheckedAt).toLocaleString()
-    : "Not yet checked";
+    ? new Date(state.healthCheckedAt).toLocaleString(state.locale)
+    : t("notYetChecked");
   elements.dockerHealthBadge.textContent = buildDockerHealthLabel(state.systemDockerHealth);
   elements.dockerHealthBadge.className = `badge ${state.systemDockerHealth?.available ? "badge--clean" : "badge--dirty"}`;
   elements.dockerHealthReason.textContent = state.systemDockerHealth?.reason
-    ?? "Docker sandbox health is ready for worker sessions.";
+    ?? t("dockerReadyReason");
   elements.agentHealthEmpty.hidden = state.agents.length > 0;
 
   for (const agent of state.agents) {
     const snapshot = state.agentHealth[agent.name];
     const capabilityBadges = [
-      agent.roles.leadCandidate ? "Lead" : null,
-      agent.roles.workerCandidate ? "Worker" : null,
-      agent.capabilities.supportsVision ? "Vision" : "No vision",
-      agent.capabilities.supportsInteractiveInput ? "Interactive" : "One-shot",
-      ...(agent.capabilities.supportedSandboxTypes ?? []).map((sandboxType) => `${sandboxType} sandbox`),
+      agent.roles.leadCandidate ? t("capabilityLead") : null,
+      agent.roles.workerCandidate ? t("capabilityWorker") : null,
+      agent.capabilities.supportsVision ? t("capabilityVision") : t("capabilityNoVision"),
+      agent.capabilities.supportsInteractiveInput ? t("capabilityInteractive") : t("capabilityOneShot"),
+      ...(agent.capabilities.supportedSandboxTypes ?? []).map((sandboxType) => t("sandboxCapability", { type: sandboxType })),
     ].filter(Boolean);
     const article = document.createElement("article");
     article.className = "agent-card";
@@ -626,9 +1225,9 @@ function renderAgentHealth() {
         </div>
         <span class="badge ${snapshot?.available ? "badge--clean" : "badge--dirty"}">${escapeHtml(buildAgentStatusLabel(snapshot))}</span>
       </div>
-      <p class="agent-card__meta"><strong>Runtime:</strong> ${escapeHtml(buildAgentRuntimeModeLabel(agent, snapshot))}</p>
-      <p class="agent-card__meta"><strong>Capabilities:</strong> ${escapeHtml(capabilityBadges.join(" · "))}</p>
-      <p class="agent-card__meta"><strong>Failure reason:</strong> ${escapeHtml(snapshot?.failureReason?.message ?? "None")}</p>
+      <p class="agent-card__meta"><strong>${escapeHtml(t("runtimeLabel"))}:</strong> ${escapeHtml(buildAgentRuntimeModeLabel(agent, snapshot))}</p>
+      <p class="agent-card__meta"><strong>${escapeHtml(t("capabilitiesLabel"))}:</strong> ${escapeHtml(capabilityBadges.join(" · "))}</p>
+      <p class="agent-card__meta"><strong>${escapeHtml(t("failureReasonLabel"))}:</strong> ${escapeHtml(snapshot?.failureReason?.message ?? t("none"))}</p>
     `;
 
     elements.agentHealthList.append(article);
@@ -641,11 +1240,11 @@ function renderLeadSelector() {
   if (state.leadCandidates.length === 0) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No lead agents available";
+    option.textContent = t("noLeadAgentsAvailableOption");
     elements.leadAgentSelect.append(option);
     elements.leadAgentSelect.disabled = true;
     elements.createTaskButton.disabled = true;
-    showFeedback(elements.leadAgentFeedback, "error", "No lead-capable agents are registered yet.");
+    showFeedback(elements.leadAgentFeedback, "error", translate("noLeadCandidates"));
     return;
   }
 
@@ -655,7 +1254,7 @@ function renderLeadSelector() {
     option.selected = candidate.agentName === state.selectedLeadAgentName;
     option.textContent = candidate.selectable
       ? candidate.agentName
-      : `${candidate.agentName} (unhealthy)`;
+      : `${candidate.agentName} (${translate("unavailable")})`;
     elements.leadAgentSelect.append(option);
   }
 
@@ -683,7 +1282,7 @@ function renderDraftAttachments() {
     showFeedback(
       elements.taskAttachmentFeedback,
       "error",
-      `${invalidFile.name} is not a supported attachment type.`,
+      t("unsupportedAttachmentNamed", { name: invalidFile.name }),
     );
   }
 
@@ -720,7 +1319,7 @@ function renderTaskList() {
         <p class="task-list__title">${escapeHtml(task.title)}</p>
         <span class="badge ${task.status === "CLARIFYING" ? "badge--accent-soft" : task.status === "PLANNING" ? "badge--clean" : "badge--outline"}">${escapeHtml(buildTaskStatusLabel(task.status))}</span>
       </div>
-      <p class="task-list__meta"><strong>Base branch:</strong> ${escapeHtml(task.baseBranch)}</p>
+      <p class="task-list__meta"><strong>${escapeHtml(t("baseBranchMetaLabel"))}:</strong> ${escapeHtml(task.baseBranch)}</p>
     `;
     button.addEventListener("click", () => {
       void loadTaskDetail(task.id);
@@ -747,13 +1346,16 @@ function renderTaskDetail() {
   elements.taskBaseBranchBadge.textContent = detail.task.baseBranch;
   elements.taskLeadAgent.textContent = detail.task.leadAgentType;
   elements.taskBaseCommit.textContent = detail.task.baseCommitSha;
-  elements.taskSessionStatus.textContent = latestSession ? `${latestSession.sessionType} · ${latestSession.status}` : "None";
+  elements.taskSessionStatus.textContent = latestSession
+    ? `${translateSessionType(latestSession.sessionType)} · ${translateStatusLabel(latestSession.status)}`
+    : t("latestSessionNone");
   elements.taskMessageCount.textContent = String(detail.messages?.length ?? 0);
   elements.taskPlanVersion.textContent = String(detail.task.planVersion ?? 0);
   elements.taskPlanSnapshotCount.textContent = String(detail.planSnapshots?.length ?? 0);
 
   syncEditablePlanDraft(detail);
   renderCleanupWarnings(detail.cleanupWarnings ?? []);
+  renderTeamView(detail);
   renderTaskAttachments(detail.attachments ?? []);
   renderPlanDraft(detail);
   renderSubTaskExecution(detail);
@@ -765,6 +1367,97 @@ function renderTaskDetail() {
   elements.startClarificationButton.hidden = !canStartClarification;
   elements.confirmRequirementsButton.hidden = !canConfirmRequirements;
   elements.taskMessageForm.hidden = !canConfirmRequirements;
+}
+
+function renderTeamView(detail) {
+  const leadSessions = (detail.sessions ?? []).filter((session) => session.sessionType === "LEAD");
+  const latestLeadSession = leadSessions.at(-1) ?? null;
+  const lead = {
+    ...(detail.team?.lead ?? {}),
+    agentType: detail.team?.lead?.agentType ?? detail.task.leadAgentType,
+    sessionId: latestLeadSession?.id ?? detail.team?.lead?.sessionId ?? null,
+    status: latestLeadSession?.status ?? detail.team?.lead?.status ?? "PENDING",
+  };
+  const members = (detail.subTasks ?? []).map((subTask, index) => {
+    const latestWorkerSession = (detail.sessions ?? [])
+      .filter((session) => session.sessionType === "WORKER" && session.subTaskId === subTask.id)
+      .at(-1) ?? null;
+
+    return {
+      ...subTask,
+      assignmentSource: subTask.assignmentSource ?? (subTask.autoAssigned ? "LEAD" : "OPERATOR"),
+      displayName: subTask.displayName ?? subTask.title,
+      executionOrder: subTask.executionOrder ?? index + 1,
+      latestSessionStatus: latestWorkerSession?.status ?? null,
+      role: subTask.role ?? subTask.branchSuffix ?? t("capabilityWorker").toLowerCase(),
+      runSummary: subTask.runSummary ?? t("waitingTeamLifecycle"),
+      subtaskId: subTask.id,
+    };
+  });
+
+  elements.taskTeamMemberList.replaceChildren();
+  elements.taskTeamMemberCount.textContent = countLabel(members.length, "teamMemberCountOne", "teamMemberCountOther");
+  elements.taskTeamEmpty.hidden = members.length > 0;
+  elements.taskTeamShell.hidden = members.length === 0;
+
+  if (!lead) {
+    elements.taskTeamLeadStatus.textContent = t("leadSessionPending");
+    elements.taskTeamLeadStatus.className = "badge badge--outline";
+    elements.taskTeamLeadMeta.textContent = t("leadSessionNotStarted");
+    elements.taskTeamLeadSummary.textContent = t("leadVisibleSummary");
+  } else {
+    elements.taskTeamLeadStatus.textContent = translateStatusLabel(lead.status ?? "PENDING");
+    elements.taskTeamLeadStatus.className = `badge ${lead.status === "RUNNING" ? "badge--accent-soft" : lead.status === "FAILED" ? "badge--dirty" : "badge--outline"}`;
+    elements.taskTeamLeadMeta.textContent = [
+      lead.agentType ?? detail.task.leadAgentType,
+      lead.sessionId ? t("sessionIdLabel", { id: lead.sessionId }) : t("sessionPending"),
+    ].join(" · ");
+    elements.taskTeamLeadSummary.textContent = lead.lastError
+      ? t("leadAttentionNeeded", { error: lead.lastError })
+      : t("leadCoordinatorSummary");
+  }
+
+  for (const member of members) {
+    const card = document.createElement("button");
+    const isSelected = member.subtaskId === state.selectedExecutionSubTaskId;
+
+    card.type = "button";
+    card.className = `team-member-card${isSelected ? " is-selected" : ""}`;
+    card.innerHTML = `
+      <div class="team-member-card__header">
+        <div>
+          <div class="team-member-card__topline">
+            <p class="team-member-card__title">${escapeHtml(member.displayName ?? member.title ?? t("teamMemberFallback"))}</p>
+            <span class="badge badge--outline">${escapeHtml(buildAssignmentSourceLabel(member.assignmentSource))}</span>
+          </div>
+          <p class="team-member-card__meta">${escapeHtml([
+            member.role ?? t("capabilityWorker").toLowerCase(),
+            member.agentType ?? t("unknownAgent"),
+            translateStatusLabel(member.latestSessionStatus ?? member.status ?? "PENDING"),
+          ].join(" · "))}</p>
+        </div>
+        <span class="badge ${buildExecutionStatusBadgeClass(member.status)}">${escapeHtml(buildSubTaskStatusLabel(member.status))}</span>
+      </div>
+      <p class="team-member-card__summary">${escapeHtml(member.runSummary ?? t("waitingTeamLifecycle"))}</p>
+      <dl class="team-member-card__facts">
+        <div>
+          <dt>${escapeHtml(t("branchLabel"))}</dt>
+          <dd>${escapeHtml(member.branchName ?? member.branchSuffix ?? t("leadSessionPending"))}</dd>
+        </div>
+        <div>
+          <dt>${escapeHtml(t("worktreeLabel"))}</dt>
+          <dd>${escapeHtml(member.worktreePath ?? t("leadSessionPending"))}</dd>
+        </div>
+      </dl>
+      <p class="team-member-card__hint">${escapeHtml(t("selectMemberHint"))}</p>
+    `;
+    card.addEventListener("click", () => {
+      state.selectedExecutionSubTaskId = member.subtaskId;
+      state.selectedExecutionSessionId = resolveFocusedSession(detail, member.subtaskId)?.id ?? null;
+      renderTaskDetail();
+    });
+    elements.taskTeamMemberList.append(card);
+  }
 }
 
 function renderTaskAttachments(attachments) {
@@ -791,14 +1484,18 @@ function renderCleanupWarnings(cleanupWarnings) {
     return;
   }
 
-  elements.taskCleanupWarningSummary.textContent = `${cleanupWarnings.length} worktree cleanup warning${cleanupWarnings.length === 1 ? "" : "s"} were recorded. The task is still terminal, but you may need to remove stale paths manually.`;
+  elements.taskCleanupWarningSummary.textContent = countLabel(
+    cleanupWarnings.length,
+    "cleanupWarningSummaryOne",
+    "cleanupWarningSummaryOther",
+  );
 
   for (const warning of cleanupWarnings) {
     const item = document.createElement("article");
     item.className = "cleanup-warning-list__item";
     item.innerHTML = `
-      <p class="cleanup-warning-list__path">${escapeHtml(warning.worktreePath ?? "Unknown path")}</p>
-      <p class="cleanup-warning-list__reason">${escapeHtml(warning.reason ?? "Cleanup failed.")}</p>
+      <p class="cleanup-warning-list__path">${escapeHtml(warning.worktreePath ?? t("unknownPath"))}</p>
+      <p class="cleanup-warning-list__reason">${escapeHtml(warning.reason ?? t("cleanupFailed"))}</p>
       <p class="cleanup-warning-list__meta">${escapeHtml(formatTimestamp(warning.createdAt))}</p>
     `;
     elements.taskCleanupWarningList.append(item);
@@ -855,10 +1552,10 @@ function renderSubTaskExecution(detail) {
         <span class="badge ${buildExecutionStatusBadgeClass(subTask.status)}">${escapeHtml(buildSubTaskStatusLabel(subTask.status))}</span>
       </div>
       <div class="execution-card__summary">
-        <p class="execution-card__summary-line"><strong>Latest session:</strong> ${escapeHtml(latestSession ? `${latestSession.agentType} · ${latestSession.status}` : "None")}</p>
-        <p class="execution-card__summary-line"><strong>Retries:</strong> ${escapeHtml(String(subTask.retryCount ?? 0))} · <strong>Sessions:</strong> ${escapeHtml(String(sessions.length))}</p>
-        <p class="execution-card__summary-line"><strong>Merge attempts:</strong> ${escapeHtml(String(mergeRecords.length))} · <strong>Latest merge:</strong> ${escapeHtml(buildMergeHistoryHeadline(latestMergeRecord))}</p>
-        <p class="execution-card__summary-line"><strong>Attachments:</strong> ${escapeHtml(`${includedAttachments.length} included · ${excludedAttachments.length} excluded`)}</p>
+        <p class="execution-card__summary-line"><strong>${escapeHtml(t("latestSessionLabel"))}:</strong> ${escapeHtml(latestSession ? `${latestSession.agentType} · ${translateStatusLabel(latestSession.status)}` : t("latestSessionNone"))}</p>
+        <p class="execution-card__summary-line"><strong>${escapeHtml(t("retriesLabel"))}:</strong> ${escapeHtml(String(subTask.retryCount ?? 0))} · <strong>${escapeHtml(t("sessionsLabelOther", { count: sessions.length }).replace(`${sessions.length} `, ""))}:</strong> ${escapeHtml(String(sessions.length))}</p>
+        <p class="execution-card__summary-line"><strong>${escapeHtml(t("mergeAttemptsLabel"))}:</strong> ${escapeHtml(String(mergeRecords.length))} · <strong>${escapeHtml(t("latestMergeLabel"))}:</strong> ${escapeHtml(buildMergeHistoryHeadline(latestMergeRecord))}</p>
+        <p class="execution-card__summary-line"><strong>${escapeHtml(t("attachmentsLabel"))}:</strong> ${escapeHtml(`${t("includedCount", { count: includedAttachments.length })} · ${t("excludedCount", { count: excludedAttachments.length })}`)}</p>
       </div>
       <div class="execution-card__review">
         <p class="execution-card__review-title">${escapeHtml(`${reviewPhase} · ${reviewDecision}`)}</p>
@@ -866,15 +1563,15 @@ function renderSubTaskExecution(detail) {
       </div>
       <dl class="execution-card__facts">
         <div>
-          <dt>Branch</dt>
-          <dd>${escapeHtml(subTask.branchName ?? "Pending")}</dd>
+          <dt>${escapeHtml(t("branchLabel"))}</dt>
+          <dd>${escapeHtml(subTask.branchName ?? t("leadSessionPending"))}</dd>
         </div>
         <div>
-          <dt>Worktree</dt>
-          <dd>${escapeHtml(subTask.worktreePath ?? "Pending")}</dd>
+          <dt>${escapeHtml(t("worktreeLabel"))}</dt>
+          <dd>${escapeHtml(subTask.worktreePath ?? t("leadSessionPending"))}</dd>
         </div>
       </dl>
-      <pre class="execution-card__preview">${escapeHtml(previewText || "Waiting for worker output...")}</pre>
+      <pre class="execution-card__preview">${escapeHtml(previewText || t("waitingWorkerOutput"))}</pre>
     `;
 
     card.addEventListener("click", () => {
@@ -913,19 +1610,19 @@ function renderPlanDraft(detail) {
     showFeedback(
       elements.taskPlanFeedback,
       "success",
-      `Plan draft ready for review. Version ${detail.task.planVersion} is saved and available for the next phase.`,
+      t("planDraftReady", { version: detail.task.planVersion }),
     );
   } else if (failedAttempts > 0) {
     showFeedback(
       elements.taskPlanFeedback,
       "error",
-      `Planning is retrying after ${failedAttempts} validation failure${failedAttempts === 1 ? "" : "s"}.`,
+      countLabel(failedAttempts, "planningRetryingOne", "planningRetryingOther"),
     );
   } else if (detail.task.status === "PLANNING") {
     showFeedback(
       elements.taskPlanFeedback,
       "success",
-      "Planning is in progress. Waiting for a valid JSON draft from the lead agent.",
+      t("planningInProgress"),
     );
   }
 
@@ -951,13 +1648,13 @@ function renderPlanDraft(detail) {
     showFeedback(
       elements.taskPlanFeedback,
       "error",
-      "Server draft changed in another tab or after a restore. Reset local edits before continuing.",
+      t("staleDraftNotice"),
     );
   }
 
   elements.taskPlanSaveDraftButton.disabled = !editableDraft || !hasUnsavedDraft || hasStaleDraft;
   elements.taskPlanApproveButton.disabled = !editableDraft || hasUnsavedDraft || hasStaleDraft;
-  elements.taskPlanApproveButton.textContent = hasUnsavedDraft ? "Save before approval" : "Approve draft";
+  elements.taskPlanApproveButton.textContent = hasUnsavedDraft ? t("saveBeforeApprovalButton") : t("approveDraftButton");
 
   if (!subtasks.length) {
     return;
@@ -975,9 +1672,9 @@ function renderPlanDraft(detail) {
       <div class="plan-card__header">
         <div>
           <p class="plan-card__title">${escapeHtml(`${index + 1}. ${subtask.title}`)}</p>
-          <p class="plan-card__meta">${escapeHtml(`Agent: ${subtask.recommended_agent}`)}</p>
+          <p class="plan-card__meta">${escapeHtml(`${t("agentMetaLabel")}: ${subtask.recommended_agent}`)}</p>
           ${Array.isArray(subtask.depends_on) && subtask.depends_on.length > 0
-            ? `<p class="plan-card__meta">${escapeHtml(`Depends on: ${subtask.depends_on.join(", ")}`)}</p>`
+            ? `<p class="plan-card__meta">${escapeHtml(`${t("dependsOnLabel")}: ${subtask.depends_on.join(", ")}`)}</p>`
             : ""}
         </div>
         <span class="badge badge--outline">${escapeHtml(subtask.branch_suffix)}</span>
@@ -1007,10 +1704,10 @@ function renderPlanHistory(detail) {
       <div class="plan-history__meta">
         <div>
           <p class="plan-history__caption">${escapeHtml(buildPlanSnapshotLabel(snapshot))}</p>
-          <p class="plan-history__caption">${escapeHtml(new Date(snapshot.createdAt).toLocaleString())}</p>
+          <p class="plan-history__caption">${escapeHtml(new Date(snapshot.createdAt).toLocaleString(state.locale))}</p>
         </div>
         <button class="button button--secondary" type="button" data-restore-snapshot-id="${snapshot.id}">
-          Restore snapshot
+          ${escapeHtml(t("restoreSnapshotButton"))}
         </button>
       </div>
     `;
@@ -1026,39 +1723,39 @@ function renderEditablePlanSubtask(index, subtask) {
 
   article.innerHTML = `
     <div class="plan-subtask__header">
-      <p class="plan-subtask__index">Subtask ${index + 1}</p>
+      <p class="plan-subtask__index">${escapeHtml(t("subtaskNumberLabel", { count: index + 1 }))}</p>
       <button class="button button--ghost" type="button" data-remove-subtask="${index}">
-        Remove
+        ${escapeHtml(t("removeButton"))}
       </button>
     </div>
     <div class="plan-subtask__grid">
       <label class="field">
-        <span class="field__label">Title</span>
+        <span class="field__label">${escapeHtml(t("titleField"))}</span>
         <input type="text" value="${escapeHtmlAttribute(subtask.title ?? "")}" data-plan-field="title" data-subtask-index="${index}">
       </label>
       <label class="field">
-        <span class="field__label">Worker agent</span>
+        <span class="field__label">${escapeHtml(t("workerAgentField"))}</span>
         <select class="field__control" data-plan-field="recommended_agent" data-subtask-index="${index}">
           ${buildWorkerAgentOptions(subtask.recommended_agent)}
         </select>
       </label>
       <label class="field">
-        <span class="field__label">Description</span>
+        <span class="field__label">${escapeHtml(t("descriptionField"))}</span>
         <textarea rows="4" data-plan-field="description" data-subtask-index="${index}">${escapeHtml(subtask.description ?? "")}</textarea>
       </label>
       <label class="field">
-        <span class="field__label">Branch suffix</span>
+        <span class="field__label">${escapeHtml(t("branchSuffixField"))}</span>
         <div class="plan-subtask__branch">
           <input type="text" value="${escapeHtmlAttribute(subtask.branch_suffix ?? "")}" data-plan-field="branch_suffix" data-subtask-index="${index}">
-          <span class="badge badge--outline">${escapeHtml(subtask.branch_suffix ?? "missing-suffix")}</span>
+          <span class="badge badge--outline">${escapeHtml(subtask.branch_suffix ?? t("missingSuffix"))}</span>
         </div>
       </label>
       <label class="field">
-        <span class="field__label">Depends on</span>
+        <span class="field__label">${escapeHtml(t("dependsOnField"))}</span>
         <input
           type="text"
           value="${escapeHtmlAttribute(Array.isArray(subtask.depends_on) ? subtask.depends_on.join(", ") : "")}"
-          placeholder="backend-contract, auth-api"
+          placeholder="${escapeHtmlAttribute(t("dependsOnPlaceholder"))}"
           data-plan-field="depends_on"
           data-subtask-index="${index}"
         >
@@ -1084,8 +1781,8 @@ function renderTranscript(messages) {
     article.className = `transcript__message transcript__message--${message.role.toLowerCase().replaceAll("_", "-")}`;
     article.innerHTML = `
       <div class="transcript__meta">
-        <span>${escapeHtml(message.role.replaceAll("_", " "))}</span>
-        <span>${escapeHtml(new Date(message.createdAt).toLocaleString())}</span>
+        <span>${escapeHtml(buildTranscriptRoleLabel(message.role))}</span>
+        <span>${escapeHtml(new Date(message.createdAt).toLocaleString(state.locale))}</span>
       </div>
       <p class="transcript__content">${escapeHtml(message.content)}</p>
     `;
@@ -1130,12 +1827,23 @@ function clearTaskDetail() {
   elements.taskAttachmentsList.replaceChildren();
   elements.taskExecutionList.replaceChildren();
   elements.taskExecutionBoard.hidden = true;
+  elements.taskTeamEmpty.hidden = false;
+  elements.taskTeamLeadMeta.textContent = "";
+  elements.taskTeamLeadSummary.textContent = "";
+  elements.taskTeamLeadStatus.textContent = t("leadSessionPending");
+  elements.taskTeamLeadStatus.className = "badge badge--outline";
+  elements.taskTeamMemberCount.textContent = countLabel(0, "teamMemberCountOne", "teamMemberCountOther");
+  elements.taskTeamMemberList.replaceChildren();
+  elements.taskTeamShell.hidden = true;
   elements.taskExecutionFocus.hidden = true;
   elements.taskExecutionFocusPreview.hidden = true;
+  elements.taskExecutionMailbox.hidden = true;
   elements.taskExecutionReview.hidden = true;
   elements.taskExecutionAgentField.hidden = true;
   elements.taskExecutionReviewActions.hidden = true;
   elements.taskExecutionReworkField.hidden = true;
+  elements.taskExecutionMailboxList.replaceChildren();
+  elements.taskExecutionMailboxInput.value = "";
   elements.taskExecutionSessionList.replaceChildren();
   elements.taskPlanHistoryList.replaceChildren();
   elements.taskPlanList.replaceChildren();
@@ -1154,7 +1862,7 @@ function syncBranchChoices() {
   if (branchChoices.length === 0) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No branches available";
+    option.textContent = t("noBranchesAvailable");
     elements.baseBranchSelect.append(option);
     elements.baseBranchSelect.disabled = true;
     state.selectedBaseBranch = null;
@@ -1210,9 +1918,18 @@ function connectTaskStream(taskId) {
     const payload = JSON.parse(event.data);
 
     state.taskPlanNotice = {
-      message: `Snapshot ${payload.snapshotId} was restored into the current draft.`,
+      message: t("snapshotRestoredNotice", { snapshotId: payload.snapshotId }),
       tone: "success",
     };
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
+  stream.addEventListener("team:updated", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
+  stream.addEventListener("subtask:assigned", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
+  stream.addEventListener("subtask:cancelled", () => {
     void loadTaskDetail(taskId, { preserveStream: true });
   });
   stream.addEventListener("subtask:status", (event) => {
@@ -1231,6 +1948,9 @@ function connectTaskStream(taskId) {
     void loadTaskDetail(taskId, { preserveStream: true });
   });
   stream.addEventListener("task:cleanup-warning", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
+  stream.addEventListener("mailbox:message", () => {
     void loadTaskDetail(taskId, { preserveStream: true });
   });
   stream.addEventListener("session:started", (event) => {
@@ -1407,11 +2127,11 @@ async function onSavePlanDraft() {
   clearFeedback(elements.taskPlanFeedback);
 
   if (state.taskPlanDraftState?.stale) {
-    showFeedback(elements.taskPlanFeedback, "error", "Reset local edits to review the latest server draft first.");
+    showFeedback(elements.taskPlanFeedback, "error", t("latestServerDraftFirst"));
     return;
   }
 
-  setButtonBusy(elements.taskPlanSaveDraftButton, true, "Saving...");
+  setButtonBusy(elements.taskPlanSaveDraftButton, true, t("saving"));
 
   try {
     const response = await fetchJson(
@@ -1425,11 +2145,11 @@ async function onSavePlanDraft() {
     state.taskDetail.task = response.task;
     syncEditablePlanDraft(state.taskDetail);
     renderTaskDetail();
-    showFeedback(elements.taskPlanFeedback, "success", "Draft saved. Server validation passed.");
+    showFeedback(elements.taskPlanFeedback, "success", t("draftSaved"));
   } catch (error) {
     showFeedback(elements.taskPlanFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.taskPlanSaveDraftButton, false, "Save draft");
+    setButtonBusy(elements.taskPlanSaveDraftButton, false, t("saveDraftButton"));
   }
 }
 
@@ -1441,16 +2161,16 @@ async function onApprovePlanDraft() {
   clearFeedback(elements.taskPlanFeedback);
 
   if (state.taskPlanDraftState?.stale) {
-    showFeedback(elements.taskPlanFeedback, "error", "Reset local edits to the latest server draft before approval.");
+    showFeedback(elements.taskPlanFeedback, "error", t("latestServerDraftBeforeApproval"));
     return;
   }
 
   if (isEditablePlanDirty(state.taskDetail)) {
-    showFeedback(elements.taskPlanFeedback, "error", "Save the draft before approval.");
+    showFeedback(elements.taskPlanFeedback, "error", t("saveDraftBeforeApproval"));
     return;
   }
 
-  setButtonBusy(elements.taskPlanApproveButton, true, "Checking...");
+  setButtonBusy(elements.taskPlanApproveButton, true, t("checking"));
 
   try {
     const response = await fetchJson(
@@ -1464,13 +2184,13 @@ async function onApprovePlanDraft() {
       elements.taskPlanFeedback,
       "success",
       response.idempotent
-        ? "Plan was already approved. Materialized subtasks were reused."
-        : "Plan approved. Subtasks are materialized and ready for Phase 08 launch.",
+        ? t("planApprovedIdempotent")
+        : t("planApprovedNew"),
     );
   } catch (error) {
     showFeedback(elements.taskPlanFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.taskPlanApproveButton, false, "Approve draft");
+    setButtonBusy(elements.taskPlanApproveButton, false, t("approveDraftButton"));
   }
 }
 
@@ -1487,10 +2207,10 @@ async function onRestorePlanSnapshot(event) {
   }
 
   clearFeedback(elements.taskPlanFeedback);
-  if (!window.confirm("Restore this snapshot into the current draft? Unsaved local edits in this tab will be replaced.")) {
+  if (!window.confirm(t("restoreSnapshotConfirm"))) {
     return;
   }
-  setButtonBusy(button, true, "Restoring...");
+  setButtonBusy(button, true, t("restoring"));
 
   try {
     const response = await fetchJson(
@@ -1503,10 +2223,10 @@ async function onRestorePlanSnapshot(event) {
 
     state.taskDetail.task = response.task;
     await loadTaskDetail(state.taskDetail.task.id, { preserveStream: true });
-    showFeedback(elements.taskPlanFeedback, "success", "Snapshot restored into the current draft.");
+    showFeedback(elements.taskPlanFeedback, "success", t("snapshotRestored"));
   } catch (error) {
     showFeedback(elements.taskPlanFeedback, "error", buildTaskErrorMessage(error));
-    setButtonBusy(button, false, "Restore snapshot");
+    setButtonBusy(button, false, t("restoreSnapshotButton"));
   }
 }
 
@@ -1519,7 +2239,7 @@ async function onReworkSubTask() {
 
   const draft = getExecutionDraft(selectedSubTask);
   clearFeedback(elements.taskExecutionReviewFeedback);
-  setButtonBusy(elements.taskExecutionReworkButton, true, "Relaunching...");
+  setButtonBusy(elements.taskExecutionReworkButton, true, t("relaunching"));
 
   try {
     const response = await fetchJson(`/api/subtasks/${encodeURIComponent(selectedSubTask.id)}/rework`, {
@@ -1541,11 +2261,11 @@ async function onReworkSubTask() {
       description: response.subTask.description ?? draft.description,
     });
     renderTaskDetail();
-    showFeedback(elements.taskExecutionReviewFeedback, "success", "Rework relaunched on the same branch and worktree.");
+    showFeedback(elements.taskExecutionReviewFeedback, "success", t("reworkRelaunched"));
   } catch (error) {
     showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.taskExecutionReworkButton, false, "Rework now");
+    setButtonBusy(elements.taskExecutionReworkButton, false, t("reworkNowButton"));
   }
 }
 
@@ -1558,7 +2278,7 @@ async function onChangeSubTaskAgent() {
 
   const draft = getExecutionDraft(selectedSubTask);
   clearFeedback(elements.taskExecutionReviewFeedback);
-  setButtonBusy(elements.taskExecutionChangeAgentButton, true, "Switching...");
+  setButtonBusy(elements.taskExecutionChangeAgentButton, true, t("switching"));
 
   try {
     const response = await fetchJson(`/api/subtasks/${encodeURIComponent(selectedSubTask.id)}/change-agent`, {
@@ -1582,11 +2302,89 @@ async function onChangeSubTaskAgent() {
       description: response.subTask.description ?? draft.description,
     });
     renderTaskDetail();
-    showFeedback(elements.taskExecutionReviewFeedback, "success", "Worker agent changed and relaunched on the same branch and worktree.");
+    showFeedback(elements.taskExecutionReviewFeedback, "success", t("workerChangedRelaunched"));
   } catch (error) {
     showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.taskExecutionChangeAgentButton, false, "Switch agent & relaunch");
+    setButtonBusy(elements.taskExecutionChangeAgentButton, false, t("replaceWorkerButton"));
+  }
+}
+
+async function onReassignSubTask() {
+  const selectedSubTask = getSelectedExecutionSubTask();
+
+  if (!state.selectedTaskId || !selectedSubTask) {
+    return;
+  }
+
+  const draft = getExecutionDraft(selectedSubTask);
+  clearFeedback(elements.taskExecutionReviewFeedback);
+  setButtonBusy(elements.taskExecutionReassignButton, true, t("reassigning"));
+
+  try {
+    const response = await fetchJson(`/api/subtasks/${encodeURIComponent(selectedSubTask.id)}/reassign`, {
+      body: {
+        agentType: draft.agentType,
+        description: draft.description,
+      },
+      method: "POST",
+    });
+
+    if (state.taskDetail) {
+      state.taskDetail.task = response.task ?? state.taskDetail.task;
+      state.taskDetail.subTasks = upsertRecord(state.taskDetail.subTasks, response.subTask);
+
+      if (response.session) {
+        state.taskDetail.sessions = upsertRecord(state.taskDetail.sessions, response.session);
+        state.liveSessionOutputs.set(response.session.id, response.session.outputBuffer ?? "");
+      }
+    }
+
+    await loadTaskDetail(state.selectedTaskId, { preserveStream: true });
+    showFeedback(
+      elements.taskExecutionReviewFeedback,
+      "success",
+      response.session
+        ? t("memberReassignedRelaunched")
+        : t("memberReassignedQueued"),
+    );
+  } catch (error) {
+    showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskExecutionReassignButton, false, t("reassignMemberButton"));
+  }
+}
+
+async function onCancelSubTask() {
+  const selectedSubTask = getSelectedExecutionSubTask();
+
+  if (!state.selectedTaskId || !selectedSubTask) {
+    return;
+  }
+
+  clearFeedback(elements.taskExecutionReviewFeedback);
+  setButtonBusy(elements.taskExecutionCancelButton, true, t("cancelling"));
+
+  try {
+    const response = await fetchJson(`/api/subtasks/${encodeURIComponent(selectedSubTask.id)}/cancel`, {
+      method: "POST",
+    });
+
+    if (state.taskDetail) {
+      state.taskDetail.task = response.task ?? state.taskDetail.task;
+      state.taskDetail.subTasks = upsertRecord(state.taskDetail.subTasks, response.subTask);
+
+      if (response.session) {
+        state.taskDetail.sessions = upsertRecord(state.taskDetail.sessions, response.session);
+      }
+    }
+
+    await loadTaskDetail(state.selectedTaskId, { preserveStream: true });
+    showFeedback(elements.taskExecutionReviewFeedback, "success", t("memberCancelled"));
+  } catch (error) {
+    showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskExecutionCancelButton, false, t("cancelMemberButton"));
   }
 }
 
@@ -1598,7 +2396,7 @@ async function onConfirmDiscardSubTask() {
   }
 
   clearFeedback(elements.taskExecutionReviewFeedback);
-  setButtonBusy(elements.taskExecutionConfirmDiscardButton, true, "Confirming...");
+  setButtonBusy(elements.taskExecutionConfirmDiscardButton, true, t("confirming"));
 
   try {
     const response = await fetchJson(
@@ -1612,11 +2410,11 @@ async function onConfirmDiscardSubTask() {
     }
 
     renderTaskDetail();
-    showFeedback(elements.taskExecutionReviewFeedback, "success", "Subtask discard confirmed.");
+    showFeedback(elements.taskExecutionReviewFeedback, "success", t("discardConfirmed"));
   } catch (error) {
     showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.taskExecutionConfirmDiscardButton, false, "Confirm discard");
+    setButtonBusy(elements.taskExecutionConfirmDiscardButton, false, t("confirmDiscardButton"));
   }
 }
 
@@ -1628,7 +2426,7 @@ async function onRebaseRetrySubTask() {
   }
 
   clearFeedback(elements.taskExecutionReviewFeedback);
-  setButtonBusy(elements.taskExecutionRebaseRetryButton, true, "Rebasing...");
+  setButtonBusy(elements.taskExecutionRebaseRetryButton, true, t("rebasing"));
 
   try {
     const response = await fetchJson(
@@ -1646,13 +2444,13 @@ async function onRebaseRetrySubTask() {
       elements.taskExecutionReviewFeedback,
       response.mergeStatus === "SUCCEEDED" ? "success" : "error",
       response.mergeStatus === "SUCCEEDED"
-        ? "Rebase retry succeeded. Merge flow resumed."
-        : "Rebase retry still conflicted. Review the updated conflict summary.",
+        ? t("rebaseRetrySucceeded")
+        : t("rebaseRetryConflict"),
     );
   } catch (error) {
     showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.taskExecutionRebaseRetryButton, false, "Rebase & retry");
+    setButtonBusy(elements.taskExecutionRebaseRetryButton, false, t("rebaseRetryButton"));
   }
 }
 
@@ -1662,7 +2460,7 @@ async function onResumeTaskMerge() {
   }
 
   clearFeedback(elements.taskExecutionReviewFeedback);
-  setButtonBusy(elements.taskExecutionResumeMergeButton, true, "Resuming...");
+  setButtonBusy(elements.taskExecutionResumeMergeButton, true, t("resuming"));
 
   try {
     const response = await fetchJson(
@@ -1675,11 +2473,46 @@ async function onResumeTaskMerge() {
     }
 
     await loadTaskDetail(state.selectedTaskId, { preserveStream: true });
-    showFeedback(elements.taskExecutionReviewFeedback, "success", "Merge flow resumed.");
+    showFeedback(elements.taskExecutionReviewFeedback, "success", t("mergeResumed"));
   } catch (error) {
     showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.taskExecutionResumeMergeButton, false, "Resume merge");
+    setButtonBusy(elements.taskExecutionResumeMergeButton, false, t("resumeMergeButton"));
+  }
+}
+
+async function onSendMailboxMessage(event) {
+  event.preventDefault();
+
+  const selectedSubTask = getSelectedExecutionSubTask();
+
+  if (!state.selectedTaskId || !selectedSubTask) {
+    return;
+  }
+
+  clearFeedback(elements.taskExecutionMailboxFeedback);
+  setButtonBusy(elements.taskExecutionMailboxSendButton, true, t("sending"));
+
+  try {
+    const response = await fetchJson(`/api/tasks/${encodeURIComponent(state.selectedTaskId)}/mailbox`, {
+      body: {
+        content: elements.taskExecutionMailboxInput.value.trim(),
+        targetSubTaskId: selectedSubTask.id,
+      },
+      method: "POST",
+    });
+
+    if (state.taskDetail) {
+      state.taskDetail.mailboxMessages = upsertRecord(state.taskDetail.mailboxMessages, response.message);
+    }
+
+    elements.taskExecutionMailboxInput.value = "";
+    renderTaskDetail();
+    showFeedback(elements.taskExecutionMailboxFeedback, "success", t("leadHandoffSent"));
+  } catch (error) {
+    showFeedback(elements.taskExecutionMailboxFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskExecutionMailboxSendButton, false, t("sendHandoffNoteButton"));
   }
 }
 
@@ -1718,7 +2551,7 @@ async function readDraftAttachments() {
     if (!fileType) {
       throw {
         code: "ATTACHMENT_TYPE_UNSUPPORTED",
-        message: `${file.name} is not a supported attachment type.`,
+        message: t("unsupportedAttachmentNamed", { name: file.name }),
       };
     }
 
@@ -1768,10 +2601,57 @@ async function fetchJson(url, options = {}) {
   const payload = await response.json();
 
   if (!response.ok) {
-    throw payload.error ?? { code: "REQUEST_FAILED", message: "Request failed." };
+    throw payload.error ?? { code: "REQUEST_FAILED", message: translate("requestFailed") };
   }
 
   return payload;
+}
+
+function t(key, values) {
+  const template = UI_MESSAGES[state.locale]?.[key] ?? UI_MESSAGES.en[key];
+
+  if (template) {
+    return formatUiMessage(template, values);
+  }
+
+  return translate(key, values);
+}
+
+function onToggleLanguage() {
+  state.locale = state.locale === "zh-CN" ? "en" : "zh-CN";
+  setLocale(state.locale);
+  writeStorage(STORAGE_KEYS.locale, state.locale);
+  renderLocale();
+  renderLeadSelector();
+  renderProjectList();
+  renderTaskList();
+
+  if (state.projectDetail) {
+    renderProjectDetail();
+  }
+
+  if (state.taskDetail) {
+    renderTaskDetail();
+  }
+}
+
+function renderLocale() {
+  document.documentElement.lang = state.locale;
+  document.title = t("documentTitle");
+  elements.languageToggle.textContent = state.locale === "zh-CN" ? "English" : "中文";
+  elements.languageToggle.setAttribute("aria-label", state.locale === "zh-CN" ? t("switchToEnglish") : t("switchToChinese"));
+
+  for (const node of document.querySelectorAll("[data-i18n]")) {
+    node.textContent = t(node.dataset.i18n);
+  }
+
+  for (const node of document.querySelectorAll("[data-i18n-placeholder]")) {
+    node.setAttribute("placeholder", t(node.dataset.i18nPlaceholder));
+  }
+
+  for (const node of document.querySelectorAll("[data-i18n-html]")) {
+    node.innerHTML = t(node.dataset.i18nHtml);
+  }
 }
 
 function showFeedback(element, tone, message) {
@@ -1789,6 +2669,50 @@ function setButtonBusy(button, busy, label) {
   button.textContent = label;
 }
 
+function formatUiMessage(template, values = {}) {
+  return String(template).replaceAll(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ""));
+}
+
+function countLabel(count, singularKey, pluralKey) {
+  return t(count === 1 ? singularKey : pluralKey, { count });
+}
+
+function translateSessionType(sessionType) {
+  switch (sessionType) {
+    case "WORKER":
+      return t("capabilityWorker");
+    case "LEAD":
+      return t("mailboxSenderLead");
+    default:
+      return sessionType ?? t("unknown");
+  }
+}
+
+function translateStatusLabel(status) {
+  if (!status) {
+    return t("leadSessionPending");
+  }
+
+  if (["PENDING", "BLOCKED", "READY", "RUNNING", "ACCEPTED", "FAILED", "CANCELLED", "DISCARDED", "DISCARD_PENDING", "REVIEW_PENDING", "REWORK_REQUIRED", "MERGED"].includes(status)) {
+    return buildSubTaskStatusLabel(status);
+  }
+
+  return status;
+}
+
+function buildTranscriptRoleLabel(role) {
+  switch (role) {
+    case "SYSTEM":
+      return t("transcriptRoleSystem");
+    case "USER":
+      return t("transcriptRoleOperator");
+    case "ASSISTANT":
+      return t("transcriptRoleLead");
+    default:
+      return role.replaceAll("_", " ");
+  }
+}
+
 function uniqueBranches(branches) {
   return [...new Set(branches.filter(Boolean))];
 }
@@ -1801,7 +2725,7 @@ function readFileAsBase64(file) {
       resolve(result.slice(result.indexOf(",") + 1));
     };
     reader.onerror = () => {
-      reject(new Error(`Unable to read ${file.name}.`));
+      reject(new Error(t("readFileError", { name: file.name })));
     };
     reader.readAsDataURL(file);
   });
@@ -1834,6 +2758,10 @@ function removeStorage(key) {
   } catch {
     // Local storage is optional for reload persistence.
   }
+}
+
+function normalizeLocale(value) {
+  return value === "en" ? "en" : "zh-CN";
 }
 
 function escapeHtml(value) {
@@ -1871,16 +2799,16 @@ function countPlanValidationFailures(messages) {
 function buildPlanSummary(detail, failedAttempts, parsedPlan) {
   const snapshotCount = detail.planSnapshots?.length ?? 0;
   const summaryParts = [
-    `Version ${detail.task.planVersion ?? 0}`,
-    `${snapshotCount} snapshot${snapshotCount === 1 ? "" : "s"}`,
+    t("versionSummary", { version: detail.task.planVersion ?? 0 }),
+    countLabel(snapshotCount, "snapshotCountOne", "snapshotCountOther"),
   ];
 
   if (failedAttempts > 0) {
-    summaryParts.push(`${failedAttempts} regeneration${failedAttempts === 1 ? "" : "s"}`);
+    summaryParts.push(countLabel(failedAttempts, "regenerationCountOne", "regenerationCountOther"));
   }
 
   if (parsedPlan?.notes) {
-    summaryParts.push(`Notes: ${parsedPlan.notes}`);
+    summaryParts.push(t("notesSummary", { notes: parsedPlan.notes }));
   }
 
   return summaryParts.join(" · ");
@@ -1893,7 +2821,7 @@ function buildWorkerAgentOptions(selectedAgentName) {
 
   if (selectedAgentName && !knownNames.has(selectedAgentName)) {
     options.push(
-      `<option value="${escapeHtmlAttribute(selectedAgentName)}" selected>${escapeHtml(`${selectedAgentName} (currently assigned)`)}</option>`,
+      `<option value="${escapeHtmlAttribute(selectedAgentName)}" selected>${escapeHtml(t("workerCurrentlyAssigned", { name: selectedAgentName }))}</option>`,
     );
   }
 
@@ -2236,26 +3164,29 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
 
   if (!selectedSubTask) {
     elements.taskExecutionMergeHistory.hidden = true;
+    elements.taskExecutionMailbox.hidden = true;
     return;
   }
 
   state.selectedExecutionSessionId = focusedSession?.id ?? null;
   elements.taskExecutionFocusTitle.textContent = selectedSubTask.title;
   elements.taskExecutionFocusBadge.textContent = focusedSession
-    ? focusedSession.status
-    : "Pending";
+    ? translateStatusLabel(focusedSession.status)
+    : t("leadSessionPending");
   elements.taskExecutionFocusBadge.className = `badge ${focusedSession?.status === "FAILED" ? "badge--dirty" : focusedSession?.status === "RUNNING" ? "badge--accent-soft" : "badge--outline"}`;
   elements.taskExecutionFocusMeta.textContent = [
-    `${selectedSubTask.agentType} · ${focusedSessions.length} session${focusedSessions.length === 1 ? "" : "s"}`,
-    focusedSession?.logPath ? `log ${focusedSession.logPath}` : "log pending",
-    selectedSubTask.lastError ? `error: ${selectedSubTask.lastError}` : null,
+    `${selectedSubTask.agentType} · ${countLabel(focusedSessions.length, "sessionsLabelOne", "sessionsLabelOther")}`,
+    focusedSession?.logPath ? t("logPathLabel", { path: focusedSession.logPath }) : t("logPending"),
+    selectedSubTask.lastError ? t("errorMetaLabel", { error: selectedSubTask.lastError }) : null,
   ].filter(Boolean).join(" · ");
   const draft = getExecutionDraft(selectedSubTask);
   const mergeRecords = Array.isArray(selectedSubTask.mergeRecords) ? selectedSubTask.mergeRecords : [];
   const latestMergeRecord = mergeRecords.at(-1) ?? null;
   const canReworkNow = selectedSubTask.status === "REVIEW_PENDING"
     && ["REJECTED", "REWORK"].includes(selectedSubTask.latestReviewDecision);
-  const canChangeAgent = canReworkNow || selectedSubTask.status === "FAILED";
+  const canReassign = canReassignMember(detail.task, selectedSubTask);
+  const canCancel = canCancelMember(detail.task, selectedSubTask);
+  const canChangeAgent = canReplaceWorker(detail.task, selectedSubTask);
   const canConfirmDiscard = selectedSubTask.status === "DISCARD_PENDING";
   const canRebaseRetry = detail.task.status === "ACTION_REQUIRED"
     && selectedSubTask.status === "ACCEPTED"
@@ -2264,6 +3195,8 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
   const canResumeMerge = detail.task.status === "ACTION_REQUIRED"
     && detail.subTasks?.some((subTask) => subTask.status === "ACCEPTED");
   const hasRecoveryPanel = canChangeAgent
+    || canReassign
+    || canCancel
     || canConfirmDiscard
     || canRebaseRetry
     || canResumeMerge
@@ -2275,13 +3208,17 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
   elements.taskExecutionReview.hidden = !hasRecoveryPanel;
   elements.taskExecutionReworkField.hidden = !canReworkNow;
   elements.taskExecutionAgentField.hidden = !canChangeAgent;
+  elements.taskExecutionCancelButton.hidden = !canCancel;
   elements.taskExecutionConfirmDiscardButton.hidden = !canConfirmDiscard;
   elements.taskExecutionRebaseRetryButton.hidden = !canRebaseRetry;
+  elements.taskExecutionReassignButton.hidden = !canReassign;
   elements.taskExecutionReworkButton.hidden = !canReworkNow;
   elements.taskExecutionResumeMergeButton.hidden = !canResumeMerge;
   elements.taskExecutionChangeAgentButton.hidden = !canChangeAgent;
   elements.taskExecutionReviewActions.hidden = !canReworkNow
     && !canChangeAgent
+    && !canReassign
+    && !canCancel
     && !canConfirmDiscard
     && !canRebaseRetry
     && !canResumeMerge;
@@ -2296,10 +3233,10 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
       elements.taskExecutionReviewPhase.textContent = buildReviewPhaseLabel(selectedSubTask.latestReviewPhase);
       elements.taskExecutionReviewSummary.textContent = buildExecutionReviewSummary(selectedSubTask);
     } else {
-      elements.taskExecutionReviewDecision.textContent = "Recovery";
-      elements.taskExecutionReviewPhase.textContent = "Launch recovery";
+      elements.taskExecutionReviewDecision.textContent = t("recoveryDecision");
+      elements.taskExecutionReviewPhase.textContent = t("launchRecoveryPhase");
       elements.taskExecutionReviewSummary.textContent = selectedSubTask.lastError
-        ?? "This subtask needs a replacement worker before it can relaunch.";
+        ?? t("replacementWorkerNeeded");
     }
   }
 
@@ -2318,11 +3255,12 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
     elements.taskExecutionReworkDescription.value = "";
   }
 
-  if (!canReworkNow && !canChangeAgent && !canConfirmDiscard && !canRebaseRetry && !canResumeMerge) {
+  if (!canReworkNow && !canChangeAgent && !canReassign && !canCancel && !canConfirmDiscard && !canRebaseRetry && !canResumeMerge) {
     clearFeedback(elements.taskExecutionReviewFeedback);
   }
 
   renderMergeHistory(selectedSubTask);
+  renderMailbox(detail, selectedSubTask);
 
   const previewOutput = focusedSession
     ? stripAnsi(state.liveSessionOutputs.get(focusedSession.id) ?? focusedSession.outputBuffer ?? "")
@@ -2334,7 +3272,10 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
 
     button.type = "button";
     button.className = `button ${isSelected ? "button--primary" : "button--secondary"}`;
-    button.textContent = `Session ${index + 1} · ${session.status}`;
+    button.textContent = t("sessionTabLabel", {
+      index: index + 1,
+      status: translateStatusLabel(session.status),
+    });
     button.addEventListener("click", () => {
       state.selectedExecutionSessionId = session.id;
       renderTaskDetail();
@@ -2347,7 +3288,7 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
   elements.taskExecutionFocusPreview.hidden = !focusedSession;
 
   if (focusedSession) {
-    elements.taskExecutionFocusPreview.textContent = previewOutput || "Waiting for worker output...";
+    elements.taskExecutionFocusPreview.textContent = previewOutput || t("waitingWorkerOutput");
   } else {
     elements.taskExecutionFocusPreview.textContent = "";
   }
@@ -2357,7 +3298,7 @@ function renderMergeHistory(subTask) {
   const mergeRecords = Array.isArray(subTask?.mergeRecords) ? subTask.mergeRecords : [];
 
   elements.taskExecutionMergeHistory.hidden = !subTask;
-  elements.taskExecutionMergeHistoryCount.textContent = `${mergeRecords.length} attempt${mergeRecords.length === 1 ? "" : "s"}`;
+  elements.taskExecutionMergeHistoryCount.textContent = countLabel(mergeRecords.length, "attemptCountOne", "attemptCountOther");
   elements.taskExecutionMergeHistoryEmpty.hidden = mergeRecords.length > 0;
   elements.taskExecutionMergeHistoryList.replaceChildren();
 
@@ -2367,11 +3308,11 @@ function renderMergeHistory(subTask) {
     item.innerHTML = `
       <div class="merge-history__header">
         <div>
-          <p class="merge-history__title">${escapeHtml(buildMergeOperationLabel(mergeRecord.operation))} · attempt ${escapeHtml(String(mergeRecord.attemptNumber ?? 0))}</p>
+          <p class="merge-history__title">${escapeHtml(buildMergeOperationLabel(mergeRecord.operation))} · ${escapeHtml(countLabel(mergeRecord.attemptNumber ?? 0, "attemptCountOne", "attemptCountOther"))}</p>
           <p class="merge-history__meta">${escapeHtml([
-            mergeRecord.sourceBranch ?? "unknown source",
-            mergeRecord.targetBranch ?? "unknown target",
-            mergeRecord.completedAt ? formatTimestamp(mergeRecord.completedAt) : "pending",
+            mergeRecord.sourceBranch ?? t("unknownSource"),
+            mergeRecord.targetBranch ?? t("unknownTarget"),
+            mergeRecord.completedAt ? formatTimestamp(mergeRecord.completedAt) : t("mergeStatusPending"),
           ].join(" · "))}</p>
         </div>
         <span class="badge ${buildMergeStatusBadgeClass(mergeRecord.status)}">${escapeHtml(buildMergeStatusLabel(mergeRecord.status))}</span>
@@ -2379,6 +3320,35 @@ function renderMergeHistory(subTask) {
       <p class="merge-history__summary">${escapeHtml(buildMergeRecordSummary(mergeRecord))}</p>
     `;
     elements.taskExecutionMergeHistoryList.append(item);
+  }
+}
+
+function renderMailbox(detail, subTask) {
+  const mailboxMessages = (detail.mailboxMessages ?? []).filter((message) => (
+    message.targetSubTaskId === subTask.id || message.senderSubTaskId === subTask.id
+  ));
+  const canSendMailbox = ["ACTION_REQUIRED", "EXECUTING", "MERGING", "REVIEWING"].includes(detail.task?.status);
+
+  elements.taskExecutionMailbox.hidden = !subTask;
+  elements.taskExecutionMailboxForm.hidden = !canSendMailbox;
+  elements.taskExecutionMailboxCount.textContent = countLabel(mailboxMessages.length, "noteCountOne", "noteCountOther");
+  elements.taskExecutionMailboxEmpty.hidden = mailboxMessages.length > 0;
+  elements.taskExecutionMailboxList.replaceChildren();
+
+  for (const mailboxMessage of [...mailboxMessages].reverse()) {
+    const item = document.createElement("article");
+    item.className = "mailbox-item";
+    item.innerHTML = `
+      <div class="mailbox-item__header">
+        <div>
+          <p class="mailbox-item__title">${escapeHtml(buildMailboxDirectionLabel(detail, mailboxMessage))}</p>
+          <p class="mailbox-item__meta">${escapeHtml(formatTimestamp(mailboxMessage.createdAt))}</p>
+        </div>
+        <span class="badge badge--outline">${escapeHtml(buildMailboxSenderTypeLabel(mailboxMessage.senderType))}</span>
+      </div>
+      <p class="mailbox-item__content">${escapeHtml(mailboxMessage.content ?? "")}</p>
+    `;
+    elements.taskExecutionMailboxList.append(item);
   }
 }
 
@@ -2414,32 +3384,32 @@ function buildMergeStatusBadgeClass(status) {
 function buildMergeStatusLabel(status) {
   switch (status) {
     case "SUCCEEDED":
-      return "Succeeded";
+      return t("mergeStatusSucceeded");
     case "CONFLICT":
-      return "Conflict";
+      return t("mergeStatusConflict");
     case "ABORTED":
-      return "Aborted";
+      return t("mergeStatusAborted");
     case "PENDING":
-      return "Pending";
+      return t("mergeStatusPending");
     default:
-      return status ?? "Unknown";
+      return status ?? t("unknown");
   }
 }
 
 function buildMergeOperationLabel(operation) {
   switch (operation) {
     case "MERGE":
-      return "Merge";
+      return t("mergeOperationMerge");
     case "REBASE":
-      return "Rebase";
+      return t("mergeOperationRebase");
     default:
-      return operation ?? "Merge";
+      return operation ?? t("mergeOperationMerge");
   }
 }
 
 function buildMergeHistoryHeadline(mergeRecord) {
   if (!mergeRecord) {
-    return "None";
+    return t("mergeNone");
   }
 
   return `${buildMergeOperationLabel(mergeRecord.operation)} · ${buildMergeStatusLabel(mergeRecord.status)}`;
@@ -2451,10 +3421,13 @@ function buildMergeRecordSummary(mergeRecord) {
   }
 
   if (mergeRecord.resultCommitSha) {
-    return `Result commit ${mergeRecord.resultCommitSha.slice(0, 12)}.`;
+    return t("resultCommitSummary", { sha: mergeRecord.resultCommitSha.slice(0, 12) });
   }
 
-  return `${buildMergeOperationLabel(mergeRecord.operation)} finished with ${buildMergeStatusLabel(mergeRecord.status).toLowerCase()}.`;
+  return t("mergeFinishedSummary", {
+    operation: buildMergeOperationLabel(mergeRecord.operation),
+    status: buildMergeStatusLabel(mergeRecord.status).toLowerCase(),
+  });
 }
 
 function buildExecutionMergeSummary(subTask, mergeRecord) {
@@ -2463,11 +3436,11 @@ function buildExecutionMergeSummary(subTask, mergeRecord) {
   }
 
   if (mergeRecord.status === "SUCCEEDED" && mergeRecord.operation === "REBASE") {
-    return `Rebase succeeded for ${subTask.branchName ?? subTask.title}. Merge will retry automatically.`;
+    return t("rebaseSucceededSummary", { name: subTask.branchName ?? subTask.title });
   }
 
   if (mergeRecord.status === "SUCCEEDED" && mergeRecord.operation === "MERGE") {
-    return `Merged ${subTask.branchName ?? subTask.title} into the task base branch.`;
+    return t("mergeSucceededSummary", { name: subTask.branchName ?? subTask.title });
   }
 
   return buildMergeRecordSummary(mergeRecord);
@@ -2480,16 +3453,68 @@ function buildExecutionReviewSummary(subTask) {
 
   switch (subTask.status) {
     case "ACCEPTED":
-      return "Final review accepted this subtask for the merge set.";
+      return t("reviewAcceptedSummary");
     case "REWORK_REQUIRED":
-      return "Final review requires another worker pass before this subtask can merge.";
+      return t("reviewReworkSummary");
     case "DISCARD_PENDING":
-      return "Final review marked this subtask for discard. Confirm before the task can continue.";
+      return t("reviewDiscardSummary");
     case "REVIEW_PENDING":
-      return "Incremental review will appear after a successful worker run.";
+      return t("reviewPendingSummary");
     default:
-      return "No review summary available.";
+      return t("reviewUnavailableSummary");
   }
+}
+
+function buildMailboxSenderTypeLabel(senderType) {
+  switch (senderType) {
+    case "SUBTASK":
+      return t("mailboxSenderSubtask");
+    case "SYSTEM":
+      return t("mailboxSenderSystem");
+    default:
+      return t("mailboxSenderLead");
+  }
+}
+
+function buildMailboxDirectionLabel(detail, mailboxMessage) {
+  const subTaskIndex = new Map((detail?.subTasks ?? []).map((subTask) => [subTask.id, subTask]));
+  const senderSubTask = mailboxMessage.senderSubTaskId
+    ? subTaskIndex.get(mailboxMessage.senderSubTaskId)
+    : null;
+  const targetSubTask = mailboxMessage.targetSubTaskId
+    ? subTaskIndex.get(mailboxMessage.targetSubTaskId)
+    : null;
+  const senderLabel = senderSubTask
+    ? senderSubTask.title
+    : buildMailboxSenderTypeLabel(mailboxMessage.senderType);
+  const targetLabel = targetSubTask ? targetSubTask.title : t("mailboxLeadTarget");
+
+  return `${senderLabel} -> ${targetLabel}`;
+}
+
+function buildAssignmentSourceLabel(source) {
+  switch (source) {
+    case "OPERATOR":
+      return t("assignmentOperator");
+    default:
+      return t("assignmentLead");
+  }
+}
+
+function canReassignMember(task, subTask) {
+  return ["ACTION_REQUIRED", "EXECUTING"].includes(task?.status)
+    && ["BLOCKED", "CANCELLED", "FAILED", "PENDING", "READY", "REVIEW_PENDING", "REWORK_REQUIRED"].includes(subTask?.status);
+}
+
+function canCancelMember(task, subTask) {
+  return ["ACTION_REQUIRED", "EXECUTING"].includes(task?.status)
+    && ["BLOCKED", "FAILED", "PENDING", "READY", "REVIEW_PENDING", "REWORK_REQUIRED", "RUNNING"].includes(subTask?.status);
+}
+
+function canReplaceWorker(task, subTask) {
+  return ["ACTION_REQUIRED", "EXECUTING"].includes(task?.status)
+    && ["CANCELLED", "FAILED", "REVIEW_PENDING", "REWORK_REQUIRED"].includes(subTask?.status)
+    && state.workerCandidates.length > 0;
 }
 
 function stripAnsi(value) {
@@ -2505,7 +3530,7 @@ function normalizeOptionalText(value) {
 
 function formatTimestamp(value) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Unknown time" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? t("unknownTime") : date.toLocaleString(state.locale);
 }
 
 function isEditablePlanDirty(detail) {
@@ -2518,10 +3543,10 @@ function isEditablePlanDirty(detail) {
 
 function buildPlanSnapshotLabel(snapshot) {
   const sourceLabel = snapshot.source === "RESTORED_FROM_HISTORY"
-    ? "Restored"
+    ? t("snapshotSourceRestored")
     : snapshot.source === "APPROVED"
-      ? "Approved"
-      : "Lead generated";
+      ? t("snapshotSourceApproved")
+      : t("snapshotSourceLeadGenerated");
 
-  return `Version ${snapshot.version} · ${sourceLabel}`;
+  return t("snapshotVersionLabel", { source: sourceLabel, version: snapshot.version });
 }

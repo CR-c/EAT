@@ -60,6 +60,15 @@ When implementing a phase:
 - If a field is documented as required, do not silently weaken it to optional without updating docs.
 - If you must make a minimal assumption because docs are incomplete, state it clearly in your final summary.
 
+## UI And UX Rules
+
+- Any meaningful UI or UX design, redesign, refactor, or polish work must use the `ui-ux-pro-max` skill.
+- The default visual direction for new or rewritten UI in this repository is liquid-glass.
+- UI implementation must use Tailwind CSS as the primary styling system.
+- New or rewritten UI must preserve internationalization support for Simplified Chinese and English.
+- The default interface locale must be Simplified Chinese (`zh-CN`), while keeping English (`en`) available from the UI.
+- Do not ship UI-only rewrites that break existing operator flows, keyboard accessibility, or documented task-state visibility.
+
 ## Expected Phase Output
 
 At the end of a phase-oriented implementation task, report:

@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:ui": "tailwindcss -i ./src/ui/tailwind.input.css -o ./src/ui/app.css",
     "start": "node src/server/index.js",
     "test": "node --test"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
   }
 }

@@ -1,27 +1,39 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>EAT Lead Session Console</title>
+    <title>EAT 编排控制台</title>
     <link rel="stylesheet" href="/app.css">
   </head>
   <body>
     <div class="page-shell">
       <header class="hero">
         <div class="hero__copy">
-          <p class="eyebrow">Phase 04</p>
-          <h1>Lead Session Chat Flow</h1>
-          <p class="hero__summary">
-            Create a task, capture attachments, start lead clarification, persist the transcript, and gate planning behind explicit confirmation.
+          <div class="panel__header panel__header--inline">
+            <div>
+              <p class="eyebrow" data-i18n="heroEyebrow">EAT 控制台</p>
+              <h1 data-i18n="heroTitle">可通过 Web 操控的 Agent 编排</h1>
+            </div>
+            <button
+              id="language-toggle"
+              class="button button--secondary"
+              type="button"
+              aria-label="切换到英文界面"
+            >
+              English
+            </button>
+          </div>
+          <p class="hero__summary" data-i18n="heroSummary">
+            从浏览器中创建任务、审阅计划、启动真实 Codex worker，并在隔离 worktree 间完成交接协作。
           </p>
         </div>
-        <div class="hero__panel" aria-label="Phase scope">
-          <p class="hero__panel-label">Current scope</p>
+        <div class="hero__panel" aria-label="当前阶段能力">
+          <p class="hero__panel-label" data-i18n="heroPanelLabel">当前能力</p>
           <ul class="hero__list">
-            <li>Task creation with base-branch commit snapshot</li>
-            <li>Task-scoped attachment persistence and validation</li>
-            <li>Lead clarification chat with explicit requirement confirmation</li>
+            <li data-i18n="heroCapabilityLead">真实 Codex lead 与 worker 执行</li>
+            <li data-i18n="heroCapabilityScheduling">具备依赖感知的多 worktree 调度</li>
+            <li data-i18n="heroCapabilityMailbox">通过 Web 信箱完成 lead 与子任务交接</li>
           </ul>
         </div>
       </header>
@@ -29,12 +41,12 @@
       <main class="workspace">
         <section class="panel panel--form" aria-labelledby="register-project-title">
           <div class="panel__header">
-            <p class="panel__eyebrow">Register</p>
-            <h2 id="register-project-title">Add a local repository</h2>
+            <p class="panel__eyebrow" data-i18n="registerEyebrow">注册</p>
+            <h2 id="register-project-title" data-i18n="registerTitle">添加本地仓库</h2>
           </div>
           <form id="project-registration-form" class="project-form">
             <label class="field" for="project-path-input">
-              <span class="field__label">Absolute repository path</span>
+              <span class="field__label" data-i18n="projectPathLabel">仓库绝对路径</span>
               <input
                 id="project-path-input"
                 name="path"
@@ -45,12 +57,12 @@
                 required
               >
             </label>
-            <p class="field__hint">
-              Register a local git repository before creating a task. Dirty working trees remain allowed but are highlighted below.
+            <p class="field__hint" data-i18n="projectPathHint">
+              创建任务前请先注册本地 Git 仓库。允许脏工作区，但会在下方明确提示。
             </p>
             <div id="registration-feedback" class="feedback" role="status" aria-live="polite"></div>
-            <button id="register-project-button" class="button button--primary" type="submit">
-              Register project
+            <button id="register-project-button" class="button button--primary" type="submit" data-i18n="registerProjectButton">
+              注册项目
             </button>
           </form>
         </section>
@@ -58,47 +70,47 @@
         <section class="panel panel--list" aria-labelledby="project-list-title">
           <div class="panel__header panel__header--inline">
             <div>
-              <p class="panel__eyebrow">Projects</p>
-              <h2 id="project-list-title">Registered repositories</h2>
+              <p class="panel__eyebrow" data-i18n="projectsEyebrow">项目</p>
+              <h2 id="project-list-title" data-i18n="projectsTitle">已注册仓库</h2>
             </div>
-            <button id="refresh-projects-button" class="button button--secondary" type="button">
-              Refresh list
+            <button id="refresh-projects-button" class="button button--secondary" type="button" data-i18n="refreshListButton">
+              刷新列表
             </button>
           </div>
           <div id="project-list-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
-          <div id="project-list-empty" class="empty-state">
-            No projects registered yet. Add one first, then continue with task creation.
+          <div id="project-list-empty" class="empty-state" data-i18n="projectsEmpty">
+            还没有已注册项目。请先添加一个仓库，再继续创建任务。
           </div>
-          <div id="project-list" class="project-list" role="list" aria-label="Projects"></div>
+          <div id="project-list" class="project-list" role="list" aria-label="项目"></div>
         </section>
 
         <section class="panel panel--detail" aria-labelledby="project-detail-title">
           <div class="panel__header panel__header--inline">
             <div>
-              <p class="panel__eyebrow">Detail</p>
-              <h2 id="project-detail-title">Project status</h2>
+              <p class="panel__eyebrow" data-i18n="detailEyebrow">详情</p>
+              <h2 id="project-detail-title" data-i18n="projectStatusTitle">项目状态</h2>
             </div>
-            <button id="refresh-project-detail-button" class="button button--secondary" type="button">
-              Refresh status
+            <button id="refresh-project-detail-button" class="button button--secondary" type="button" data-i18n="refreshStatusButton">
+              刷新状态
             </button>
           </div>
           <div id="project-detail-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
-          <div id="project-detail-empty" class="empty-state">
-            Select a project to inspect branches, cleanliness, and recent task activity.
+          <div id="project-detail-empty" class="empty-state" data-i18n="projectDetailEmpty">
+            选择一个项目以查看分支、工作区清洁度和最近任务活动。
           </div>
           <article id="project-detail" class="project-detail" hidden>
             <div id="dirty-warning-banner" class="warning-banner" hidden>
-              <p class="warning-banner__eyebrow">Dirty working tree</p>
-              <h3>Uncommitted changes are present</h3>
-              <p>
-                Task creation still snapshots the chosen base branch commit, but lead and worker sessions should not depend on this checkout state.
+              <p class="warning-banner__eyebrow" data-i18n="dirtyBannerEyebrow">脏工作区</p>
+              <h3 data-i18n="dirtyBannerTitle">存在未提交改动</h3>
+              <p data-i18n="dirtyBannerBody">
+                创建任务时仍会快照所选基线分支提交，但 lead 和 worker 会话不应依赖当前 checkout 状态。
               </p>
             </div>
 
             <section class="detail-hero">
               <div>
-                <p class="detail-hero__eyebrow">Registered project</p>
-                <h3 id="project-name">Project</h3>
+                <p class="detail-hero__eyebrow" data-i18n="registeredProjectEyebrow">已注册项目</p>
+                <h3 id="project-name">项目</h3>
                 <p id="project-path" class="detail-hero__path"></p>
               </div>
               <div id="cleanliness-badge" class="badge"></div>
@@ -106,27 +118,27 @@
 
             <dl class="stats-grid">
               <div class="stat-card">
-                <dt>Default branch</dt>
-                <dd id="default-branch">Unknown</dd>
+                <dt data-i18n="defaultBranchStat">默认分支</dt>
+                <dd id="default-branch">未知</dd>
               </div>
               <div class="stat-card">
-                <dt>Current branch</dt>
-                <dd id="current-branch">Unknown</dd>
+                <dt data-i18n="currentBranchStat">当前分支</dt>
+                <dd id="current-branch">未知</dd>
               </div>
               <div class="stat-card">
-                <dt>Project name</dt>
-                <dd id="registered-name">Unknown</dd>
+                <dt data-i18n="projectNameStat">项目名称</dt>
+                <dd id="registered-name">未知</dd>
               </div>
               <div class="stat-card">
-                <dt>Saved path</dt>
-                <dd id="registered-path">Unknown</dd>
+                <dt data-i18n="savedPathStat">保存路径</dt>
+                <dd id="registered-path">未知</dd>
               </div>
             </dl>
 
             <section class="branches-card" aria-labelledby="recent-branches-title">
               <div class="branches-card__header">
-                <p class="panel__eyebrow">Branch choices</p>
-                <h3 id="recent-branches-title">Recent local branches</h3>
+                <p class="panel__eyebrow" data-i18n="branchChoicesEyebrow">分支选项</p>
+                <h3 id="recent-branches-title" data-i18n="recentBranchesTitle">最近本地分支</h3>
               </div>
               <div id="recent-branches" class="branches-list"></div>
             </section>
@@ -136,87 +148,87 @@
         <section class="panel panel--agents" aria-labelledby="agent-health-title">
           <div class="panel__header panel__header--inline">
             <div>
-              <p class="panel__eyebrow">Agents</p>
-              <h2 id="agent-health-title">Registry and health status</h2>
+              <p class="panel__eyebrow" data-i18n="agentsEyebrow">Agent</p>
+              <h2 id="agent-health-title" data-i18n="agentHealthTitle">注册表与健康状态</h2>
             </div>
-            <button id="refresh-agent-health-button" class="button button--secondary" type="button">
-              Refresh health
+            <button id="refresh-agent-health-button" class="button button--secondary" type="button" data-i18n="refreshHealthButton">
+              刷新健康状态
             </button>
           </div>
-          <p class="panel__summary">
-            Lead clarification only starts when the selected lead agent is healthy. Task creation keeps the same guard visible before you commit anything.
+          <p class="panel__summary" data-i18n="agentHealthSummary">
+            只有所选 lead agent 健康时，才会开始需求澄清。创建任务前会持续显示同样的保护信息。
           </p>
           <div id="agent-health-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
           <dl class="stats-grid stats-grid--agents">
             <div class="stat-card">
-              <dt>Registered agents</dt>
+              <dt data-i18n="registeredAgentsStat">已注册 Agent</dt>
               <dd id="agent-count">0</dd>
             </div>
             <div class="stat-card">
-              <dt>Healthy lead candidates</dt>
+              <dt data-i18n="healthyLeadStat">健康的 lead 候选</dt>
               <dd id="healthy-lead-count">0</dd>
             </div>
             <div class="stat-card">
-              <dt>Healthy worker candidates</dt>
+              <dt data-i18n="healthyWorkerStat">健康的 worker 候选</dt>
               <dd id="healthy-worker-count">0</dd>
             </div>
             <div class="stat-card">
-              <dt>Last health refresh</dt>
-              <dd id="agent-health-checked-at">Not yet checked</dd>
+              <dt data-i18n="healthCheckedAtStat">上次健康检查</dt>
+              <dd id="agent-health-checked-at">尚未检查</dd>
             </div>
             <div class="stat-card">
-              <dt>Default runtime</dt>
-              <dd id="agent-runtime-summary">Not configured</dd>
+              <dt data-i18n="defaultRuntimeStat">默认运行时</dt>
+              <dd id="agent-runtime-summary">未配置</dd>
             </div>
             <div class="stat-card">
-              <dt>Docker sandbox</dt>
-              <dd><span id="docker-health-badge" class="badge badge--outline">Unknown</span></dd>
+              <dt data-i18n="dockerSandboxStat">Docker 沙箱</dt>
+              <dd><span id="docker-health-badge" class="badge badge--outline">未知</span></dd>
             </div>
           </dl>
-          <p id="docker-health-reason" class="panel__summary">
-            Docker sandbox health is loaded with the agent directory.
+          <p id="docker-health-reason" class="panel__summary" data-i18n="dockerHealthReasonDefault">
+            Docker 沙箱健康状态会随 Agent 目录一并加载。
           </p>
-          <div id="agent-health-empty" class="empty-state">
-            No registered agents were found.
+          <div id="agent-health-empty" class="empty-state" data-i18n="agentHealthEmpty">
+            没有找到已注册 Agent。
           </div>
-          <div id="agent-health-list" class="agent-grid" role="list" aria-label="Agent health cards"></div>
+          <div id="agent-health-list" class="agent-grid" role="list" aria-label="Agent 健康卡片"></div>
         </section>
 
         <section class="panel panel--task-form" aria-labelledby="task-form-title">
           <div class="panel__header">
-            <p class="panel__eyebrow">Create</p>
-            <h2 id="task-form-title">New clarification task</h2>
+            <p class="panel__eyebrow" data-i18n="createEyebrow">创建</p>
+            <h2 id="task-form-title" data-i18n="taskFormTitle">新建需求澄清任务</h2>
           </div>
           <form id="task-creation-form" class="task-form">
             <label class="field" for="base-branch-select">
-              <span class="field__label">Base branch</span>
+              <span class="field__label" data-i18n="baseBranchLabel">基线分支</span>
               <select id="base-branch-select" class="field__control"></select>
             </label>
             <label class="field" for="lead-agent-select">
-              <span class="field__label">Lead agent</span>
+              <span class="field__label" data-i18n="leadAgentLabel">Lead Agent</span>
               <select id="lead-agent-select" class="field__control"></select>
             </label>
             <div id="lead-agent-feedback" class="feedback" role="status" aria-live="polite"></div>
             <label class="field" for="task-title-input">
-              <span class="field__label">Task title</span>
+              <span class="field__label" data-i18n="taskTitleLabel">任务标题</span>
               <input id="task-title-input" name="title" type="text" maxlength="160" required>
             </label>
             <label class="field" for="task-description-input">
-              <span class="field__label">Requirement description</span>
+              <span class="field__label" data-i18n="taskDescriptionLabel">需求描述</span>
               <textarea id="task-description-input" name="description" rows="6" required></textarea>
             </label>
             <label class="field" for="task-attachments-input">
-              <span class="field__label">Attachments</span>
+              <span class="field__label" data-i18n="attachmentsLabelStatic">附件</span>
               <input id="task-attachments-input" name="attachments" type="file" multiple>
             </label>
-            <p class="field__hint">
-              Supported types: images, PDF/Markdown/text documents, and text-based code files. Unsupported or oversized files are rejected before task creation completes.
+            <p class="field__hint" data-i18n="attachmentsHint">
+              支持图片、PDF/Markdown/文本文件，以及基于文本的代码文件。不支持或超限文件会在任务创建完成前被拒绝。
             </p>
             <div id="task-attachment-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
             <ul id="task-attachment-list" class="attachment-list attachment-list--draft"></ul>
             <div id="task-form-feedback" class="feedback" role="status" aria-live="polite"></div>
-            <button id="create-task-button" class="button button--primary" type="submit">
-              Create task
+            <button id="create-task-button" class="button button--primary" type="submit" data-i18n="createTaskButton">
+              创建任务
             </button>
           </form>
         </section>
@@ -224,39 +236,39 @@
         <section class="panel panel--tasks" aria-labelledby="task-list-title">
           <div class="panel__header panel__header--inline">
             <div>
-              <p class="panel__eyebrow">Tasks</p>
-              <h2 id="task-list-title">Project tasks</h2>
+              <p class="panel__eyebrow" data-i18n="tasksEyebrow">任务</p>
+              <h2 id="task-list-title" data-i18n="taskListTitle">项目任务</h2>
             </div>
-            <button id="refresh-tasks-button" class="button button--secondary" type="button">
-              Refresh tasks
+            <button id="refresh-tasks-button" class="button button--secondary" type="button" data-i18n="refreshTasksButton">
+              刷新任务
             </button>
           </div>
           <div id="task-list-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
-          <div id="task-list-empty" class="empty-state">
-            No tasks exist for the selected project yet.
+          <div id="task-list-empty" class="empty-state" data-i18n="taskListEmpty">
+            当前所选项目还没有任务。
           </div>
-          <div id="task-list" class="task-list" role="list" aria-label="Tasks"></div>
+          <div id="task-list" class="task-list" role="list" aria-label="任务"></div>
         </section>
 
         <section class="panel panel--clarification" aria-labelledby="clarification-title">
           <div class="panel__header panel__header--inline">
             <div>
-              <p class="panel__eyebrow">Clarification</p>
-              <h2 id="clarification-title">Lead session transcript</h2>
+              <p class="panel__eyebrow" data-i18n="clarificationEyebrow">澄清</p>
+              <h2 id="clarification-title" data-i18n="clarificationTitle">Lead 会话转录</h2>
             </div>
-            <button id="refresh-task-detail-button" class="button button--secondary" type="button">
-              Refresh task
+            <button id="refresh-task-detail-button" class="button button--secondary" type="button" data-i18n="refreshTaskButton">
+              刷新任务
             </button>
           </div>
           <div id="task-detail-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
-          <div id="task-detail-empty" class="empty-state">
-            Select a task to inspect its attachments, live transcript, and clarification state.
+          <div id="task-detail-empty" class="empty-state" data-i18n="taskDetailEmpty">
+            选择一个任务以查看附件、实时转录与澄清状态。
           </div>
           <article id="task-detail" class="task-detail" hidden>
             <section class="task-detail__hero">
               <div>
-                <p class="task-detail__eyebrow">Selected task</p>
-                <h3 id="task-detail-title">Task title</h3>
+                <p class="task-detail__eyebrow" data-i18n="selectedTaskEyebrow">当前任务</p>
+                <h3 id="task-detail-title">任务标题</h3>
                 <p id="task-detail-description" class="task-detail__description"></p>
               </div>
               <div class="task-detail__hero-meta">
@@ -266,46 +278,76 @@
             </section>
 
             <section id="task-cleanup-warnings" class="warning-banner" hidden>
-              <p class="warning-banner__eyebrow">Cleanup warnings</p>
-              <h3>Manual cleanup may still be required</h3>
+              <p class="warning-banner__eyebrow" data-i18n="cleanupWarningsEyebrow">清理警告</p>
+              <h3 data-i18n="cleanupWarningsTitle">可能仍需手动清理</h3>
               <p id="task-cleanup-warning-summary"></p>
               <div id="task-cleanup-warning-list" class="cleanup-warning-list"></div>
             </section>
 
             <dl class="stats-grid stats-grid--task">
               <div class="stat-card">
-                <dt>Lead agent</dt>
-                <dd id="task-lead-agent">Unknown</dd>
+                <dt data-i18n="leadAgentStat">Lead Agent</dt>
+                <dd id="task-lead-agent">未知</dd>
               </div>
               <div class="stat-card">
-                <dt>Base commit</dt>
-                <dd id="task-base-commit">Unknown</dd>
+                <dt data-i18n="baseCommitStat">基线提交</dt>
+                <dd id="task-base-commit">未知</dd>
               </div>
               <div class="stat-card">
-                <dt>Latest session</dt>
-                <dd id="task-session-status">None</dd>
+                <dt data-i18n="latestSessionStat">最近会话</dt>
+                <dd id="task-session-status">无</dd>
               </div>
               <div class="stat-card">
-                <dt>Messages persisted</dt>
+                <dt data-i18n="messagesPersistedStat">已持久化消息</dt>
                 <dd id="task-message-count">0</dd>
               </div>
               <div class="stat-card">
-                <dt>Plan version</dt>
+                <dt data-i18n="planVersionStat">计划版本</dt>
                 <dd id="task-plan-version">0</dd>
               </div>
               <div class="stat-card">
-                <dt>Snapshots</dt>
+                <dt data-i18n="snapshotsStat">快照数</dt>
                 <dd id="task-plan-snapshot-count">0</dd>
               </div>
             </dl>
 
+            <section class="task-detail__team" aria-labelledby="task-team-title">
+              <div class="panel__header">
+                <div>
+                  <p class="panel__eyebrow" data-i18n="leaderOrchestrationEyebrow">Leader 编排</p>
+                  <h3 id="task-team-title" data-i18n="teamLifecycleTitle">Lead 与团队生命周期</h3>
+                </div>
+                <span id="task-team-member-count" class="badge badge--outline">0 个成员</span>
+              </div>
+              <p class="panel__summary" data-i18n="teamLifecycleSummary">
+                先查看 lead 协调者和所有具名 worker，再进入聚焦执行与恢复操作。
+              </p>
+              <div id="task-team-empty" class="empty-state" data-i18n="teamEmpty">
+                计划批准并物化为可执行子任务后，团队成员会显示在这里。
+              </div>
+              <div id="task-team-shell" class="team-shell" hidden>
+                <article class="team-lead-card">
+                  <div class="team-lead-card__header">
+                    <div>
+                      <p class="panel__eyebrow" data-i18n="leadEyebrow">Lead</p>
+                      <h4 class="plan-history__title" data-i18n="coordinatorTitle">协调者</h4>
+                    </div>
+                    <span id="task-team-lead-status" class="badge badge--outline">待定</span>
+                  </div>
+                  <p id="task-team-lead-meta" class="team-lead-card__meta"></p>
+                  <p id="task-team-lead-summary" class="team-lead-card__summary"></p>
+                </article>
+                <div id="task-team-member-list" class="team-member-list"></div>
+              </div>
+            </section>
+
             <section class="task-detail__attachments" aria-labelledby="task-attachments-title">
               <div class="panel__header">
-                <p class="panel__eyebrow">Attachments</p>
-                <h3 id="task-attachments-title">Task-scoped files</h3>
+                <p class="panel__eyebrow" data-i18n="attachmentsEyebrow">附件</p>
+                <h3 id="task-attachments-title" data-i18n="taskAttachmentsTitle">任务范围文件</h3>
               </div>
-              <div id="task-attachments-empty" class="empty-state">
-                No attachments were added for this task.
+              <div id="task-attachments-empty" class="empty-state" data-i18n="taskAttachmentsEmpty">
+                这个任务没有附加文件。
               </div>
               <ul id="task-attachments-list" class="attachment-list"></ul>
             </section>
@@ -313,79 +355,114 @@
             <section class="task-detail__execution" aria-labelledby="task-execution-title">
               <div class="panel__header">
                 <div>
-                  <p class="panel__eyebrow">Execution</p>
-                  <h3 id="task-execution-title">Summary-first worker board</h3>
+                  <p class="panel__eyebrow" data-i18n="executionEyebrow">执行</p>
+                  <h3 id="task-execution-title" data-i18n="executionBoardTitle">摘要优先的 worker 看板</h3>
                 </div>
               </div>
-              <p class="panel__summary">
-                Monitor every subtask from compact live summaries, then focus a single session stream when you need deeper output.
+              <p class="panel__summary" data-i18n="executionBoardSummary">
+                先通过紧凑摘要监控全部子任务，再在需要时聚焦某个会话流获取更深层输出。
               </p>
-              <div id="task-execution-empty" class="empty-state">
-                Approved subtasks and worker sessions will appear here after plan approval.
+              <div id="task-execution-empty" class="empty-state" data-i18n="executionEmpty">
+                计划批准后，已批准的子任务和 worker 会话会显示在这里。
               </div>
               <div id="task-execution-board" class="execution-board">
                 <div id="task-execution-list" class="execution-list"></div>
                 <aside id="task-execution-focus" class="execution-focus" hidden>
                   <div class="execution-focus__header">
                     <div>
-                      <p class="panel__eyebrow">Focused session</p>
-                      <h4 id="task-execution-focus-title" class="execution-focus__title">Select a subtask</h4>
+                      <p class="panel__eyebrow" data-i18n="focusedSessionEyebrow">聚焦会话</p>
+                      <h4 id="task-execution-focus-title" class="execution-focus__title" data-i18n="selectSubtaskTitle">选择一个子任务</h4>
                     </div>
-                    <span id="task-execution-focus-badge" class="badge badge--outline">Idle</span>
+                    <span id="task-execution-focus-badge" class="badge badge--outline">空闲</span>
                   </div>
                   <p id="task-execution-focus-meta" class="execution-focus__meta"></p>
                   <section id="task-execution-review" class="review-panel" hidden>
                     <div class="review-panel__header">
-                      <p id="task-execution-review-phase" class="review-panel__phase">Incremental review</p>
-                      <span id="task-execution-review-decision" class="badge badge--outline">Pending</span>
+                      <p id="task-execution-review-phase" class="review-panel__phase">增量审查</p>
+                      <span id="task-execution-review-decision" class="badge badge--outline">待定</span>
                     </div>
                     <p id="task-execution-review-summary" class="review-panel__summary"></p>
                     <div id="task-execution-review-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
                     <label id="task-execution-rework-field" class="field" hidden>
-                      <span class="field__label">Rework description</span>
+                      <span class="field__label" data-i18n="reworkDescriptionLabel">返工描述</span>
                       <textarea
                         id="task-execution-rework-description"
                         rows="4"
-                        placeholder="Optionally refine the subtask description before relaunch."
+                        placeholder="可选：在重新启动前进一步细化子任务描述。"
+                        data-i18n-placeholder="reworkDescriptionPlaceholder"
                       ></textarea>
                     </label>
                     <div id="task-execution-review-actions" class="review-panel__actions" hidden>
                       <label id="task-execution-agent-field" class="field" hidden>
-                        <span class="field__label">Replacement agent</span>
+                        <span class="field__label" data-i18n="replacementAgentLabel">替换 Agent</span>
                         <select id="task-execution-agent-select" class="field__control"></select>
                       </label>
-                      <button id="task-execution-rebase-retry-button" class="button button--primary" type="button">
-                        Rebase &amp; retry
+                      <button id="task-execution-rebase-retry-button" class="button button--primary" type="button" data-i18n="rebaseRetryButton">
+                        Rebase 并重试
                       </button>
-                      <button id="task-execution-resume-merge-button" class="button button--secondary" type="button">
-                        Resume merge
+                      <button id="task-execution-resume-merge-button" class="button button--secondary" type="button" data-i18n="resumeMergeButton">
+                        恢复合并
                       </button>
-                      <button id="task-execution-rework-button" class="button button--primary" type="button">
-                        Rework now
+                      <button id="task-execution-rework-button" class="button button--primary" type="button" data-i18n="reworkNowButton">
+                        立即返工
                       </button>
-                      <button id="task-execution-change-agent-button" class="button button--secondary" type="button">
-                        Switch agent &amp; relaunch
+                      <button id="task-execution-reassign-button" class="button button--secondary" type="button" data-i18n="reassignMemberButton">
+                        重新派发成员
                       </button>
-                      <button id="task-execution-confirm-discard-button" class="button button--secondary" type="button">
-                        Confirm discard
+                      <button id="task-execution-cancel-button" class="button button--secondary" type="button" data-i18n="cancelMemberButton">
+                        取消成员
+                      </button>
+                      <button id="task-execution-change-agent-button" class="button button--secondary" type="button" data-i18n="replaceWorkerButton">
+                        替换 worker
+                      </button>
+                      <button id="task-execution-confirm-discard-button" class="button button--secondary" type="button" data-i18n="confirmDiscardButton">
+                        确认丢弃
                       </button>
                     </div>
                   </section>
                   <section id="task-execution-merge-history" class="merge-history" hidden>
                     <div class="panel__header panel__header--inline">
                       <div>
-                        <p class="panel__eyebrow">Merge history</p>
-                        <h4 class="plan-history__title">Attempt timeline</h4>
+                        <p class="panel__eyebrow" data-i18n="mergeHistoryEyebrow">合并历史</p>
+                        <h4 class="plan-history__title" data-i18n="attemptTimelineTitle">尝试时间线</h4>
                       </div>
-                      <span id="task-execution-merge-history-count" class="badge badge--outline">0 attempts</span>
+                      <span id="task-execution-merge-history-count" class="badge badge--outline">0 次尝试</span>
                     </div>
-                    <div id="task-execution-merge-history-empty" class="empty-state" hidden>
-                      No merge or rebase attempts have been recorded for this subtask yet.
+                    <div id="task-execution-merge-history-empty" class="empty-state" hidden data-i18n="mergeHistoryEmpty">
+                      这个子任务还没有记录任何 merge 或 rebase 尝试。
                     </div>
                     <div id="task-execution-merge-history-list" class="merge-history__list"></div>
                   </section>
-                  <div id="task-execution-focus-empty" class="empty-state">
-                    Pick a subtask summary to inspect the latest worker session without mounting every terminal at once.
+                  <section id="task-execution-mailbox" class="mailbox-panel" hidden>
+                    <div class="panel__header panel__header--inline">
+                      <div>
+                        <p class="panel__eyebrow" data-i18n="mailboxEyebrow">信箱</p>
+                        <h4 class="plan-history__title" data-i18n="handoffNotesTitle">交接说明</h4>
+                      </div>
+                      <span id="task-execution-mailbox-count" class="badge badge--outline">0 条说明</span>
+                    </div>
+                    <div id="task-execution-mailbox-empty" class="empty-state" hidden data-i18n="mailboxEmpty">
+                      目前还没有发往这个子任务的信箱说明。
+                    </div>
+                    <div id="task-execution-mailbox-list" class="mailbox-list"></div>
+                    <form id="task-execution-mailbox-form" class="message-form">
+                      <label class="field" for="task-execution-mailbox-input">
+                        <span class="field__label" data-i18n="sendLeadHandoffLabel">向该子任务发送 lead 交接说明</span>
+                        <textarea
+                          id="task-execution-mailbox-input"
+                          rows="4"
+                          placeholder="补充约束、上游预期或集成细节。"
+                          data-i18n-placeholder="sendLeadHandoffPlaceholder"
+                        ></textarea>
+                      </label>
+                      <div id="task-execution-mailbox-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
+                      <button id="task-execution-mailbox-send-button" class="button button--primary" type="submit" data-i18n="sendHandoffNoteButton">
+                        发送交接说明
+                      </button>
+                    </form>
+                  </section>
+                  <div id="task-execution-focus-empty" class="empty-state" data-i18n="executionFocusEmpty">
+                    选择一个子任务摘要，即可查看最新 worker 会话，而不必同时挂载所有终端。
                   </div>
                   <div id="task-execution-session-list" class="execution-session-list"></div>
                   <div id="task-execution-focus-preview" class="execution-console" hidden></div>
@@ -396,55 +473,56 @@
             <section class="task-detail__planning" aria-labelledby="task-plan-title">
               <div class="panel__header">
                 <div>
-                  <p class="panel__eyebrow">Plan draft</p>
-                  <h3 id="task-plan-title">Current plan draft</h3>
+                  <p class="panel__eyebrow" data-i18n="planDraftEyebrow">计划草稿</p>
+                  <h3 id="task-plan-title" data-i18n="currentPlanDraftTitle">当前计划草稿</h3>
                 </div>
               </div>
               <div id="task-plan-feedback" class="feedback" role="status" aria-live="polite"></div>
-              <div id="task-plan-empty" class="empty-state">
-                Confirm requirements to trigger plan generation, validation, and draft persistence.
+              <div id="task-plan-empty" class="empty-state" data-i18n="planEmpty">
+                确认需求后会触发计划生成、校验与草稿持久化。
               </div>
               <div id="task-plan-detail" class="plan-detail" hidden>
                 <p id="task-plan-summary" class="plan-detail__summary"></p>
                 <div id="task-plan-editor" class="plan-editor" hidden>
                   <div class="plan-editor__toolbar">
-                    <p class="plan-editor__hint">
-                      Edit the draft before approval. Changes stay in this browser until plan draft sync is enabled.
+                    <p class="plan-editor__hint" data-i18n="planEditorHint">
+                      批准前可先编辑草稿。变更仅保存在当前浏览器，直到草稿同步功能上线。
                     </p>
                     <div class="plan-editor__actions">
-                      <button id="task-plan-save-draft-button" class="button button--secondary" type="button">
-                        Save draft
+                      <button id="task-plan-save-draft-button" class="button button--secondary" type="button" data-i18n="saveDraftButton">
+                        保存草稿
                       </button>
-                      <button id="task-plan-add-subtask-button" class="button button--secondary" type="button">
-                        Add subtask
+                      <button id="task-plan-add-subtask-button" class="button button--secondary" type="button" data-i18n="addSubtaskButton">
+                        添加子任务
                       </button>
-                      <button id="task-plan-reset-draft-button" class="button button--ghost" type="button">
-                        Reset local edits
+                      <button id="task-plan-reset-draft-button" class="button button--ghost" type="button" data-i18n="resetLocalEditsButton">
+                        重置本地修改
                       </button>
-                      <button id="task-plan-approve-button" class="button button--primary" type="button">
-                        Approve draft
+                      <button id="task-plan-approve-button" class="button button--primary" type="button" data-i18n="approveDraftButton">
+                        批准草稿
                       </button>
                     </div>
                   </div>
                   <label class="field" for="task-plan-notes-input">
-                    <span class="field__label">Planning notes</span>
+                    <span class="field__label" data-i18n="planningNotesLabel">规划备注</span>
                     <textarea
                       id="task-plan-notes-input"
                       name="notes"
                       rows="3"
-                      placeholder="Optional execution notes for the current draft."
+                      placeholder="可选：为当前草稿补充执行备注。"
+                      data-i18n-placeholder="planningNotesPlaceholder"
                     ></textarea>
                   </label>
                 </div>
                 <div id="task-plan-history" class="plan-history" hidden>
                   <div class="panel__header">
                     <div>
-                      <p class="panel__eyebrow">History</p>
-                      <h4 class="plan-history__title">Plan snapshots</h4>
+                      <p class="panel__eyebrow" data-i18n="historyEyebrow">历史</p>
+                      <h4 class="plan-history__title" data-i18n="planSnapshotsTitle">计划快照</h4>
                     </div>
                   </div>
-                  <div id="task-plan-history-empty" class="empty-state" hidden>
-                    No historical snapshots are available for restore yet.
+                  <div id="task-plan-history-empty" class="empty-state" hidden data-i18n="planHistoryEmpty">
+                    暂无可恢复的历史快照。
                   </div>
                   <div id="task-plan-history-list" class="plan-history__list"></div>
                 </div>
@@ -454,31 +532,37 @@
 
             <section class="task-detail__transcript" aria-labelledby="task-transcript-title">
               <div class="panel__header">
-                <p class="panel__eyebrow">Transcript</p>
-                <h3 id="task-transcript-title">Persisted clarification messages</h3>
+                <p class="panel__eyebrow" data-i18n="transcriptEyebrow">转录</p>
+                <h3 id="task-transcript-title" data-i18n="transcriptTitle">已持久化的澄清消息</h3>
               </div>
-              <div id="task-transcript-empty" class="empty-state">
-                Start clarification to create the first lead session and transcript entries.
+              <div id="task-transcript-empty" class="empty-state" data-i18n="transcriptEmpty">
+                开始澄清后，这里会创建首个 lead 会话和转录消息。
               </div>
               <div id="task-transcript" class="transcript"></div>
             </section>
 
             <div class="task-actions">
-              <button id="start-clarification-button" class="button button--primary" type="button">
-                Start clarification
+              <button id="start-clarification-button" class="button button--primary" type="button" data-i18n="startClarificationButton">
+                开始澄清
               </button>
-              <button id="confirm-requirements-button" class="button button--secondary" type="button">
-                Requirements confirmed
+              <button id="confirm-requirements-button" class="button button--secondary" type="button" data-i18n="confirmRequirementsButton">
+                已确认需求
               </button>
             </div>
 
             <form id="task-message-form" class="message-form">
               <label class="field" for="task-message-input">
-                <span class="field__label">Send a clarification reply</span>
-                <textarea id="task-message-input" name="message" rows="3" placeholder="Clarify requirements, constraints, or acceptance criteria."></textarea>
+                <span class="field__label" data-i18n="sendClarificationReplyLabel">发送澄清回复</span>
+                <textarea
+                  id="task-message-input"
+                  name="message"
+                  rows="3"
+                  placeholder="补充需求、约束条件或验收标准。"
+                  data-i18n-placeholder="sendClarificationReplyPlaceholder"
+                ></textarea>
               </label>
-              <button id="send-task-message-button" class="button button--primary" type="submit">
-                Send message
+              <button id="send-task-message-button" class="button button--primary" type="submit" data-i18n="sendMessageButton">
+                发送消息
               </button>
             </form>
           </article>

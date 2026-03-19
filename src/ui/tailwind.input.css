@@ -1,0 +1,564 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation: none !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0ms !important;
+    }
+  }
+
+  html {
+    @apply min-h-full bg-slate-950 font-body text-slate-900 antialiased;
+    scroll-behavior: smooth;
+    background:
+      radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.26), transparent 28%),
+      radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.22), transparent 24%),
+      radial-gradient(circle at 50% 100%, rgba(99, 102, 241, 0.18), transparent 26%),
+      linear-gradient(180deg, #ecfeff 0%, #dbeafe 34%, #e2e8f0 100%);
+  }
+
+  body {
+    @apply min-h-screen;
+  }
+
+  ::selection {
+    background: rgba(14, 165, 233, 0.22);
+    color: #0f172a;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+
+  @keyframes glass-float-in {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, 18px, 0) scale(0.985);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+  }
+
+  @keyframes glass-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 rgba(125, 211, 252, 0);
+    }
+
+    50% {
+      box-shadow: 0 0 0.9rem rgba(125, 211, 252, 0.22);
+    }
+  }
+}
+
+@layer components {
+  .page-shell {
+    @apply mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8;
+    animation: glass-float-in 520ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .hero {
+    @apply relative mb-6 grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(360px,0.9fr)];
+  }
+
+  .hero::before {
+    content: "";
+    @apply absolute inset-x-0 top-6 -z-10 h-48 rounded-[2rem] bg-white/20 blur-3xl;
+  }
+
+  .hero__copy,
+  .hero__panel,
+  .panel,
+  .stat-card,
+  .branches-card,
+  .project-list__item,
+  .task-list__item,
+  .transcript__message {
+    @apply border border-white/30 bg-white/45 shadow-glass backdrop-blur-2xl;
+  }
+
+  .hero__copy,
+  .hero__panel,
+  .panel {
+    @apply relative rounded-[2rem] p-5 sm:p-6;
+    animation: glass-float-in 560ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .hero__copy {
+    @apply overflow-hidden;
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.64), rgba(255,255,255,0.34)),
+      linear-gradient(135deg, rgba(14,165,233,0.14), rgba(20,184,166,0.14));
+  }
+
+  .hero__copy::after,
+  .hero__panel::after,
+  .panel::after {
+    content: "";
+    pointer-events: none;
+    @apply absolute inset-x-6 top-0 h-px bg-white/70;
+  }
+
+  .hero__panel {
+    @apply rounded-[2rem];
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.5)),
+      linear-gradient(135deg, rgba(59,130,246,0.12), rgba(34,197,94,0.1));
+  }
+
+  .workspace {
+    @apply grid gap-5;
+  }
+
+  @screen xl {
+    .workspace {
+      grid-template-columns: minmax(290px, 360px) minmax(340px, 0.95fr) minmax(420px, 1.35fr);
+      align-items: start;
+    }
+  }
+
+  .eyebrow,
+  .panel__eyebrow,
+  .detail-hero__eyebrow,
+  .warning-banner__eyebrow,
+  .hero__panel-label,
+  .task-detail__eyebrow {
+    @apply mb-2 text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-slate-500;
+  }
+
+  .hero h1,
+  .panel h2,
+  .detail-hero h3,
+  .warning-banner h3,
+  .branches-card h3,
+  .task-detail h3 {
+    @apply m-0 font-display tracking-tight text-slate-950;
+  }
+
+  .hero h1 {
+    @apply max-w-[12ch] text-4xl leading-none sm:text-5xl xl:text-6xl;
+  }
+
+  .hero__summary,
+  .hero__panel,
+  .field__hint,
+  .feedback,
+  .project-list__meta,
+  .detail-hero__path,
+  .warning-banner p,
+  .branches-list,
+  .empty-state,
+  .task-detail__description,
+  .transcript__content,
+  .attachment-list__meta,
+  .task-list__meta,
+  .plan-detail__summary,
+  .plan-card__meta {
+    @apply text-sm leading-6 text-slate-600;
+  }
+
+  .hero__list,
+  .branches-list,
+  .attachment-list {
+    @apply m-0 list-none p-0;
+  }
+
+  .panel__header {
+    @apply mb-4;
+  }
+
+  .panel__header--inline,
+  .detail-hero,
+  .agent-card__topline,
+  .project-list__topline,
+  .task-list__topline,
+  .task-detail__hero,
+  .task-actions {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  }
+
+  .panel__summary {
+    @apply mb-4 text-sm leading-6 text-slate-600;
+  }
+
+  .project-form,
+  .task-form,
+  .message-form,
+  .project-detail,
+  .task-detail,
+  .plan-detail,
+  .plan-editor,
+  .plan-history,
+  .project-list,
+  .task-list,
+  .agent-grid,
+  .transcript,
+  .plan-list,
+  .execution-list,
+  .execution-board,
+  .team-shell,
+  .team-member-list,
+  .cleanup-warning-list,
+  .attachment-list,
+  .mailbox-list,
+  .merge-history__list {
+    @apply grid gap-3;
+  }
+
+  .field {
+    @apply grid gap-2;
+  }
+
+  .field__label {
+    @apply text-sm font-semibold text-slate-700;
+  }
+
+  .field__control,
+  .field input,
+  .field textarea {
+    @apply w-full rounded-2xl border border-white/50 bg-white/70 px-4 py-3 text-slate-900 shadow-soft outline-none ring-0 backdrop-blur-xl transition;
+  }
+
+  .field textarea {
+    @apply min-h-[120px];
+  }
+
+  .field input:focus-visible,
+  .field textarea:focus-visible,
+  .field__control:focus-visible,
+  .button:focus-visible,
+  .project-list__item:focus-visible,
+  .task-list__item:focus-visible,
+  .execution-card:focus-visible,
+  .team-member-card:focus-visible {
+    @apply outline-none ring-4 ring-sky-200/70;
+  }
+
+  .button {
+    @apply inline-flex min-h-[46px] items-center justify-center rounded-full border border-white/35 px-4 text-sm font-semibold transition duration-200 ease-out hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-progress disabled:opacity-60 disabled:transform-none;
+  }
+
+  .button--primary {
+    @apply bg-slate-900 text-white shadow-soft;
+  }
+
+  .button--secondary {
+    @apply bg-white/65 text-slate-900 backdrop-blur-xl;
+  }
+
+  .button--ghost {
+    @apply border-dashed bg-transparent text-slate-600;
+  }
+
+  .feedback {
+    @apply hidden rounded-2xl border px-4 py-3 text-sm;
+  }
+
+  .feedback.is-visible {
+    @apply block;
+  }
+
+  .feedback--success {
+    @apply border-emerald-200 bg-emerald-50/80 text-emerald-700;
+  }
+
+  .feedback--error {
+    @apply border-rose-200 bg-rose-50/80 text-rose-700;
+  }
+
+  .feedback--inline {
+    @apply mb-3;
+  }
+
+  .empty-state {
+    @apply rounded-[1.5rem] border border-dashed border-white/45 bg-white/35 px-4 py-5 backdrop-blur-xl;
+  }
+
+  .project-list__item,
+  .task-list__item,
+  .execution-card,
+  .team-member-card {
+    @apply w-full rounded-[1.5rem] p-4 text-left transition duration-200 ease-out hover:-translate-y-0.5;
+  }
+
+  .project-list__item.is-selected,
+  .task-list__item.is-selected,
+  .execution-card.is-selected,
+  .team-member-card.is-selected {
+    @apply border-sky-200 bg-white/80 ring-2 ring-sky-100;
+    animation: glass-pulse 2.4s ease-in-out infinite;
+  }
+
+  #language-toggle {
+    @apply shrink-0;
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.82), rgba(255,255,255,0.52)),
+      linear-gradient(135deg, rgba(14,165,233,0.08), rgba(16,185,129,0.08));
+  }
+
+  .project-list__title,
+  .task-list__title,
+  .agent-card__title,
+  .execution-card__title,
+  .team-member-card__title {
+    @apply m-0 text-base font-semibold text-slate-950;
+  }
+
+  .project-list__path,
+  .stats-grid dd,
+  .task-detail__description,
+  .transcript__content,
+  .plan-card__description,
+  .cleanup-warning-list__path,
+  .cleanup-warning-list__reason,
+  .cleanup-warning-list__meta,
+  .execution-card__facts dd,
+  .team-member-card__facts dd,
+  .execution-focus__meta,
+  .mailbox-item__content,
+  .merge-history__summary {
+    @apply break-words;
+  }
+
+  .badge {
+    @apply inline-flex min-h-[34px] items-center rounded-full border px-3 text-xs font-semibold;
+  }
+
+  .badge--clean {
+    @apply border-emerald-200 bg-emerald-100/80 text-emerald-700;
+  }
+
+  .badge--dirty {
+    @apply border-rose-200 bg-rose-100/80 text-rose-700;
+  }
+
+  .badge--outline {
+    @apply border-white/45 bg-white/45 text-slate-600;
+  }
+
+  .badge--accent-soft {
+    @apply border-sky-200 bg-sky-100/80 text-sky-700;
+  }
+
+  .warning-banner {
+    @apply rounded-[1.75rem] border border-amber-200/60 bg-amber-50/70 p-5 shadow-soft backdrop-blur-xl;
+  }
+
+  .stats-grid {
+    @apply grid gap-3 sm:grid-cols-2 xl:grid-cols-3;
+  }
+
+  .stat-card,
+  .branches-card,
+  .agent-card,
+  .plan-card,
+  .plan-subtask,
+  .execution-focus,
+  .merge-history,
+  .mailbox-panel,
+  .team-lead-card {
+    @apply rounded-[1.5rem] p-4;
+  }
+
+  .stat-card dt {
+    @apply mb-2 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-slate-500;
+  }
+
+  .stat-card dd {
+    @apply m-0 text-base font-semibold text-slate-900;
+  }
+
+  .branches-list {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .branches-list__item,
+  .attachment-list__item {
+    @apply flex items-center justify-between gap-2 rounded-2xl border border-white/45 bg-white/60 px-4 py-3 backdrop-blur-xl;
+  }
+
+  .agent-card {
+    @apply border border-white/35 bg-white/55 shadow-soft backdrop-blur-2xl transition duration-200 ease-out hover:-translate-y-0.5;
+  }
+
+  .plan-editor,
+  .plan-history,
+  .review-panel,
+  .merge-history,
+  .mailbox-panel,
+  .team-lead-card {
+    @apply border border-white/35 bg-white/55 shadow-soft backdrop-blur-2xl;
+  }
+
+  .plan-editor__toolbar,
+  .plan-editor__actions,
+  .plan-subtask__header,
+  .plan-subtask__branch,
+  .review-panel__header,
+  .review-panel__actions,
+  .merge-history__header,
+  .mailbox-item__header,
+  .execution-card__header,
+  .team-lead-card__header,
+  .team-member-card__header,
+  .team-member-card__topline,
+  .execution-focus__header {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  }
+
+  .plan-card,
+  .plan-subtask,
+  .merge-history__item,
+  .mailbox-item,
+  .cleanup-warning-list__item {
+    @apply rounded-[1.25rem] border border-white/45 bg-white/70 p-4 shadow-soft backdrop-blur-xl transition duration-200 ease-out;
+  }
+
+  .plan-card__header {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  }
+
+  .plan-card__title,
+  .plan-card__description,
+  .plan-card__meta,
+  .plan-history__title,
+  .plan-history__caption,
+  .merge-history__title,
+  .merge-history__meta,
+  .mailbox-item__title,
+  .mailbox-item__meta,
+  .execution-card__meta,
+  .execution-card__summary-line,
+  .execution-card__review-title,
+  .execution-card__review-summary,
+  .review-panel__phase,
+  .review-panel__summary,
+  .team-lead-card__meta,
+  .team-lead-card__summary,
+  .team-member-card__meta,
+  .team-member-card__summary,
+  .team-member-card__hint {
+    @apply m-0;
+  }
+
+  .plan-history__list,
+  .execution-session-list {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .plan-history__meta {
+    @apply flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .task-detail__hero-meta {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .transcript__message {
+    @apply rounded-[1.5rem] p-4;
+  }
+
+  .transcript__message--lead-agent {
+    @apply border-l-4 border-l-sky-400;
+  }
+
+  .transcript__message--user {
+    @apply border-l-4 border-l-emerald-400;
+  }
+
+  .transcript__message--system {
+    @apply border-l-4 border-l-slate-400;
+  }
+
+  .transcript__meta {
+    @apply mb-2 flex items-center justify-between gap-2 text-xs font-medium text-slate-500;
+  }
+
+  .execution-card__summary,
+  .execution-card__facts,
+  .team-member-card__facts {
+    @apply grid gap-2;
+  }
+
+  .execution-card__facts div,
+  .team-member-card__facts div {
+    @apply grid gap-1;
+  }
+
+  .execution-card__facts dt,
+  .team-member-card__facts dt {
+    @apply text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-slate-500;
+  }
+
+  .execution-card__review,
+  .review-panel {
+    @apply rounded-[1.25rem] border border-sky-100 bg-sky-50/70 p-4 shadow-soft backdrop-blur-xl;
+  }
+
+  .execution-card__review-title,
+  .review-panel__phase {
+    @apply text-xs font-semibold uppercase tracking-[0.2em] text-sky-700;
+  }
+
+  .mailbox-panel {
+    @apply border-emerald-100 bg-emerald-50/55;
+  }
+
+  .execution-card__preview,
+  .execution-console {
+    @apply m-0 max-h-80 min-h-[120px] overflow-auto rounded-[1.25rem] border border-slate-800/70 bg-slate-950/95 p-4 font-mono text-xs leading-6 text-slate-100;
+  }
+
+  .execution-console,
+  .execution-card__preview {
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      0 18px 36px rgba(15, 23, 42, 0.24);
+  }
+
+  .execution-focus {
+    @apply bg-white/60;
+  }
+
+  @screen lg {
+    .execution-board {
+      grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.92fr);
+      align-items: start;
+    }
+
+    .team-shell {
+      grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.25fr);
+      align-items: start;
+    }
+
+    .execution-card__facts,
+    .team-member-card__facts,
+    .plan-subtask__grid {
+      @apply grid-cols-2;
+    }
+  }
+}
