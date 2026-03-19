@@ -1001,6 +1001,9 @@ function connectTaskStream(taskId) {
     };
     void loadTaskDetail(taskId, { preserveStream: true });
   });
+  stream.addEventListener("subtask:status", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
   stream.addEventListener("session:started", () => {
     void loadTaskDetail(taskId, { preserveStream: true });
   });
@@ -1220,7 +1223,9 @@ async function onApprovePlanDraft() {
     showFeedback(
       elements.taskPlanFeedback,
       "success",
-      "Draft passed approval checks and is ready for Phase 07 materialization.",
+      response.idempotent
+        ? "Plan was already approved. Materialized subtasks were reused."
+        : "Plan approved. Subtasks are materialized and ready for Phase 08 launch.",
     );
   } catch (error) {
     showFeedback(elements.taskPlanFeedback, "error", buildTaskErrorMessage(error));

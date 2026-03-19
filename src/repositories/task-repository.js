@@ -43,6 +43,20 @@ export const PLAN_SNAPSHOT_SOURCE = Object.freeze({
   RESTORED_FROM_HISTORY: "RESTORED_FROM_HISTORY",
 });
 
+export const SUBTASK_STATUS = Object.freeze({
+  ACCEPTED: "ACCEPTED",
+  CANCELLED: "CANCELLED",
+  DISCARDED: "DISCARDED",
+  DISCARD_PENDING: "DISCARD_PENDING",
+  FAILED: "FAILED",
+  MERGED: "MERGED",
+  PENDING: "PENDING",
+  READY: "READY",
+  REVIEW_PENDING: "REVIEW_PENDING",
+  REWORK_REQUIRED: "REWORK_REQUIRED",
+  RUNNING: "RUNNING",
+});
+
 export class SqliteTaskRepository {
   constructor(options = {}) {
     this.databasePath = options.databasePath ?? DEFAULT_DATABASE_PATH;
@@ -566,6 +580,107 @@ export class SqliteTaskRepository {
         ORDER BY created_at DESC, id DESC
       `)
       .all(taskId);
+  }
+
+  async createSubTask(input) {
+    const timestamp = new Date().toISOString();
+    const subTask = {
+      agentType: input.agentType,
+      autoAssigned: input.autoAssigned ?? true,
+      branchName: input.branchName ?? null,
+      branchSuffix: input.branchSuffix,
+      createdAt: timestamp,
+      description: input.description,
+      id: input.id ?? randomUUID(),
+      lastError: input.lastError ?? null,
+      retryCount: input.retryCount ?? 0,
+      status: input.status ?? SUBTASK_STATUS.PENDING,
+      taskId: input.taskId,
+      title: input.title,
+      updatedAt: timestamp,
+      worktreePath: input.worktreePath ?? null,
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        INSERT INTO sub_tasks (
+          id,
+          task_id,
+          title,
+          description,
+          branch_suffix,
+          branch_name,
+          worktree_path,
+          agent_type,
+          status,
+          auto_assigned,
+          retry_count,
+          last_error,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        subTask.id,
+        subTask.taskId,
+        subTask.title,
+        subTask.description,
+        subTask.branchSuffix,
+        subTask.branchName,
+        subTask.worktreePath,
+        subTask.agentType,
+        subTask.status,
+        subTask.autoAssigned ? 1 : 0,
+        subTask.retryCount,
+        subTask.lastError,
+        subTask.createdAt,
+        subTask.updatedAt,
+      );
+
+    return subTask;
+  }
+
+  async listSubTasksByTaskId(taskId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          title,
+          description,
+          branch_suffix AS branchSuffix,
+          branch_name AS branchName,
+          worktree_path AS worktreePath,
+          agent_type AS agentType,
+          status,
+          auto_assigned AS autoAssigned,
+          retry_count AS retryCount,
+          last_error AS lastError,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM sub_tasks
+        WHERE task_id = ?
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all(taskId)
+      .map((subTask) => ({
+        ...subTask,
+        autoAssigned: Boolean(subTask.autoAssigned),
+      }));
+  }
+
+  async runInTransaction(work) {
+    const database = this.#getDatabase();
+    database.exec("BEGIN IMMEDIATE TRANSACTION");
+
+    try {
+      const result = await work(this);
+      database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   close() {

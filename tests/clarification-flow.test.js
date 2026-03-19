@@ -445,6 +445,185 @@ test("restores a historical plan snapshot into the current draft and appends res
   }
 });
 
+test("approves the validated plan by freezing approvedPlanJson and appending an approved snapshot", async () => {
+  const fixture = await makeTempDir("eat-plan-approve-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const server = await startServer({
+      agentService: createClarificationAgentService(),
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "plan-approve-repo", { defaultBranch: "main" });
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Need approved plan persistence before execution starts.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Approve plan draft",
+        },
+        method: "POST",
+      });
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskResponse.body.task.id, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+          { method: "POST" },
+        );
+        await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/confirm-requirements`,
+          { method: "POST" },
+        );
+
+        const approvalResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/approve-plan`,
+          { method: "POST" },
+        );
+
+        assert.equal(approvalResponse.status, 200);
+        assert.equal(approvalResponse.body.approvedSnapshot.source, "APPROVED");
+        assert.equal(approvalResponse.body.idempotent, false);
+        assert.equal(approvalResponse.body.task.status, "EXECUTING");
+        assert.equal(
+          approvalResponse.body.task.approvedPlanJson,
+          approvalResponse.body.task.currentPlanJson,
+        );
+        assert.equal(approvalResponse.body.subTasks.length, 1);
+        assert.equal(approvalResponse.body.subTasks[0].title, "Plan the backend slice");
+        assert.equal(approvalResponse.body.subTasks[0].description, "Keep the work independent and parallel-safe.");
+        assert.equal(approvalResponse.body.subTasks[0].branchSuffix, "backend-slice");
+        assert.equal(approvalResponse.body.subTasks[0].agentType, "healthy-lead");
+        assert.equal(approvalResponse.body.subTasks[0].status, "PENDING");
+        assert.equal(approvalResponse.body.subTasks[0].branchName, null);
+        assert.equal(approvalResponse.body.subTasks[0].worktreePath, null);
+
+        const taskStatusEvent = await nextEvent(
+          events,
+          (entry) => entry.eventName === "task:status" && entry.data.status === "EXECUTING",
+        );
+        assert.equal(taskStatusEvent.data.taskId, taskResponse.body.task.id);
+
+        const subTaskStatusEvent = await nextEvent(
+          events,
+          (entry) => entry.eventName === "subtask:status" && entry.data.status === "PENDING",
+        );
+        assert.equal(subTaskStatusEvent.data.taskId, taskResponse.body.task.id);
+        assert.equal(subTaskStatusEvent.data.subtaskId, approvalResponse.body.subTasks[0].id);
+
+        const duplicateApprovalResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/approve-plan`,
+          { method: "POST" },
+        );
+        assert.equal(duplicateApprovalResponse.status, 200);
+        assert.equal(duplicateApprovalResponse.body.idempotent, true);
+        assert.equal(duplicateApprovalResponse.body.task.status, "EXECUTING");
+        assert.equal(duplicateApprovalResponse.body.subTasks.length, 1);
+
+        const detailResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+        );
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "EXECUTING");
+        assert.equal(detailResponse.body.task.approvedPlanJson, detailResponse.body.task.currentPlanJson);
+        assert.equal(detailResponse.body.planSnapshots.length, 2);
+        assert.equal(detailResponse.body.subTasks.length, 1);
+        assert.equal(detailResponse.body.planSnapshots[0].source, "APPROVED");
+        assert.equal(detailResponse.body.planSnapshots[1].source, "LEAD_GENERATED");
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("rolls back approval writes when subtask materialization fails", async () => {
+  const fixture = await makeTempDir("eat-plan-approve-failure-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const taskRepository = new FailingSubTaskRepository({ databasePath });
+    const server = await startServer({
+      agentService: createClarificationAgentService(),
+      databasePath,
+      taskRepository,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "plan-approve-failure-repo", { defaultBranch: "main" });
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Need rollback if approval materialization fails.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Approve plan rollback",
+        },
+        method: "POST",
+      });
+
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+        { method: "POST" },
+      );
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/confirm-requirements`,
+        { method: "POST" },
+      );
+
+      const approvalResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/approve-plan`,
+        { method: "POST" },
+      );
+      assert.equal(approvalResponse.status, 500);
+
+      const detailResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+      );
+      assert.equal(detailResponse.status, 200);
+      assert.equal(detailResponse.body.task.status, "PLAN_REVIEW");
+      assert.equal(detailResponse.body.task.approvedPlanJson, null);
+      assert.equal(detailResponse.body.planSnapshots.length, 1);
+      assert.equal(detailResponse.body.planSnapshots[0].source, "LEAD_GENERATED");
+      assert.deepEqual(detailResponse.body.subTasks, []);
+    } finally {
+      await stopServer(server);
+      taskRepository.close();
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 function createClarificationAgentService() {
   const registry = new AgentRegistry();
 
@@ -644,9 +823,11 @@ async function startServer(options = {}) {
   const server = createApp({
     agentService: options.agentService,
     eventBus: options.eventBus,
+    projectRepository: options.projectRepository,
     repositoryOptions: {
       databasePath: options.databasePath,
     },
+    taskRepository: options.taskRepository,
   });
 
   await new Promise((resolve) => {
@@ -739,4 +920,10 @@ async function makeTempDir(prefix) {
       await rm(tempDir, { force: true, recursive: true });
     },
   };
+}
+
+class FailingSubTaskRepository extends SqliteTaskRepository {
+  async createSubTask() {
+    throw new Error("Subtask materialization failed.");
+  }
 }

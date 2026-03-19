@@ -15,6 +15,7 @@ import {
   MESSAGE_ROLE,
   SESSION_STATUS,
   SESSION_TYPE,
+  SUBTASK_STATUS,
   TASK_STATUS,
 } from "../repositories/task-repository.js";
 
@@ -201,6 +202,7 @@ export class TaskService {
       messages: await this.taskRepository.listMessagesByTaskId(task.id),
       planSnapshots: await this.taskRepository.listPlanSnapshotsByTaskId(task.id),
       sessions: await this.taskRepository.listSessionsByTaskId(task.id),
+      subTasks: await this.taskRepository.listSubTasksByTaskId(task.id),
       task,
     };
   }
@@ -484,6 +486,17 @@ export class TaskService {
       return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
     }
 
+    if (task.status === TASK_STATUS.EXECUTING && typeof task.approvedPlanJson === "string") {
+      return {
+        ok: true,
+        approvalReady: true,
+        currentPlan: parseCurrentPlanJson(task.approvedPlanJson) ?? parseCurrentPlanJson(task.currentPlanJson),
+        idempotent: true,
+        subTasks: await this.taskRepository.listSubTasksByTaskId(taskId),
+        task,
+      };
+    }
+
     if (task.status !== TASK_STATUS.PLAN_REVIEW) {
       return failure(
         TASK_SERVICE_ERROR_CODES.TASK_NOT_PLAN_REVIEW,
@@ -499,11 +512,93 @@ export class TaskService {
       return validation;
     }
 
+    const approvedPlanJson = JSON.stringify(validation.plan);
+    const approvalResult = await this.taskRepository.runInTransaction(async (repository) => {
+      const currentTask = await repository.findTaskById(taskId);
+
+      if (!currentTask) {
+        throw new TaskServiceError({
+          code: TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND,
+          message: "Task not found.",
+          details: { taskId },
+        });
+      }
+
+      if (currentTask.status === TASK_STATUS.EXECUTING && typeof currentTask.approvedPlanJson === "string") {
+        return {
+          approvedSnapshot: null,
+          idempotent: true,
+          subTasks: await repository.listSubTasksByTaskId(taskId),
+          task: currentTask,
+        };
+      }
+
+      if (currentTask.status !== TASK_STATUS.PLAN_REVIEW) {
+        throw new TaskServiceError({
+          code: TASK_SERVICE_ERROR_CODES.TASK_NOT_PLAN_REVIEW,
+          message: "Plan approval is only available during PLAN_REVIEW.",
+          details: { status: currentTask.status, taskId },
+        });
+      }
+
+      const approvedTask = await repository.updateTask(taskId, {
+        approvedPlanJson,
+        lastError: null,
+      });
+      const approvedSnapshot = await repository.createPlanSnapshot({
+        payload: approvedPlanJson,
+        source: PLAN_SNAPSHOT_SOURCE.APPROVED,
+        taskId,
+        version: approvedTask.planVersion,
+      });
+      const subTasks = await Promise.all(validation.plan.subtasks.map((subtask) => repository.createSubTask({
+        agentType: subtask.recommended_agent,
+        autoAssigned: true,
+        branchName: null,
+        branchSuffix: subtask.branch_suffix,
+        description: subtask.description,
+        status: SUBTASK_STATUS.PENDING,
+        taskId,
+        title: subtask.title,
+        worktreePath: null,
+      })));
+      const executingTask = await repository.updateTask(taskId, {
+        approvedPlanJson,
+        lastError: null,
+        status: TASK_STATUS.EXECUTING,
+      });
+
+      return {
+        approvedSnapshot,
+        idempotent: false,
+        subTasks,
+        task: executingTask,
+      };
+    });
+
+    if (!approvalResult.idempotent) {
+      this.#publish(taskId, "task:status", {
+        taskId,
+        status: approvalResult.task.status,
+      });
+
+      for (const subTask of approvalResult.subTasks) {
+        this.#publish(taskId, "subtask:status", {
+          status: subTask.status,
+          subtaskId: subTask.id,
+          taskId,
+        });
+      }
+    }
+
     return {
       ok: true,
       approvalReady: true,
+      approvedSnapshot: approvalResult.approvedSnapshot,
       currentPlan: validation.plan,
-      task,
+      idempotent: approvalResult.idempotent,
+      subTasks: approvalResult.subTasks,
+      task: approvalResult.task,
     };
   }
 

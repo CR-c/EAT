@@ -27,6 +27,20 @@ enum PlanSnapshotSource {
   RESTORED_FROM_HISTORY
 }
 
+enum SubTaskStatus {
+  PENDING
+  READY
+  RUNNING
+  REVIEW_PENDING
+  ACCEPTED
+  DISCARD_PENDING
+  REWORK_REQUIRED
+  MERGED
+  FAILED
+  CANCELLED
+  DISCARDED
+}
+
 model Project {
   id            String   @id
   name          String
@@ -56,6 +70,7 @@ model Task {
   updatedAt        DateTime       @map("updated_at")
   project          Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   planSnapshots    PlanSnapshot[]
+  subTasks         SubTask[]
 
   @@index([projectId, createdAt], map: "idx_tasks_project_id_created_at")
   @@map("tasks")
@@ -63,7 +78,7 @@ model Task {
 
 model PlanSnapshot {
   id        String             @id
-  taskId     String            @map("task_id")
+  taskId    String             @map("task_id")
   version   Int
   source    PlanSnapshotSource
   payload   String
@@ -72,4 +87,25 @@ model PlanSnapshot {
 
   @@index([taskId, createdAt, id], map: "idx_plan_snapshots_task_id_created_at")
   @@map("plan_snapshots")
+}
+
+model SubTask {
+  id          String        @id
+  taskId      String        @map("task_id")
+  title       String
+  description String
+  branchSuffix String       @map("branch_suffix")
+  branchName  String?       @map("branch_name")
+  worktreePath String?      @map("worktree_path")
+  agentType   String        @map("agent_type")
+  status      SubTaskStatus @default(PENDING)
+  autoAssigned Boolean      @default(true) @map("auto_assigned")
+  retryCount  Int           @default(0) @map("retry_count")
+  lastError   String?       @map("last_error")
+  createdAt   DateTime      @map("created_at")
+  updatedAt   DateTime      @map("updated_at")
+  task        Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt, id], map: "idx_sub_tasks_task_id_created_at")
+  @@map("sub_tasks")
 }
