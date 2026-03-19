@@ -14,7 +14,7 @@ import { SESSION_SANDBOX_TYPES } from "../src/agents/agent-contract.js";
 
 const execFileAsync = promisify(execFile);
 
-test("runs clarification flow, persists transcript, and transitions task state to planning on confirmation", async () => {
+test("runs clarification flow, triggers planning, and keeps the task in planning while the draft is parsed", async () => {
   const fixture = await makeTempDir("eat-clarification-flow-");
 
   try {
@@ -97,6 +97,12 @@ test("runs clarification flow, persists transcript, and transitions task state t
         );
         assert.equal(planningEvent.data.status, "PLANNING");
 
+        const planningOutputEvent = await nextEvent(
+          events,
+          (entry) => entry.eventName === "task:lead-message" && entry.data.content.includes("\"subtasks\""),
+        );
+        assert.match(planningOutputEvent.data.content, /```json/i);
+
         const detailResponse = await requestJson(
           server,
           `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
@@ -105,7 +111,7 @@ test("runs clarification flow, persists transcript, and transitions task state t
         assert.equal(detailResponse.body.task.status, "PLANNING");
         assert.deepEqual(
           detailResponse.body.messages.map((message) => message.role),
-          ["USER", "LEAD_AGENT", "USER", "LEAD_AGENT", "SYSTEM"],
+          ["USER", "LEAD_AGENT", "USER", "LEAD_AGENT", "SYSTEM", "LEAD_AGENT"],
         );
         assert.equal(detailResponse.body.sessions.length, 1);
         assert.equal(detailResponse.body.sessions[0].status, "RUNNING");
@@ -165,7 +171,25 @@ function createClarificationAgentService() {
           outputListeners.add(callback);
         },
         async sendInput(message) {
-          if (message.includes("Phase 05")) {
+          if (message.includes("Generate the execution plan as JSON only")) {
+            for (const listener of outputListeners) {
+              listener(`\`\`\`json
+{
+  "subtasks": [
+    {
+      "title": "Plan the backend slice",
+      "description": "Keep the work independent and parallel-safe.",
+      "recommended_agent": "healthy-lead",
+      "branch_suffix": "backend-slice"
+    }
+  ]
+}
+\`\`\`\n`);
+            }
+            return;
+          }
+
+          if (message.includes("Requirements are confirmed")) {
             return;
           }
 

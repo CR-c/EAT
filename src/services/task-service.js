@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { ATTACHMENT_TYPES } from "../agents/agent-contract.js";
 import { resolveBranchHeadCommit } from "./repo-validation-service.js";
+import { buildPlanningPrompt, parsePlanDraftText } from "./plan-draft.js";
 import {
   MESSAGE_ROLE,
   SESSION_STATUS,
@@ -75,6 +76,7 @@ export class TaskService {
     this.eventBus = options.eventBus ?? null;
     this.uploadRootPath = options.uploadRootPath ?? DEFAULT_UPLOAD_ROOT;
     this.runningLeadSessions = new Map();
+    this.pendingPlanDrafts = new Map();
   }
 
   async createTask(input) {
@@ -414,9 +416,7 @@ export class TaskService {
 
     if (activeSession) {
       try {
-        await activeSession.runtime.sendInput(
-          "Requirements are confirmed. Planning will continue in Phase 05.",
-        );
+        await activeSession.runtime.sendInput(buildPlanningPrompt(confirmedTask));
       } catch {
         // Confirmation already advanced the task; keep planning state stable for the next phase.
       }
@@ -490,10 +490,17 @@ export class TaskService {
       messageId: message.id,
       taskId,
     });
+
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (task?.status === TASK_STATUS.PLANNING) {
+      this.#capturePlanDraftChunk(taskId, normalizedChunk);
+    }
   }
 
   async #handleLeadExit(taskId, sessionId, exitCode) {
     this.runningLeadSessions.delete(taskId);
+    this.pendingPlanDrafts.delete(taskId);
 
     const sessionStatus = exitCode === 0 ? SESSION_STATUS.COMPLETED : SESSION_STATUS.FAILED;
     const nextSession = await this.taskRepository.updateSession(sessionId, {
@@ -526,6 +533,17 @@ export class TaskService {
 
   #publish(taskId, eventName, data) {
     this.eventBus?.publish(taskId, eventName, data);
+  }
+
+  #capturePlanDraftChunk(taskId, chunk) {
+    const nextBuffer = `${this.pendingPlanDrafts.get(taskId)?.buffer ?? ""}\n${chunk}`.trim();
+    const parsedDraft = parsePlanDraftText(nextBuffer);
+
+    this.pendingPlanDrafts.set(taskId, {
+      buffer: nextBuffer,
+      parsedDraft: parsedDraft.ok ? parsedDraft : null,
+      parseError: parsedDraft.ok ? null : parsedDraft.error,
+    });
   }
 }
 
