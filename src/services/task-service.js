@@ -15,6 +15,7 @@ import {
   MESSAGE_ROLE,
   SESSION_STATUS,
   SESSION_TYPE,
+  SUBTASK_STATUS,
   TASK_STATUS,
 } from "../repositories/task-repository.js";
 
@@ -201,6 +202,7 @@ export class TaskService {
       messages: await this.taskRepository.listMessagesByTaskId(task.id),
       planSnapshots: await this.taskRepository.listPlanSnapshotsByTaskId(task.id),
       sessions: await this.taskRepository.listSessionsByTaskId(task.id),
+      subTasks: await this.taskRepository.listSubTasksByTaskId(task.id),
       task,
     };
   }
@@ -511,9 +513,21 @@ export class TaskService {
         taskId,
         version: approvedTask.planVersion,
       });
+      const subTasks = await Promise.all(validation.plan.subtasks.map((subtask) => repository.createSubTask({
+        agentType: subtask.recommended_agent,
+        autoAssigned: true,
+        branchName: null,
+        branchSuffix: subtask.branch_suffix,
+        description: subtask.description,
+        status: SUBTASK_STATUS.PENDING,
+        taskId,
+        title: subtask.title,
+        worktreePath: null,
+      })));
 
       return {
         approvedSnapshot,
+        subTasks,
         task: approvedTask,
       };
     });
@@ -523,6 +537,7 @@ export class TaskService {
       approvalReady: true,
       approvedSnapshot: approvalResult.approvedSnapshot,
       currentPlan: validation.plan,
+      subTasks: approvalResult.subTasks,
       task: approvalResult.task,
     };
   }

@@ -496,6 +496,14 @@ test("approves the validated plan by freezing approvedPlanJson and appending an 
         approvalResponse.body.task.approvedPlanJson,
         approvalResponse.body.task.currentPlanJson,
       );
+      assert.equal(approvalResponse.body.subTasks.length, 1);
+      assert.equal(approvalResponse.body.subTasks[0].title, "Plan the backend slice");
+      assert.equal(approvalResponse.body.subTasks[0].description, "Keep the work independent and parallel-safe.");
+      assert.equal(approvalResponse.body.subTasks[0].branchSuffix, "backend-slice");
+      assert.equal(approvalResponse.body.subTasks[0].agentType, "healthy-lead");
+      assert.equal(approvalResponse.body.subTasks[0].status, "PENDING");
+      assert.equal(approvalResponse.body.subTasks[0].branchName, null);
+      assert.equal(approvalResponse.body.subTasks[0].worktreePath, null);
 
       const detailResponse = await requestJson(
         server,
@@ -505,6 +513,7 @@ test("approves the validated plan by freezing approvedPlanJson and appending an 
       assert.equal(detailResponse.body.task.status, "PLAN_REVIEW");
       assert.equal(detailResponse.body.task.approvedPlanJson, detailResponse.body.task.currentPlanJson);
       assert.equal(detailResponse.body.planSnapshots.length, 2);
+      assert.equal(detailResponse.body.subTasks.length, 1);
       assert.equal(detailResponse.body.planSnapshots[0].source, "APPROVED");
       assert.equal(detailResponse.body.planSnapshots[1].source, "LEAD_GENERATED");
     } finally {
