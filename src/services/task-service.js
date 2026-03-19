@@ -64,11 +64,14 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   LEAD_AGENT_INVALID: "LEAD_AGENT_INVALID",
   LEAD_AGENT_UNHEALTHY: "LEAD_AGENT_UNHEALTHY",
   LEAD_AGENT_REQUIRED: "LEAD_AGENT_REQUIRED",
+  INVALID_PLAN: "INVALID_PLAN",
+  PLAN_SNAPSHOT_NOT_FOUND: "PLAN_SNAPSHOT_NOT_FOUND",
   REQUIREMENTS_ALREADY_CONFIRMED: "REQUIREMENTS_ALREADY_CONFIRMED",
   SESSION_NOT_RUNNING: "SESSION_NOT_RUNNING",
   TASK_MESSAGE_REQUIRED: "TASK_MESSAGE_REQUIRED",
   TASK_NOT_CLARIFYING: "TASK_NOT_CLARIFYING",
   TASK_NOT_DRAFT: "TASK_NOT_DRAFT",
+  TASK_NOT_PLAN_REVIEW: "TASK_NOT_PLAN_REVIEW",
   PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
   TASK_NOT_FOUND: "TASK_NOT_FOUND",
   TITLE_REQUIRED: "TITLE_REQUIRED",
@@ -441,6 +444,120 @@ export class TaskService {
     };
   }
 
+  async updateCurrentPlanDraft(taskId, payload) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (task.status !== TASK_STATUS.PLAN_REVIEW) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_NOT_PLAN_REVIEW,
+        "Plan drafts can only be edited during PLAN_REVIEW.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const validation = await this.#validatePlanPayload(payload);
+
+    if (!validation.ok) {
+      return validation;
+    }
+
+    const nextTask = await this.taskRepository.updateTask(taskId, {
+      currentPlanJson: JSON.stringify(validation.plan),
+      lastError: null,
+    });
+
+    return {
+      ok: true,
+      currentPlan: validation.plan,
+      task: nextTask,
+    };
+  }
+
+  async approvePlan(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (task.status !== TASK_STATUS.PLAN_REVIEW) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_NOT_PLAN_REVIEW,
+        "Plan approval is only available during PLAN_REVIEW.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const parsedPlan = parseCurrentPlanJson(task.currentPlanJson);
+    const validation = await this.#validatePlanPayload(parsedPlan);
+
+    if (!validation.ok) {
+      return validation;
+    }
+
+    return {
+      ok: true,
+      approvalReady: true,
+      currentPlan: validation.plan,
+      task,
+    };
+  }
+
+  async restorePlanSnapshot(taskId, snapshotId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (task.status !== TASK_STATUS.PLAN_REVIEW) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_NOT_PLAN_REVIEW,
+        "Plan restore is only available during PLAN_REVIEW.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const snapshot = await this.taskRepository.findPlanSnapshotById(snapshotId);
+
+    if (!snapshot || snapshot.taskId !== taskId) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.PLAN_SNAPSHOT_NOT_FOUND,
+        "Plan snapshot not found.",
+        { snapshotId, taskId },
+      );
+    }
+
+    const nextTask = await this.taskRepository.updateTask(taskId, {
+      currentPlanJson: snapshot.payload,
+      lastError: null,
+    });
+
+    await this.taskRepository.createPlanSnapshot({
+      payload: snapshot.payload,
+      source: PLAN_SNAPSHOT_SOURCE.RESTORED_FROM_HISTORY,
+      taskId,
+      version: nextTask.planVersion,
+    });
+
+    this.#publish(taskId, "task:plan-restored", {
+      currentPlan: parseCurrentPlanJson(snapshot.payload),
+      snapshotId,
+      taskId,
+    });
+
+    return {
+      ok: true,
+      currentPlan: parseCurrentPlanJson(snapshot.payload),
+      snapshotId,
+      task: nextTask,
+    };
+  }
+
   async #persistAttachments(task, attachmentsInput) {
     if (!Array.isArray(attachmentsInput) || attachmentsInput.length === 0) {
       return [];
@@ -649,6 +766,23 @@ export class TaskService {
       });
     }
   }
+
+  async #validatePlanPayload(payload) {
+    const health = await this.agentService.getHealth();
+    const validation = validatePlanDraft(payload, {
+      agentHealth: health.agents,
+    });
+
+    if (!validation.ok) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.INVALID_PLAN,
+        validation.error.message,
+        validation.error.details,
+      );
+    }
+
+    return validation;
+  }
 }
 
 class TaskServiceError extends Error {
@@ -779,6 +913,19 @@ function inferAttachmentType(fileName, mimeType) {
   }
 
   return null;
+}
+
+function parseCurrentPlanJson(currentPlanJson) {
+  if (typeof currentPlanJson !== "string" || currentPlanJson.trim().length === 0) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(currentPlanJson);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function cryptoRandomId() {

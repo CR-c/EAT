@@ -535,6 +535,22 @@ export class SqliteTaskRepository {
     return snapshot;
   }
 
+  async findPlanSnapshotById(snapshotId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          version,
+          source,
+          payload,
+          created_at AS createdAt
+        FROM plan_snapshots
+        WHERE id = ?
+      `)
+      .get(snapshotId) ?? null;
+  }
+
   async listPlanSnapshotsByTaskId(taskId) {
     return this.#getDatabase()
       .prepare(`

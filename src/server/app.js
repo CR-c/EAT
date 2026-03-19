@@ -182,6 +182,42 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const taskCurrentPlanMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/current-plan$/);
+
+  if (request.method === "PUT" && taskCurrentPlanMatch) {
+    const taskId = decodeURIComponent(taskCurrentPlanMatch[1]);
+    const body = await readJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.updateCurrentPlanDraft(taskId, body.value);
+    return respondServiceResult(response, result);
+  }
+
+  const taskApprovePlanMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/approve-plan$/);
+
+  if (request.method === "POST" && taskApprovePlanMatch) {
+    const taskId = decodeURIComponent(taskApprovePlanMatch[1]);
+    const result = await taskService.approvePlan(taskId);
+    return respondServiceResult(response, result);
+  }
+
+  const taskRestorePlanSnapshotMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/restore-plan-snapshot$/);
+
+  if (request.method === "POST" && taskRestorePlanSnapshotMatch) {
+    const taskId = decodeURIComponent(taskRestorePlanSnapshotMatch[1]);
+    const body = await readJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.restorePlanSnapshot(taskId, body.value?.snapshotId);
+    return respondServiceResult(response, result);
+  }
+
   return respondJson(response, 404, {
     error: {
       code: "NOT_FOUND",
@@ -278,11 +314,13 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.LEAD_AGENT_INVALID:
     case TASK_SERVICE_ERROR_CODES.LEAD_AGENT_UNHEALTHY:
     case TASK_SERVICE_ERROR_CODES.LEAD_AGENT_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.INVALID_PLAN:
     case TASK_SERVICE_ERROR_CODES.REQUIREMENTS_ALREADY_CONFIRMED:
     case TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING:
     case TASK_SERVICE_ERROR_CODES.TASK_MESSAGE_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_CLARIFYING:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_DRAFT:
+    case TASK_SERVICE_ERROR_CODES.TASK_NOT_PLAN_REVIEW:
     case TASK_SERVICE_ERROR_CODES.TITLE_REQUIRED:
       return 400;
     case PROJECT_SERVICE_ERROR_CODES.PROJECT_ALREADY_REGISTERED:
@@ -291,6 +329,7 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.ATTACHMENT_PATH_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND:
+    case TASK_SERVICE_ERROR_CODES.PLAN_SNAPSHOT_NOT_FOUND:
       return 404;
     default:
       return 400;
