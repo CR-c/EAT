@@ -874,6 +874,10 @@ async function startServer(options = {}) {
 }
 
 async function stopServer(server) {
+  await new Promise((resolve) => {
+    setTimeout(resolve, 100);
+  });
+
   await new Promise((resolve, reject) => {
     server.close((error) => {
       if (error) {

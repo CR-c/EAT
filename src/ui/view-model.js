@@ -47,8 +47,12 @@ export function buildTaskErrorMessage(error) {
       return "Switch Agent & Relaunch is not available for the current subtask state.";
     case "SUBTASK_DISCARD_NOT_ALLOWED":
       return "Discard confirmation is only available after final review marks the subtask for discard.";
+    case "SUBTASK_REBASE_RETRY_NOT_ALLOWED":
+      return "Rebase & Retry is only available after the latest merge attempt conflicts.";
     case "SUBTASK_REWORK_NOT_ALLOWED":
       return "Rework Now is only available for subtasks with an actionable incremental review.";
+    case "TASK_RESUME_NOT_ALLOWED":
+      return "Resume merge is only available after merge blockers have been resolved.";
     case "ATTACHMENT_TYPE_UNSUPPORTED":
       return "One or more attachments use an unsupported type.";
     case "ATTACHMENT_SIZE_EXCEEDED":

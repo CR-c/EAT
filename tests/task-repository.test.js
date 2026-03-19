@@ -5,6 +5,8 @@ import path from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 
 import {
+  MERGE_OPERATION,
+  MERGE_STATUS,
   PLAN_SNAPSHOT_SOURCE,
   MESSAGE_ROLE,
   REVIEW_PHASE,
@@ -182,6 +184,24 @@ test("persists task plan fields, messages, attachments, sessions, subtasks, and 
       latestReviewPhase: incrementalReview.phase,
       latestReviewSummary: incrementalReview.summary,
     });
+    const mergeAttempt = await taskRepository.createMergeRecord({
+      completedAt: new Date().toISOString(),
+      operation: MERGE_OPERATION.MERGE,
+      resultCommitSha: "deadbeefcafe",
+      sourceBranch: "eat/task-1/lead-session-chat-flow",
+      status: MERGE_STATUS.SUCCEEDED,
+      subTaskId: subTask.id,
+      targetBranch: "main",
+    });
+    const rebaseAttempt = await taskRepository.createMergeRecord({
+      completedAt: new Date().toISOString(),
+      conflictSummary: "Conflict in src/server/app.js.",
+      operation: MERGE_OPERATION.REBASE,
+      sourceBranch: "eat/task-1/lead-session-chat-flow",
+      status: MERGE_STATUS.CONFLICT,
+      subTaskId: subTask.id,
+      targetBranch: "main",
+    });
 
     assert.equal(updatedSubTask.branchName, "eat/task-1/lead-session-chat-flow");
     assert.equal(updatedSubTask.retryCount, 1);
@@ -196,6 +216,16 @@ test("persists task plan fields, messages, attachments, sessions, subtasks, and 
     assert.deepEqual(
       (await taskRepository.listReviewRecordsBySubTaskId(subTask.id)).map(normalizeRecord),
       [incrementalReview],
+    );
+    assert.equal(mergeAttempt.attemptNumber, 1);
+    assert.equal(rebaseAttempt.attemptNumber, 2);
+    assert.deepEqual(
+      (await taskRepository.listMergeRecordsBySubTaskId(subTask.id)).map(normalizeRecord),
+      [mergeAttempt, rebaseAttempt],
+    );
+    assert.deepEqual(
+      (await taskRepository.listMergeRecordsByTaskId(task.id)).map(normalizeRecord),
+      [mergeAttempt, rebaseAttempt],
     );
   } finally {
     await fixture.dispose();

@@ -265,6 +265,13 @@
               </div>
             </section>
 
+            <section id="task-cleanup-warnings" class="warning-banner" hidden>
+              <p class="warning-banner__eyebrow">Cleanup warnings</p>
+              <h3>Manual cleanup may still be required</h3>
+              <p id="task-cleanup-warning-summary"></p>
+              <div id="task-cleanup-warning-list" class="cleanup-warning-list"></div>
+            </section>
+
             <dl class="stats-grid stats-grid--task">
               <div class="stat-card">
                 <dt>Lead agent</dt>
@@ -347,6 +354,12 @@
                         <span class="field__label">Replacement agent</span>
                         <select id="task-execution-agent-select" class="field__control"></select>
                       </label>
+                      <button id="task-execution-rebase-retry-button" class="button button--primary" type="button">
+                        Rebase &amp; retry
+                      </button>
+                      <button id="task-execution-resume-merge-button" class="button button--secondary" type="button">
+                        Resume merge
+                      </button>
                       <button id="task-execution-rework-button" class="button button--primary" type="button">
                         Rework now
                       </button>
@@ -357,6 +370,19 @@
                         Confirm discard
                       </button>
                     </div>
+                  </section>
+                  <section id="task-execution-merge-history" class="merge-history" hidden>
+                    <div class="panel__header panel__header--inline">
+                      <div>
+                        <p class="panel__eyebrow">Merge history</p>
+                        <h4 class="plan-history__title">Attempt timeline</h4>
+                      </div>
+                      <span id="task-execution-merge-history-count" class="badge badge--outline">0 attempts</span>
+                    </div>
+                    <div id="task-execution-merge-history-empty" class="empty-state" hidden>
+                      No merge or rebase attempts have been recorded for this subtask yet.
+                    </div>
+                    <div id="task-execution-merge-history-list" class="merge-history__list"></div>
                   </section>
                   <div id="task-execution-focus-empty" class="empty-state">
                     Pick a subtask summary to inspect the latest worker session without mounting every terminal at once.

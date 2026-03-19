@@ -47,6 +47,9 @@ test("serves the Phase 05 planning UI shell and static assets", async () => {
     assert.match(rootResponse.body, /Summary-first worker board/i);
     assert.match(rootResponse.body, /Focused session/i);
     assert.match(rootResponse.body, /Confirm discard/i);
+    assert.match(rootResponse.body, /Rebase &amp; retry/i);
+    assert.match(rootResponse.body, /Resume merge/i);
+    assert.match(rootResponse.body, /Cleanup warnings/i);
     assert.match(rootResponse.body, /Docker sandbox/i);
 
     assert.equal(cssResponse.status, 200);
@@ -106,6 +109,18 @@ test("formats project, task, agent health, and attachment UI messages", () => {
       code: "SUBTASK_DISCARD_NOT_ALLOWED",
     }),
     "Discard confirmation is only available after final review marks the subtask for discard.",
+  );
+  assert.equal(
+    buildTaskErrorMessage({
+      code: "SUBTASK_REBASE_RETRY_NOT_ALLOWED",
+    }),
+    "Rebase & Retry is only available after the latest merge attempt conflicts.",
+  );
+  assert.equal(
+    buildTaskErrorMessage({
+      code: "TASK_RESUME_NOT_ALLOWED",
+    }),
+    "Resume merge is only available after merge blockers have been resolved.",
   );
   assert.equal(
     buildTaskErrorMessage({

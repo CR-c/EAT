@@ -1550,6 +1550,436 @@ test("keeps the task ACTION_REQUIRED when final review finishes with unresolved 
   }
 });
 
+test("merges accepted subtasks in order, persists merge history, and completes the task", async () => {
+  const fixture = await makeTempDir("eat-phase12-merge-success-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Alpha merge",
+            description: "Add the alpha artifact.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "alpha-merge",
+          },
+          {
+            title: "Beta merge",
+            description: "Add the beta artifact.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "beta-merge",
+          },
+        ],
+      },
+      prepareWorkerSession: async (config) => {
+        if (config.workDir.includes("alpha-merge")) {
+          await commitWorktreeChange(config.workDir, "alpha.txt", "alpha\n");
+          return;
+        }
+
+        if (config.workDir.includes("beta-merge")) {
+          await commitWorktreeChange(config.workDir, "beta.txt", "beta\n");
+        }
+      },
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "phase12-merge-success-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Merge the accepted subtasks in a deterministic order.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Phase 12 merge success",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        await nextEvent(events, (event) => event.eventName === "merge:status" && event.data.status === "SUCCEEDED");
+        await nextEvent(events, (event) => event.eventName === "merge:status" && event.data.status === "SUCCEEDED");
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "COMPLETED");
+        assert.deepEqual(
+          detailResponse.body.subTasks.map((subTask) => subTask.status),
+          ["MERGED", "MERGED"],
+        );
+        assert.deepEqual(detailResponse.body.cleanupWarnings, []);
+        assert.ok(detailResponse.body.subTasks.every((subTask) => subTask.mergeRecords.length === 1));
+        assert.ok(detailResponse.body.subTasks.every((subTask) => subTask.mergeRecords[0].status === "SUCCEEDED"));
+        assert.equal(await readFile(path.join(repo.repoPath, "alpha.txt"), "utf8"), "alpha\n");
+        assert.equal(await readFile(path.join(repo.repoPath, "beta.txt"), "utf8"), "beta\n");
+        await assert.rejects(access(detailResponse.body.subTasks[0].worktreePath));
+        await assert.rejects(access(detailResponse.body.subTasks[1].worktreePath));
+
+        const mergeSubjects = (await git(repo.repoPath, ["log", "main", "--merges", "--reverse", "--format=%s"]))
+          .split("\n")
+          .filter(Boolean);
+        assert.equal(mergeSubjects.length, 2);
+        assert.match(mergeSubjects[0], /alpha-merge/);
+        assert.match(mergeSubjects[1], /beta-merge/);
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("moves merge execution to ACTION_REQUIRED when the target branch is dirty and resumes after cleanup", async () => {
+  const fixture = await makeTempDir("eat-phase12-dirty-resume-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Dirty branch merge",
+            description: "Create a merge candidate while the base branch is dirty.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "dirty-merge",
+          },
+        ],
+      },
+      prepareWorkerSession: async (config) => {
+        await commitWorktreeChange(config.workDir, "dirty-merge.txt", "merge me\n");
+      },
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "phase12-dirty-resume-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Block merge on a dirty target branch, then resume after cleanup.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Phase 12 dirty resume",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+
+        const dirtyFilePath = path.join(repo.repoPath, "dirty-blocker.txt");
+        await writeFile(dirtyFilePath, "dirty\n", "utf8");
+
+        const actionRequiredEvent = await nextEvent(
+          events,
+          (event) => event.eventName === "task:status" && event.data.status === "ACTION_REQUIRED",
+        );
+        assert.match(actionRequiredEvent.data.reason, /dirty/i);
+
+        const blockedResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(blockedResponse.status, 200);
+        assert.equal(blockedResponse.body.task.status, "ACTION_REQUIRED");
+        assert.match(blockedResponse.body.task.lastError, /dirty/i);
+
+        const removedWorktreePath = blockedResponse.body.subTasks[0].worktreePath;
+        await rm(removedWorktreePath, { force: true, recursive: true });
+
+        await rm(dirtyFilePath);
+
+        const resumeResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/resume`,
+          { method: "POST" },
+        );
+        assert.equal(resumeResponse.status, 200);
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "COMPLETED");
+        assert.equal(detailResponse.body.subTasks[0].status, "MERGED");
+        assert.deepEqual(detailResponse.body.cleanupWarnings, []);
+        assert.equal(detailResponse.body.subTasks[0].mergeRecords.length, 1);
+        assert.equal(detailResponse.body.subTasks[0].mergeRecords[0].status, "SUCCEEDED");
+        await assert.rejects(access(removedWorktreePath));
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("persists cleanup warnings and keeps completed tasks terminal when worktree cleanup fails", async () => {
+  const fixture = await makeTempDir("eat-phase13-cleanup-warning-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Cleanup warning merge",
+            description: "Reach completion with a poisoned cleanup path.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "cleanup-warning",
+          },
+        ],
+      },
+      prepareWorkerSession: async (config) => {
+        await commitWorktreeChange(config.workDir, "cleanup-warning.txt", "cleanup warning\n");
+      },
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "phase13-cleanup-warning-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Persist cleanup warnings without reopening the task.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Phase 13 cleanup warning",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+
+        const dirtyFilePath = path.join(repo.repoPath, "cleanup-warning-dirty.txt");
+        await writeFile(dirtyFilePath, "dirty\n", "utf8");
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "ACTION_REQUIRED");
+
+        const repository = new SqliteTaskRepository({ databasePath });
+        const blockedResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const subTask = blockedResponse.body.subTasks[0];
+        await repository.updateSubTask(subTask.id, {
+          worktreePath: repo.repoPath,
+        });
+
+        await rm(dirtyFilePath);
+        const resumeResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/resume`,
+          { method: "POST" },
+        );
+        assert.equal(resumeResponse.status, 200);
+
+        const cleanupWarningEvent = await nextEvent(
+          events,
+          (event) => event.eventName === "task:cleanup-warning",
+        );
+        assert.equal(cleanupWarningEvent.data.worktreePath, repo.repoPath);
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "COMPLETED");
+        assert.equal(detailResponse.body.subTasks[0].status, "MERGED");
+        assert.equal(detailResponse.body.cleanupWarnings.length, 1);
+        assert.equal(detailResponse.body.cleanupWarnings[0].worktreePath, repo.repoPath);
+        assert.match(detailResponse.body.cleanupWarnings[0].reason, /failed|main working tree|registered worktree|worktree/i);
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("records merge conflicts, supports rebase retry, and resumes merge flow after the branch is updated", async () => {
+  const fixture = await makeTempDir("eat-phase12-rebase-retry-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Shared change A",
+            description: "Take the first conflicting change.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "shared-a",
+          },
+          {
+            title: "Shared change B",
+            description: "Take the second conflicting change.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "shared-b",
+          },
+        ],
+      },
+      prepareWorkerSession: async (config) => {
+        if (config.workDir.includes("shared-a")) {
+          await commitWorktreeChange(config.workDir, "shared.txt", "alpha\n");
+          return;
+        }
+
+        if (config.workDir.includes("shared-b")) {
+          await commitWorktreeChange(config.workDir, "shared.txt", "beta\n");
+        }
+      },
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "phase12-rebase-retry-repo");
+      await writeFile(path.join(repo.repoPath, "shared.txt"), "seed\n", "utf8");
+      await git(repo.repoPath, ["add", "shared.txt"]);
+      await git(repo.repoPath, ["commit", "-m", "add shared seed"]);
+
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Rebase retry the conflicting branch and continue merging.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Phase 12 rebase retry",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        const conflictEvent = await nextEvent(
+          events,
+          (event) => event.eventName === "merge:status" && event.data.status === "CONFLICT",
+        );
+        assert.match(conflictEvent.data.summary, /conflict/i);
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "ACTION_REQUIRED");
+
+        const blockedResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(blockedResponse.status, 200);
+        assert.equal(blockedResponse.body.task.status, "ACTION_REQUIRED");
+        assert.deepEqual(
+          blockedResponse.body.subTasks.map((subTask) => subTask.status),
+          ["MERGED", "ACCEPTED"],
+        );
+        assert.equal(blockedResponse.body.subTasks[1].mergeRecords.at(-1).status, "CONFLICT");
+
+        const conflictedSubTask = blockedResponse.body.subTasks[1];
+        await git(conflictedSubTask.worktreePath, ["reset", "--hard", "main"]);
+        await writeFile(path.join(conflictedSubTask.worktreePath, "resolved.txt"), "resolved\n", "utf8");
+        await git(conflictedSubTask.worktreePath, ["add", "resolved.txt"]);
+        await git(conflictedSubTask.worktreePath, ["commit", "-m", "resolve shared change b"]);
+
+        const rebaseResponse = await requestJson(
+          server,
+          `/api/subtasks/${encodeURIComponent(conflictedSubTask.id)}/rebase-retry`,
+          { method: "POST" },
+        );
+        assert.equal(rebaseResponse.status, 200);
+        assert.equal(rebaseResponse.body.mergeStatus, "SUCCEEDED");
+
+        await nextEvent(events, (event) => (
+          event.eventName === "merge:status"
+          && event.data.subtaskId === conflictedSubTask.id
+          && event.data.status === "SUCCEEDED"
+        ));
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "COMPLETED");
+        assert.deepEqual(
+          detailResponse.body.subTasks.map((subTask) => subTask.status),
+          ["MERGED", "MERGED"],
+        );
+        assert.deepEqual(
+          detailResponse.body.subTasks[1].mergeRecords.map((record) => `${record.operation}:${record.status}`),
+          ["MERGE:CONFLICT", "REBASE:SUCCEEDED", "MERGE:SUCCEEDED"],
+        );
+        assert.equal(await readFile(path.join(repo.repoPath, "resolved.txt"), "utf8"), "resolved\n");
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 function createPhase08AgentService(options) {
   const registry = new AgentRegistry();
   const plan = options.plan;
@@ -1907,6 +2337,12 @@ async function createRepository(rootPath, name, options = {}) {
   await git(repoPath, ["commit", "-m", "seed"]);
 
   return { repoPath };
+}
+
+async function commitWorktreeChange(worktreePath, relativePath, content) {
+  await writeFile(path.join(worktreePath, relativePath), content, "utf8");
+  await git(worktreePath, ["add", relativePath]);
+  await git(worktreePath, ["commit", "-m", `update ${relativePath}`]);
 }
 
 async function git(cwd, args) {

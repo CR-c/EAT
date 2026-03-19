@@ -96,6 +96,9 @@ const elements = {
   taskAttachmentsList: document.querySelector("#task-attachments-list"),
   taskBaseBranchBadge: document.querySelector("#task-base-branch-badge"),
   taskBaseCommit: document.querySelector("#task-base-commit"),
+  taskCleanupWarningList: document.querySelector("#task-cleanup-warning-list"),
+  taskCleanupWarningSummary: document.querySelector("#task-cleanup-warning-summary"),
+  taskCleanupWarnings: document.querySelector("#task-cleanup-warnings"),
   taskCreationForm: document.querySelector("#task-creation-form"),
   taskDescriptionInput: document.querySelector("#task-description-input"),
   taskDetail: document.querySelector("#task-detail"),
@@ -115,8 +118,14 @@ const elements = {
   taskExecutionChangeAgentButton: document.querySelector("#task-execution-change-agent-button"),
   taskExecutionConfirmDiscardButton: document.querySelector("#task-execution-confirm-discard-button"),
   taskExecutionReworkButton: document.querySelector("#task-execution-rework-button"),
+  taskExecutionRebaseRetryButton: document.querySelector("#task-execution-rebase-retry-button"),
   taskExecutionReworkDescription: document.querySelector("#task-execution-rework-description"),
   taskExecutionReworkField: document.querySelector("#task-execution-rework-field"),
+  taskExecutionResumeMergeButton: document.querySelector("#task-execution-resume-merge-button"),
+  taskExecutionMergeHistory: document.querySelector("#task-execution-merge-history"),
+  taskExecutionMergeHistoryCount: document.querySelector("#task-execution-merge-history-count"),
+  taskExecutionMergeHistoryEmpty: document.querySelector("#task-execution-merge-history-empty"),
+  taskExecutionMergeHistoryList: document.querySelector("#task-execution-merge-history-list"),
   taskExecutionReviewActions: document.querySelector("#task-execution-review-actions"),
   taskExecutionReview: document.querySelector("#task-execution-review"),
   taskExecutionReviewDecision: document.querySelector("#task-execution-review-decision"),
@@ -200,7 +209,9 @@ elements.taskPlanNotesInput.addEventListener("input", onPlanNotesInput);
 elements.taskExecutionAgentSelect.addEventListener("change", onExecutionDraftAgentInput);
 elements.taskExecutionChangeAgentButton.addEventListener("click", onChangeSubTaskAgent);
 elements.taskExecutionConfirmDiscardButton.addEventListener("click", onConfirmDiscardSubTask);
+elements.taskExecutionRebaseRetryButton.addEventListener("click", onRebaseRetrySubTask);
 elements.taskExecutionReworkButton.addEventListener("click", onReworkSubTask);
+elements.taskExecutionResumeMergeButton.addEventListener("click", onResumeTaskMerge);
 elements.taskExecutionReworkDescription.addEventListener("input", onExecutionDraftDescriptionInput);
 
 void Promise.all([loadProjects({ preserveSelection: true }), loadAgents()]);
@@ -742,6 +753,7 @@ function renderTaskDetail() {
   elements.taskPlanSnapshotCount.textContent = String(detail.planSnapshots?.length ?? 0);
 
   syncEditablePlanDraft(detail);
+  renderCleanupWarnings(detail.cleanupWarnings ?? []);
   renderTaskAttachments(detail.attachments ?? []);
   renderPlanDraft(detail);
   renderSubTaskExecution(detail);
@@ -767,6 +779,29 @@ function renderTaskAttachments(attachments) {
       <span class="attachment-list__meta">${escapeHtml(buildAttachmentCaption(attachment))}</span>
     `;
     elements.taskAttachmentsList.append(item);
+  }
+}
+
+function renderCleanupWarnings(cleanupWarnings) {
+  elements.taskCleanupWarningList.replaceChildren();
+  elements.taskCleanupWarnings.hidden = cleanupWarnings.length === 0;
+
+  if (cleanupWarnings.length === 0) {
+    elements.taskCleanupWarningSummary.textContent = "";
+    return;
+  }
+
+  elements.taskCleanupWarningSummary.textContent = `${cleanupWarnings.length} worktree cleanup warning${cleanupWarnings.length === 1 ? "" : "s"} were recorded. The task is still terminal, but you may need to remove stale paths manually.`;
+
+  for (const warning of cleanupWarnings) {
+    const item = document.createElement("article");
+    item.className = "cleanup-warning-list__item";
+    item.innerHTML = `
+      <p class="cleanup-warning-list__path">${escapeHtml(warning.worktreePath ?? "Unknown path")}</p>
+      <p class="cleanup-warning-list__reason">${escapeHtml(warning.reason ?? "Cleanup failed.")}</p>
+      <p class="cleanup-warning-list__meta">${escapeHtml(formatTimestamp(warning.createdAt))}</p>
+    `;
+    elements.taskCleanupWarningList.append(item);
   }
 }
 
@@ -796,6 +831,8 @@ function renderSubTaskExecution(detail) {
   for (const subTask of subTasks) {
     const sessions = sessionsBySubTaskId.get(subTask.id) ?? [];
     const latestSession = sessions.at(-1) ?? null;
+    const mergeRecords = Array.isArray(subTask.mergeRecords) ? subTask.mergeRecords : [];
+    const latestMergeRecord = mergeRecords.at(-1) ?? null;
     const includedAttachments = subTask.launchMetadata?.included?.map((attachment) => attachment.fileName) ?? [];
     const excludedAttachments = subTask.launchMetadata?.excluded?.map((attachment) => (
       `${attachment.fileName} (${attachment.reason})`
@@ -820,6 +857,7 @@ function renderSubTaskExecution(detail) {
       <div class="execution-card__summary">
         <p class="execution-card__summary-line"><strong>Latest session:</strong> ${escapeHtml(latestSession ? `${latestSession.agentType} · ${latestSession.status}` : "None")}</p>
         <p class="execution-card__summary-line"><strong>Retries:</strong> ${escapeHtml(String(subTask.retryCount ?? 0))} · <strong>Sessions:</strong> ${escapeHtml(String(sessions.length))}</p>
+        <p class="execution-card__summary-line"><strong>Merge attempts:</strong> ${escapeHtml(String(mergeRecords.length))} · <strong>Latest merge:</strong> ${escapeHtml(buildMergeHistoryHeadline(latestMergeRecord))}</p>
         <p class="execution-card__summary-line"><strong>Attachments:</strong> ${escapeHtml(`${includedAttachments.length} included · ${excludedAttachments.length} excluded`)}</p>
       </div>
       <div class="execution-card__review">
@@ -1072,6 +1110,9 @@ function clearTaskDetail() {
   disconnectTaskStream();
   elements.taskDetail.hidden = true;
   elements.taskDetailEmpty.hidden = false;
+  elements.taskCleanupWarnings.hidden = true;
+  elements.taskCleanupWarningList.replaceChildren();
+  elements.taskCleanupWarningSummary.textContent = "";
   elements.taskTranscript.replaceChildren();
   elements.taskAttachmentsList.replaceChildren();
   elements.taskExecutionList.replaceChildren();
@@ -1172,6 +1213,12 @@ function connectTaskStream(taskId) {
   });
   stream.addEventListener("subtask:agent-changed", (event) => {
     applySubTaskAgentChangedEvent(JSON.parse(event.data));
+  });
+  stream.addEventListener("merge:status", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
+  stream.addEventListener("task:cleanup-warning", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
   });
   stream.addEventListener("session:started", (event) => {
     applySessionStartedEvent(JSON.parse(event.data));
@@ -1549,6 +1596,69 @@ async function onConfirmDiscardSubTask() {
     showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
   } finally {
     setButtonBusy(elements.taskExecutionConfirmDiscardButton, false, "Confirm discard");
+  }
+}
+
+async function onRebaseRetrySubTask() {
+  const selectedSubTask = getSelectedExecutionSubTask();
+
+  if (!state.selectedTaskId || !selectedSubTask) {
+    return;
+  }
+
+  clearFeedback(elements.taskExecutionReviewFeedback);
+  setButtonBusy(elements.taskExecutionRebaseRetryButton, true, "Rebasing...");
+
+  try {
+    const response = await fetchJson(
+      `/api/subtasks/${encodeURIComponent(selectedSubTask.id)}/rebase-retry`,
+      { method: "POST" },
+    );
+
+    if (state.taskDetail) {
+      state.taskDetail.task = response.task ?? state.taskDetail.task;
+      state.taskDetail.subTasks = upsertRecord(state.taskDetail.subTasks, response.subTask);
+    }
+
+    await loadTaskDetail(state.selectedTaskId, { preserveStream: true });
+    showFeedback(
+      elements.taskExecutionReviewFeedback,
+      response.mergeStatus === "SUCCEEDED" ? "success" : "error",
+      response.mergeStatus === "SUCCEEDED"
+        ? "Rebase retry succeeded. Merge flow resumed."
+        : "Rebase retry still conflicted. Review the updated conflict summary.",
+    );
+  } catch (error) {
+    showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskExecutionRebaseRetryButton, false, "Rebase & retry");
+  }
+}
+
+async function onResumeTaskMerge() {
+  if (!state.selectedTaskId) {
+    return;
+  }
+
+  clearFeedback(elements.taskExecutionReviewFeedback);
+  setButtonBusy(elements.taskExecutionResumeMergeButton, true, "Resuming...");
+
+  try {
+    const response = await fetchJson(
+      `/api/tasks/${encodeURIComponent(state.selectedTaskId)}/resume`,
+      { method: "POST" },
+    );
+
+    if (state.taskDetail) {
+      state.taskDetail.task = response.task ?? state.taskDetail.task;
+    }
+
+    await loadTaskDetail(state.selectedTaskId, { preserveStream: true });
+    showFeedback(elements.taskExecutionReviewFeedback, "success", "Merge flow resumed.");
+  } catch (error) {
+    showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskExecutionResumeMergeButton, false, "Resume merge");
   }
 }
 
@@ -2103,6 +2213,7 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
   elements.taskExecutionFocus.hidden = !selectedSubTask;
 
   if (!selectedSubTask) {
+    elements.taskExecutionMergeHistory.hidden = true;
     return;
   }
 
@@ -2118,26 +2229,47 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
     selectedSubTask.lastError ? `error: ${selectedSubTask.lastError}` : null,
   ].filter(Boolean).join(" · ");
   const draft = getExecutionDraft(selectedSubTask);
+  const mergeRecords = Array.isArray(selectedSubTask.mergeRecords) ? selectedSubTask.mergeRecords : [];
+  const latestMergeRecord = mergeRecords.at(-1) ?? null;
   const canReworkNow = selectedSubTask.status === "REVIEW_PENDING"
     && ["REJECTED", "REWORK"].includes(selectedSubTask.latestReviewDecision);
   const canChangeAgent = canReworkNow || selectedSubTask.status === "FAILED";
   const canConfirmDiscard = selectedSubTask.status === "DISCARD_PENDING";
+  const canRebaseRetry = detail.task.status === "ACTION_REQUIRED"
+    && selectedSubTask.status === "ACCEPTED"
+    && latestMergeRecord?.operation === "MERGE"
+    && latestMergeRecord?.status === "CONFLICT";
+  const canResumeMerge = detail.task.status === "ACTION_REQUIRED"
+    && detail.subTasks?.some((subTask) => subTask.status === "ACCEPTED");
   const hasRecoveryPanel = canChangeAgent
     || canConfirmDiscard
+    || canRebaseRetry
+    || canResumeMerge
     || selectedSubTask.latestReviewDecision
     || selectedSubTask.latestReviewSummary
+    || mergeRecords.length > 0
     || ["ACCEPTED", "DISCARD_PENDING", "REWORK_REQUIRED"].includes(selectedSubTask.status);
 
   elements.taskExecutionReview.hidden = !hasRecoveryPanel;
   elements.taskExecutionReworkField.hidden = !canReworkNow;
   elements.taskExecutionAgentField.hidden = !canChangeAgent;
   elements.taskExecutionConfirmDiscardButton.hidden = !canConfirmDiscard;
+  elements.taskExecutionRebaseRetryButton.hidden = !canRebaseRetry;
   elements.taskExecutionReworkButton.hidden = !canReworkNow;
+  elements.taskExecutionResumeMergeButton.hidden = !canResumeMerge;
   elements.taskExecutionChangeAgentButton.hidden = !canChangeAgent;
-  elements.taskExecutionReviewActions.hidden = !canReworkNow && !canChangeAgent && !canConfirmDiscard;
+  elements.taskExecutionReviewActions.hidden = !canReworkNow
+    && !canChangeAgent
+    && !canConfirmDiscard
+    && !canRebaseRetry
+    && !canResumeMerge;
 
   if (!elements.taskExecutionReview.hidden) {
-    if (selectedSubTask.latestReviewDecision || selectedSubTask.latestReviewSummary) {
+    if (latestMergeRecord) {
+      elements.taskExecutionReviewDecision.textContent = buildMergeStatusLabel(latestMergeRecord.status);
+      elements.taskExecutionReviewPhase.textContent = buildMergeOperationLabel(latestMergeRecord.operation);
+      elements.taskExecutionReviewSummary.textContent = buildExecutionMergeSummary(selectedSubTask, latestMergeRecord);
+    } else if (selectedSubTask.latestReviewDecision || selectedSubTask.latestReviewSummary) {
       elements.taskExecutionReviewDecision.textContent = buildReviewDecisionLabel(selectedSubTask.latestReviewDecision);
       elements.taskExecutionReviewPhase.textContent = buildReviewPhaseLabel(selectedSubTask.latestReviewPhase);
       elements.taskExecutionReviewSummary.textContent = buildExecutionReviewSummary(selectedSubTask);
@@ -2164,9 +2296,11 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
     elements.taskExecutionReworkDescription.value = "";
   }
 
-  if (!canReworkNow && !canChangeAgent && !canConfirmDiscard) {
+  if (!canReworkNow && !canChangeAgent && !canConfirmDiscard && !canRebaseRetry && !canResumeMerge) {
     clearFeedback(elements.taskExecutionReviewFeedback);
   }
+
+  renderMergeHistory(selectedSubTask);
 
   const previewOutput = focusedSession
     ? stripAnsi(state.liveSessionOutputs.get(focusedSession.id) ?? focusedSession.outputBuffer ?? "")
@@ -2197,6 +2331,35 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
   }
 }
 
+function renderMergeHistory(subTask) {
+  const mergeRecords = Array.isArray(subTask?.mergeRecords) ? subTask.mergeRecords : [];
+
+  elements.taskExecutionMergeHistory.hidden = !subTask;
+  elements.taskExecutionMergeHistoryCount.textContent = `${mergeRecords.length} attempt${mergeRecords.length === 1 ? "" : "s"}`;
+  elements.taskExecutionMergeHistoryEmpty.hidden = mergeRecords.length > 0;
+  elements.taskExecutionMergeHistoryList.replaceChildren();
+
+  for (const mergeRecord of [...mergeRecords].reverse()) {
+    const item = document.createElement("article");
+    item.className = "merge-history__item";
+    item.innerHTML = `
+      <div class="merge-history__header">
+        <div>
+          <p class="merge-history__title">${escapeHtml(buildMergeOperationLabel(mergeRecord.operation))} · attempt ${escapeHtml(String(mergeRecord.attemptNumber ?? 0))}</p>
+          <p class="merge-history__meta">${escapeHtml([
+            mergeRecord.sourceBranch ?? "unknown source",
+            mergeRecord.targetBranch ?? "unknown target",
+            mergeRecord.completedAt ? formatTimestamp(mergeRecord.completedAt) : "pending",
+          ].join(" · "))}</p>
+        </div>
+        <span class="badge ${buildMergeStatusBadgeClass(mergeRecord.status)}">${escapeHtml(buildMergeStatusLabel(mergeRecord.status))}</span>
+      </div>
+      <p class="merge-history__summary">${escapeHtml(buildMergeRecordSummary(mergeRecord))}</p>
+    `;
+    elements.taskExecutionMergeHistoryList.append(item);
+  }
+}
+
 function buildExecutionStatusBadgeClass(status) {
   switch (status) {
     case "ACCEPTED":
@@ -2212,6 +2375,80 @@ function buildExecutionStatusBadgeClass(status) {
     default:
       return "badge--outline";
   }
+}
+
+function buildMergeStatusBadgeClass(status) {
+  switch (status) {
+    case "SUCCEEDED":
+      return "badge--clean";
+    case "CONFLICT":
+    case "ABORTED":
+      return "badge--dirty";
+    default:
+      return "badge--outline";
+  }
+}
+
+function buildMergeStatusLabel(status) {
+  switch (status) {
+    case "SUCCEEDED":
+      return "Succeeded";
+    case "CONFLICT":
+      return "Conflict";
+    case "ABORTED":
+      return "Aborted";
+    case "PENDING":
+      return "Pending";
+    default:
+      return status ?? "Unknown";
+  }
+}
+
+function buildMergeOperationLabel(operation) {
+  switch (operation) {
+    case "MERGE":
+      return "Merge";
+    case "REBASE":
+      return "Rebase";
+    default:
+      return operation ?? "Merge";
+  }
+}
+
+function buildMergeHistoryHeadline(mergeRecord) {
+  if (!mergeRecord) {
+    return "None";
+  }
+
+  return `${buildMergeOperationLabel(mergeRecord.operation)} · ${buildMergeStatusLabel(mergeRecord.status)}`;
+}
+
+function buildMergeRecordSummary(mergeRecord) {
+  if (mergeRecord.conflictSummary) {
+    return mergeRecord.conflictSummary;
+  }
+
+  if (mergeRecord.resultCommitSha) {
+    return `Result commit ${mergeRecord.resultCommitSha.slice(0, 12)}.`;
+  }
+
+  return `${buildMergeOperationLabel(mergeRecord.operation)} finished with ${buildMergeStatusLabel(mergeRecord.status).toLowerCase()}.`;
+}
+
+function buildExecutionMergeSummary(subTask, mergeRecord) {
+  if (mergeRecord.conflictSummary) {
+    return mergeRecord.conflictSummary;
+  }
+
+  if (mergeRecord.status === "SUCCEEDED" && mergeRecord.operation === "REBASE") {
+    return `Rebase succeeded for ${subTask.branchName ?? subTask.title}. Merge will retry automatically.`;
+  }
+
+  if (mergeRecord.status === "SUCCEEDED" && mergeRecord.operation === "MERGE") {
+    return `Merged ${subTask.branchName ?? subTask.title} into the task base branch.`;
+  }
+
+  return buildMergeRecordSummary(mergeRecord);
 }
 
 function buildExecutionReviewSummary(subTask) {
@@ -2242,6 +2479,11 @@ function stripAnsi(value) {
 
 function normalizeOptionalText(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
+}
+
+function formatTimestamp(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Unknown time" : date.toLocaleString();
 }
 
 function isEditablePlanDirty(detail) {

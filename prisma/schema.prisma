@@ -41,6 +41,18 @@ enum SubTaskStatus {
   DISCARDED
 }
 
+enum MergeStatus {
+  PENDING
+  SUCCEEDED
+  CONFLICT
+  ABORTED
+}
+
+enum MergeOperation {
+  MERGE
+  REBASE
+}
+
 model Project {
   id            String   @id
   name          String
@@ -90,22 +102,42 @@ model PlanSnapshot {
 }
 
 model SubTask {
-  id          String        @id
-  taskId      String        @map("task_id")
-  title       String
-  description String
-  branchSuffix String       @map("branch_suffix")
-  branchName  String?       @map("branch_name")
-  worktreePath String?      @map("worktree_path")
-  agentType   String        @map("agent_type")
-  status      SubTaskStatus @default(PENDING)
-  autoAssigned Boolean      @default(true) @map("auto_assigned")
-  retryCount  Int           @default(0) @map("retry_count")
-  lastError   String?       @map("last_error")
-  createdAt   DateTime      @map("created_at")
-  updatedAt   DateTime      @map("updated_at")
-  task        Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  id                   String        @id
+  taskId               String        @map("task_id")
+  title                String
+  description          String
+  branchSuffix         String        @map("branch_suffix")
+  branchName           String?       @map("branch_name")
+  worktreePath         String?       @map("worktree_path")
+  agentType            String        @map("agent_type")
+  status               SubTaskStatus @default(PENDING)
+  autoAssigned         Boolean       @default(true) @map("auto_assigned")
+  retryCount           Int           @default(0) @map("retry_count")
+  lastError            String?       @map("last_error")
+  createdAt            DateTime      @map("created_at")
+  updatedAt            DateTime      @map("updated_at")
+  mergeRecords         MergeRecord[]
+  task                 Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId, createdAt, id], map: "idx_sub_tasks_task_id_created_at")
   @@map("sub_tasks")
+}
+
+model MergeRecord {
+  id              String         @id
+  subTaskId       String         @map("sub_task_id")
+  attemptNumber   Int            @map("attempt_number")
+  operation       MergeOperation
+  sourceBranch    String         @map("source_branch")
+  targetBranch    String         @map("target_branch")
+  status          MergeStatus
+  resultCommitSha String?        @map("result_commit_sha")
+  conflictSummary String?        @map("conflict_summary")
+  completedAt     DateTime?      @map("completed_at")
+  createdAt       DateTime       @map("created_at")
+  updatedAt       DateTime       @map("updated_at")
+  subTask         SubTask        @relation(fields: [subTaskId], references: [id], onDelete: Cascade)
+
+  @@index([subTaskId, createdAt, id], map: "idx_merge_records_sub_task_id_created_at")
+  @@map("merge_records")
 }

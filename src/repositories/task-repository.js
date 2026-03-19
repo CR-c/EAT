@@ -48,6 +48,18 @@ export const REVIEW_PHASE = Object.freeze({
   INCREMENTAL: "INCREMENTAL",
 });
 
+export const MERGE_OPERATION = Object.freeze({
+  MERGE: "MERGE",
+  REBASE: "REBASE",
+});
+
+export const MERGE_STATUS = Object.freeze({
+  ABORTED: "ABORTED",
+  CONFLICT: "CONFLICT",
+  PENDING: "PENDING",
+  SUCCEEDED: "SUCCEEDED",
+});
+
 export const SUBTASK_STATUS = Object.freeze({
   ACCEPTED: "ACCEPTED",
   CANCELLED: "CANCELLED",
@@ -588,7 +600,7 @@ export class SqliteTaskRepository {
   }
 
   async createSubTask(input) {
-    const timestamp = new Date().toISOString();
+    const timestamp = input.createdAt ?? new Date().toISOString();
     const subTask = {
       agentType: input.agentType,
       autoAssigned: input.autoAssigned ?? true,
@@ -605,7 +617,7 @@ export class SqliteTaskRepository {
       status: input.status ?? SUBTASK_STATUS.PENDING,
       taskId: input.taskId,
       title: input.title,
-      updatedAt: timestamp,
+      updatedAt: input.updatedAt ?? timestamp,
       worktreePath: input.worktreePath ?? null,
     };
 
@@ -830,6 +842,107 @@ export class SqliteTaskRepository {
       .all(subTaskId);
   }
 
+
+  async createMergeRecord(input) {
+    const timestamp = new Date().toISOString();
+    const attemptNumber = input.attemptNumber ?? this.#getNextMergeAttemptNumber(input.subTaskId);
+    const mergeRecord = {
+      attemptNumber,
+      completedAt: input.completedAt ?? null,
+      conflictSummary: input.conflictSummary ?? null,
+      createdAt: input.createdAt ?? timestamp,
+      id: input.id ?? randomUUID(),
+      operation: input.operation,
+      resultCommitSha: input.resultCommitSha ?? null,
+      sourceBranch: input.sourceBranch,
+      status: input.status,
+      subTaskId: input.subTaskId,
+      targetBranch: input.targetBranch,
+      updatedAt: input.updatedAt ?? timestamp,
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        INSERT INTO merge_records (
+          id,
+          sub_task_id,
+          attempt_number,
+          operation,
+          source_branch,
+          target_branch,
+          status,
+          result_commit_sha,
+          conflict_summary,
+          completed_at,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        mergeRecord.id,
+        mergeRecord.subTaskId,
+        mergeRecord.attemptNumber,
+        mergeRecord.operation,
+        mergeRecord.sourceBranch,
+        mergeRecord.targetBranch,
+        mergeRecord.status,
+        mergeRecord.resultCommitSha,
+        mergeRecord.conflictSummary,
+        mergeRecord.completedAt,
+        mergeRecord.createdAt,
+        mergeRecord.updatedAt,
+      );
+
+    return mergeRecord;
+  }
+
+  async listMergeRecordsBySubTaskId(subTaskId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          sub_task_id AS subTaskId,
+          attempt_number AS attemptNumber,
+          operation,
+          source_branch AS sourceBranch,
+          target_branch AS targetBranch,
+          status,
+          result_commit_sha AS resultCommitSha,
+          conflict_summary AS conflictSummary,
+          completed_at AS completedAt,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM merge_records
+        WHERE sub_task_id = ?
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all(subTaskId);
+  }
+
+  async listMergeRecordsByTaskId(taskId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          merge_records.id,
+          merge_records.sub_task_id AS subTaskId,
+          merge_records.attempt_number AS attemptNumber,
+          merge_records.operation,
+          merge_records.source_branch AS sourceBranch,
+          merge_records.target_branch AS targetBranch,
+          merge_records.status,
+          merge_records.result_commit_sha AS resultCommitSha,
+          merge_records.conflict_summary AS conflictSummary,
+          merge_records.completed_at AS completedAt,
+          merge_records.created_at AS createdAt,
+          merge_records.updated_at AS updatedAt
+        FROM merge_records
+        INNER JOIN sub_tasks ON sub_tasks.id = merge_records.sub_task_id
+        WHERE sub_tasks.task_id = ?
+        ORDER BY merge_records.created_at ASC, merge_records.id ASC
+      `)
+      .all(taskId);
+  }
+
   async listSessionsBySubTaskId(subTaskId) {
     return this.#getDatabase()
       .prepare(`
@@ -885,5 +998,17 @@ export class SqliteTaskRepository {
     }
 
     return this.database;
+  }
+
+  #getNextMergeAttemptNumber(subTaskId) {
+    const row = this.#getDatabase()
+      .prepare(`
+        SELECT COALESCE(MAX(attempt_number), 0) AS maxAttemptNumber
+        FROM merge_records
+        WHERE sub_task_id = ?
+      `)
+      .get(subTaskId);
+
+    return Number(row?.maxAttemptNumber ?? 0) + 1;
   }
 }

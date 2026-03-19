@@ -6,9 +6,19 @@ import { promisify } from "node:util";
 
 import { ATTACHMENT_TYPES, SESSION_SANDBOX_TYPES } from "../agents/agent-contract.js";
 import {
+  abortMerge,
+  abortRebase,
+  checkoutBranch,
   computeDeterministicBranchName,
   ensureBranchExists,
   ensureWorktree,
+  getCurrentBranch,
+  isBranchMergedInto,
+  isWorkingTreeDirty,
+  mergeBranch,
+  removeWorktree,
+  rebaseBranch,
+  resolveRevision,
   resolveUniqueBranchName,
   resolveWorktreePath,
 } from "./git-workspace-service.js";
@@ -20,6 +30,8 @@ import {
   validatePlanDraft,
 } from "./plan-draft.js";
 import {
+  MERGE_OPERATION,
+  MERGE_STATUS,
   PLAN_SNAPSHOT_SOURCE,
   MESSAGE_ROLE,
   REVIEW_PHASE,
@@ -37,6 +49,18 @@ const MAX_FINAL_REVIEW_LOG_BYTES = 32_768;
 const MAX_INCREMENTAL_REVIEW_LOG_BYTES = 32_768;
 const FINAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
 const INCREMENTAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
+const COMPLETED_SUBTASK_STATUSES = new Set([
+  SUBTASK_STATUS.CANCELLED,
+  SUBTASK_STATUS.DISCARDED,
+  SUBTASK_STATUS.MERGED,
+]);
+const TERMINAL_TASK_STATUSES = new Set([
+  TASK_STATUS.CANCELLED,
+  TASK_STATUS.COMPLETED,
+  TASK_STATUS.FAILED,
+]);
+const CLEANUP_WARNING_MESSAGE_PREFIX = "Cleanup warning: ";
+const LAUNCH_FAILURE_MESSAGE_PREFIX = "Launch failure: ";
 
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
 const DOCUMENT_EXTENSIONS = new Set([".md", ".pdf", ".txt"]);
@@ -95,9 +119,11 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   SUBTASK_CHANGE_AGENT_NOT_ALLOWED: "SUBTASK_CHANGE_AGENT_NOT_ALLOWED",
   SUBTASK_DISCARD_NOT_ALLOWED: "SUBTASK_DISCARD_NOT_ALLOWED",
   SUBTASK_NOT_FOUND: "SUBTASK_NOT_FOUND",
+  SUBTASK_REBASE_RETRY_NOT_ALLOWED: "SUBTASK_REBASE_RETRY_NOT_ALLOWED",
   SUBTASK_REWORK_NOT_ALLOWED: "SUBTASK_REWORK_NOT_ALLOWED",
   SUBTASK_RETRY_NOT_ALLOWED: "SUBTASK_RETRY_NOT_ALLOWED",
   TASK_NOT_FOUND: "TASK_NOT_FOUND",
+  TASK_RESUME_NOT_ALLOWED: "TASK_RESUME_NOT_ALLOWED",
   TITLE_REQUIRED: "TITLE_REQUIRED",
 });
 
@@ -125,6 +151,9 @@ export class TaskService {
     this.workerLaunchMetadata = new Map();
     this.workerSessionMetadata = new Map();
     this.pendingFinalReviews = new Set();
+    this.pendingMergeExecutions = new Set();
+    this.pendingCleanupTasks = new Set();
+    this.closed = false;
   }
 
   async createTask(input) {
@@ -248,16 +277,23 @@ export class TaskService {
       return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
     }
 
+    const messages = await this.taskRepository.listMessagesByTaskId(task.id);
     const sessions = await this.taskRepository.listSessionsByTaskId(task.id);
     const subTasks = await this.taskRepository.listSubTasksByTaskId(task.id);
+    const mergeRecords = await this.taskRepository.listMergeRecordsByTaskId(task.id);
+    const mergeRecordsBySubTaskId = groupRecordsBySubTaskId(mergeRecords);
 
     return {
       ok: true,
       attachments: await this.taskRepository.listAttachmentsByTaskId(task.id),
-      messages: await this.taskRepository.listMessagesByTaskId(task.id),
+      cleanupWarnings: parseCleanupWarningsFromMessages(messages),
+      messages,
       planSnapshots: await this.taskRepository.listPlanSnapshotsByTaskId(task.id),
       sessions: sessions.map((session) => this.#decorateSession(session)),
-      subTasks: subTasks.map((subTask) => this.#decorateSubTask(subTask)),
+      subTasks: subTasks.map((subTask) => this.#decorateSubTask({
+        ...subTask,
+        mergeRecords: mergeRecordsBySubTaskId.get(subTask.id) ?? [],
+      })),
       task,
     };
   }
@@ -337,9 +373,10 @@ export class TaskService {
         startedAt,
         status: SESSION_STATUS.RUNNING,
       });
-      const clarifyingTask = await this.taskRepository.updateTask(task.id, {
+      const clarifyingTask = await this.#updateTaskStatus(task.id, TASK_STATUS.CLARIFYING, {
+        currentTask: task,
         lastError: null,
-        status: TASK_STATUS.CLARIFYING,
+        publish: false,
       });
 
       if ((await this.taskRepository.listMessagesByTaskId(task.id)).length === 0) {
@@ -466,9 +503,10 @@ export class TaskService {
       );
     }
 
-    const confirmedTask = await this.taskRepository.updateTask(taskId, {
+    const confirmedTask = await this.#updateTaskStatus(taskId, TASK_STATUS.PLANNING, {
+      currentTask: task,
       lastError: null,
-      status: TASK_STATUS.PLANNING,
+      publish: false,
     });
     const confirmationMessage = await this.taskRepository.createMessage({
       content: "User confirmed that requirements are clear.",
@@ -603,17 +641,24 @@ export class TaskService {
         taskId,
         version: approvedTask.planVersion,
       });
-      const subTasks = await Promise.all(validation.plan.subtasks.map((subtask) => repository.createSubTask({
-        agentType: subtask.recommended_agent,
-        autoAssigned: true,
-        branchName: null,
-        branchSuffix: subtask.branch_suffix,
-        description: subtask.description,
-        status: SUBTASK_STATUS.PENDING,
-        taskId,
-        title: subtask.title,
-        worktreePath: null,
-      })));
+      const subTasks = [];
+      const subTaskSeedTime = Date.now();
+
+      for (const [index, subtask] of validation.plan.subtasks.entries()) {
+        subTasks.push(await repository.createSubTask({
+          agentType: subtask.recommended_agent,
+          autoAssigned: true,
+          branchName: null,
+          branchSuffix: subtask.branch_suffix,
+          createdAt: new Date(subTaskSeedTime + index).toISOString(),
+          description: subtask.description,
+          status: SUBTASK_STATUS.PENDING,
+          taskId,
+          title: subtask.title,
+          updatedAt: new Date(subTaskSeedTime + index).toISOString(),
+          worktreePath: null,
+        }));
+      }
       const executingTask = await repository.updateTask(taskId, {
         approvedPlanJson,
         lastError: null,
@@ -890,9 +935,10 @@ export class TaskService {
 
     const nextDescription = normalizeRequiredString(input.description) ?? subTask.description;
     const resumedTask = task.status === TASK_STATUS.ACTION_REQUIRED
-      ? await this.taskRepository.updateTask(task.id, {
+      ? await this.#updateTaskStatus(task.id, TASK_STATUS.EXECUTING, {
+          currentTask: task,
           lastError: null,
-          status: TASK_STATUS.EXECUTING,
+          publish: false,
         })
       : task;
     const pendingSubTask = await this.taskRepository.updateSubTask(subTaskId, {
@@ -975,6 +1021,536 @@ export class TaskService {
       subTask: this.#decorateSubTask(discardedSubTask),
       task: routedTask,
     };
+  }
+
+  async resumeTask(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (task.status !== TASK_STATUS.ACTION_REQUIRED) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_RESUME_NOT_ALLOWED,
+        "Task resume is only available while action is required.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const subTasks = await this.taskRepository.listSubTasksByTaskId(taskId);
+
+    if (!isMergeResumeEligible(subTasks)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_RESUME_NOT_ALLOWED,
+        "Task resume is only available for merge-time blockers after unresolved subtasks have been handled.",
+        { taskId },
+      );
+    }
+
+    const resumedTask = await this.#updateTaskStatus(taskId, TASK_STATUS.MERGING, {
+      currentTask: task,
+      lastError: null,
+    });
+    this.#queueMergeExecution(taskId);
+
+    return {
+      ok: true,
+      task: resumedTask,
+    };
+  }
+
+  async rebaseRetrySubTask(subTaskId) {
+    const subTask = await this.taskRepository.findSubTaskById(subTaskId);
+
+    if (!subTask) {
+      return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", { subTaskId });
+    }
+
+    const [task, latestMergeRecord] = await Promise.all([
+      this.taskRepository.findTaskById(subTask.taskId),
+      this.#findLatestMergeRecord(subTaskId),
+    ]);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId: subTask.taskId });
+    }
+
+    if (
+      task.status !== TASK_STATUS.ACTION_REQUIRED
+      || subTask.status !== SUBTASK_STATUS.ACCEPTED
+      || !latestMergeRecord
+      || latestMergeRecord.operation !== MERGE_OPERATION.MERGE
+      || latestMergeRecord.status !== MERGE_STATUS.CONFLICT
+    ) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_REBASE_RETRY_NOT_ALLOWED,
+        "Rebase & Retry is only available for accepted subtasks whose latest merge attempt conflicted.",
+        {
+          latestMergeRecord: latestMergeRecord
+            ? {
+                operation: latestMergeRecord.operation,
+                status: latestMergeRecord.status,
+              }
+            : null,
+          status: subTask.status,
+          subTaskId,
+          taskStatus: task.status,
+        },
+      );
+    }
+
+    const project = await this.projectRepository.findProjectById(task.projectId);
+
+    if (!project) {
+      return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project not found.", { projectId: task.projectId });
+    }
+
+    const preparedSubTask = await this.#ensureMergeWorkspace(task, project, subTask);
+
+    if (!preparedSubTask.ok) {
+      return preparedSubTask;
+    }
+
+    const rebasedSubTask = preparedSubTask.subTask;
+    const rebaseResult = await rebaseBranch(rebasedSubTask.worktreePath, task.baseBranch);
+
+    if (!rebaseResult.ok) {
+      const conflictSummary = await this.#buildRebaseConflictSummary(rebasedSubTask.worktreePath, rebaseResult);
+
+      await abortRebase(rebasedSubTask.worktreePath).catch(() => null);
+      await this.taskRepository.createMergeRecord({
+        completedAt: new Date().toISOString(),
+        conflictSummary,
+        operation: MERGE_OPERATION.REBASE,
+        sourceBranch: rebasedSubTask.branchName,
+        status: MERGE_STATUS.CONFLICT,
+        subTaskId: rebasedSubTask.id,
+        targetBranch: task.baseBranch,
+      });
+
+      const conflictedSubTask = await this.taskRepository.updateSubTask(rebasedSubTask.id, {
+        lastError: conflictSummary,
+      });
+
+      this.#publish(task.id, "merge:status", {
+        status: MERGE_STATUS.CONFLICT,
+        subtaskId: rebasedSubTask.id,
+        summary: conflictSummary,
+      });
+      this.#publishSubTaskStatus(task.id, conflictedSubTask);
+
+      return {
+        ok: true,
+        mergeStatus: MERGE_STATUS.CONFLICT,
+        subTask: this.#decorateSubTask(conflictedSubTask),
+        task,
+      };
+    }
+
+    const completedAt = new Date().toISOString();
+    const resultCommitSha = await resolveRevision(rebasedSubTask.worktreePath, "HEAD").catch(() => null);
+    await this.taskRepository.createMergeRecord({
+      completedAt,
+      operation: MERGE_OPERATION.REBASE,
+      resultCommitSha,
+      sourceBranch: rebasedSubTask.branchName,
+      status: MERGE_STATUS.SUCCEEDED,
+      subTaskId: rebasedSubTask.id,
+      targetBranch: task.baseBranch,
+    });
+
+    const nextSubTask = await this.taskRepository.updateSubTask(rebasedSubTask.id, {
+      lastError: null,
+    });
+    const resumedTask = await this.#updateTaskStatus(task.id, TASK_STATUS.MERGING, {
+      currentTask: task,
+      lastError: null,
+    });
+
+    this.#publish(task.id, "merge:status", {
+      status: MERGE_STATUS.SUCCEEDED,
+      subtaskId: rebasedSubTask.id,
+      summary: `Rebased ${rebasedSubTask.branchName} onto ${task.baseBranch}. Retrying merge.`,
+    });
+    this.#publishSubTaskStatus(task.id, nextSubTask);
+    this.#queueMergeExecution(task.id);
+
+    return {
+      ok: true,
+      mergeStatus: MERGE_STATUS.SUCCEEDED,
+      subTask: this.#decorateSubTask(nextSubTask),
+      task: resumedTask,
+    };
+  }
+
+  async #updateTaskStatus(taskId, status, options = {}) {
+    if (this.closed) {
+      return options.currentTask ?? null;
+    }
+
+    const currentTask = options.currentTask ?? await this.taskRepository.findTaskById(taskId);
+
+    if (!currentTask) {
+      return null;
+    }
+
+    const updates = { status };
+
+    if (Object.prototype.hasOwnProperty.call(options, "lastError")) {
+      updates.lastError = options.lastError;
+    }
+
+    const nextTask = await this.taskRepository.updateTask(taskId, updates);
+
+    if (!nextTask) {
+      return null;
+    }
+
+    if (currentTask.status !== nextTask.status && TERMINAL_TASK_STATUSES.has(nextTask.status)) {
+      await this.#attemptTaskCleanup(nextTask);
+    }
+
+    if (options.publish !== false) {
+      this.#publish(taskId, "task:status", {
+        ...(options.reason ? { reason: options.reason } : {}),
+        taskId,
+        status: nextTask.status,
+      });
+    }
+
+    return nextTask;
+  }
+
+  async #attemptTaskCleanup(task) {
+    if (this.closed || !task || !TERMINAL_TASK_STATUSES.has(task.status) || this.pendingCleanupTasks.has(task.id)) {
+      return;
+    }
+
+    this.pendingCleanupTasks.add(task.id);
+
+    try {
+      const [project, subTasks] = await Promise.all([
+        this.projectRepository.findProjectById(task.projectId),
+        this.taskRepository.listSubTasksByTaskId(task.id),
+      ]);
+
+      if (!project) {
+        return;
+      }
+
+      for (const subTask of subTasks) {
+        if (this.closed) {
+          return;
+        }
+
+        if (!subTask.worktreePath) {
+          continue;
+        }
+
+        if (await this.#hasLiveWorkerSession(subTask.id)) {
+          await this.#recordCleanupWarning(task.id, subTask.worktreePath, "Cleanup skipped because a live worker session still owns this worktree.");
+          continue;
+        }
+
+        const cleanupResult = await removeWorktree(project.path, subTask.worktreePath);
+
+        if (!cleanupResult.ok) {
+          const reason = buildCleanupFailureReason(cleanupResult);
+          await this.#recordCleanupWarning(task.id, subTask.worktreePath, reason);
+        }
+      }
+    } finally {
+      this.pendingCleanupTasks.delete(task.id);
+    }
+  }
+
+  async #recordCleanupWarning(taskId, worktreePath, reason) {
+    if (this.closed) {
+      return;
+    }
+
+    const normalizedReason = normalizeRequiredString(reason) ?? "Cleanup failed.";
+    const warning = {
+      reason: normalizedReason,
+      worktreePath,
+    };
+
+    await this.taskRepository.createMessage({
+      content: buildCleanupWarningMessage(warning),
+      role: MESSAGE_ROLE.SYSTEM,
+      taskId,
+    });
+
+    this.#publish(taskId, "task:cleanup-warning", {
+      reason: normalizedReason,
+      taskId,
+      worktreePath,
+    });
+  }
+
+  #queueMergeExecution(taskId) {
+    if (this.closed || this.pendingMergeExecutions.has(taskId)) {
+      return;
+    }
+
+    this.pendingMergeExecutions.add(taskId);
+
+    queueMicrotask(() => {
+      void this.#runMergeExecution(taskId)
+        .finally(() => {
+          this.pendingMergeExecutions.delete(taskId);
+        });
+    });
+  }
+
+  async #runMergeExecution(taskId) {
+    if (this.closed) {
+      return;
+    }
+
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task || task.status !== TASK_STATUS.MERGING) {
+      return;
+    }
+
+    const project = await this.projectRepository.findProjectById(task.projectId);
+
+    if (!project) {
+      await this.#setTaskActionRequired(taskId, "Project not found for merge execution.");
+      return;
+    }
+
+    const subTasks = await this.taskRepository.listSubTasksByTaskId(taskId);
+
+    for (const subTask of subTasks) {
+      if (subTask.status !== SUBTASK_STATUS.ACCEPTED) {
+        continue;
+      }
+
+      const mergeTarget = await this.#ensureMergeTargetReady(task, project);
+
+      if (this.closed) {
+        return;
+      }
+
+      if (!mergeTarget.ok) {
+        await this.#setTaskActionRequired(taskId, mergeTarget.reason);
+        return;
+      }
+
+      if (!subTask.branchName) {
+        await this.#setTaskActionRequired(
+          taskId,
+          `Accepted subtask ${subTask.title} does not have a branch available for merge.`,
+        );
+        return;
+      }
+
+      if (await isBranchMergedInto(project.path, subTask.branchName, task.baseBranch)) {
+        await this.#recordSuccessfulMerge(task, subTask, {
+          resultCommitSha: await resolveRevision(project.path, task.baseBranch).catch(() => null),
+          summary: `Detected ${subTask.branchName} already present on ${task.baseBranch}.`,
+        });
+        continue;
+      }
+
+      const mergeResult = await mergeBranch(project.path, subTask.branchName);
+
+      if (this.closed) {
+        return;
+      }
+
+      if (!mergeResult.ok) {
+        const conflictSummary = await this.#buildMergeConflictSummary(project.path, subTask, task, mergeResult);
+
+        await abortMerge(project.path).catch(() => null);
+        await this.taskRepository.createMergeRecord({
+          completedAt: new Date().toISOString(),
+          conflictSummary,
+          operation: MERGE_OPERATION.MERGE,
+          sourceBranch: subTask.branchName,
+          status: MERGE_STATUS.CONFLICT,
+          subTaskId: subTask.id,
+          targetBranch: task.baseBranch,
+        });
+
+        const conflictedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
+          lastError: conflictSummary,
+        });
+
+        this.#publish(task.id, "merge:status", {
+          status: MERGE_STATUS.CONFLICT,
+          subtaskId: subTask.id,
+          summary: conflictSummary,
+        });
+        this.#publishSubTaskStatus(task.id, conflictedSubTask);
+        await this.#setTaskActionRequired(task.id, buildMergeConflictActionRequiredReason(subTask, conflictSummary));
+        return;
+      }
+
+      await this.#recordSuccessfulMerge(task, subTask, {
+        resultCommitSha: await resolveRevision(project.path, "HEAD").catch(() => null),
+        summary: `Merged ${subTask.branchName} into ${task.baseBranch} with --no-ff.`,
+      });
+    }
+
+    await this.#completeTaskIfMergeResolved(taskId);
+  }
+
+  async #recordSuccessfulMerge(task, subTask, options = {}) {
+    if (this.closed) {
+      return subTask;
+    }
+
+    const completedAt = new Date().toISOString();
+    const mergeRecord = await this.taskRepository.createMergeRecord({
+      completedAt,
+      operation: MERGE_OPERATION.MERGE,
+      resultCommitSha: options.resultCommitSha ?? null,
+      sourceBranch: subTask.branchName,
+      status: MERGE_STATUS.SUCCEEDED,
+      subTaskId: subTask.id,
+      targetBranch: task.baseBranch,
+    });
+    const mergedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
+      lastError: null,
+      status: SUBTASK_STATUS.MERGED,
+    });
+
+    this.#publish(task.id, "merge:status", {
+      status: mergeRecord.status,
+      subtaskId: subTask.id,
+      summary: options.summary ?? `Merged ${subTask.branchName} into ${task.baseBranch} with --no-ff.`,
+    });
+    this.#publishSubTaskStatus(task.id, mergedSubTask);
+
+    return mergedSubTask;
+  }
+
+  async #ensureMergeTargetReady(task, project) {
+    if (await isWorkingTreeDirty(project.path)) {
+      return {
+        ok: false,
+        reason: buildDirtyTargetBranchReason(task.baseBranch),
+      };
+    }
+
+    const currentBranch = await getCurrentBranch(project.path);
+
+    if (currentBranch === task.baseBranch) {
+      return { ok: true };
+    }
+
+    const checkoutResult = await checkoutBranch(project.path, task.baseBranch);
+
+    if (!checkoutResult.ok) {
+      return {
+        ok: false,
+        reason: buildBaseBranchCheckoutFailureReason(task.baseBranch, checkoutResult),
+      };
+    }
+
+    return { ok: true };
+  }
+
+  async #ensureMergeWorkspace(task, project, subTask) {
+    let nextSubTask = subTask;
+
+    try {
+      if (!nextSubTask.branchName) {
+        const desiredBranchName = computeDeterministicBranchName(task.id, nextSubTask.branchSuffix);
+        await ensureBranchExists(project.path, desiredBranchName, task.baseCommitSha);
+        nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
+          branchName: desiredBranchName,
+        });
+      }
+
+      await ensureBranchExists(project.path, nextSubTask.branchName, task.baseCommitSha);
+
+      if (!nextSubTask.worktreePath) {
+        const worktreePath = await resolveWorktreePath(project.path, task.id, nextSubTask.branchSuffix);
+        await ensureWorktree(project.path, worktreePath, nextSubTask.branchName);
+        nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
+          worktreePath,
+        });
+      } else {
+        await ensureWorktree(project.path, nextSubTask.worktreePath, nextSubTask.branchName);
+      }
+
+      return {
+        ok: true,
+        subTask: nextSubTask,
+      };
+    } catch (error) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_REBASE_RETRY_NOT_ALLOWED,
+        error?.message ?? "Failed to prepare the subtask branch for rebase retry.",
+        {
+          subTaskId: subTask.id,
+          taskId: task.id,
+        },
+      );
+    }
+  }
+
+  async #buildMergeConflictSummary(repoPath, subTask, task, mergeResult) {
+    const conflictFiles = await listConflictPaths(repoPath);
+
+    if (conflictFiles.length > 0) {
+      return `Merge conflict while integrating ${subTask.title}: ${conflictFiles.join(", ")}.`;
+    }
+
+    const gitOutput = [mergeResult.stderr, mergeResult.stdout].filter(Boolean).join("\n").trim();
+
+    return gitOutput.length > 0
+      ? tailUtf8(gitOutput, 512)
+      : `Merge conflict while integrating ${subTask.branchName} into ${task.baseBranch}.`;
+  }
+
+  async #buildRebaseConflictSummary(worktreePath, rebaseResult) {
+    const conflictFiles = await listConflictPaths(worktreePath);
+
+    if (conflictFiles.length > 0) {
+      return `Rebase conflict: ${conflictFiles.join(", ")}.`;
+    }
+
+    const gitOutput = [rebaseResult.stderr, rebaseResult.stdout].filter(Boolean).join("\n").trim();
+
+    return gitOutput.length > 0
+      ? tailUtf8(gitOutput, 512)
+      : "Rebase conflict while replaying the subtask branch onto the latest base branch.";
+  }
+
+  async #findLatestMergeRecord(subTaskId) {
+    return (await this.taskRepository.listMergeRecordsBySubTaskId(subTaskId)).at(-1) ?? null;
+  }
+
+  async #completeTaskIfMergeResolved(taskId) {
+    const [task, subTasks] = await Promise.all([
+      this.taskRepository.findTaskById(taskId),
+      this.taskRepository.listSubTasksByTaskId(taskId),
+    ]);
+
+    if (!task) {
+      return null;
+    }
+
+    if (!subTasks.every((subTask) => COMPLETED_SUBTASK_STATUSES.has(subTask.status))) {
+      return task;
+    }
+
+    if (task.status === TASK_STATUS.COMPLETED) {
+      return task;
+    }
+
+    const completedTask = await this.#updateTaskStatus(taskId, TASK_STATUS.COMPLETED, {
+      currentTask: task,
+      lastError: null,
+    });
+
+    return completedTask;
   }
 
   async #launchApprovedSubTasks(taskId) {
@@ -1199,6 +1775,19 @@ export class TaskService {
   }
 
   async #failSubTaskLaunch(task, subTask, message, options = {}) {
+    if (options.actionRequired === true) {
+      await this.taskRepository.createMessage({
+        content: buildLaunchFailureMessage({
+          kind: classifyLaunchFailure(message),
+          reason: message,
+          subTaskId: subTask.id,
+        }),
+        role: MESSAGE_ROLE.SYSTEM,
+        subTaskId: subTask.id,
+        taskId: task.id,
+      });
+    }
+
     const failedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
       lastError: message,
       status: SUBTASK_STATUS.FAILED,
@@ -1209,15 +1798,10 @@ export class TaskService {
     let nextTask = task;
 
     if (options.actionRequired === true) {
-      nextTask = await this.taskRepository.updateTask(task.id, {
+      nextTask = await this.#updateTaskStatus(task.id, TASK_STATUS.ACTION_REQUIRED, {
+        currentTask: task,
         lastError: message,
-        status: TASK_STATUS.ACTION_REQUIRED,
-      });
-
-      this.#publish(task.id, "task:status", {
         reason: message,
-        taskId: task.id,
-        status: nextTask.status,
       });
     }
 
@@ -1262,6 +1846,10 @@ export class TaskService {
   }
 
   async #handleLeadOutput(taskId, sessionId, chunk) {
+    if (this.closed) {
+      return;
+    }
+
     const normalizedChunk = normalizeOutputChunk(chunk);
 
     if (!normalizedChunk) {
@@ -1296,6 +1884,10 @@ export class TaskService {
   }
 
   async #handleLeadExit(taskId, sessionId, exitCode) {
+    if (this.closed) {
+      return;
+    }
+
     this.runningLeadSessions.delete(taskId);
     this.pendingPlanDrafts.delete(taskId);
 
@@ -1309,14 +1901,9 @@ export class TaskService {
     const task = await this.taskRepository.findTaskById(taskId);
 
     if (task?.status === TASK_STATUS.CLARIFYING && exitCode !== 0) {
-      const actionRequiredTask = await this.taskRepository.updateTask(taskId, {
+      await this.#updateTaskStatus(taskId, TASK_STATUS.ACTION_REQUIRED, {
+        currentTask: task,
         lastError: "Lead session ended unexpectedly during clarification.",
-        status: TASK_STATUS.ACTION_REQUIRED,
-      });
-
-      this.#publish(taskId, "task:status", {
-        taskId,
-        status: actionRequiredTask.status,
       });
     }
 
@@ -1329,6 +1916,10 @@ export class TaskService {
   }
 
   async #handleWorkerOutput(taskId, subTaskId, sessionId, chunk) {
+    if (this.closed) {
+      return;
+    }
+
     const normalizedChunk = normalizeOutputChunk(chunk);
 
     if (!normalizedChunk) {
@@ -1345,6 +1936,10 @@ export class TaskService {
   }
 
   async #handleWorkerExit(taskId, subTaskId, sessionId, exitCode) {
+    if (this.closed) {
+      return;
+    }
+
     this.runningWorkerSessions.delete(subTaskId);
     await this.sessionOutputAppends.get(sessionId);
 
@@ -1376,6 +1971,10 @@ export class TaskService {
   }
 
   async #runIncrementalReview(taskId, subTaskId, sessionId) {
+    if (this.closed) {
+      return;
+    }
+
     const [task, subTask, session] = await Promise.all([
       this.taskRepository.findTaskById(taskId),
       this.taskRepository.findSubTaskById(subTaskId),
@@ -1422,6 +2021,10 @@ export class TaskService {
       return;
     }
 
+    if (this.closed) {
+      return;
+    }
+
     const parsedReview = parseIncrementalReviewResponse(reviewResponse);
 
     if (!parsedReview.ok) {
@@ -1455,6 +2058,10 @@ export class TaskService {
   }
 
   async #maybeStartFinalReview(taskId) {
+    if (this.closed) {
+      return;
+    }
+
     if (this.pendingFinalReviews.has(taskId)) {
       return;
     }
@@ -1494,14 +2101,9 @@ export class TaskService {
     this.pendingFinalReviews.add(taskId);
 
     try {
-      const reviewingTask = await this.taskRepository.updateTask(taskId, {
+      await this.#updateTaskStatus(taskId, TASK_STATUS.REVIEWING, {
+        currentTask: task,
         lastError: null,
-        status: TASK_STATUS.REVIEWING,
-      });
-
-      this.#publish(taskId, "task:status", {
-        taskId,
-        status: reviewingTask.status,
       });
 
       queueMicrotask(() => {
@@ -1514,6 +2116,11 @@ export class TaskService {
   }
 
   async #runFinalReview(taskId) {
+    if (this.closed) {
+      this.pendingFinalReviews.delete(taskId);
+      return;
+    }
+
     try {
       const finalReviewInput = await this.#buildFinalReviewInput(taskId);
 
@@ -1551,6 +2158,10 @@ export class TaskService {
           taskId,
           error?.message ?? "Lead final review session failed to start.",
         );
+        return;
+      }
+
+      if (this.closed) {
         return;
       }
 
@@ -1699,15 +2310,11 @@ export class TaskService {
     ]);
 
     if (subTasks.every((subTask) => mergeReadyStatuses.has(subTask.status))) {
-      const mergingTask = await this.taskRepository.updateTask(taskId, {
+      const mergingTask = await this.#updateTaskStatus(taskId, TASK_STATUS.MERGING, {
+        currentTask: task,
         lastError: null,
-        status: TASK_STATUS.MERGING,
       });
-
-      this.#publish(taskId, "task:status", {
-        taskId,
-        status: mergingTask.status,
-      });
+      this.#queueMergeExecution(taskId);
 
       return mergingTask;
     }
@@ -1722,22 +2329,10 @@ export class TaskService {
   }
 
   async #setTaskActionRequired(taskId, reason) {
-    const actionRequiredTask = await this.taskRepository.updateTask(taskId, {
+    return this.#updateTaskStatus(taskId, TASK_STATUS.ACTION_REQUIRED, {
       lastError: reason,
-      status: TASK_STATUS.ACTION_REQUIRED,
-    });
-
-    if (!actionRequiredTask) {
-      return null;
-    }
-
-    this.#publish(taskId, "task:status", {
       reason,
-      taskId,
-      status: actionRequiredTask.status,
     });
-
-    return actionRequiredTask;
   }
 
   #decorateSession(session) {
@@ -1817,10 +2412,18 @@ export class TaskService {
   }
 
   async #appendSessionOutput(sessionId, chunk) {
+    if (this.closed) {
+      return;
+    }
+
     const previousAppend = this.sessionOutputAppends.get(sessionId) ?? Promise.resolve();
     const nextAppend = previousAppend
       .catch(() => {})
       .then(async () => {
+        if (this.closed) {
+          return;
+        }
+
         const knownLogPath = this.sessionLogPaths.get(sessionId);
         let logPath = knownLogPath ?? null;
 
@@ -1862,6 +2465,10 @@ export class TaskService {
   }
 
   #capturePlanDraftChunk(taskId, chunk) {
+    if (this.closed) {
+      return;
+    }
+
     const nextBuffer = `${this.pendingPlanDrafts.get(taskId)?.buffer ?? ""}\n${chunk}`.trim();
 
     if (!looksLikeCompletePlanText(nextBuffer)) {
@@ -1885,6 +2492,10 @@ export class TaskService {
   }
 
   async #processPlanDraftAttempt(taskId, parsedDraft) {
+    if (this.closed) {
+      return;
+    }
+
     const task = await this.taskRepository.findTaskById(taskId);
 
     if (!task || task.status !== TASK_STATUS.PLANNING) {
@@ -1905,6 +2516,10 @@ export class TaskService {
     const validation = validatePlanDraft(parsedDraft.payload, {
       agentHealth: health.agents,
     });
+
+    if (this.closed) {
+      return;
+    }
 
     if (!validation.ok) {
       await this.#requestPlanRegeneration(taskWithIncrementedVersion ?? task, validation.error.message, validation.error.details);
@@ -1938,6 +2553,10 @@ export class TaskService {
   }
 
   async #requestPlanRegeneration(task, reason, details) {
+    if (this.closed) {
+      return;
+    }
+
     this.pendingPlanDrafts.delete(task.id);
 
     const updatedTask = await this.taskRepository.updateTask(task.id, {
@@ -1984,6 +2603,16 @@ export class TaskService {
     }
 
     return validation;
+  }
+
+  close() {
+    this.closed = true;
+    this.pendingFinalReviews.clear();
+    this.pendingMergeExecutions.clear();
+    this.pendingCleanupTasks.clear();
+    this.pendingWorkerLaunches.clear();
+    this.runningLeadSessions.clear();
+    this.runningWorkerSessions.clear();
   }
 }
 
@@ -2450,6 +3079,171 @@ function mapFinalReviewDecisionToSubTaskStatus(decision) {
 function buildFinalReviewActionRequiredReason(subTasks) {
   const titles = subTasks.map((subTask) => `${subTask.title} (${subTask.status})`);
   return `Final review requires user action for: ${titles.join(", ")}.`;
+}
+
+function buildMergeConflictActionRequiredReason(subTask, summary) {
+  return `Merge blocked on ${subTask.title}. ${summary}`;
+}
+
+function buildDirtyTargetBranchReason(baseBranch) {
+  return `Target branch ${baseBranch} is dirty. Clean the repository working tree before resuming merge.`;
+}
+
+function buildBaseBranchCheckoutFailureReason(baseBranch, checkoutResult) {
+  const details = [checkoutResult?.stderr, checkoutResult?.stdout].filter(Boolean).join("\n").trim();
+
+  if (details.length > 0) {
+    return `Could not switch the repository back to ${baseBranch} before merge. ${tailUtf8(details, 512)}`;
+  }
+
+  return `Could not switch the repository back to ${baseBranch} before merge.`;
+}
+
+function buildCleanupWarningMessage(warning) {
+  return `${CLEANUP_WARNING_MESSAGE_PREFIX}${JSON.stringify({
+    reason: warning.reason,
+    worktreePath: warning.worktreePath,
+  })}`;
+}
+
+function buildLaunchFailureMessage(failure) {
+  return `${LAUNCH_FAILURE_MESSAGE_PREFIX}${JSON.stringify({
+    kind: failure.kind,
+    reason: failure.reason,
+    subTaskId: failure.subTaskId,
+  })}`;
+}
+
+function parseCleanupWarningsFromMessages(messages) {
+  return (messages ?? [])
+    .map((message) => parseCleanupWarningMessage(message))
+    .filter(Boolean);
+}
+
+function parseCleanupWarningMessage(message) {
+  if (
+    message?.role !== MESSAGE_ROLE.SYSTEM
+    || typeof message.content !== "string"
+    || !message.content.startsWith(CLEANUP_WARNING_MESSAGE_PREFIX)
+  ) {
+    return null;
+  }
+
+  const payload = message.content.slice(CLEANUP_WARNING_MESSAGE_PREFIX.length);
+
+  try {
+    const parsed = JSON.parse(payload);
+    const worktreePath = normalizeRequiredString(parsed?.worktreePath);
+    const reason = normalizeRequiredString(parsed?.reason);
+
+    if (!worktreePath || !reason) {
+      return null;
+    }
+
+    return {
+      createdAt: message.createdAt,
+      reason,
+      worktreePath,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseLaunchFailureMessage(message) {
+  if (
+    message?.role !== MESSAGE_ROLE.SYSTEM
+    || typeof message.content !== "string"
+    || !message.content.startsWith(LAUNCH_FAILURE_MESSAGE_PREFIX)
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(message.content.slice(LAUNCH_FAILURE_MESSAGE_PREFIX.length));
+    const kind = normalizeRequiredString(parsed?.kind);
+    const reason = normalizeRequiredString(parsed?.reason);
+    const subTaskId = normalizeRequiredString(parsed?.subTaskId);
+
+    if (!kind || !reason) {
+      return null;
+    }
+
+    return {
+      createdAt: message.createdAt,
+      kind,
+      reason,
+      subTaskId,
+      taskId: message.taskId,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function classifyLaunchFailure(message) {
+  const normalizedMessage = String(message ?? "").toLowerCase();
+
+  if (normalizedMessage.includes("docker") || normalizedMessage.includes("sandbox")) {
+    return "SANDBOX_LAUNCH_FAILURE";
+  }
+
+  return "WORKER_LAUNCH_FAILURE";
+}
+
+function buildCleanupFailureReason(cleanupResult) {
+  const details = [cleanupResult?.stderr, cleanupResult?.stdout].filter(Boolean).join("\n").trim();
+
+  if (details.length > 0) {
+    return tailUtf8(details, 512);
+  }
+
+  return "Worktree cleanup failed.";
+}
+
+function isMergeResumeEligible(subTasks) {
+  if (!Array.isArray(subTasks) || subTasks.length === 0) {
+    return false;
+  }
+
+  return subTasks.every((subTask) => (
+    [
+      SUBTASK_STATUS.ACCEPTED,
+      SUBTASK_STATUS.CANCELLED,
+      SUBTASK_STATUS.DISCARDED,
+      SUBTASK_STATUS.MERGED,
+    ].includes(subTask.status)
+  ));
+}
+
+function groupRecordsBySubTaskId(records) {
+  const grouped = new Map();
+
+  for (const record of records ?? []) {
+    const entry = grouped.get(record.subTaskId) ?? [];
+    entry.push(record);
+    grouped.set(record.subTaskId, entry);
+  }
+
+  return grouped;
+}
+
+async function listConflictPaths(repoPath) {
+  try {
+    const { stdout } = await execFileAsync("git", [
+      "-C",
+      repoPath,
+      "diff",
+      "--name-only",
+      "--diff-filter=U",
+    ], {
+      encoding: "utf8",
+    });
+
+    return stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 async function collectAgentResponse(runtime) {

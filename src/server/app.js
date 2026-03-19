@@ -55,15 +55,14 @@ export function createApp(options = {}) {
   });
 
   server.on("close", () => {
-    projectRepository.close?.();
-    taskRepository.close?.();
+    taskService.close?.();
   });
 
   return server;
 }
 
 async function routeRequest(request, response, services) {
-  const { agentService, projectService, systemService, taskService } = services;
+  const { agentService, metricsService, projectService, systemService, taskService } = services;
   const url = new URL(request.url, "http://127.0.0.1");
   const pathName = url.pathname;
   const staticRoute = STATIC_ROUTES.get(pathName);
@@ -223,6 +222,14 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const taskResumeMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/resume$/);
+
+  if (request.method === "POST" && taskResumeMatch) {
+    const taskId = decodeURIComponent(taskResumeMatch[1]);
+    const result = await taskService.resumeTask(taskId);
+    return respondServiceResult(response, result);
+  }
+
   const taskRestorePlanSnapshotMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/restore-plan-snapshot$/);
 
   if (request.method === "POST" && taskRestorePlanSnapshotMatch) {
@@ -284,6 +291,14 @@ async function routeRequest(request, response, services) {
   if (request.method === "POST" && subTaskConfirmDiscardMatch) {
     const subTaskId = decodeURIComponent(subTaskConfirmDiscardMatch[1]);
     const result = await taskService.confirmDiscardSubTask(subTaskId);
+    return respondServiceResult(response, result);
+  }
+
+  const subTaskRebaseRetryMatch = pathName.match(/^\/api\/subtasks\/([^/]+)\/rebase-retry$/);
+
+  if (request.method === "POST" && subTaskRebaseRetryMatch) {
+    const subTaskId = decodeURIComponent(subTaskRebaseRetryMatch[1]);
+    const result = await taskService.rebaseRetrySubTask(subTaskId);
     return respondServiceResult(response, result);
   }
 
