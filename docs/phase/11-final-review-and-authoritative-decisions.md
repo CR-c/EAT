@@ -4,6 +4,13 @@
 
 Implement the task-level final review that converts advisory incremental signals into authoritative subtask outcomes used by merge and follow-up actions.
 
+## Current Baseline In Repo
+
+- The repository already reserves `TASK_STATUS.REVIEWING` and `TASK_STATUS.MERGING`.
+- Phase 10 is expected to provide incremental review history and denormalized latest-review fields on `SubTask`.
+- No final review aggregation or authoritative status writeback exists yet.
+- The current UI has execution detail surfaces that can be extended instead of replaced.
+
 ## PRD Coverage
 
 - `FR-RV-03`
@@ -38,6 +45,17 @@ Implement the task-level final review that converts advisory incremental signals
 - No new tables are required in this phase.
 - Ensure final review records can be distinguished from incremental ones in queries and UI.
 
+## Likely Touch Points
+
+- `src/repositories/task-repository.js`
+- `src/services/task-service.js`
+- review prompt / diff aggregation helpers under `src/services/`
+- `src/services/git-workspace-service.js` or adjacent git helpers for diff collection
+- `src/ui/app.js`
+- `src/ui/index.html`
+- `src/ui/app.css`
+- final-review integration tests
+
 ## API And Event Surface
 
 - Server events:
@@ -68,6 +86,7 @@ Implement the task-level final review that converts advisory incremental signals
   - `REVIEW_PENDING -> ACCEPTED`
   - `REVIEW_PENDING -> REWORK_REQUIRED`
   - `REVIEW_PENDING -> DISCARD_PENDING`
+- Keep final-review decisions append-only even if later user action triggers another rework cycle.
 
 ## Action Routing Tasks
 
@@ -82,18 +101,21 @@ Implement the task-level final review that converts advisory incremental signals
   - `DISCARDED`
   - `CANCELLED`
   move task to `MERGING`.
+- Record a clear task-level reason when routing to `ACTION_REQUIRED`.
 
 ## UI Tasks
 
 - Show final review summaries distinctly from incremental summaries.
 - Show discard confirmation UI.
 - Show rework-required state clearly.
+- Surface which subtasks are accepted and therefore eligible for merge next.
 
 ## Implementation Notes
 
 - Final review must operate on the latest successful run of each subtask.
 - If a subtask was early-reworked several times, only the latest completed run should be considered for final review inputs.
 - Keep final review output append-only in history, even if later rework occurs.
+- Do not let the UI or prompt wording imply that incremental review already settled the outcome.
 
 ## Edge Cases
 
@@ -107,6 +129,7 @@ Implement the task-level final review that converts advisory incremental signals
 - Task moves to either `MERGING` or `ACTION_REQUIRED` correctly.
 - Discard confirmation is required before `DISCARDED`.
 - Mixed outcomes across accepted, rework, failed, and cancelled subtasks are routed correctly.
+- Phase 12 can start without re-deriving the merge set from ad hoc UI state.
 
 ## Suggested Tests
 

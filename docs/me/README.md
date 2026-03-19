@@ -57,8 +57,10 @@
 13. [CRC-20 Phase 13](/home/code/EAT/docs/me/CRC-20-phase-13.md)
 14. [CRC-21 Phase 14](/home/code/EAT/docs/me/CRC-21-phase-14.md)
 
+基于当前仓库实现，Phase 01 到 Phase 08 已完成。
+
 你现在应该从：
 
-- [CRC-9 Phase 02](/home/code/EAT/docs/me/CRC-9-phase-02.md)
+- [CRC-16 Phase 09](/home/code/EAT/docs/me/CRC-16-phase-09.md)
 
-开始，并且只从父任务 `CRC-9` 创建 workspace。
+开始，并且只从父任务 `CRC-16` 创建 workspace。

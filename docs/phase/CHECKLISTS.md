@@ -129,7 +129,7 @@ This document turns the 14 phase plans into execution checklists. Each phase sho
 - [ ] Emit `session:started` and `session:ended`
 - [ ] Build summary cards for all subtasks
 - [ ] Show tail preview from `outputBuffer`
-- [ ] Mount only one focused `xterm.js` terminal by default
+- [ ] Mount only one focused terminal surface by default
 - [ ] Keep ANSI rendering in focused terminal
 - [ ] Verify routing correctness under concurrent noisy output
 - [ ] Verify UI remains responsive with several active workers

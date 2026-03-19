@@ -4,6 +4,13 @@
 
 Add fast post-run feedback for each completed subtask and unlock the efficiency win of user-driven early rework without violating the rule that final review remains authoritative.
 
+## Current Baseline In Repo
+
+- Successful worker exits already move subtasks to `REVIEW_PENDING`.
+- `TASK_STATUS.REVIEWING` and `TASK_STATUS.MERGING` already exist in the repository constants but are not yet exercised.
+- There is no `ReviewRecord` persistence yet, and the UI does not surface any advisory review state.
+- Retry support already exists on the same branch and worktree, which this phase should reuse for early rework.
+
 ## PRD Coverage
 
 - `FR-RV-01`
@@ -41,6 +48,17 @@ Add fast post-run feedback for each completed subtask and unlock the efficiency 
   - `SubTask.latestReviewSummary`
 - Keep incremental review append-only even across repeated reworks.
 
+## Likely Touch Points
+
+- `src/repositories/task-repository.js`
+- `src/services/task-service.js`
+- review prompt / parser helpers under `src/services/`
+- `src/services/agent-service.js`
+- `src/ui/app.js`
+- `src/ui/index.html`
+- `src/ui/app.css`
+- review and execution integration tests
+
 ## API And Event Surface
 
 - Client events:
@@ -68,6 +86,7 @@ Add fast post-run feedback for each completed subtask and unlock the efficiency 
   - `latestReviewDecision`
   - `latestReviewPhase`
   - `latestReviewSummary`
+- Reuse persisted logs and `outputBuffer` from Phase 09 instead of reconstructing output from transient memory.
 
 ## Early Rework Tasks
 
@@ -80,6 +99,7 @@ Add fast post-run feedback for each completed subtask and unlock the efficiency 
   - move subtask back to `READY`
   - relaunch on same branch/worktree
 - Keep task in `EXECUTING`.
+- Re-run attachment filtering and health validation when the assigned agent changes.
 
 ## UI Tasks
 
@@ -87,18 +107,21 @@ Add fast post-run feedback for each completed subtask and unlock the efficiency 
 - Show `Rework Now` only when valid.
 - Show optional description edit before relaunch.
 - Support `Switch Agent & Relaunch` from the same screen when useful.
+- Keep incremental review visually distinct from final review to avoid implying authority.
 
 ## Implementation Notes
 
 - Incremental review must not set `ACCEPTED`, `REWORK_REQUIRED`, or `DISCARD_PENDING` status directly.
 - Early rework is a user shortcut, not an authoritative review transition.
 - Preserve review history even if the subtask is reworked multiple times.
+- Current browser app is stateful but framework-free; keep the rework UI additive instead of introducing a second page flow.
 
 ## Edge Cases
 
 - Lead agent unavailable when incremental review should run
 - User triggers rework while another subtask is still running
 - User changes agent to one that is now unhealthy
+- Latest incremental review becomes stale because a new successful run completed later
 
 ## Acceptance Checklist
 
@@ -106,11 +129,13 @@ Add fast post-run feedback for each completed subtask and unlock the efficiency 
 - User can relaunch a bad subtask immediately without waiting for all subtasks.
 - Status model remains consistent with final-review authority.
 - Early rework does not incorrectly skip later final review.
+- Task remains `EXECUTING` while early rework happens for one subtask and others continue.
 
 ## Suggested Tests
 
 - Review-record persistence tests
 - Early-rework state transition tests
+- Agent-change relaunch tests
 - Manual multi-subtask verification where one subtask finishes much earlier than others
 
 ## Out Of Scope

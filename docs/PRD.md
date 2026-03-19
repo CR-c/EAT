@@ -31,7 +31,7 @@ Primary goals of this revision:
 - Clarified that incremental review remains advisory but may unlock user-triggered early rework during `EXECUTING`
 - Added `Rebase & Retry` as an `ACTION_REQUIRED` recovery path for merge conflicts
 - Added worker-agent switching and relaunch flow when attachment filtering reveals a capability mismatch
-- Added default summary-first terminal UX with lazy `xterm.js` mounting
+- Added default summary-first terminal UX with lazy focused-terminal mounting
 
 ---
 
@@ -216,6 +216,9 @@ EAT requires a long-running local Node.js server process plus a local container 
 - Required worker sandbox runtime: local Docker Engine or API-compatible Docker daemon
 - Unsupported for MVP: serverless and edge runtimes
 - The system is intended to bind to `127.0.0.1` only
+- Adapters may declare `runtimeMode = REAL | STUB`
+- `STUB` means the orchestration path, session lifecycle, sandbox, logging, and streaming are real, but the adapter workload is an explicit placeholder runtime
+- A worker launched in `STUB` mode must still use the real Docker sandbox path; the UI and health surfaces must show that runtime mode explicitly
 
 ### 6.8 Execution Isolation Model
 
@@ -274,7 +277,7 @@ When a computed branch name `eat/{taskId}/{branchSuffix}` already exists in the 
 ### 7.1 High-Level Architecture
 
 ```text
-Browser UI (Next.js App Router)
+Browser UI (Local static app)
   - Project screens
   - Task chat
   - Plan review
@@ -283,7 +286,7 @@ Browser UI (Next.js App Router)
 
 Local Node.js App Server
   - REST/API handlers
-  - WebSocket server
+  - SSE event stream handlers
   - Orchestrator
   - Scheduler
   - Agent session manager
@@ -319,13 +322,13 @@ Local Dependencies
 
 | Layer | Technology | Notes |
 |-------|------------|-------|
-| UI / App | Next.js with App Router and Node runtime | Must run as a persistent local server |
-| Realtime | Socket.IO or native WebSocket | One event stream per task/session domain |
-| PTY Management | `node-pty` | Required for interactive CLI processes |
+| UI / App | Local Node.js HTTP server plus static HTML/CSS/ES modules | Persistent local server, framework-free by default |
+| Realtime | Server-Sent Events (`EventSource`) | Task-scoped event stream fits the current local UI model |
+| Session Runtime | Adapter-owned process/session abstraction | PTY-capable when an adapter needs interactive CLI input |
 | Container Runtime | Docker Engine / Docker API | Required for worker sandboxing |
-| DB | SQLite via Prisma | Single-user local persistence |
-| Git | `simple-git` plus selected raw git commands if needed | Keep merge behavior deterministic |
-| Terminal Rendering | `xterm.js` | Preserve ANSI output |
+| DB | SQLite via `node:sqlite` plus checked-in SQL migrations | Single-user local persistence with inspectable schema changes |
+| Git | Native `git` CLI plus focused workspace helpers | Keep merge and worktree behavior deterministic |
+| Terminal Rendering | Focused ANSI-safe terminal surface (`xterm.js` optional) | Summary-first by default; never mount one full terminal per worker |
 
 ---
 
@@ -601,6 +604,8 @@ enum AttachmentType {
 
 The adapter must be stateless or factory-based at registration time. Runtime process state belongs to `AgentSession`, not the registry singleton.
 
+Built-in adapters may intentionally expose `runtimeMode = STUB` before a provider-specific execution protocol is stable. In that mode, the system still exercises the real orchestration path, sandbox policy, session persistence, and output streaming, and the UI must not present the run as if it were a real provider-backed execution.
+
 ### 9.2 Adapter Factory Interface
 
 ```typescript
@@ -637,6 +642,8 @@ interface RuntimeAttachment {
   fileType: 'IMAGE' | 'DOCUMENT' | 'CODE';
 }
 
+type AgentRuntimeMode = 'REAL' | 'STUB';
+
 interface RunningAgentSession {
   sessionId: string;
   pid: number | null;
@@ -651,6 +658,8 @@ interface RunningAgentSession {
 interface AgentAdapterFactory {
   readonly name: string;
   readonly capabilities: AgentCapabilities;
+  readonly runtimeMode?: AgentRuntimeMode;
+  readonly usesSandboxManager?: boolean;
   healthCheck(): Promise<HealthCheckResult>;
   spawnSession(config: AgentSessionConfig): Promise<RunningAgentSession>;
 }
@@ -658,7 +667,17 @@ interface AgentAdapterFactory {
 interface HealthCheckResult {
   available: boolean;
   version?: string;
-  reason?: string;
+  reason?: string | {
+    code?: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+  checks?: Array<{
+    name: string;
+    status: 'PASS' | 'WARN' | 'FAIL' | 'SKIP';
+    message?: string;
+    details?: Record<string, unknown>;
+  }>;
 }
 ```
 
@@ -1000,9 +1019,9 @@ For each worker session:
 - Full output is persisted to local log files at `logPath`
 - `outputBuffer` holds the last `outputBufferMaxBytes` of output for quick UI display
 - ANSI color sequences may be rendered in the UI but raw output must also be stored in the log file
-- The default task view must not mount a full `xterm.js` instance for every concurrent worker
+- The default task view must not mount a full terminal surface for every concurrent worker
 - By default, the UI shows a summary card per subtask with status, latest step signal if available, and a short tail preview derived from `outputBuffer`
-- A full `xterm.js` terminal is mounted only when the user focuses a specific subtask
+- A full focused terminal or console surface with ANSI-safe rendering is mounted only when the user focuses a specific subtask
 
 #### FR-EX-07 Mid-Flight User Intervention
 
@@ -1249,12 +1268,12 @@ If one or more task-critical attachments are excluded because the assigned worke
 
 ### 12.1 API Style
 
-MVP may use Next.js route handlers plus WebSocket events.
+MVP uses a local Node.js HTTP server with REST endpoints plus task-scoped SSE event streams.
 
 Suggested split:
 
 - REST for CRUD and snapshot reads
-- WebSocket for long-running task and session events
+- SSE for long-running task and session events
 
 ### 12.2 Client -> Server Events
 
@@ -1309,7 +1328,7 @@ Notes:
 - UI should reflect session output with perceived latency under 250 ms on the same machine
 - System should support at least 5 concurrent worker sessions in one task
 - UI should remain usable while output is actively streaming from all concurrent sessions
-- The default execution view should render summary cards for all subtasks without mounting more than one live `xterm.js` instance by default
+- The default execution view should render summary cards for all subtasks without mounting more than one live focused terminal surface by default
 
 ### 13.2 Reliability
 

@@ -4,6 +4,13 @@
 
 Close the loop on reliability and product feedback by making task/session metrics queryable, exportable, and aligned with the PRD success metrics.
 
+## Current Baseline In Repo
+
+- The repository already persists projects, tasks, plan snapshots, attachments, messages, sessions, and subtasks.
+- Later phases are expected to add append-only review history, merge history, and cleanup-warning persistence.
+- The current stack is a local Node server with SQLite-backed repositories and no external analytics pipeline.
+- Metrics should therefore be derived from repository queries and exported locally.
+
 ## PRD Coverage
 
 - `13.4 Observability`
@@ -34,6 +41,14 @@ Close the loop on reliability and product feedback by making task/session metric
 - Add missing derived counters only if they cannot be queried reliably from existing history tables.
 - Do not introduce a separate analytics pipeline in MVP.
 
+## Likely Touch Points
+
+- repository query modules under `src/repositories/`
+- `src/server/app.js`
+- a dedicated metrics service under `src/services/`
+- optional lightweight UI surface under `src/ui/`
+- metrics integration and seeded-history tests
+
 ## API And Event Surface
 
 - Likely REST endpoints:
@@ -62,6 +77,7 @@ Close the loop on reliability and product feedback by making task/session metric
   - rebase-retry attempt count
 - Build metric-summary queries from persisted records only.
 - Add export command or API endpoint.
+- Fail visibly when required persisted inputs are missing instead of silently returning misleading zeros.
 
 ## Product Analytics Tasks
 
@@ -78,12 +94,14 @@ Close the loop on reliability and product feedback by making task/session metric
 
 - Add a simple metrics summary screen or admin panel if needed.
 - Document how operators can export and inspect summaries.
+- Keep the UI optional; the API or CLI export is the authoritative delivery surface.
 
 ## Implementation Notes
 
 - Do not add a separate analytics pipeline for MVP.
 - Prefer deterministic SQL queries over ad hoc in-memory counters.
 - Keep metric definitions in code comments or docs close to query logic.
+- Because this is local-first and single-user, favor inspectable exports over background telemetry.
 
 ## Edge Cases
 
@@ -97,6 +115,7 @@ Close the loop on reliability and product feedback by making task/session metric
 - Reported metrics align with PRD definitions.
 - Missing data paths fail visibly instead of silently reporting wrong numbers.
 - Queries remain correct across tasks with retries, reworks, conflicts, and cleanup warnings.
+- Export output is stable enough to diff across seeded histories in tests.
 
 ## Suggested Tests
 
