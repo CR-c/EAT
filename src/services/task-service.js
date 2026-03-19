@@ -499,11 +499,31 @@ export class TaskService {
       return validation;
     }
 
+    const approvedPlanJson = JSON.stringify(validation.plan);
+    const approvalResult = await this.taskRepository.runInTransaction(async (repository) => {
+      const approvedTask = await repository.updateTask(taskId, {
+        approvedPlanJson,
+        lastError: null,
+      });
+      const approvedSnapshot = await repository.createPlanSnapshot({
+        payload: approvedPlanJson,
+        source: PLAN_SNAPSHOT_SOURCE.APPROVED,
+        taskId,
+        version: approvedTask.planVersion,
+      });
+
+      return {
+        approvedSnapshot,
+        task: approvedTask,
+      };
+    });
+
     return {
       ok: true,
       approvalReady: true,
+      approvedSnapshot: approvalResult.approvedSnapshot,
       currentPlan: validation.plan,
-      task,
+      task: approvalResult.task,
     };
   }
 

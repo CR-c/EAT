@@ -669,6 +669,20 @@ export class SqliteTaskRepository {
       }));
   }
 
+  async runInTransaction(work) {
+    const database = this.#getDatabase();
+    database.exec("BEGIN IMMEDIATE TRANSACTION");
+
+    try {
+      const result = await work(this);
+      database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   close() {
     if (this.database && typeof this.database.close === "function") {
       this.database.close();

@@ -445,6 +445,76 @@ test("restores a historical plan snapshot into the current draft and appends res
   }
 });
 
+test("approves the validated plan by freezing approvedPlanJson and appending an approved snapshot", async () => {
+  const fixture = await makeTempDir("eat-plan-approve-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const server = await startServer({
+      agentService: createClarificationAgentService(),
+      databasePath,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "plan-approve-repo", { defaultBranch: "main" });
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Need approved plan persistence before execution starts.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Approve plan draft",
+        },
+        method: "POST",
+      });
+
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+        { method: "POST" },
+      );
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/confirm-requirements`,
+        { method: "POST" },
+      );
+
+      const approvalResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/approve-plan`,
+        { method: "POST" },
+      );
+
+      assert.equal(approvalResponse.status, 200);
+      assert.equal(approvalResponse.body.approvedSnapshot.source, "APPROVED");
+      assert.equal(approvalResponse.body.task.status, "PLAN_REVIEW");
+      assert.equal(
+        approvalResponse.body.task.approvedPlanJson,
+        approvalResponse.body.task.currentPlanJson,
+      );
+
+      const detailResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+      );
+      assert.equal(detailResponse.status, 200);
+      assert.equal(detailResponse.body.task.status, "PLAN_REVIEW");
+      assert.equal(detailResponse.body.task.approvedPlanJson, detailResponse.body.task.currentPlanJson);
+      assert.equal(detailResponse.body.planSnapshots.length, 2);
+      assert.equal(detailResponse.body.planSnapshots[0].source, "APPROVED");
+      assert.equal(detailResponse.body.planSnapshots[1].source, "LEAD_GENERATED");
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 function createClarificationAgentService() {
   const registry = new AgentRegistry();
 
