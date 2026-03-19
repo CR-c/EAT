@@ -2,7 +2,14 @@ import path from "node:path";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 
-import { ATTACHMENT_TYPES } from "../agents/agent-contract.js";
+import { ATTACHMENT_TYPES, SESSION_SANDBOX_TYPES } from "../agents/agent-contract.js";
+import {
+  computeDeterministicBranchName,
+  ensureBranchExists,
+  ensureWorktree,
+  resolveUniqueBranchName,
+  resolveWorktreePath,
+} from "./git-workspace-service.js";
 import { resolveBranchHeadCommit } from "./repo-validation-service.js";
 import {
   buildPlanningPrompt,
@@ -74,9 +81,19 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   TASK_NOT_DRAFT: "TASK_NOT_DRAFT",
   TASK_NOT_PLAN_REVIEW: "TASK_NOT_PLAN_REVIEW",
   PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
+  SUBTASK_ACTIVE_SESSION_EXISTS: "SUBTASK_ACTIVE_SESSION_EXISTS",
+  SUBTASK_NOT_FOUND: "SUBTASK_NOT_FOUND",
+  SUBTASK_RETRY_NOT_ALLOWED: "SUBTASK_RETRY_NOT_ALLOWED",
   TASK_NOT_FOUND: "TASK_NOT_FOUND",
   TITLE_REQUIRED: "TITLE_REQUIRED",
 });
+
+const WORKER_LIVE_STATUSES = new Set([
+  SESSION_STATUS.PENDING,
+  SESSION_STATUS.RUNNING,
+  SESSION_STATUS.STARTING,
+  SESSION_STATUS.STOPPING,
+]);
 
 export class TaskService {
   constructor(options) {
@@ -87,6 +104,10 @@ export class TaskService {
     this.uploadRootPath = options.uploadRootPath ?? DEFAULT_UPLOAD_ROOT;
     this.runningLeadSessions = new Map();
     this.pendingPlanDrafts = new Map();
+    this.pendingWorkerLaunches = new Set();
+    this.runningWorkerSessions = new Map();
+    this.workerLaunchMetadata = new Map();
+    this.workerSessionMetadata = new Map();
   }
 
   async createTask(input) {
@@ -196,13 +217,16 @@ export class TaskService {
       return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
     }
 
+    const sessions = await this.taskRepository.listSessionsByTaskId(task.id);
+    const subTasks = await this.taskRepository.listSubTasksByTaskId(task.id);
+
     return {
       ok: true,
       attachments: await this.taskRepository.listAttachmentsByTaskId(task.id),
       messages: await this.taskRepository.listMessagesByTaskId(task.id),
       planSnapshots: await this.taskRepository.listPlanSnapshotsByTaskId(task.id),
-      sessions: await this.taskRepository.listSessionsByTaskId(task.id),
-      subTasks: await this.taskRepository.listSubTasksByTaskId(task.id),
+      sessions: sessions.map((session) => this.#decorateSession(session)),
+      subTasks: subTasks.map((subTask) => this.#decorateSubTask(subTask)),
       task,
     };
   }
@@ -589,6 +613,10 @@ export class TaskService {
           taskId,
         });
       }
+
+      queueMicrotask(() => {
+        void this.#launchApprovedSubTasks(taskId);
+      });
     }
 
     return {
@@ -651,6 +679,313 @@ export class TaskService {
       snapshotId,
       task: nextTask,
     };
+  }
+
+  async retrySubTask(subTaskId, input = {}) {
+    const subTask = await this.taskRepository.findSubTaskById(subTaskId);
+
+    if (!subTask) {
+      return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", { subTaskId });
+    }
+
+    const task = await this.taskRepository.findTaskById(subTask.taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId: subTask.taskId });
+    }
+
+    if (![TASK_STATUS.ACTION_REQUIRED, TASK_STATUS.EXECUTING].includes(task.status)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_RETRY_NOT_ALLOWED,
+        "Subtask retry is only available while the task is executing or action is required.",
+        { status: task.status, subTaskId },
+      );
+    }
+
+    if (await this.#hasLiveWorkerSession(subTaskId)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_ACTIVE_SESSION_EXISTS,
+        "The subtask already has a live worker session.",
+        { subTaskId },
+      );
+    }
+
+    const nextDescription = normalizeRequiredString(input.description) ?? subTask.description;
+    const pendingSubTask = await this.taskRepository.updateSubTask(subTaskId, {
+      description: nextDescription,
+      lastError: null,
+      retryCount: (subTask.retryCount ?? 0) + 1,
+      status: SUBTASK_STATUS.PENDING,
+    });
+
+    this.#publish(task.id, "subtask:retry", {
+      description: nextDescription,
+      subtaskId: subTaskId,
+      taskId: task.id,
+    });
+    this.#publishSubTaskStatus(task.id, pendingSubTask);
+
+    const launchResult = await this.#launchSubTask(task.id, subTaskId, { isRetry: true });
+
+    if (!launchResult.ok) {
+      return launchResult;
+    }
+
+    return {
+      ok: true,
+      session: this.#decorateSession(launchResult.session),
+      subTask: this.#decorateSubTask(launchResult.subTask),
+      task: launchResult.task,
+    };
+  }
+
+  async #launchApprovedSubTasks(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task || task.status !== TASK_STATUS.EXECUTING) {
+      return;
+    }
+
+    const subTasks = await this.taskRepository.listSubTasksByTaskId(taskId);
+    await Promise.allSettled(subTasks.map((subTask) => this.#launchSubTask(taskId, subTask.id)));
+  }
+
+  async #launchSubTask(taskId, subTaskId) {
+    if (await this.#hasLiveWorkerSession(subTaskId)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_ACTIVE_SESSION_EXISTS,
+        "The subtask already has a live worker session.",
+        { subTaskId },
+      );
+    }
+
+    this.pendingWorkerLaunches.add(subTaskId);
+
+    try {
+      const task = await this.taskRepository.findTaskById(taskId);
+      const subTask = await this.taskRepository.findSubTaskById(subTaskId);
+
+      if (!task || !subTask || subTask.taskId !== taskId) {
+        return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", { subTaskId, taskId });
+      }
+
+      const project = await this.projectRepository.findProjectById(task.projectId);
+
+      if (!project) {
+        return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project not found.", { projectId: task.projectId });
+      }
+
+      const agentFactory = this.agentService.agentRegistry.get(subTask.agentType);
+      const health = await this.agentService.getHealth();
+      const agentHealth = health.agents?.[subTask.agentType] ?? null;
+
+      if (!agentFactory?.capabilities?.canExecute) {
+        return this.#failSubTaskLaunch(task, subTask, "Assigned worker agent is not executable.", {
+          actionRequired: true,
+        });
+      }
+
+      if (!agentHealth?.available) {
+        return this.#failSubTaskLaunch(
+          task,
+          subTask,
+          `Assigned worker agent is unavailable: ${agentHealth?.failureReason?.message ?? "health check failed."}`,
+          { actionRequired: true },
+        );
+      }
+
+      let preparedSubTask = await this.#prepareSubTaskWorkspace(task, project, subTask);
+
+      if (!preparedSubTask.ok) {
+        return preparedSubTask;
+      }
+
+      preparedSubTask = preparedSubTask.subTask;
+
+      let sandboxType;
+      let launchMetadata;
+
+      try {
+        sandboxType = selectWorkerSandboxType(agentFactory.capabilities.supportedSandboxTypes);
+        const attachments = await this.taskRepository.listAttachmentsByTaskId(task.id);
+        launchMetadata = buildWorkerLaunchMetadata(attachments, agentFactory.capabilities);
+      } catch (error) {
+        return this.#failSubTaskLaunch(task, preparedSubTask, error?.message ?? "Worker launch validation failed.", {
+          actionRequired: true,
+        });
+      }
+
+      const session = await this.taskRepository.createSession({
+        agentType: preparedSubTask.agentType,
+        sandboxType,
+        sessionType: SESSION_TYPE.WORKER,
+        status: SESSION_STATUS.STARTING,
+        subTaskId: preparedSubTask.id,
+        taskId: task.id,
+      });
+
+      this.workerLaunchMetadata.set(preparedSubTask.id, launchMetadata);
+      this.workerSessionMetadata.set(session.id, launchMetadata);
+
+      try {
+        const runtime = await agentFactory.spawnSession({
+          attachments: launchMetadata.included.map((attachment) => ({
+            attachmentId: attachment.attachmentId,
+            fileName: attachment.fileName,
+            filePath: attachment.filePath,
+            fileType: attachment.fileType,
+          })),
+          branchName: preparedSubTask.branchName,
+          prompt: buildWorkerPrompt(task, preparedSubTask),
+          sandbox: {
+            type: sandboxType,
+          },
+          workDir: preparedSubTask.worktreePath,
+        });
+
+        const startedAt = new Date().toISOString();
+        const runningSession = await this.taskRepository.updateSession(session.id, {
+          containerId: runtime.containerId ?? null,
+          pid: runtime.pid ?? null,
+          startedAt,
+          status: SESSION_STATUS.RUNNING,
+        });
+        const runningSubTask = await this.taskRepository.updateSubTask(preparedSubTask.id, {
+          lastError: null,
+          status: SUBTASK_STATUS.RUNNING,
+        });
+
+        this.runningWorkerSessions.set(preparedSubTask.id, {
+          runtime,
+          sessionId: runningSession.id,
+        });
+
+        runtime.onOutput((chunk) => {
+          void this.#handleWorkerOutput(task.id, preparedSubTask.id, runningSession.id, chunk);
+        });
+        runtime.onExit((exitCode) => {
+          void this.#handleWorkerExit(task.id, preparedSubTask.id, runningSession.id, exitCode);
+        });
+
+        this.#publishSubTaskStatus(task.id, runningSubTask);
+        this.#publish(task.id, "session:started", {
+          attachments: sanitizeLaunchMetadata(launchMetadata),
+          pid: runningSession.pid,
+          sessionId: runningSession.id,
+          status: runningSession.status,
+          subtaskId: preparedSubTask.id,
+          taskId: task.id,
+        });
+
+        return {
+          ok: true,
+          session: runningSession,
+          subTask: runningSubTask,
+          task,
+        };
+      } catch (error) {
+        await this.taskRepository.updateSession(session.id, {
+          endedAt: new Date().toISOString(),
+          exitCode: null,
+          status: SESSION_STATUS.FAILED,
+        });
+
+        return this.#failSubTaskLaunch(task, preparedSubTask, error?.message ?? "Worker session failed to start.");
+      }
+    } catch (error) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING,
+        error?.message ?? "Worker session failed to start.",
+        { subTaskId, taskId },
+      );
+    } finally {
+      this.pendingWorkerLaunches.delete(subTaskId);
+    }
+  }
+
+  async #prepareSubTaskWorkspace(task, project, subTask) {
+    let nextSubTask = subTask;
+
+    try {
+      if (!nextSubTask.branchName) {
+        const desiredBranchName = computeDeterministicBranchName(task.id, nextSubTask.branchSuffix);
+        const resolvedBranchName = await resolveUniqueBranchName(project.path, desiredBranchName);
+
+        nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
+          branchName: resolvedBranchName,
+        });
+
+        if (resolvedBranchName !== desiredBranchName) {
+          this.#publish(task.id, "branch:renamed", {
+            originalName: desiredBranchName,
+            resolvedName: resolvedBranchName,
+            subtaskId: nextSubTask.id,
+            taskId: task.id,
+          });
+        }
+      }
+
+      await ensureBranchExists(project.path, nextSubTask.branchName, task.baseCommitSha);
+
+      if (!nextSubTask.worktreePath) {
+        const worktreePath = await resolveWorktreePath(project.path, task.id, nextSubTask.branchSuffix);
+        await ensureWorktree(project.path, worktreePath, nextSubTask.branchName);
+        nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
+          worktreePath,
+        });
+      } else {
+        await ensureWorktree(project.path, nextSubTask.worktreePath, nextSubTask.branchName);
+      }
+
+      if (nextSubTask.status !== SUBTASK_STATUS.READY) {
+        nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
+          lastError: null,
+          status: SUBTASK_STATUS.READY,
+        });
+        this.#publishSubTaskStatus(task.id, nextSubTask);
+      }
+
+      return {
+        ok: true,
+        subTask: nextSubTask,
+      };
+    } catch (error) {
+      return this.#failSubTaskLaunch(
+        task,
+        nextSubTask,
+        error?.message ?? "Failed to prepare the worker branch or worktree.",
+        { actionRequired: true },
+      );
+    }
+  }
+
+  async #failSubTaskLaunch(task, subTask, message, options = {}) {
+    const failedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
+      lastError: message,
+      status: SUBTASK_STATUS.FAILED,
+    });
+
+    this.#publishSubTaskStatus(task.id, failedSubTask);
+
+    let nextTask = task;
+
+    if (options.actionRequired === true) {
+      nextTask = await this.taskRepository.updateTask(task.id, {
+        lastError: message,
+        status: TASK_STATUS.ACTION_REQUIRED,
+      });
+
+      this.#publish(task.id, "task:status", {
+        reason: message,
+        taskId: task.id,
+        status: nextTask.status,
+      });
+    }
+
+    return failure(TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING, message, {
+      subTaskId: subTask.id,
+      taskId: task.id,
+    });
   }
 
   async #persistAttachments(task, attachmentsInput) {
@@ -748,6 +1083,83 @@ export class TaskService {
       status: nextSession?.status ?? sessionStatus,
       taskId,
     });
+  }
+
+  async #handleWorkerOutput(taskId, subTaskId, sessionId, chunk) {
+    const normalizedChunk = normalizeOutputChunk(chunk);
+
+    if (!normalizedChunk) {
+      return;
+    }
+
+    await this.taskRepository.appendSessionOutput(sessionId, normalizedChunk);
+    this.#publish(taskId, "session:output", {
+      chunk: normalizedChunk,
+      sessionId,
+      subtaskId: subTaskId,
+      taskId,
+    });
+  }
+
+  async #handleWorkerExit(taskId, subTaskId, sessionId, exitCode) {
+    this.runningWorkerSessions.delete(subTaskId);
+
+    const sessionStatus = exitCode === 0 ? SESSION_STATUS.COMPLETED : SESSION_STATUS.FAILED;
+    const nextSession = await this.taskRepository.updateSession(sessionId, {
+      endedAt: new Date().toISOString(),
+      exitCode,
+      status: sessionStatus,
+    });
+    const nextSubTask = await this.taskRepository.updateSubTask(subTaskId, {
+      lastError: exitCode === 0 ? null : `Worker exited with code ${exitCode}.`,
+      status: exitCode === 0 ? SUBTASK_STATUS.REVIEW_PENDING : SUBTASK_STATUS.FAILED,
+    });
+
+    this.#publish(taskId, "session:ended", {
+      exitCode,
+      sessionId,
+      status: nextSession?.status ?? sessionStatus,
+      subtaskId: subTaskId,
+      taskId,
+    });
+    this.#publishSubTaskStatus(taskId, nextSubTask);
+  }
+
+  #decorateSession(session) {
+    return {
+      ...session,
+      launchMetadata: sanitizeLaunchMetadata(this.workerSessionMetadata.get(session.id)),
+    };
+  }
+
+  #decorateSubTask(subTask) {
+    return {
+      ...subTask,
+      launchMetadata: sanitizeLaunchMetadata(this.workerLaunchMetadata.get(subTask.id)),
+    };
+  }
+
+  #publishSubTaskStatus(taskId, subTask) {
+    this.#publish(taskId, "subtask:status", {
+      attachments: sanitizeLaunchMetadata(this.workerLaunchMetadata.get(subTask.id)),
+      lastError: subTask.lastError,
+      status: subTask.status,
+      subtaskId: subTask.id,
+      taskId,
+    });
+  }
+
+  async #hasLiveWorkerSession(subTaskId) {
+    if (this.pendingWorkerLaunches.has(subTaskId)) {
+      return true;
+    }
+
+    if (this.runningWorkerSessions.has(subTaskId)) {
+      return true;
+    }
+
+    const sessions = await this.taskRepository.listSessionsBySubTaskId(subTaskId);
+    return sessions.some((session) => WORKER_LIVE_STATUSES.has(session.status));
   }
 
   #publish(taskId, eventName, data) {
@@ -1060,6 +1472,14 @@ function selectLeadSandboxType(supportedSandboxTypes) {
   return supportedSandboxTypes[0] ?? "DOCKER";
 }
 
+function selectWorkerSandboxType(supportedSandboxTypes) {
+  if (supportedSandboxTypes.includes(SESSION_SANDBOX_TYPES.DOCKER)) {
+    return SESSION_SANDBOX_TYPES.DOCKER;
+  }
+
+  throw new Error("Assigned worker agent does not support the required DOCKER sandbox.");
+}
+
 function sanitizeFileName(fileName) {
   return fileName.replaceAll(/[^A-Za-z0-9._-]/g, "_");
 }
@@ -1088,4 +1508,66 @@ function buildPlanRegenerationPrompt(reason, details) {
     detailText,
     "Return a complete replacement object with `subtasks` and optional `notes`.",
   ].filter(Boolean).join("\n");
+}
+
+function buildWorkerPrompt(task, subTask) {
+  return [
+    "You are the worker agent for one approved EAT subtask.",
+    `Task title: ${task.title}`,
+    `Task description: ${task.description}`,
+    `Subtask title: ${subTask.title}`,
+    `Subtask description: ${subTask.description}`,
+    `Branch: ${subTask.branchName}`,
+    "Work only inside the provided worktree and use the supplied attachments when relevant.",
+  ].join("\n");
+}
+
+function buildWorkerLaunchMetadata(attachments, capabilities) {
+  const included = [];
+  const excluded = [];
+
+  for (const attachment of attachments) {
+    if (attachment.fileType === ATTACHMENT_TYPES.IMAGE && capabilities.supportsVision !== true) {
+      excluded.push({
+        attachmentId: attachment.id,
+        fileName: attachment.fileName,
+        filePath: attachment.filePath,
+        fileType: attachment.fileType,
+        reason: "Assigned agent does not support vision.",
+      });
+      continue;
+    }
+
+    included.push({
+      attachmentId: attachment.id,
+      fileName: attachment.fileName,
+      filePath: attachment.filePath,
+      fileType: attachment.fileType,
+    });
+  }
+
+  return {
+    excluded,
+    included,
+  };
+}
+
+function sanitizeLaunchMetadata(launchMetadata) {
+  if (!launchMetadata) {
+    return null;
+  }
+
+  return {
+    excluded: launchMetadata.excluded.map((attachment) => ({
+      attachmentId: attachment.attachmentId,
+      fileName: attachment.fileName,
+      fileType: attachment.fileType,
+      reason: attachment.reason,
+    })),
+    included: launchMetadata.included.map((attachment) => ({
+      attachmentId: attachment.attachmentId,
+      fileName: attachment.fileName,
+      fileType: attachment.fileType,
+    })),
+  };
 }
