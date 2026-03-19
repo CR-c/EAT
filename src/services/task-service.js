@@ -93,6 +93,7 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
   SUBTASK_ACTIVE_SESSION_EXISTS: "SUBTASK_ACTIVE_SESSION_EXISTS",
   SUBTASK_CHANGE_AGENT_NOT_ALLOWED: "SUBTASK_CHANGE_AGENT_NOT_ALLOWED",
+  SUBTASK_DISCARD_NOT_ALLOWED: "SUBTASK_DISCARD_NOT_ALLOWED",
   SUBTASK_NOT_FOUND: "SUBTASK_NOT_FOUND",
   SUBTASK_REWORK_NOT_ALLOWED: "SUBTASK_REWORK_NOT_ALLOWED",
   SUBTASK_RETRY_NOT_ALLOWED: "SUBTASK_RETRY_NOT_ALLOWED",
@@ -932,6 +933,50 @@ export class TaskService {
     };
   }
 
+  async confirmDiscardSubTask(subTaskId) {
+    const subTask = await this.taskRepository.findSubTaskById(subTaskId);
+
+    if (!subTask) {
+      return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", { subTaskId });
+    }
+
+    const task = await this.taskRepository.findTaskById(subTask.taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId: subTask.taskId });
+    }
+
+    if (task.status !== TASK_STATUS.ACTION_REQUIRED || subTask.status !== SUBTASK_STATUS.DISCARD_PENDING) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_DISCARD_NOT_ALLOWED,
+        "Discard confirmation is only available for DISCARD_PENDING subtasks while the task is ACTION_REQUIRED.",
+        {
+          status: subTask.status,
+          subTaskId,
+          taskStatus: task.status,
+        },
+      );
+    }
+
+    const discardedSubTask = await this.taskRepository.updateSubTask(subTaskId, {
+      status: SUBTASK_STATUS.DISCARDED,
+    });
+
+    this.#publish(task.id, "subtask:confirm-discard", {
+      subtaskId: subTaskId,
+      taskId: task.id,
+    });
+    this.#publishSubTaskStatus(task.id, discardedSubTask);
+
+    const routedTask = await this.#routeTaskForFinalReviewOutcome(task.id);
+
+    return {
+      ok: true,
+      subTask: this.#decorateSubTask(discardedSubTask),
+      task: routedTask,
+    };
+  }
+
   async #launchApprovedSubTasks(taskId) {
     const task = await this.taskRepository.findTaskById(taskId);
 
@@ -1438,6 +1483,7 @@ export class TaskService {
     const reviewPendingSubTasks = subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.REVIEW_PENDING);
 
     if (reviewPendingSubTasks.length === 0) {
+      await this.#routeTaskForFinalReviewOutcome(taskId);
       return;
     }
 
@@ -1472,25 +1518,52 @@ export class TaskService {
       const finalReviewInput = await this.#buildFinalReviewInput(taskId);
 
       if (!finalReviewInput.ok) {
+        await this.#routeTaskForFinalReviewOutcome(taskId);
         return;
       }
 
-      const reviewResponse = await collectAgentResponse(await finalReviewInput.agentFactory.spawnSession({
-        attachments: [],
-        branchName: finalReviewInput.task.baseBranch,
-        prompt: buildFinalReviewPrompt(finalReviewInput.review),
-        sandbox: {
-          type: selectLeadSandboxType(finalReviewInput.agentFactory.capabilities.supportedSandboxTypes),
-        },
-        sessionType: SESSION_TYPE.LEAD,
-        workDir: finalReviewInput.project.path,
-      }));
+      const health = await this.agentService.getHealth({ force: true });
+      const agentHealth = health.agents?.[finalReviewInput.task.leadAgentType] ?? null;
+
+      if (!agentHealth?.available) {
+        await this.#setTaskActionRequired(
+          taskId,
+          `Lead agent is unavailable for final review: ${agentHealth?.failureReason?.message ?? "health check failed."}`,
+        );
+        return;
+      }
+
+      let reviewResponse;
+
+      try {
+        reviewResponse = await collectAgentResponse(await finalReviewInput.agentFactory.spawnSession({
+          attachments: [],
+          branchName: finalReviewInput.task.baseBranch,
+          prompt: buildFinalReviewPrompt(finalReviewInput.review),
+          sandbox: {
+            type: selectLeadSandboxType(finalReviewInput.agentFactory.capabilities.supportedSandboxTypes),
+          },
+          sessionType: SESSION_TYPE.LEAD,
+          workDir: finalReviewInput.project.path,
+        }));
+      } catch (error) {
+        await this.#setTaskActionRequired(
+          taskId,
+          error?.message ?? "Lead final review session failed to start.",
+        );
+        return;
+      }
+
       const parsedReview = parseFinalReviewResponse(
         reviewResponse,
         finalReviewInput.review.subTasks.map((subTask) => subTask.id),
       );
 
       if (!parsedReview.ok) {
+        await this.#setTaskActionRequired(
+          taskId,
+          "Final review did not return a valid authoritative decision payload.",
+        );
         return;
       }
 
@@ -1522,6 +1595,8 @@ export class TaskService {
         });
         this.#publishSubTaskStatus(taskId, reviewedSubTask);
       }
+
+      await this.#routeTaskForFinalReviewOutcome(taskId);
     } finally {
       this.pendingFinalReviews.delete(taskId);
     }
@@ -1599,6 +1674,70 @@ export class TaskService {
       },
       task,
     };
+  }
+
+  async #routeTaskForFinalReviewOutcome(taskId) {
+    const [task, subTasks] = await Promise.all([
+      this.taskRepository.findTaskById(taskId),
+      this.taskRepository.listSubTasksByTaskId(taskId),
+    ]);
+
+    if (!task || subTasks.length === 0) {
+      return task;
+    }
+
+    const mergeReadyStatuses = new Set([
+      SUBTASK_STATUS.ACCEPTED,
+      SUBTASK_STATUS.CANCELLED,
+      SUBTASK_STATUS.DISCARDED,
+    ]);
+    const actionRequiredStatuses = new Set([
+      SUBTASK_STATUS.CANCELLED,
+      SUBTASK_STATUS.DISCARD_PENDING,
+      SUBTASK_STATUS.FAILED,
+      SUBTASK_STATUS.REWORK_REQUIRED,
+    ]);
+
+    if (subTasks.every((subTask) => mergeReadyStatuses.has(subTask.status))) {
+      const mergingTask = await this.taskRepository.updateTask(taskId, {
+        lastError: null,
+        status: TASK_STATUS.MERGING,
+      });
+
+      this.#publish(taskId, "task:status", {
+        taskId,
+        status: mergingTask.status,
+      });
+
+      return mergingTask;
+    }
+
+    const unresolvedSubTasks = subTasks.filter((subTask) => actionRequiredStatuses.has(subTask.status));
+
+    if (unresolvedSubTasks.length > 0) {
+      return this.#setTaskActionRequired(taskId, buildFinalReviewActionRequiredReason(unresolvedSubTasks));
+    }
+
+    return task;
+  }
+
+  async #setTaskActionRequired(taskId, reason) {
+    const actionRequiredTask = await this.taskRepository.updateTask(taskId, {
+      lastError: reason,
+      status: TASK_STATUS.ACTION_REQUIRED,
+    });
+
+    if (!actionRequiredTask) {
+      return null;
+    }
+
+    this.#publish(taskId, "task:status", {
+      reason,
+      taskId,
+      status: actionRequiredTask.status,
+    });
+
+    return actionRequiredTask;
   }
 
   #decorateSession(session) {
@@ -2306,6 +2445,11 @@ function mapFinalReviewDecisionToSubTaskStatus(decision) {
     default:
       return SUBTASK_STATUS.REVIEW_PENDING;
   }
+}
+
+function buildFinalReviewActionRequiredReason(subTasks) {
+  const titles = subTasks.map((subTask) => `${subTask.title} (${subTask.status})`);
+  return `Final review requires user action for: ${titles.join(", ")}.`;
 }
 
 async function collectAgentResponse(runtime) {

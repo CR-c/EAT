@@ -279,6 +279,14 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const subTaskConfirmDiscardMatch = pathName.match(/^\/api\/subtasks\/([^/]+)\/confirm-discard$/);
+
+  if (request.method === "POST" && subTaskConfirmDiscardMatch) {
+    const subTaskId = decodeURIComponent(subTaskConfirmDiscardMatch[1]);
+    const result = await taskService.confirmDiscardSubTask(subTaskId);
+    return respondServiceResult(response, result);
+  }
+
   return respondJson(response, 404, {
     error: {
       code: "NOT_FOUND",
@@ -427,6 +435,7 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.SUBTASK_RETRY_NOT_ALLOWED:
     case TASK_SERVICE_ERROR_CODES.SUBTASK_REWORK_NOT_ALLOWED:
     case TASK_SERVICE_ERROR_CODES.SUBTASK_CHANGE_AGENT_NOT_ALLOWED:
+    case TASK_SERVICE_ERROR_CODES.SUBTASK_DISCARD_NOT_ALLOWED:
       return 400;
     case TASK_SERVICE_ERROR_CODES.SUBTASK_ACTIVE_SESSION_EXISTS:
       return 409;

@@ -78,11 +78,13 @@ test("resolves branch collisions, persists worktrees, and emits branch rename ev
 
         await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId);
         await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "MERGING");
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailResponse.status, 200);
         assert.equal(detailResponse.body.subTasks[0].branchName, `eat/${taskId}/backend-slice-1`);
-        assert.equal(detailResponse.body.subTasks[0].status, "REVIEW_PENDING");
+        assert.equal(detailResponse.body.task.status, "MERGING");
+        assert.equal(detailResponse.body.subTasks[0].status, "ACCEPTED");
         assert.ok(detailResponse.body.subTasks[0].worktreePath);
         await access(detailResponse.body.subTasks[0].worktreePath);
       } finally {
@@ -191,15 +193,17 @@ test("launches concurrent worker sessions and exposes attachment filtering metad
 
         await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
         await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "MERGING");
 
         assert.equal(phase08.stats.maxConcurrent, 2);
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailResponse.status, 200);
         assert.equal(detailResponse.body.subTasks.length, 2);
+        assert.equal(detailResponse.body.task.status, "MERGING");
         assert.equal(detailResponse.body.subTasks[0].launchMetadata.included[0].fileName, "requirements.md");
         assert.equal(detailResponse.body.subTasks[0].launchMetadata.excluded[0].fileName, "flow.png");
-        assert.equal(detailResponse.body.subTasks[1].status, "REVIEW_PENDING");
+        assert.ok(detailResponse.body.subTasks.every((subTask) => subTask.status === "ACCEPTED"));
       } finally {
         unsubscribe();
       }
@@ -475,13 +479,14 @@ test("reworks a reviewed subtask on the same branch and worktree while keeping t
         await nextEvent(events, (event) => (
           event.eventName === "subtask:review"
           && event.data.subtaskId === subTask.id
+          && event.data.phase === "FINAL"
           && event.data.decision === "ACCEPTED"
         ));
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailResponse.status, 200);
-        assert.equal(detailResponse.body.task.status, "REVIEWING");
-        assert.equal(detailResponse.body.subTasks[0].status, "REVIEW_PENDING");
+        assert.equal(detailResponse.body.task.status, "MERGING");
+        assert.equal(detailResponse.body.subTasks[0].status, "ACCEPTED");
         assert.equal(detailResponse.body.subTasks[0].retryCount, 1);
         assert.equal(
           detailResponse.body.subTasks[0].description,
@@ -622,13 +627,14 @@ test("changes agent before relaunch, revalidates attachments, and keeps the task
         await nextEvent(events, (event) => (
           event.eventName === "subtask:review"
           && event.data.subtaskId === subTask.id
+          && event.data.phase === "FINAL"
           && event.data.decision === "ACCEPTED"
         ));
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailResponse.status, 200);
-        assert.equal(detailResponse.body.task.status, "REVIEWING");
-        assert.equal(detailResponse.body.subTasks[0].status, "REVIEW_PENDING");
+        assert.equal(detailResponse.body.task.status, "MERGING");
+        assert.equal(detailResponse.body.subTasks[0].status, "ACCEPTED");
         assert.equal(detailResponse.body.subTasks[0].agentType, "vision-worker");
         assert.equal(detailResponse.body.subTasks[0].retryCount, 1);
         assert.equal(detailResponse.body.subTasks[0].description, "Use the screenshot attachment during the rerun.");
@@ -977,11 +983,13 @@ test("retries on the same branch and worktree while blocking duplicate live sess
 
         await nextEvent(
           events,
-          (event) => event.eventName === "subtask:status" && event.data.status === "REVIEW_PENDING",
+          (event) => event.eventName === "subtask:review" && event.data.phase === "FINAL" && event.data.decision === "ACCEPTED",
         );
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "MERGING");
+        assert.equal(detailResponse.body.subTasks[0].status, "ACCEPTED");
         assert.equal(detailResponse.body.subTasks[0].retryCount, 1);
         assert.equal(detailResponse.body.subTasks[0].description, "Retry after fixing the worker precondition.");
         assert.equal(detailResponse.body.subTasks[0].branchName, originalBranchName);
@@ -1084,7 +1092,11 @@ test("enters REVIEWING and assembles final review inputs after all worker runs f
       finalReviewBehavior: (config) => {
         finalReviewPrompts.push(config.prompt);
         return {
-          reviews: [],
+          reviews: extractPromptSubtaskIds(config.prompt).map((subTaskId) => ({
+            decision: "ACCEPTED",
+            subtask_id: subTaskId,
+            summary: "Final review accepted the generated change for merge.",
+          })),
         };
       },
       plan: {
@@ -1146,12 +1158,8 @@ test("enters REVIEWING and assembles final review inputs after all worker runs f
           && event.data.phase === "INCREMENTAL"
           && event.data.decision === "ACCEPTED"
         ));
-        const reviewingEvent = await nextEvent(
-          events,
-          (event) => event.eventName === "task:status" && event.data.status === "REVIEWING",
-        );
-
-        assert.equal(reviewingEvent.data.status, "REVIEWING");
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "REVIEWING");
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "MERGING");
 
         await waitFor(() => finalReviewPrompts.length === 1);
         assert.match(finalReviewPrompts[0], /authoritative final review/i);
@@ -1162,8 +1170,8 @@ test("enters REVIEWING and assembles final review inputs after all worker runs f
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailResponse.status, 200);
-        assert.equal(detailResponse.body.task.status, "REVIEWING");
-        assert.equal(detailResponse.body.subTasks[0].status, "REVIEW_PENDING");
+        assert.equal(detailResponse.body.task.status, "MERGING");
+        assert.equal(detailResponse.body.subTasks[0].status, "ACCEPTED");
       } finally {
         unsubscribe();
       }
@@ -1300,7 +1308,8 @@ test("persists FINAL review records and writes authoritative subtask statuses", 
           ["ACCEPTED", "REJECTED", "REWORK"],
         );
         assert.ok(detailResponse.body.subTasks.every((subTask) => subTask.latestReviewPhase === "FINAL"));
-        assert.equal(detailResponse.body.task.status, "REVIEWING");
+        assert.equal(detailResponse.body.task.status, "ACTION_REQUIRED");
+        assert.match(detailResponse.body.task.lastError, /Final review requires user action/i);
 
         for (const subTask of detailResponse.body.subTasks) {
           const reviewRecords = await taskRepository.listReviewRecordsBySubTaskId(subTask.id);
@@ -1313,6 +1322,228 @@ test("persists FINAL review records and writes authoritative subtask statuses", 
     } finally {
       await stopServer(server);
       taskRepository.close();
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("confirms discard and routes the task to MERGING when all remaining subtasks are resolved", async () => {
+  const fixture = await makeTempDir("eat-worker-discard-confirm-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      finalReviewBehavior: (config) => {
+        const [acceptedId, rejectedId] = extractPromptSubtaskIds(config.prompt);
+
+        return {
+          reviews: [
+            {
+              decision: "ACCEPTED",
+              subtask_id: acceptedId,
+              summary: "Final review accepted this subtask.",
+            },
+            {
+              decision: "REJECTED",
+              subtask_id: rejectedId,
+              summary: "Final review rejected this subtask for discard.",
+            },
+          ],
+        };
+      },
+      plan: {
+        subtasks: [
+          {
+            title: "Accepted worker",
+            description: "This subtask should be accepted.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "accepted-worker",
+          },
+          {
+            title: "Rejected worker",
+            description: "This subtask should be discarded.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "rejected-worker",
+          },
+        ],
+      },
+      reviewBehavior: () => ({
+        decision: "ACCEPTED",
+        summary: "Incremental review accepted the worker result.",
+      }),
+      workerBehavior: () => ({
+        delayMs: 20,
+        exitCode: 0,
+        output: "worker completed for discard confirm\n",
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "discard-confirm-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Confirm discard after final review.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Discard confirmation",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => (
+          event.eventName === "task:status" && event.data.status === "ACTION_REQUIRED"
+        ));
+
+        const beforeConfirm = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const discardPendingSubTask = beforeConfirm.body.subTasks.find((subTask) => subTask.status === "DISCARD_PENDING");
+        assert.ok(discardPendingSubTask);
+
+        const confirmResponse = await requestJson(
+          server,
+          `/api/subtasks/${encodeURIComponent(discardPendingSubTask.id)}/confirm-discard`,
+          { method: "POST" },
+        );
+        assert.equal(confirmResponse.status, 200);
+
+        await nextEvent(events, (event) => (
+          event.eventName === "subtask:confirm-discard" && event.data.subtaskId === discardPendingSubTask.id
+        ));
+        await nextEvent(events, (event) => (
+          event.eventName === "task:status" && event.data.status === "MERGING"
+        ));
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "MERGING");
+        assert.deepEqual(
+          detailResponse.body.subTasks.map((subTask) => subTask.status).sort(),
+          ["ACCEPTED", "DISCARDED"],
+        );
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("keeps the task ACTION_REQUIRED when final review finishes with unresolved failed subtasks", async () => {
+  const fixture = await makeTempDir("eat-worker-final-review-failed-mix-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      finalReviewBehavior: (config) => {
+        const [acceptedId] = extractPromptSubtaskIds(config.prompt);
+
+        return {
+          reviews: [
+            {
+              decision: "ACCEPTED",
+              subtask_id: acceptedId,
+              summary: "Final review accepted the successful subtask.",
+            },
+          ],
+        };
+      },
+      plan: {
+        subtasks: [
+          {
+            title: "Accepted worker",
+            description: "This worker should succeed.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "accepted-worker",
+          },
+          {
+            title: "Failed worker",
+            description: "This worker cannot launch in Docker.",
+            recommended_agent: "host-only-worker",
+            branch_suffix: "failed-worker",
+          },
+        ],
+      },
+      reviewBehavior: () => ({
+        decision: "ACCEPTED",
+        summary: "Incremental review accepted the worker result.",
+      }),
+      workerBehavior: () => ({
+        delayMs: 20,
+        exitCode: 0,
+        output: "worker completed for failed mix route\n",
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "failed-mix-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Keep action required when a subtask failed before final review.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Failed mix route",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => (
+          event.eventName === "subtask:review"
+          && event.data.phase === "FINAL"
+          && event.data.decision === "ACCEPTED"
+        ));
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "ACTION_REQUIRED");
+        assert.match(detailResponse.body.task.lastError, /FAILED/);
+        assert.ok(detailResponse.body.subTasks.some((subTask) => subTask.status === "FAILED"));
+        assert.ok(detailResponse.body.subTasks.some((subTask) => subTask.status === "ACCEPTED"));
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
     }
   } finally {
     await fixture.dispose();
@@ -1368,7 +1599,11 @@ function createPhase08AgentService(options) {
         }, (review.delayMs ?? 0) + 5);
       } else if (typeof config?.prompt === "string" && config.prompt.includes("authoritative final review")) {
         const finalReview = options.finalReviewBehavior?.(config) ?? {
-          reviews: [],
+          reviews: extractPromptSubtaskIds(config.prompt).map((subTaskId) => ({
+            decision: "ACCEPTED",
+            subtask_id: subTaskId,
+            summary: "Final review accepted the subtask for merge.",
+          })),
         };
 
         setTimeout(() => {
@@ -1627,7 +1862,7 @@ async function startServer(options = {}) {
 
 async function stopServer(server) {
   await new Promise((resolve) => {
-    setTimeout(resolve, 25);
+    setTimeout(resolve, 100);
   });
 
   await new Promise((resolve, reject) => {
