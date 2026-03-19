@@ -25,6 +25,7 @@ const DEFAULT_OUTPUT_BUFFER_MAX_BYTES = 65_536;
 const state = {
   agentHealth: {},
   agents: [],
+  executionDrafts: new Map(),
   healthCheckedAt: null,
   leadCandidates: [],
   liveSessionOutputs: new Map(),
@@ -109,8 +110,13 @@ const elements = {
   taskExecutionFocusEmpty: document.querySelector("#task-execution-focus-empty"),
   taskExecutionFocusMeta: document.querySelector("#task-execution-focus-meta"),
   taskExecutionFocusPreview: document.querySelector("#task-execution-focus-preview"),
+  taskExecutionReworkButton: document.querySelector("#task-execution-rework-button"),
+  taskExecutionReworkDescription: document.querySelector("#task-execution-rework-description"),
+  taskExecutionReworkField: document.querySelector("#task-execution-rework-field"),
+  taskExecutionReviewActions: document.querySelector("#task-execution-review-actions"),
   taskExecutionReview: document.querySelector("#task-execution-review"),
   taskExecutionReviewDecision: document.querySelector("#task-execution-review-decision"),
+  taskExecutionReviewFeedback: document.querySelector("#task-execution-review-feedback"),
   taskExecutionReviewPhase: document.querySelector("#task-execution-review-phase"),
   taskExecutionReviewSummary: document.querySelector("#task-execution-review-summary"),
   taskExecutionFocusTitle: document.querySelector("#task-execution-focus-title"),
@@ -187,6 +193,8 @@ elements.taskPlanApproveButton.addEventListener("click", onApprovePlanDraft);
 elements.taskPlanResetDraftButton.addEventListener("click", onResetPlanDraft);
 elements.taskPlanSaveDraftButton.addEventListener("click", onSavePlanDraft);
 elements.taskPlanNotesInput.addEventListener("input", onPlanNotesInput);
+elements.taskExecutionReworkButton.addEventListener("click", onReworkSubTask);
+elements.taskExecutionReworkDescription.addEventListener("input", onExecutionDraftDescriptionInput);
 
 void Promise.all([loadProjects({ preserveSelection: true }), loadAgents()]);
 
@@ -1044,6 +1052,7 @@ function clearTaskList() {
 }
 
 function clearTaskDetail() {
+  state.executionDrafts = new Map();
   state.liveSessionOutputs = new Map();
   state.selectedExecutionSessionId = null;
   state.selectedExecutionSubTaskId = null;
@@ -1062,6 +1071,9 @@ function clearTaskDetail() {
   elements.taskExecutionBoard.hidden = true;
   elements.taskExecutionFocus.hidden = true;
   elements.taskExecutionFocusPreview.hidden = true;
+  elements.taskExecutionReview.hidden = true;
+  elements.taskExecutionReviewActions.hidden = true;
+  elements.taskExecutionReworkField.hidden = true;
   elements.taskExecutionSessionList.replaceChildren();
   elements.taskPlanHistoryList.replaceChildren();
   elements.taskPlanList.replaceChildren();
@@ -1418,6 +1430,58 @@ async function onRestorePlanSnapshot(event) {
   }
 }
 
+async function onReworkSubTask() {
+  const selectedSubTask = getSelectedExecutionSubTask();
+
+  if (!state.selectedTaskId || !selectedSubTask) {
+    return;
+  }
+
+  const draft = getExecutionDraft(selectedSubTask);
+  clearFeedback(elements.taskExecutionReviewFeedback);
+  setButtonBusy(elements.taskExecutionReworkButton, true, "Relaunching...");
+
+  try {
+    const response = await fetchJson(`/api/subtasks/${encodeURIComponent(selectedSubTask.id)}/rework`, {
+      body: {
+        description: draft.description,
+      },
+      method: "POST",
+    });
+
+    if (state.taskDetail) {
+      state.taskDetail.task = response.task ?? state.taskDetail.task;
+      state.taskDetail.subTasks = upsertRecord(state.taskDetail.subTasks, response.subTask);
+      state.taskDetail.sessions = upsertRecord(state.taskDetail.sessions, response.session);
+      state.liveSessionOutputs.set(response.session.id, response.session.outputBuffer ?? "");
+    }
+
+    state.executionDrafts.set(selectedSubTask.id, {
+      ...draft,
+      description: response.subTask.description ?? draft.description,
+    });
+    renderTaskDetail();
+    showFeedback(elements.taskExecutionReviewFeedback, "success", "Rework relaunched on the same branch and worktree.");
+  } catch (error) {
+    showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskExecutionReworkButton, false, "Rework now");
+  }
+}
+
+function onExecutionDraftDescriptionInput(event) {
+  const selectedSubTask = getSelectedExecutionSubTask();
+
+  if (!selectedSubTask) {
+    return;
+  }
+
+  state.executionDrafts.set(selectedSubTask.id, {
+    ...getExecutionDraft(selectedSubTask),
+    description: event.target.value,
+  });
+}
+
 async function readDraftAttachments() {
   const attachments = [];
 
@@ -1665,6 +1729,7 @@ function hydrateExecutionState(detail) {
   state.liveSessionOutputs = new Map(
     (detail?.sessions ?? []).map((session) => [session.id, session.outputBuffer ?? ""]),
   );
+  syncExecutionDrafts(detail);
   syncExecutionSelection(detail);
 }
 
@@ -1850,6 +1915,45 @@ function syncExecutionSelection(detail) {
   state.selectedExecutionSessionId = resolveFocusedSession(detail, state.selectedExecutionSubTaskId)?.id ?? null;
 }
 
+function syncExecutionDrafts(detail) {
+  const subTasks = detail?.subTasks ?? [];
+  const knownSubTaskIds = new Set(subTasks.map((subTask) => subTask.id));
+
+  state.executionDrafts = new Map(
+    [...state.executionDrafts.entries()].filter(([subTaskId]) => knownSubTaskIds.has(subTaskId)),
+  );
+
+  for (const subTask of subTasks) {
+    if (!state.executionDrafts.has(subTask.id)) {
+      state.executionDrafts.set(subTask.id, {
+        description: subTask.description ?? "",
+      });
+    }
+  }
+}
+
+function getSelectedExecutionSubTask(detail = state.taskDetail) {
+  return detail?.subTasks?.find((subTask) => subTask.id === state.selectedExecutionSubTaskId) ?? null;
+}
+
+function getExecutionDraft(subTask) {
+  if (!subTask) {
+    return { description: "" };
+  }
+
+  const existingDraft = state.executionDrafts.get(subTask.id);
+
+  if (existingDraft) {
+    return existingDraft;
+  }
+
+  const nextDraft = {
+    description: subTask.description ?? "",
+  };
+  state.executionDrafts.set(subTask.id, nextDraft);
+  return nextDraft;
+}
+
 function resolveFocusedSession(detail, subTaskId) {
   if (!subTaskId) {
     return null;
@@ -1868,7 +1972,7 @@ function resolveFocusedSession(detail, subTaskId) {
 }
 
 function renderFocusedExecution(detail, sessionsBySubTaskId) {
-  const selectedSubTask = detail.subTasks?.find((subTask) => subTask.id === state.selectedExecutionSubTaskId) ?? null;
+  const selectedSubTask = getSelectedExecutionSubTask(detail);
   const focusedSession = resolveFocusedSession(detail, selectedSubTask?.id ?? null);
   const focusedSessions = selectedSubTask ? (sessionsBySubTaskId.get(selectedSubTask.id) ?? []) : [];
 
@@ -1895,6 +1999,20 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
     elements.taskExecutionReviewDecision.textContent = buildReviewDecisionLabel(selectedSubTask.latestReviewDecision);
     elements.taskExecutionReviewPhase.textContent = buildReviewPhaseLabel(selectedSubTask.latestReviewPhase);
     elements.taskExecutionReviewSummary.textContent = selectedSubTask.latestReviewSummary ?? "No review summary available.";
+  }
+
+  const draft = getExecutionDraft(selectedSubTask);
+  const canReworkNow = selectedSubTask.status === "REVIEW_PENDING"
+    && ["REJECTED", "REWORK"].includes(selectedSubTask.latestReviewDecision);
+
+  elements.taskExecutionReworkField.hidden = !canReworkNow;
+  elements.taskExecutionReviewActions.hidden = !canReworkNow;
+
+  if (canReworkNow) {
+    elements.taskExecutionReworkDescription.value = draft.description;
+  } else {
+    elements.taskExecutionReworkDescription.value = "";
+    clearFeedback(elements.taskExecutionReviewFeedback);
   }
 
   const previewOutput = focusedSession

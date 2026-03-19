@@ -86,6 +86,7 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
   SUBTASK_ACTIVE_SESSION_EXISTS: "SUBTASK_ACTIVE_SESSION_EXISTS",
   SUBTASK_NOT_FOUND: "SUBTASK_NOT_FOUND",
+  SUBTASK_REWORK_NOT_ALLOWED: "SUBTASK_REWORK_NOT_ALLOWED",
   SUBTASK_RETRY_NOT_ALLOWED: "SUBTASK_RETRY_NOT_ALLOWED",
   TASK_NOT_FOUND: "TASK_NOT_FOUND",
   TITLE_REQUIRED: "TITLE_REQUIRED",
@@ -111,6 +112,7 @@ export class TaskService {
     this.pendingWorkerLaunches = new Set();
     this.runningWorkerSessions = new Map();
     this.sessionLogPaths = new Map();
+    this.sessionOutputAppends = new Map();
     this.workerLaunchMetadata = new Map();
     this.workerSessionMetadata = new Map();
   }
@@ -755,6 +757,76 @@ export class TaskService {
     };
   }
 
+  async reworkSubTask(subTaskId, input = {}) {
+    const subTask = await this.taskRepository.findSubTaskById(subTaskId);
+
+    if (!subTask) {
+      return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", { subTaskId });
+    }
+
+    const task = await this.taskRepository.findTaskById(subTask.taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId: subTask.taskId });
+    }
+
+    if (task.status !== TASK_STATUS.EXECUTING) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_REWORK_NOT_ALLOWED,
+        "Early rework is only available while the task is executing.",
+        { status: task.status, subTaskId },
+      );
+    }
+
+    if (!isEarlyReworkEligible(subTask)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_REWORK_NOT_ALLOWED,
+        "This subtask does not have an actionable incremental review yet.",
+        {
+          latestReviewDecision: subTask.latestReviewDecision ?? null,
+          status: subTask.status,
+          subTaskId,
+        },
+      );
+    }
+
+    if (await this.#hasLiveWorkerSession(subTaskId)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_ACTIVE_SESSION_EXISTS,
+        "The subtask already has a live worker session.",
+        { subTaskId },
+      );
+    }
+
+    const nextDescription = normalizeRequiredString(input.description) ?? subTask.description;
+    const pendingSubTask = await this.taskRepository.updateSubTask(subTaskId, {
+      description: nextDescription,
+      lastError: null,
+      retryCount: (subTask.retryCount ?? 0) + 1,
+      status: SUBTASK_STATUS.PENDING,
+    });
+
+    this.#publish(task.id, "subtask:rework", {
+      description: nextDescription,
+      subtaskId: subTaskId,
+      taskId: task.id,
+    });
+    this.#publishSubTaskStatus(task.id, pendingSubTask);
+
+    const launchResult = await this.#launchSubTask(task.id, subTaskId, { isRetry: true });
+
+    if (!launchResult.ok) {
+      return launchResult;
+    }
+
+    return {
+      ok: true,
+      session: this.#decorateSession(launchResult.session),
+      subTask: this.#decorateSubTask(launchResult.subTask),
+      task: launchResult.task,
+    };
+  }
+
   async #launchApprovedSubTasks(taskId) {
     const task = await this.taskRepository.findTaskById(taskId);
 
@@ -1304,27 +1376,39 @@ export class TaskService {
   }
 
   async #appendSessionOutput(sessionId, chunk) {
-    const knownLogPath = this.sessionLogPaths.get(sessionId);
-    let logPath = knownLogPath ?? null;
+    const previousAppend = this.sessionOutputAppends.get(sessionId) ?? Promise.resolve();
+    const nextAppend = previousAppend
+      .catch(() => {})
+      .then(async () => {
+        const knownLogPath = this.sessionLogPaths.get(sessionId);
+        let logPath = knownLogPath ?? null;
 
-    if (!logPath) {
-      const session = await this.taskRepository.findSessionById(sessionId);
-      logPath = session?.logPath ?? null;
+        if (!logPath) {
+          const session = await this.taskRepository.findSessionById(sessionId);
+          logPath = session?.logPath ?? null;
 
-      if (logPath) {
-        this.sessionLogPaths.set(sessionId, logPath);
-      }
-    }
+          if (logPath) {
+            this.sessionLogPaths.set(sessionId, logPath);
+          }
+        }
 
-    if (logPath) {
-      await mkdir(path.dirname(logPath), { recursive: true });
-      await writeFile(logPath, chunk, {
-        encoding: "utf8",
-        flag: "a",
+        if (logPath) {
+          await mkdir(path.dirname(logPath), { recursive: true });
+          await writeFile(logPath, chunk, {
+            encoding: "utf8",
+            flag: "a",
+          });
+        }
+
+        await this.taskRepository.appendSessionOutput(sessionId, chunk);
       });
-    }
 
-    await this.taskRepository.appendSessionOutput(sessionId, chunk);
+    this.sessionOutputAppends.set(sessionId, nextAppend);
+    await nextAppend.finally(() => {
+      if (this.sessionOutputAppends.get(sessionId) === nextAppend) {
+        this.sessionOutputAppends.delete(sessionId);
+      }
+    });
   }
 
   #buildSessionLogPath({ taskId, sessionId, sessionType, subTaskId }) {
@@ -1845,4 +1929,9 @@ function sanitizeLaunchMetadata(launchMetadata) {
       fileType: attachment.fileType,
     })),
   };
+}
+
+function isEarlyReworkEligible(subTask) {
+  return subTask?.status === SUBTASK_STATUS.REVIEW_PENDING
+    && ["REJECTED", "REWORK"].includes(subTask.latestReviewDecision);
 }

@@ -378,6 +378,130 @@ test("triggers incremental review after a successful worker run and exposes advi
   }
 });
 
+test("reworks a reviewed subtask on the same branch and worktree while keeping the task executing", async () => {
+  const fixture = await makeTempDir("eat-worker-early-rework-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    let reviewAttempt = 0;
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Early rework slice",
+            description: "First pass needs a focused rewrite.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "early-rework-slice",
+          },
+        ],
+      },
+      reviewBehavior: () => {
+        reviewAttempt += 1;
+        return reviewAttempt === 1
+          ? {
+              decision: "REWORK",
+              summary: "The first pass is close, but it needs a targeted rerun with stricter validation coverage.",
+            }
+          : {
+              decision: "ACCEPTED",
+              summary: "The rerun addressed the earlier validation gap.",
+            };
+      },
+      workerBehavior: (config) => ({
+        delayMs: 20,
+        exitCode: 0,
+        output: `worker run for ${path.basename(config.workDir)}\n`,
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "early-rework-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Allow early rework after advisory review.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Early rework",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+        await nextEvent(events, (event) => event.eventName === "subtask:review" && event.data.decision === "REWORK");
+
+        const beforeRework = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const subTask = beforeRework.body.subTasks[0];
+        const originalBranchName = subTask.branchName;
+        const originalWorktreePath = subTask.worktreePath;
+
+        const reworkResponse = await requestJson(
+          server,
+          `/api/subtasks/${encodeURIComponent(subTask.id)}/rework`,
+          {
+            body: {
+              description: "Tighten validation handling and rerun on the existing workspace.",
+            },
+            method: "POST",
+          },
+        );
+        assert.equal(reworkResponse.status, 200);
+
+        const reworkEvent = await nextEvent(events, (event) => event.eventName === "subtask:rework");
+        assert.equal(reworkEvent.data.description, "Tighten validation handling and rerun on the existing workspace.");
+
+        await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId === subTask.id);
+        await nextEvent(events, (event) => (
+          event.eventName === "subtask:review"
+          && event.data.subtaskId === subTask.id
+          && event.data.decision === "ACCEPTED"
+        ));
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "EXECUTING");
+        assert.equal(detailResponse.body.subTasks[0].retryCount, 1);
+        assert.equal(
+          detailResponse.body.subTasks[0].description,
+          "Tighten validation handling and rerun on the existing workspace.",
+        );
+        assert.equal(detailResponse.body.subTasks[0].branchName, originalBranchName);
+        assert.equal(detailResponse.body.subTasks[0].worktreePath, originalWorktreePath);
+        assert.equal(detailResponse.body.subTasks[0].latestReviewDecision, "ACCEPTED");
+        assert.equal(
+          detailResponse.body.sessions.filter((session) => session.subTaskId === subTask.id && session.sessionType === "WORKER").length,
+          2,
+        );
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("emits session lifecycle and output events with session-scoped metadata", async () => {
   const fixture = await makeTempDir("eat-worker-stream-events-");
 

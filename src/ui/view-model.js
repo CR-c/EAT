@@ -41,6 +41,8 @@ export function buildTaskErrorMessage(error) {
       return "This action is only available during plan review.";
     case "PLAN_SNAPSHOT_NOT_FOUND":
       return "The selected plan snapshot no longer exists.";
+    case "SUBTASK_REWORK_NOT_ALLOWED":
+      return "Rework Now is only available for subtasks with an actionable incremental review.";
     case "ATTACHMENT_TYPE_UNSUPPORTED":
       return "One or more attachments use an unsupported type.";
     case "ATTACHMENT_SIZE_EXCEEDED":

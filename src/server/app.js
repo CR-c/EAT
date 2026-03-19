@@ -251,6 +251,20 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const subTaskReworkMatch = pathName.match(/^\/api\/subtasks\/([^/]+)\/rework$/);
+
+  if (request.method === "POST" && subTaskReworkMatch) {
+    const subTaskId = decodeURIComponent(subTaskReworkMatch[1]);
+    const body = await readOptionalJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.reworkSubTask(subTaskId, body.value);
+    return respondServiceResult(response, result);
+  }
+
   return respondJson(response, 404, {
     error: {
       code: "NOT_FOUND",
@@ -396,6 +410,7 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND:
       return 404;
     case TASK_SERVICE_ERROR_CODES.SUBTASK_RETRY_NOT_ALLOWED:
+    case TASK_SERVICE_ERROR_CODES.SUBTASK_REWORK_NOT_ALLOWED:
       return 400;
     case TASK_SERVICE_ERROR_CODES.SUBTASK_ACTIVE_SESSION_EXISTS:
       return 409;

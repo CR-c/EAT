@@ -779,6 +779,16 @@ textarea {
   justify-content: space-between;
 }
 
+.review-panel__actions[hidden] {
+  display: none;
+}
+
+.review-panel__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .execution-card__preview,
 .execution-console {
   margin: 0;

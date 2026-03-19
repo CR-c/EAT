@@ -333,6 +333,20 @@
                       <span id="task-execution-review-decision" class="badge badge--outline">Pending</span>
                     </div>
                     <p id="task-execution-review-summary" class="review-panel__summary"></p>
+                    <div id="task-execution-review-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
+                    <label id="task-execution-rework-field" class="field" hidden>
+                      <span class="field__label">Rework description</span>
+                      <textarea
+                        id="task-execution-rework-description"
+                        rows="4"
+                        placeholder="Optionally refine the subtask description before relaunch."
+                      ></textarea>
+                    </label>
+                    <div id="task-execution-review-actions" class="review-panel__actions" hidden>
+                      <button id="task-execution-rework-button" class="button button--primary" type="button">
+                        Rework now
+                      </button>
+                    </div>
                   </section>
                   <div id="task-execution-focus-empty" class="empty-state">
                     Pick a subtask summary to inspect the latest worker session without mounting every terminal at once.
