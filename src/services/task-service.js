@@ -203,92 +203,102 @@ export class TaskService {
   }
 
   async createTask(input) {
-    const projectId = normalizeRequiredString(input?.projectId);
-    const title = normalizeRequiredString(input?.title);
-    const description = normalizeRequiredString(input?.description);
-    const baseBranch = normalizeRequiredString(input?.baseBranch);
-    const leadAgentType = normalizeRequiredString(input?.leadAgentType);
+    try {
+      const prepared = await this.#prepareTaskCreationInput(input);
 
-    if (!projectId) {
-      return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project is required.");
+      if (!prepared.ok) {
+        return prepared;
+      }
+
+      const createdTask = await this.#createTaskRecord(prepared);
+
+      return {
+        ok: true,
+        attachments: createdTask.attachments,
+        task: createdTask.task,
+      };
+    } catch (error) {
+      if (error instanceof TaskServiceError) {
+        return {
+          ok: false,
+          error: error.payload,
+        };
+      }
+
+      throw error;
     }
+  }
 
-    if (!baseBranch) {
-      return failure(TASK_SERVICE_ERROR_CODES.BASE_BRANCH_REQUIRED, "Base branch is required.");
-    }
+  async createGuidedTask(input) {
+    const templateId = normalizeRequiredString(input?.templateId);
 
-    if (!leadAgentType) {
-      return failure(TASK_SERVICE_ERROR_CODES.LEAD_AGENT_REQUIRED, "Lead agent type is required.");
-    }
-
-    if (!title) {
-      return failure(TASK_SERVICE_ERROR_CODES.TITLE_REQUIRED, "Task title is required.");
-    }
-
-    if (!description) {
-      return failure(TASK_SERVICE_ERROR_CODES.DESCRIPTION_REQUIRED, "Task description is required.");
-    }
-
-    const project = await this.projectRepository.findProjectById(projectId);
-
-    if (!project) {
-      return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project not found.", { projectId });
-    }
-
-    const agentFactory = this.agentService.agentRegistry.get(leadAgentType);
-
-    if (!agentFactory?.capabilities?.canOrchestrate) {
+    if (!templateId) {
       return failure(
-        TASK_SERVICE_ERROR_CODES.LEAD_AGENT_INVALID,
-        "Lead agent must be a registered orchestrator.",
-        { leadAgentType },
-      );
-    }
-
-    const health = await this.agentService.getHealth();
-    const agentHealth = health.agents?.[leadAgentType] ?? null;
-
-    if (!agentHealth?.available) {
-      return failure(
-        TASK_SERVICE_ERROR_CODES.LEAD_AGENT_UNHEALTHY,
-        "Lead agent is unhealthy and cannot be used for task creation.",
-        {
-          failureReason: agentHealth?.failureReason ?? null,
-          leadAgentType,
-        },
-      );
-    }
-
-    const baseCommitSha = await resolveBranchHeadCommit(project.path, baseBranch);
-
-    if (!baseCommitSha) {
-      return failure(
-        TASK_SERVICE_ERROR_CODES.BASE_BRANCH_NOT_FOUND,
-        "Selected base branch could not be resolved to a commit.",
-        { baseBranch },
+        TASK_SERVICE_ERROR_CODES.PLAN_TEMPLATE_REQUIRED,
+        "A task template must be selected before starting the guided flow.",
       );
     }
 
     try {
-      const normalizedAttachments = await Promise.all((input?.attachments ?? []).map((attachment) => (
-        normalizeAttachmentInput(attachment)
-      )));
+      const prepared = await this.#prepareTaskCreationInput(input);
 
-      const task = await this.taskRepository.createTask({
-        baseBranch,
-        baseCommitSha,
-        description,
-        leadAgentType,
-        projectId,
-        title,
+      if (!prepared.ok) {
+        return prepared;
+      }
+
+      const workerAgentType = await this.#resolveDefaultTemplateAgentType(prepared.taskInput, input?.agentType);
+      const seededPlan = buildPlanSeedFromTemplate(templateId, {
+        agentType: workerAgentType,
+        description: prepared.taskInput.description,
+        title: prepared.taskInput.title,
       });
 
-      const attachments = await this.#persistAttachments(task, normalizedAttachments);
+      if (!seededPlan) {
+        return failure(
+          TASK_SERVICE_ERROR_CODES.PLAN_TEMPLATE_NOT_FOUND,
+          "Requested plan template was not found.",
+          { templateId },
+        );
+      }
+
+      const validation = await this.#validatePlanPayload(seededPlan.plan);
+
+      if (!validation.ok) {
+        return validation;
+      }
+
+      const createdTask = await this.#createTaskRecord(prepared);
+      const currentPlanJson = JSON.stringify(validation.plan);
+      const planReviewTask = await this.taskRepository.updateTask(createdTask.task.id, {
+        currentPlanJson,
+        lastError: null,
+        planVersion: 1,
+        status: TASK_STATUS.PLAN_REVIEW,
+      });
+
+      await this.taskRepository.createPlanSnapshot({
+        payload: currentPlanJson,
+        source: PLAN_SNAPSHOT_SOURCE.LEAD_GENERATED,
+        taskId: createdTask.task.id,
+        version: planReviewTask.planVersion,
+      });
+
+      this.#publish(createdTask.task.id, "task:status", {
+        status: planReviewTask.status,
+        taskId: createdTask.task.id,
+      });
+      this.#publish(createdTask.task.id, "task:plan-generated", {
+        currentPlan: validation.plan,
+        planVersion: planReviewTask.planVersion,
+        taskId: createdTask.task.id,
+      });
 
       return {
         ok: true,
-        attachments,
-        task,
+        attachments: createdTask.attachments,
+        currentPlan: validation.plan,
+        task: planReviewTask,
+        template: seededPlan.template,
       };
     } catch (error) {
       if (error instanceof TaskServiceError) {
@@ -4211,6 +4221,101 @@ export class TaskService {
     }
 
     return validation;
+  }
+
+  async #prepareTaskCreationInput(input) {
+    const projectId = normalizeRequiredString(input?.projectId);
+    const title = normalizeRequiredString(input?.title);
+    const description = normalizeRequiredString(input?.description);
+    const baseBranch = normalizeRequiredString(input?.baseBranch);
+    const leadAgentType = normalizeRequiredString(input?.leadAgentType);
+
+    if (!projectId) {
+      return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project is required.");
+    }
+
+    if (!baseBranch) {
+      return failure(TASK_SERVICE_ERROR_CODES.BASE_BRANCH_REQUIRED, "Base branch is required.");
+    }
+
+    if (!leadAgentType) {
+      return failure(TASK_SERVICE_ERROR_CODES.LEAD_AGENT_REQUIRED, "Lead agent type is required.");
+    }
+
+    if (!title) {
+      return failure(TASK_SERVICE_ERROR_CODES.TITLE_REQUIRED, "Task title is required.");
+    }
+
+    if (!description) {
+      return failure(TASK_SERVICE_ERROR_CODES.DESCRIPTION_REQUIRED, "Task description is required.");
+    }
+
+    const project = await this.projectRepository.findProjectById(projectId);
+
+    if (!project) {
+      return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project not found.", { projectId });
+    }
+
+    const agentFactory = this.agentService.agentRegistry.get(leadAgentType);
+
+    if (!agentFactory?.capabilities?.canOrchestrate) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.LEAD_AGENT_INVALID,
+        "Lead agent must be a registered orchestrator.",
+        { leadAgentType },
+      );
+    }
+
+    const health = await this.agentService.getHealth();
+    const agentHealth = health.agents?.[leadAgentType] ?? null;
+
+    if (!agentHealth?.available) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.LEAD_AGENT_UNHEALTHY,
+        "Lead agent is unhealthy and cannot be used for task creation.",
+        {
+          failureReason: agentHealth?.failureReason ?? null,
+          leadAgentType,
+        },
+      );
+    }
+
+    const baseCommitSha = await resolveBranchHeadCommit(project.path, baseBranch);
+
+    if (!baseCommitSha) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.BASE_BRANCH_NOT_FOUND,
+        "Selected base branch could not be resolved to a commit.",
+        { baseBranch },
+      );
+    }
+
+    const normalizedAttachments = await Promise.all((input?.attachments ?? []).map((attachment) => (
+      normalizeAttachmentInput(attachment)
+    )));
+
+    return {
+      ok: true,
+      normalizedAttachments,
+      taskInput: {
+        baseBranch,
+        baseCommitSha,
+        description,
+        leadAgentType,
+        projectId,
+        title,
+      },
+    };
+  }
+
+  async #createTaskRecord(prepared) {
+    const task = await this.taskRepository.createTask(prepared.taskInput);
+    const attachments = await this.#persistAttachments(task, prepared.normalizedAttachments);
+
+    return {
+      attachments,
+      task,
+    };
   }
 
   async #resolveDefaultTemplateAgentType(task, requestedAgentType) {

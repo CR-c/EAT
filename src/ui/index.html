@@ -197,8 +197,56 @@
         <section class="panel panel--task-form" aria-labelledby="task-form-title">
           <div class="panel__header">
             <p class="panel__eyebrow" data-i18n="createEyebrow">创建</p>
-            <h2 id="task-form-title" data-i18n="taskFormTitle">新建需求澄清任务</h2>
+            <h2 id="task-form-title" data-i18n="taskFormTitle">引导式任务创建</h2>
           </div>
+          <p class="panel__summary" data-i18n="taskFormSummary">
+            选择黄金路径模板后，系统会直接生成一个可审阅的 DAG 草稿；不选模板则保留自定义草稿创建方式。
+          </p>
+          <section class="guided-flow" aria-labelledby="guided-flow-title">
+            <div class="guided-flow__intro">
+              <div>
+                <p class="panel__eyebrow" data-i18n="guidedFlowEyebrow">黄金路径</p>
+                <h3 id="guided-flow-title" class="plan-history__title" data-i18n="guidedFlowTitle">模板与引导步骤</h3>
+              </div>
+              <button id="guided-template-clear-button" class="button button--secondary" type="button" hidden data-i18n="guidedTemplateClearButton">
+                切换为自定义草稿
+              </button>
+            </div>
+            <div id="guided-template-empty" class="empty-state" hidden data-i18n="guidedFlowEmpty">
+              模板列表暂时不可用，仍可继续创建自定义任务。
+            </div>
+            <div id="guided-template-grid" class="guided-template-grid"></div>
+            <div class="guided-flow__detail">
+              <article class="guided-flow__summary">
+                <p class="panel__eyebrow" data-i18n="guidedTemplateSelectedLabel">当前选择</p>
+                <h4 id="guided-template-title" class="plan-history__title">自定义任务</h4>
+                <p id="guided-template-description" class="panel__summary">从空白任务开始，先澄清需求，再由 lead 生成执行计划。</p>
+                <dl class="guided-flow__facts">
+                  <div>
+                    <dt data-i18n="guidedTemplateRolesLabel">建议角色</dt>
+                    <dd id="guided-template-roles">lead</dd>
+                  </div>
+                  <div>
+                    <dt data-i18n="guidedTemplateScenarioLabel">推荐场景</dt>
+                    <dd id="guided-template-scenario">从空白任务开始，先澄清需求，再由 lead 生成执行计划。</dd>
+                  </div>
+                </dl>
+                <div>
+                  <p class="panel__eyebrow" data-i18n="guidedTemplateStepsLabel">推荐步骤</p>
+                  <ol id="guided-template-steps" class="guided-flow__steps"></ol>
+                </div>
+              </article>
+              <article class="guided-flow__demo">
+                <p class="panel__eyebrow" data-i18n="guidedDemoTitle">Todo 演示建议</p>
+                <p id="guided-demo-body" class="panel__summary">
+                  推荐先选择“全栈 Web 应用”，再使用类似“做一个全栈 Todo 应用，包含认证、数据库和 React 前端。”的标题和描述。
+                </p>
+                <p class="field__hint" data-i18n="guidedDemoHint">
+                  引导任务会直接进入计划审阅，不会绕过后续的审批、执行监督和 integration gate。
+                </p>
+              </article>
+            </div>
+          </section>
           <form id="task-creation-form" class="task-form">
             <label class="field" for="base-branch-select">
               <span class="field__label" data-i18n="baseBranchLabel">基线分支</span>

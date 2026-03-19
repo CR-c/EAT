@@ -189,6 +189,71 @@ test("rejects task creation when the selected lead agent is unhealthy", async ()
   }
 });
 
+test("creates a guided task in PLAN_REVIEW from a built-in golden-path template", async () => {
+  const fixture = await makeTempDir("eat-guided-task-api-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const uploadRootPath = path.join(fixture.path, "uploads");
+    const repo = await createRepository(fixture.path, "guided-task-repo", { defaultBranch: "main" });
+
+    const server = await startServer({
+      agentService: createLeadAgentService(),
+      databasePath,
+      uploadRootPath,
+    });
+
+    try {
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+
+      const templatesResponse = await requestJson(server, "/api/task-templates");
+      assert.equal(templatesResponse.status, 200);
+      assert.ok(templatesResponse.body.templates.some((template) => template.id === "full-stack-web-app"));
+      assert.ok(templatesResponse.body.templates.some((template) => template.id === "backend-api"));
+      assert.ok(templatesResponse.body.templates.some((template) => template.id === "frontend-feature"));
+      assert.ok(templatesResponse.body.templates.some((template) => template.id === "repo-wide-refactor"));
+
+      const guidedResponse = await requestJson(server, "/api/guided-tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Build a full-stack Todo app with auth, database, and React frontend.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          templateId: "full-stack-web-app",
+          title: "Todo golden path",
+        },
+        method: "POST",
+      });
+
+      assert.equal(guidedResponse.status, 201);
+      assert.equal(guidedResponse.body.task.status, "PLAN_REVIEW");
+      assert.equal(guidedResponse.body.task.planVersion, 1);
+      assert.equal(guidedResponse.body.currentPlan.template_id, "full-stack-web-app");
+      assert.equal(guidedResponse.body.currentPlan.nodes.length, 6);
+      assert.deepEqual(
+        guidedResponse.body.currentPlan.nodes.map((node) => node.role),
+        ["architect", "backend", "database", "frontend", "tester", "integration"],
+      );
+
+      const detailResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(guidedResponse.body.task.id)}`,
+      );
+      assert.equal(detailResponse.status, 200);
+      assert.equal(detailResponse.body.task.status, "PLAN_REVIEW");
+      assert.equal(JSON.parse(detailResponse.body.task.currentPlanJson).template_id, "full-stack-web-app");
+      assert.equal(detailResponse.body.planSnapshots.length, 1);
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 function createLeadAgentService(options = {}) {
   const registry = new AgentRegistry();
   registry.register({

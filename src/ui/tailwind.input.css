@@ -207,6 +207,7 @@
 
   .project-form,
   .task-form,
+  .guided-flow,
   .message-form,
   .project-detail,
   .task-detail,
@@ -239,6 +240,61 @@
 
   .field {
     @apply grid gap-2;
+  }
+
+  .guided-flow {
+    @apply mb-5 rounded-[1.5rem] border border-white/45 bg-white/60 p-4 shadow-soft backdrop-blur-xl;
+  }
+
+  .guided-flow__intro,
+  .guided-flow__detail {
+    @apply grid gap-3;
+  }
+
+  .guided-template-grid {
+    @apply grid gap-3;
+  }
+
+  .guided-template-card,
+  .guided-flow__summary,
+  .guided-flow__demo {
+    @apply rounded-[1.25rem] border border-white/45 bg-white/70 p-4 text-left shadow-soft backdrop-blur-xl;
+  }
+
+  .guided-template-card {
+    @apply flex min-h-[112px] items-start justify-between gap-3 transition duration-200 ease-out hover:-translate-y-0.5;
+  }
+
+  .guided-template-card.is-selected {
+    @apply border-sky-200 bg-white/85 ring-2 ring-sky-100;
+  }
+
+  .guided-template-card__title {
+    @apply m-0 text-base font-semibold text-slate-950;
+  }
+
+  .guided-template-card__description {
+    @apply mt-2 text-sm leading-6 text-slate-600;
+  }
+
+  .guided-flow__facts {
+    @apply my-4 grid gap-3;
+  }
+
+  .guided-flow__facts div {
+    @apply rounded-2xl border border-white/45 bg-white/70 px-4 py-3;
+  }
+
+  .guided-flow__facts dt {
+    @apply text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-slate-500;
+  }
+
+  .guided-flow__facts dd {
+    @apply mt-2 text-sm font-medium leading-6 text-slate-800;
+  }
+
+  .guided-flow__steps {
+    @apply m-0 grid list-decimal gap-2 pl-5 text-sm leading-6 text-slate-700;
   }
 
   .field__label {
@@ -793,6 +849,15 @@
   }
 
   @screen lg {
+    .guided-template-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .guided-flow__detail {
+      grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+      align-items: start;
+    }
+
     .plan-editor__controls,
     .plan-graph {
       grid-template-columns: repeat(2, minmax(0, 1fr));

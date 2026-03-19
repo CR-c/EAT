@@ -147,6 +147,17 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  if (request.method === "POST" && pathName === "/api/guided-tasks") {
+    const body = await readJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.createGuidedTask(body.value);
+    return respondServiceResult(response, result, 201);
+  }
+
   if (request.method === "POST" && pathName === "/api/tasks") {
     const body = await readJsonBody(request);
 

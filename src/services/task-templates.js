@@ -1,7 +1,7 @@
 const TEMPLATE_DEFINITIONS = Object.freeze([
   {
     id: "full-stack-web-app",
-    roles: ["architect", "backend", "database", "frontend", "tester"],
+    roles: ["architect", "backend", "database", "frontend", "tester", "integration"],
     buildPlan({ agentType, title }) {
       return [
         {
@@ -73,12 +73,26 @@ const TEMPLATE_DEFINITIONS = Object.freeze([
           template_hint: "integration-test",
           title: "执行集成与验收测试",
         },
+        {
+          acceptance_criteria: [
+            "发布前检查项已汇总。",
+            "集成分支 gate 的关注点和回退策略已说明。",
+          ],
+          branch_suffix: "integration",
+          deliverable: "集成发布检查单与 release note",
+          description: "汇总测试结论、已知风险、迁移注意事项和发布前检查单，为后续 integration run 提供明确的操作上下文。",
+          depends_on: ["tester"],
+          recommended_agent: agentType,
+          role: "integration",
+          template_hint: "release-readiness",
+          title: "整理集成发布说明",
+        },
       ];
     },
   },
   {
-    id: "backend-api-service",
-    roles: ["architect", "backend", "database", "tester"],
+    id: "backend-api",
+    roles: ["architect", "backend", "database", "tester", "integration"],
     buildPlan({ agentType, title }) {
       return [
         {
@@ -135,6 +149,20 @@ const TEMPLATE_DEFINITIONS = Object.freeze([
           role: "tester",
           template_hint: "integration-test",
           title: "验证服务稳定性",
+        },
+        {
+          acceptance_criteria: [
+            "release gate 关注点明确。",
+            "迁移、构建和回滚注意事项已整理。",
+          ],
+          branch_suffix: "integration",
+          deliverable: "发布前验证清单",
+          description: "汇总 API、数据库和测试结论，形成面向 integration run 的发布检查清单。",
+          depends_on: ["tester"],
+          recommended_agent: agentType,
+          role: "integration",
+          template_hint: "release-readiness",
+          title: "整理发布验证清单",
         },
       ];
     },
@@ -198,6 +226,69 @@ const TEMPLATE_DEFINITIONS = Object.freeze([
           role: "tester",
           template_hint: "ui-acceptance",
           title: "执行前端验收",
+        },
+      ];
+    },
+  },
+  {
+    id: "repo-wide-refactor",
+    roles: ["architect", "refactor", "verifier", "integration"],
+    buildPlan({ agentType, title }) {
+      return [
+        {
+          acceptance_criteria: [
+            "改造范围、风险点和回滚策略已定义。",
+            "重构切片顺序与依赖关系明确。",
+          ],
+          branch_suffix: "architect",
+          deliverable: `${title} 的重构蓝图`,
+          description: "梳理跨仓库重构边界、风险点、受影响模块与渐进式落地顺序。",
+          recommended_agent: agentType,
+          role: "architect",
+          template_hint: "refactor-plan",
+          title: "定义重构范围与切片",
+        },
+        {
+          acceptance_criteria: [
+            "核心重构切片已落地。",
+            "关键模块保持编译通过并与设计保持一致。",
+          ],
+          branch_suffix: "refactor",
+          deliverable: "主要重构改动",
+          description: "执行主重构切片，统一接口、命名或架构结构，并保持变更具有可审查性。",
+          depends_on: ["architect"],
+          recommended_agent: agentType,
+          role: "refactor",
+          template_hint: "repo-refactor",
+          title: "实施主重构切片",
+        },
+        {
+          acceptance_criteria: [
+            "构建、测试或静态检查已覆盖主要风险。",
+            "回归风险与遗留问题已记录。",
+          ],
+          branch_suffix: "verifier",
+          deliverable: "回归验证报告",
+          description: "执行回归验证、构建与测试，确认跨模块重构没有引入关键回归。",
+          depends_on: ["refactor"],
+          recommended_agent: agentType,
+          role: "verifier",
+          template_hint: "refactor-verification",
+          title: "执行回归验证",
+        },
+        {
+          acceptance_criteria: [
+            "集成和回滚关注点已整理。",
+            "后续 integration run 所需说明完整。",
+          ],
+          branch_suffix: "integration",
+          deliverable: "集成准备说明",
+          description: "汇总重构验证结论、剩余风险和合并注意事项，为 integration run 提供操作说明。",
+          depends_on: ["verifier"],
+          recommended_agent: agentType,
+          role: "integration",
+          template_hint: "release-readiness",
+          title: "整理集成与回滚说明",
         },
       ];
     },

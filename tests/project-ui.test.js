@@ -37,7 +37,9 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.equal(rootResponse.status, 200);
     assert.match(rootResponse.headers.get("content-type"), /^text\/html/);
     assert.match(rootResponse.body, /可通过 Web 操控的 Agent 编排/);
-    assert.match(rootResponse.body, /新建需求澄清任务/);
+    assert.match(rootResponse.body, /引导式任务创建/);
+    assert.match(rootResponse.body, /模板与引导步骤/);
+    assert.match(rootResponse.body, /Todo 演示建议/);
     assert.match(rootResponse.body, /Lead 会话转录/);
     assert.match(rootResponse.body, /当前计划草稿/);
     assert.match(rootResponse.body, /模板种子/);
@@ -83,6 +85,7 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(cssResponse.headers.get("content-type"), /^text\/css/);
     assert.match(cssResponse.body, /backdrop-filter|backdrop-blur/);
     assert.match(cssResponse.body, /team-member-card/);
+    assert.match(cssResponse.body, /guided-template-card/);
     assert.match(cssResponse.body, /operations-board/);
     assert.match(cssResponse.body, /operations-graph__node/);
 

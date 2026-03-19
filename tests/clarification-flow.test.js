@@ -391,9 +391,9 @@ test("lists plan templates and seeds a role-aware DAG draft that can be approved
       );
       assert.equal(seedResponse.status, 200);
       assert.equal(seedResponse.body.currentPlan.template_id, "full-stack-web-app");
-      assert.equal(seedResponse.body.currentPlan.nodes.length, 5);
+      assert.equal(seedResponse.body.currentPlan.nodes.length, 6);
       assert.equal(seedResponse.body.currentPlan.nodes[0].role, "architect");
-      assert.equal(seedResponse.body.currentPlan.nodes.at(-1).branch_suffix, "tester");
+      assert.equal(seedResponse.body.currentPlan.nodes.at(-1).branch_suffix, "integration");
 
       const approvalResponse = await requestJson(
         server,
@@ -401,10 +401,10 @@ test("lists plan templates and seeds a role-aware DAG draft that can be approved
         { method: "POST" },
       );
       assert.equal(approvalResponse.status, 200);
-      assert.equal(approvalResponse.body.subTasks.length, 5);
+      assert.equal(approvalResponse.body.subTasks.length, 6);
       assert.deepEqual(
         approvalResponse.body.subTasks.map((subTask) => subTask.role),
-        ["architect", "backend", "database", "frontend", "tester"],
+        ["architect", "backend", "database", "frontend", "tester", "integration"],
       );
       assert.equal(approvalResponse.body.subTasks[0].status, "PENDING");
       assert.equal(approvalResponse.body.subTasks[1].status, "BLOCKED");
@@ -416,7 +416,59 @@ test("lists plan templates and seeds a role-aware DAG draft that can be approved
       );
       assert.equal(detailResponse.status, 200);
       assert.equal(JSON.parse(detailResponse.body.task.approvedPlanJson).template_id, "full-stack-web-app");
-      assert.equal(JSON.parse(detailResponse.body.task.approvedPlanJson).nodes.length, 5);
+      assert.equal(JSON.parse(detailResponse.body.task.approvedPlanJson).nodes.length, 6);
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("creates a guided task from a built-in template and keeps approval as an explicit checkpoint", async () => {
+  const fixture = await makeTempDir("eat-guided-flow-e2e-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const server = await startServer({
+      agentService: createClarificationAgentService(),
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "guided-flow-repo", { defaultBranch: "main" });
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+
+      const guidedResponse = await requestJson(server, "/api/guided-tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Build a full-stack Todo app with auth, database, and a React frontend.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          templateId: "full-stack-web-app",
+          title: "Guided Todo flow",
+        },
+        method: "POST",
+      });
+      assert.equal(guidedResponse.status, 201);
+      assert.equal(guidedResponse.body.task.status, "PLAN_REVIEW");
+      assert.equal(guidedResponse.body.currentPlan.nodes.length, 6);
+
+      const approvalResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(guidedResponse.body.task.id)}/approve-plan`,
+        { method: "POST" },
+      );
+      assert.equal(approvalResponse.status, 200);
+      assert.equal(approvalResponse.body.task.status, "EXECUTING");
+      assert.equal(approvalResponse.body.subTasks.length, 6);
+      assert.equal(approvalResponse.body.subTasks[0].status, "PENDING");
+      assert.equal(approvalResponse.body.subTasks.at(-1).status, "BLOCKED");
     } finally {
       await stopServer(server);
     }

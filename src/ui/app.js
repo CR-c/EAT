@@ -69,7 +69,21 @@ const UI_MESSAGES = {
     dockerHealthReasonDefault: "Docker 沙箱健康状态会随 Agent 目录一并加载。",
     agentHealthEmpty: "没有找到已注册 Agent。",
     createEyebrow: "创建",
-    taskFormTitle: "新建需求澄清任务",
+    taskFormTitle: "引导式任务创建",
+    taskFormSummary: "选择黄金路径模板后，系统会直接生成一个可审阅的 DAG 草稿；不选模板则保留自定义草稿创建方式。",
+    guidedFlowEyebrow: "黄金路径",
+    guidedFlowTitle: "模板与引导步骤",
+    guidedFlowEmpty: "模板列表暂时不可用，仍可继续创建自定义任务。",
+    guidedTemplateCustomTitle: "自定义任务",
+    guidedTemplateCustomDescription: "从空白任务开始，先澄清需求，再由 lead 生成执行计划。",
+    guidedTemplateSelectedLabel: "当前选择",
+    guidedTemplateRolesLabel: "建议角色",
+    guidedTemplateStepsLabel: "推荐步骤",
+    guidedTemplateScenarioLabel: "推荐场景",
+    guidedTemplateClearButton: "切换为自定义草稿",
+    guidedDemoTitle: "Todo 演示建议",
+    guidedDemoBody: "推荐先选择“全栈 Web 应用”，再使用类似“做一个全栈 Todo 应用，包含认证、数据库和 React 前端。”的标题和描述。",
+    guidedDemoHint: "引导任务会直接进入计划审阅，不会绕过后续的审批、执行监督和 integration gate。",
     baseBranchLabel: "基线分支",
     leadAgentLabel: "Lead Agent",
     taskTitleLabel: "任务标题",
@@ -77,6 +91,7 @@ const UI_MESSAGES = {
     attachmentsLabelStatic: "附件",
     attachmentsHint: "支持图片、PDF/Markdown/文本文件，以及基于文本的代码文件。不支持或超限文件会在任务创建完成前被拒绝。",
     createTaskButton: "创建任务",
+    createGuidedTaskButton: "创建引导任务",
     tasksEyebrow: "任务",
     taskListTitle: "项目任务",
     refreshTasksButton: "刷新任务",
@@ -507,7 +522,21 @@ const UI_MESSAGES = {
     dockerHealthReasonDefault: "Docker sandbox health is loaded with the agent directory.",
     agentHealthEmpty: "No registered agents were found.",
     createEyebrow: "Create",
-    taskFormTitle: "New clarification task",
+    taskFormTitle: "Guided task creation",
+    taskFormSummary: "Choose a golden-path template to open directly in plan review with a seeded DAG draft, or leave templates unselected to create a custom draft.",
+    guidedFlowEyebrow: "Golden path",
+    guidedFlowTitle: "Templates and guided steps",
+    guidedFlowEmpty: "Templates are temporarily unavailable. You can still create a custom task draft.",
+    guidedTemplateCustomTitle: "Custom task",
+    guidedTemplateCustomDescription: "Start from a blank task, clarify requirements, and let the lead generate the execution plan.",
+    guidedTemplateSelectedLabel: "Selected",
+    guidedTemplateRolesLabel: "Suggested roles",
+    guidedTemplateStepsLabel: "Suggested steps",
+    guidedTemplateScenarioLabel: "Best for",
+    guidedTemplateClearButton: "Switch to custom draft",
+    guidedDemoTitle: "Todo demo suggestion",
+    guidedDemoBody: "Start with “Full-stack web app” and use a title/description similar to “Build a full-stack Todo app with auth, database, and a React frontend.”",
+    guidedDemoHint: "Guided tasks jump straight to plan review, but they still keep approval, supervision, and integration gates intact.",
     baseBranchLabel: "Base branch",
     leadAgentLabel: "Lead agent",
     taskTitleLabel: "Task title",
@@ -515,6 +544,7 @@ const UI_MESSAGES = {
     attachmentsLabelStatic: "Attachments",
     attachmentsHint: "Supported types: images, PDF/Markdown/text documents, and text-based code files. Unsupported or oversized files are rejected before task creation finishes.",
     createTaskButton: "Create task",
+    createGuidedTaskButton: "Create guided task",
     tasksEyebrow: "Tasks",
     taskListTitle: "Project tasks",
     refreshTasksButton: "Refresh tasks",
@@ -907,31 +937,73 @@ const PLAN_TEMPLATE_COPY = {
   "full-stack-web-app": {
     "zh-CN": {
       description: "适合带认证、数据库、前端和测试协作的全栈需求。",
+      scenario: "全栈 Todo、内部工具、带认证的 CRUD 应用",
+      starterDescription: "做一个全栈 Todo 应用，包含认证、数据库和 React 前端。",
+      starterTitle: "全栈 Todo 应用",
+      steps: ["选择模板并确认基线分支", "检查自动生成的 DAG 与角色分工", "批准计划后观察执行、handoff 与 integration"],
       title: "全栈 Web 应用",
     },
     en: {
       description: "Best for full-stack tasks with auth, data, frontend, and end-to-end validation.",
+      scenario: "Full-stack Todo apps, internal tools, authenticated CRUD systems",
+      starterDescription: "Build a full-stack Todo app with auth, a database, and a React frontend.",
+      starterTitle: "Full-stack Todo app",
+      steps: ["Pick the template and base branch", "Review the seeded DAG and role split", "Approve the plan and watch execution, handoffs, and integration"],
       title: "Full-stack web app",
     },
   },
-  "backend-api-service": {
+  "backend-api": {
     "zh-CN": {
       description: "面向 API、数据库和服务测试的后端任务骨架。",
-      title: "后端 API 服务",
+      scenario: "REST API、认证服务、数据服务",
+      starterDescription: "实现一个后端 API，包含核心业务接口、数据库访问层和发布前验证。",
+      starterTitle: "后端 API 服务",
+      steps: ["先确认接口契约与数据模型", "按后端、数据库、测试和发布验证拆分", "在计划审阅中补齐验收标准后批准"],
+      title: "后端 API",
     },
     en: {
       description: "A backend service skeleton for API, database, and service validation work.",
-      title: "Backend API service",
+      scenario: "REST APIs, auth services, data services",
+      starterDescription: "Build a backend API with the core service layer, database access, and release verification.",
+      starterTitle: "Backend API service",
+      steps: ["Confirm the API contract and data model", "Split work into backend, database, test, and release verification", "Polish acceptance criteria in plan review before approval"],
+      title: "Backend API",
     },
   },
   "frontend-feature": {
     "zh-CN": {
       description: "适合前端功能、集成接线与体验验收。",
+      scenario: "React 页面功能、复杂交互、前后端联调",
+      starterDescription: "实现一个前端功能，从交互设计到接口接线与体验验收全链路完成。",
+      starterTitle: "前端功能开发",
+      steps: ["先确认页面结构与接口依赖", "实现前端功能并补齐集成接线", "在验收节点聚焦空态、错误态和响应式表现"],
       title: "前端功能开发",
     },
     en: {
       description: "Suited to frontend feature delivery, integration, and UX validation.",
+      scenario: "React feature work, complex interaction flows, frontend-backend integration",
+      starterDescription: "Build a frontend feature from interaction design to API wiring and UX validation.",
+      starterTitle: "Frontend feature delivery",
+      steps: ["Confirm the page structure and API dependencies", "Implement the feature and integration wiring", "Use the acceptance step to review empty, error, and responsive states"],
       title: "Frontend feature",
+    },
+  },
+  "repo-wide-refactor": {
+    "zh-CN": {
+      description: "适合跨模块重构、命名统一和大范围结构整理。",
+      scenario: "目录重构、接口统一、技术债治理",
+      starterDescription: "对仓库做一次跨模块重构，要求保留可审查切片、回归验证和集成回滚说明。",
+      starterTitle: "仓库级重构任务",
+      steps: ["先定义重构边界与回滚策略", "把主改造与回归验证分离", "让 integration 节点整理最终合并注意事项"],
+      title: "仓库级重构",
+    },
+    en: {
+      description: "Best for cross-module refactors, naming alignment, and large repository cleanups.",
+      scenario: "Directory refactors, interface alignment, tech-debt cleanup",
+      starterDescription: "Run a repository-wide refactor with reviewable slices, regression verification, and integration rollback notes.",
+      starterTitle: "Repository-wide refactor",
+      steps: ["Define the refactor boundary and rollback plan first", "Separate the main rewrite from regression verification", "Use the integration node to summarize final merge considerations"],
+      title: "Repository-wide refactor",
     },
   },
 };
@@ -962,6 +1034,7 @@ const state = {
   selectedBaseBranch: null,
   selectedExecutionSessionId: null,
   selectedExecutionSubTaskId: null,
+  selectedGuidedTemplateId: null,
   selectedLeadAgentName: null,
   selectedProjectId: readStorage(STORAGE_KEYS.selectedProjectId),
   selectedTaskId: readStorage(STORAGE_KEYS.selectedTaskId),
@@ -994,6 +1067,15 @@ const elements = {
   currentBranch: document.querySelector("#current-branch"),
   defaultBranch: document.querySelector("#default-branch"),
   dirtyWarningBanner: document.querySelector("#dirty-warning-banner"),
+  guidedDemoBody: document.querySelector("#guided-demo-body"),
+  guidedTemplateClearButton: document.querySelector("#guided-template-clear-button"),
+  guidedTemplateDescription: document.querySelector("#guided-template-description"),
+  guidedTemplateEmpty: document.querySelector("#guided-template-empty"),
+  guidedTemplateGrid: document.querySelector("#guided-template-grid"),
+  guidedTemplateRoles: document.querySelector("#guided-template-roles"),
+  guidedTemplateScenario: document.querySelector("#guided-template-scenario"),
+  guidedTemplateSteps: document.querySelector("#guided-template-steps"),
+  guidedTemplateTitle: document.querySelector("#guided-template-title"),
   healthyLeadCount: document.querySelector("#healthy-lead-count"),
   healthyWorkerCount: document.querySelector("#healthy-worker-count"),
   languageToggle: document.querySelector("#language-toggle"),
@@ -1186,6 +1268,7 @@ elements.baseBranchSelect.addEventListener("change", (event) => {
 });
 elements.taskAttachmentsInput.addEventListener("change", renderDraftAttachments);
 elements.taskCreationForm.addEventListener("submit", onCreateTask);
+elements.guidedTemplateClearButton?.addEventListener("click", onClearGuidedTemplateSelection);
 elements.refreshTasksButton.addEventListener("click", () => {
   if (state.selectedProjectId) {
     void loadProjectTasks(state.selectedProjectId, { preserveSelection: true });
@@ -1266,14 +1349,17 @@ async function onCreateTask(event) {
 
   try {
     const attachments = await readDraftAttachments();
+    const useGuidedFlow = Boolean(state.selectedGuidedTemplateId);
+    const routePath = useGuidedFlow ? "/api/guided-tasks" : "/api/tasks";
 
-    const response = await fetchJson("/api/tasks", {
+    const response = await fetchJson(routePath, {
       body: {
         attachments,
         baseBranch: state.selectedBaseBranch,
         description: elements.taskDescriptionInput.value.trim(),
         leadAgentType: state.selectedLeadAgentName,
         projectId: state.selectedProjectId,
+        ...(useGuidedFlow ? { templateId: state.selectedGuidedTemplateId } : {}),
         title: elements.taskTitleInput.value.trim(),
       },
       method: "POST",
@@ -1299,7 +1385,7 @@ async function onCreateTask(event) {
 
     showFeedback(feedbackTarget, "error", message);
   } finally {
-    setButtonBusy(elements.createTaskButton, false, t("createTaskButton"));
+    setButtonBusy(elements.createTaskButton, false, buildCreateTaskButtonLabel());
   }
 }
 
@@ -1550,11 +1636,19 @@ async function loadTaskTemplates() {
     const response = await fetchJson("/api/task-templates");
     state.planTemplates = response.templates ?? [];
 
+    if (state.selectedGuidedTemplateId && !state.planTemplates.some((template) => template.id === state.selectedGuidedTemplateId)) {
+      state.selectedGuidedTemplateId = null;
+    }
+
+    renderGuidedTaskComposer();
+
     if (state.taskDetail) {
       renderTaskDetail();
     }
   } catch {
     state.planTemplates = [];
+    state.selectedGuidedTemplateId = null;
+    renderGuidedTaskComposer();
   }
 }
 
@@ -1694,6 +1788,7 @@ function renderLeadSelector() {
   elements.leadAgentSelect.disabled = false;
   elements.createTaskButton.disabled = gate.disabled || !state.selectedProjectId;
   showFeedback(elements.leadAgentFeedback, gate.tone, gate.message);
+  renderGuidedTaskComposer();
 }
 
 function renderDraftAttachments() {
@@ -1729,6 +1824,116 @@ function renderDraftAttachments() {
     `;
     elements.taskAttachmentList.append(item);
   }
+}
+
+function onSelectGuidedTemplate(templateId) {
+  const previousCopy = getSelectedGuidedTemplateCopy();
+  const nextTemplateId = state.selectedGuidedTemplateId === templateId ? null : templateId;
+  state.selectedGuidedTemplateId = nextTemplateId;
+
+  if (nextTemplateId) {
+    const nextCopy = getSelectedGuidedTemplateCopy();
+    const currentTitle = elements.taskTitleInput.value.trim();
+    const currentDescription = elements.taskDescriptionInput.value.trim();
+    const canReplaceTitle = !currentTitle || currentTitle === (previousCopy?.starterTitle ?? "");
+    const canReplaceDescription = !currentDescription || currentDescription === (previousCopy?.starterDescription ?? "");
+
+    if (canReplaceTitle) {
+      elements.taskTitleInput.value = nextCopy?.starterTitle ?? "";
+    }
+
+    if (canReplaceDescription) {
+      elements.taskDescriptionInput.value = nextCopy?.starterDescription ?? "";
+    }
+  }
+
+  renderGuidedTaskComposer();
+}
+
+function onClearGuidedTemplateSelection() {
+  state.selectedGuidedTemplateId = null;
+  renderGuidedTaskComposer();
+}
+
+function buildCreateTaskButtonLabel() {
+  return state.selectedGuidedTemplateId ? t("createGuidedTaskButton") : t("createTaskButton");
+}
+
+function getSelectedGuidedTemplateCopy() {
+  return state.selectedGuidedTemplateId ? getPlanTemplateCopy(state.selectedGuidedTemplateId) : null;
+}
+
+function renderGuidedTaskComposer() {
+  if (!elements.guidedTemplateGrid) {
+    return;
+  }
+
+  elements.guidedTemplateGrid.replaceChildren();
+  elements.guidedTemplateEmpty.hidden = state.planTemplates.length > 0;
+  elements.createTaskButton.textContent = buildCreateTaskButtonLabel();
+  elements.guidedTemplateClearButton.hidden = !state.selectedGuidedTemplateId;
+
+  const customCard = document.createElement("button");
+  customCard.type = "button";
+  customCard.className = "guided-template-card";
+  customCard.innerHTML = `
+    <div>
+      <p class="guided-template-card__title">${escapeHtml(t("guidedTemplateCustomTitle"))}</p>
+      <p class="guided-template-card__description">${escapeHtml(t("guidedTemplateCustomDescription"))}</p>
+    </div>
+    <span class="badge badge--outline">${escapeHtml(t("createTaskButton"))}</span>
+  `;
+  if (!state.selectedGuidedTemplateId) {
+    customCard.classList.add("is-selected");
+  }
+  customCard.addEventListener("click", onClearGuidedTemplateSelection);
+  elements.guidedTemplateGrid.append(customCard);
+
+  for (const template of state.planTemplates) {
+    const copy = getPlanTemplateCopy(template.id);
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "guided-template-card";
+    card.innerHTML = `
+      <div>
+        <p class="guided-template-card__title">${escapeHtml(copy.title)}</p>
+        <p class="guided-template-card__description">${escapeHtml(copy.description)}</p>
+      </div>
+      <span class="badge badge--outline">${escapeHtml(countLabel(template.nodeCount ?? template.roles?.length ?? 0, "nodeCountOne", "nodeCountOther"))}</span>
+    `;
+
+    if (template.id === state.selectedGuidedTemplateId) {
+      card.classList.add("is-selected");
+    }
+
+    card.addEventListener("click", () => {
+      onSelectGuidedTemplate(template.id);
+    });
+    elements.guidedTemplateGrid.append(card);
+  }
+
+  const selectedCopy = getSelectedGuidedTemplateCopy();
+  const selectedTemplate = state.planTemplates.find((template) => template.id === state.selectedGuidedTemplateId) ?? null;
+  elements.guidedTemplateTitle.textContent = selectedCopy?.title ?? t("guidedTemplateCustomTitle");
+  elements.guidedTemplateDescription.textContent = selectedCopy?.description ?? t("guidedTemplateCustomDescription");
+  elements.guidedTemplateScenario.textContent = selectedCopy?.scenario ?? t("guidedTemplateCustomDescription");
+  elements.guidedTemplateRoles.textContent = selectedTemplate?.roles?.join(" · ") ?? "lead";
+  elements.guidedTemplateSteps.replaceChildren();
+
+  const steps = Array.isArray(selectedCopy?.steps) && selectedCopy.steps.length > 0
+    ? selectedCopy.steps
+    : [
+      t("guidedTemplateCustomDescription"),
+      t("taskFormSummary"),
+    ];
+
+  for (const step of steps) {
+    const item = document.createElement("li");
+    item.textContent = step;
+    elements.guidedTemplateSteps.append(item);
+  }
+
+  elements.guidedDemoBody.textContent = selectedCopy?.starterDescription ?? t("guidedDemoBody");
 }
 
 function renderTaskList() {
@@ -4213,6 +4418,8 @@ function renderLocale() {
   for (const node of document.querySelectorAll("[data-i18n-html]")) {
     node.innerHTML = t(node.dataset.i18nHtml);
   }
+
+  renderGuidedTaskComposer();
 }
 
 function showFeedback(element, tone, message) {
