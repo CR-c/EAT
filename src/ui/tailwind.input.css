@@ -222,6 +222,12 @@
   .plan-graph__column-list,
   .execution-list,
   .execution-board,
+  .operations-board,
+  .operations-summary-grid,
+  .operations-meta-grid,
+  .operations-meta-list,
+  .operations-action-list,
+  .operations-activity-list,
   .team-shell,
   .team-member-list,
   .cleanup-warning-list,
@@ -256,7 +262,8 @@
   .project-list__item:focus-visible,
   .task-list__item:focus-visible,
   .execution-card:focus-visible,
-  .team-member-card:focus-visible {
+  .team-member-card:focus-visible,
+  .operations-graph__node:focus-visible {
     @apply outline-none ring-4 ring-sky-200/70;
   }
 
@@ -382,7 +389,9 @@
   .execution-focus,
   .merge-history,
   .mailbox-panel,
-  .team-lead-card {
+  .team-lead-card,
+  .operations-section,
+  .operations-panel {
     @apply rounded-[1.5rem] p-4;
   }
 
@@ -412,7 +421,9 @@
   .review-panel,
   .merge-history,
   .mailbox-panel,
-  .team-lead-card {
+  .team-lead-card,
+  .operations-section,
+  .operations-panel {
     @apply border border-white/35 bg-white/55 shadow-soft backdrop-blur-2xl;
   }
 
@@ -450,6 +461,8 @@
   .plan-card__criteria,
   .plan-card__criteria-list,
   .plan-graph__column,
+  .operations-graph,
+  .operations-graph__column,
   .segmented-control {
     @apply grid gap-3;
   }
@@ -480,7 +493,7 @@
   }
 
   .button.is-active {
-    @apply border-sky-200 bg-sky-100/85 text-sky-800 ring-2 ring-sky-100;
+    @apply border-sky-200 bg-sky-100/80 text-sky-800 ring-2 ring-sky-100;
   }
 
   .plan-card__criteria-list {
@@ -506,13 +519,166 @@
   .team-lead-card__summary,
   .team-member-card__meta,
   .team-member-card__summary,
-  .team-member-card__hint {
+  .team-member-card__hint,
+  .operations-summary-card__label,
+  .operations-summary-card__value,
+  .operations-meta-item__label,
+  .operations-meta-item__value,
+  .operations-action-card__title,
+  .operations-action-card__summary,
+  .operations-graph__node-title,
+  .operations-graph__node-meta,
+  .operations-graph__node-summary,
+  .operations-activity-item__kind,
+  .operations-activity-item__time,
+  .operations-activity-item__summary {
     @apply m-0;
   }
 
   .plan-history__list,
   .execution-session-list {
     @apply flex flex-wrap gap-2;
+  }
+
+  .operations-board {
+    @apply gap-4;
+  }
+
+  .operations-section,
+  .operations-panel {
+    @apply rounded-[1.5rem];
+  }
+
+  .operations-section {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.5)),
+      linear-gradient(135deg, rgba(14,165,233,0.08), rgba(20,184,166,0.08));
+  }
+
+  .operations-summary-grid {
+    @apply grid gap-3 sm:grid-cols-2 xl:grid-cols-4;
+  }
+
+  .operations-summary-card,
+  .operations-meta-card,
+  .operations-action-card,
+  .operations-graph__node,
+  .operations-activity-item {
+    @apply rounded-[1.25rem] border border-white/45 bg-white/70 p-4 shadow-soft backdrop-blur-xl;
+  }
+
+  .operations-summary-card {
+    @apply relative overflow-hidden;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.58)),
+      linear-gradient(135deg, rgba(56,189,248,0.12), rgba(45,212,191,0.1));
+  }
+
+  .operations-summary-card::after {
+    content: "";
+    @apply pointer-events-none absolute inset-x-4 top-0 h-px bg-white/70;
+  }
+
+  .operations-summary-card__label,
+  .operations-meta-item__label,
+  .operations-activity-item__kind,
+  .operations-graph__node-meta {
+    @apply text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-slate-500;
+  }
+
+  .operations-summary-card__value {
+    @apply mt-3 text-3xl font-display tracking-tight text-slate-950;
+  }
+
+  .operations-meta-grid {
+    @apply grid gap-3 xl:grid-cols-2;
+  }
+
+  .operations-meta-card {
+    @apply rounded-[1.25rem] border border-white/45 bg-white/70 p-4 shadow-soft backdrop-blur-xl;
+  }
+
+  .operations-meta-list {
+    @apply gap-2;
+  }
+
+  .operations-meta-item {
+    @apply flex items-center justify-between gap-3 rounded-2xl border border-white/45 bg-white/70 px-4 py-3;
+  }
+
+  .operations-meta-item__value {
+    @apply text-sm font-semibold text-slate-900;
+  }
+
+  .operations-action-list,
+  .operations-activity-list {
+    @apply gap-3;
+  }
+
+  .operations-action-card__header,
+  .operations-activity-item__header,
+  .operations-graph__node-header {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  }
+
+  .operations-action-card__title,
+  .operations-graph__node-title {
+    @apply text-base font-semibold text-slate-950;
+  }
+
+  .operations-action-card__summary,
+  .operations-graph__node-summary,
+  .operations-activity-item__summary {
+    @apply text-sm leading-6 text-slate-600;
+  }
+
+  .operations-panel {
+    @apply bg-white/45;
+  }
+
+  .operations-graph__column {
+    @apply rounded-[1.25rem] border border-white/45 bg-white/60 p-4 shadow-soft backdrop-blur-xl;
+  }
+
+  .operations-graph__column-header {
+    @apply mb-3 flex flex-wrap items-center justify-between gap-2;
+  }
+
+  .operations-graph__node {
+    @apply w-full text-left transition duration-200 ease-out hover:-translate-y-0.5;
+  }
+
+  .operations-graph__node.is-selected {
+    @apply border-sky-200 bg-white/80 ring-2 ring-sky-100;
+    animation: glass-pulse 2.4s ease-in-out infinite;
+  }
+
+  .operations-graph__edge-list {
+    @apply mt-4 flex flex-wrap gap-2;
+  }
+
+  .operations-edge {
+    @apply inline-flex min-h-[34px] items-center rounded-full border px-3 py-1 text-xs font-semibold;
+  }
+
+  .operations-edge--satisfied {
+    @apply border-emerald-200 bg-emerald-100/80 text-emerald-700;
+  }
+
+  .operations-edge--handoff_ready {
+    @apply border-sky-200 bg-sky-100/80 text-sky-700;
+  }
+
+  .operations-edge--attention {
+    @apply border-amber-200 bg-amber-100/80 text-amber-700;
+  }
+
+  .operations-edge--blocking {
+    @apply border-rose-200 bg-rose-100/80 text-rose-700;
+  }
+
+  .operations-activity-item__time {
+    @apply text-xs font-medium tracking-normal text-slate-500;
   }
 
   .plan-history__meta {
@@ -636,6 +802,10 @@
     .execution-board {
       grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.92fr);
       align-items: start;
+    }
+
+    .operations-board {
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .team-shell {

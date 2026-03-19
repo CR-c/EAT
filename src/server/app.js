@@ -204,6 +204,14 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const taskBoardMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/board$/);
+
+  if (request.method === "GET" && taskBoardMatch) {
+    const taskId = decodeURIComponent(taskBoardMatch[1]);
+    const result = await taskService.getTaskBoard(taskId);
+    return respondServiceResult(response, result);
+  }
+
   const taskStartClarificationMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/start-clarification$/);
 
   if (request.method === "POST" && taskStartClarificationMatch) {

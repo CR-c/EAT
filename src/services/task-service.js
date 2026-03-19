@@ -317,6 +317,8 @@ export class TaskService {
     const subTasks = await this.taskRepository.listSubTasksByTaskId(task.id);
     const mergeRecords = await this.taskRepository.listMergeRecordsByTaskId(task.id);
     const mailboxMessages = await this.taskRepository.listMailboxMessagesByTaskId(task.id);
+    const reviewRecords = (await this.taskRepository.listReviewRecords())
+      .filter((record) => subTasks.some((subTask) => subTask.id === record.subTaskId));
     const mergeRecordsBySubTaskId = groupRecordsBySubTaskId(mergeRecords);
     const decoratedSessions = sessions.map((session) => this.#decorateSession(session));
     const decoratedSubTasks = subTasks.map((subTask) => this.#decorateSubTask({
@@ -331,6 +333,13 @@ export class TaskService {
       mailboxMessages,
       messages,
       planSnapshots: await this.taskRepository.listPlanSnapshotsByTaskId(task.id),
+      board: this.#buildTaskBoardSnapshot(task, {
+        mailboxMessages,
+        messages,
+        reviewRecords,
+        sessions: decoratedSessions,
+        subTasks: decoratedSubTasks,
+      }),
       sessions: decoratedSessions,
       subTasks: decoratedSubTasks,
       task,
@@ -360,6 +369,40 @@ export class TaskService {
     return {
       ok: true,
       team: this.#buildTaskTeamView(task, decoratedSessions, decoratedSubTasks),
+    };
+  }
+
+  async getTaskBoard(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    const [messages, sessions, subTasks, mergeRecords, mailboxMessages, reviewRecords] = await Promise.all([
+      this.taskRepository.listMessagesByTaskId(task.id),
+      this.taskRepository.listSessionsByTaskId(task.id),
+      this.taskRepository.listSubTasksByTaskId(task.id),
+      this.taskRepository.listMergeRecordsByTaskId(task.id),
+      this.taskRepository.listMailboxMessagesByTaskId(task.id),
+      this.taskRepository.listReviewRecords(),
+    ]);
+    const mergeRecordsBySubTaskId = groupRecordsBySubTaskId(mergeRecords);
+    const decoratedSessions = sessions.map((session) => this.#decorateSession(session));
+    const decoratedSubTasks = subTasks.map((subTask) => this.#decorateSubTask({
+      ...subTask,
+      mergeRecords: mergeRecordsBySubTaskId.get(subTask.id) ?? [],
+    }));
+
+    return {
+      ok: true,
+      board: this.#buildTaskBoardSnapshot(task, {
+        mailboxMessages,
+        messages,
+        reviewRecords: reviewRecords.filter((record) => subTasks.some((subTask) => subTask.id === record.subTaskId)),
+        sessions: decoratedSessions,
+        subTasks: decoratedSubTasks,
+      }),
     };
   }
 
@@ -3019,6 +3062,151 @@ export class TaskService {
     };
   }
 
+  #buildTaskBoardSnapshot(task, context) {
+    const subTasks = Array.isArray(context?.subTasks) ? context.subTasks : [];
+    const sessions = Array.isArray(context?.sessions) ? context.sessions : [];
+    const mailboxMessages = Array.isArray(context?.mailboxMessages) ? context.mailboxMessages : [];
+    const reviewRecords = Array.isArray(context?.reviewRecords) ? context.reviewRecords : [];
+    const messages = Array.isArray(context?.messages) ? context.messages : [];
+    const subTaskById = new Map(subTasks.map((subTask) => [subTask.id, subTask]));
+    const subTaskByBranchSuffix = new Map(subTasks.map((subTask) => [subTask.branchSuffix, subTask]));
+    const mailboxMessagesByTargetSubTaskId = groupMailboxMessagesByTargetSubTaskId(mailboxMessages);
+    const mailboxMessagesBySenderSubTaskId = groupMailboxMessagesBySenderSubTaskId(mailboxMessages);
+    const launchFailures = messages.map((message) => parseLaunchFailureMessage(message)).filter(Boolean);
+    const latestActivityBySubTaskId = new Map();
+    const activity = buildBoardActivityEntries({
+      launchFailures,
+      mailboxMessages,
+      reviewRecords,
+      sessions,
+      subTasks,
+    });
+
+    for (const entry of activity) {
+      if (entry.subTaskId && !latestActivityBySubTaskId.has(entry.subTaskId)) {
+        latestActivityBySubTaskId.set(entry.subTaskId, entry);
+      }
+    }
+
+    const actionRequiredItems = buildBoardActionRequiredItems({
+      launchFailures,
+      mailboxMessages,
+      subTasks,
+      task,
+    });
+    const graphNodes = subTasks.map((subTask) => {
+      const latestSession = sessions
+        .filter((session) => session.subTaskId === subTask.id)
+        .at(-1) ?? null;
+      const latestMergeRecord = Array.isArray(subTask.mergeRecords) ? subTask.mergeRecords.at(-1) ?? null : null;
+      const targetMessages = mailboxMessagesByTargetSubTaskId.get(subTask.id) ?? [];
+      const sentMessages = mailboxMessagesBySenderSubTaskId.get(subTask.id) ?? [];
+      const latestActivity = latestActivityBySubTaskId.get(subTask.id) ?? null;
+
+      return {
+        subtaskId: subTask.id,
+        title: subTask.title,
+        role: subTask.role ?? subTask.branchSuffix ?? "worker",
+        status: subTask.status,
+        agentType: subTask.agentType,
+        branchName: subTask.branchName ?? null,
+        executionOrder: subTask.executionOrder ?? null,
+        mailboxInboxCount: targetMessages.length,
+        mailboxOutboxCount: sentMessages.length,
+        latestActivitySummary: latestActivity?.summary ?? subTask.runSummary ?? null,
+        latestMergeStatus: latestMergeRecord?.status ?? null,
+        latestSessionStatus: latestSession?.status ?? null,
+        requiresAction: actionRequiredItems.some((item) => item.subTaskId === subTask.id),
+        unresolvedMailboxBlockers: targetMessages.filter((message) => message.messageType === MAILBOX_MESSAGE_TYPE.BLOCKER).length,
+      };
+    });
+    const graphEdges = subTasks.flatMap((subTask) => (
+      normalizeDependencyBranchSuffixes(subTask.dependencyBranchSuffixes).map((branchSuffix) => {
+        const upstreamSubTask = subTaskByBranchSuffix.get(branchSuffix) ?? null;
+        const dependencySatisfied = DEPENDENCY_SATISFIED_SUBTASK_STATUSES.has(upstreamSubTask?.status);
+        const handoffCount = mailboxMessages.filter((message) => (
+          message.senderSubTaskId === upstreamSubTask?.id
+          && message.targetSubTaskId === subTask.id
+        )).length;
+        const unresolvedBlockerCount = mailboxMessages.filter((message) => (
+          message.targetSubTaskId === subTask.id
+          && [MAILBOX_MESSAGE_TYPE.BLOCKER, MAILBOX_MESSAGE_TYPE.REVIEW_REQUEST, MAILBOX_MESSAGE_TYPE.TEST_REQUEST].includes(message.messageType)
+        )).length;
+
+        return {
+          from: upstreamSubTask?.id ?? branchSuffix,
+          fromBranchSuffix: branchSuffix,
+          handoffCount,
+          isBlocking: !dependencySatisfied || unresolvedBlockerCount > 0,
+          state: !dependencySatisfied
+            ? "BLOCKING"
+            : unresolvedBlockerCount > 0
+              ? "ATTENTION"
+              : handoffCount > 0
+                ? "HANDOFF_READY"
+                : "SATISFIED",
+          to: subTask.id,
+          unresolvedBlockerCount,
+        };
+      })
+    ));
+
+    return {
+      activity,
+      actionRequiredItems,
+      graph: {
+        edges: graphEdges,
+        nodes: graphNodes,
+      },
+      list: {
+        members: subTasks.map((subTask) => {
+          const latestSession = sessions
+            .filter((session) => session.subTaskId === subTask.id)
+            .at(-1) ?? null;
+
+          return {
+            agentType: subTask.agentType,
+            branchName: subTask.branchName ?? null,
+            dependencyBranchSuffixes: normalizeDependencyBranchSuffixes(subTask.dependencyBranchSuffixes),
+            latestSessionStatus: latestSession?.status ?? null,
+            role: subTask.role ?? subTask.branchSuffix ?? "worker",
+            runSummary: subTask.runSummary ?? buildDerivedRunSummary(subTask),
+            status: subTask.status,
+            subtaskId: subTask.id,
+            title: subTask.title,
+          };
+        }),
+      },
+      riskSummary: {
+        failedLaunches: launchFailures.length,
+        mailboxBlockers: mailboxMessages.filter((message) => message.messageType === MAILBOX_MESSAGE_TYPE.BLOCKER).length,
+        mergeConflicts: subTasks.filter((subTask) => (
+          Array.isArray(subTask.mergeRecords) && subTask.mergeRecords.some((record) => record.status === MERGE_STATUS.CONFLICT)
+        )).length,
+        reviewRequired: subTasks.filter((subTask) => (
+          [SUBTASK_STATUS.REWORK_REQUIRED, SUBTASK_STATUS.DISCARD_PENDING].includes(subTask.status)
+        )).length,
+        requiresAck: mailboxMessages.filter((message) => message.requiresAck).length,
+      },
+      summary: {
+        accepted: subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.ACCEPTED).length,
+        actionRequired: actionRequiredItems.length,
+        blocked: subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.BLOCKED).length,
+        failed: subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.FAILED).length,
+        merged: subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.MERGED).length,
+        pending: subTasks.filter((subTask) => [SUBTASK_STATUS.PENDING, SUBTASK_STATUS.READY].includes(subTask.status)).length,
+        reviewPending: subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.REVIEW_PENDING).length,
+        running: subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.RUNNING).length,
+      },
+      task: {
+        id: task.id,
+        lastError: task.lastError ?? null,
+        status: task.status,
+        title: task.title,
+      },
+    };
+  }
+
   #publishSubTaskStatus(taskId, subTask) {
     const decoratedSubTask = this.#decorateSubTask(subTask);
 
@@ -3045,6 +3233,15 @@ export class TaskService {
 
   #publish(taskId, eventName, data) {
     this.eventBus?.publish(taskId, eventName, data);
+
+    const boardActivity = buildBoardActivityEvent(eventName, data);
+
+    if (boardActivity) {
+      this.eventBus?.publish(taskId, "board:activity", {
+        ...boardActivity,
+        taskId,
+      });
+    }
   }
 
   async #publishTeamUpdated(taskId) {
@@ -4144,6 +4341,38 @@ function normalizeDependencyBranchSuffixes(value) {
   return value.filter((entry) => typeof entry === "string" && entry.trim().length > 0).map((entry) => entry.trim());
 }
 
+function groupMailboxMessagesByTargetSubTaskId(messages) {
+  const grouped = new Map();
+
+  for (const message of messages ?? []) {
+    if (!message.targetSubTaskId) {
+      continue;
+    }
+
+    const entry = grouped.get(message.targetSubTaskId) ?? [];
+    entry.push(message);
+    grouped.set(message.targetSubTaskId, entry);
+  }
+
+  return grouped;
+}
+
+function groupMailboxMessagesBySenderSubTaskId(messages) {
+  const grouped = new Map();
+
+  for (const message of messages ?? []) {
+    if (!message.senderSubTaskId) {
+      continue;
+    }
+
+    const entry = grouped.get(message.senderSubTaskId) ?? [];
+    entry.push(message);
+    grouped.set(message.senderSubTaskId, entry);
+  }
+
+  return grouped;
+}
+
 function groupRecordsBySubTaskId(records) {
   const grouped = new Map();
 
@@ -4154,6 +4383,258 @@ function groupRecordsBySubTaskId(records) {
   }
 
   return grouped;
+}
+
+function buildBoardActionRequiredItems(context) {
+  const subTasks = Array.isArray(context?.subTasks) ? context.subTasks : [];
+  const mailboxMessages = Array.isArray(context?.mailboxMessages) ? context.mailboxMessages : [];
+  const launchFailures = Array.isArray(context?.launchFailures) ? context.launchFailures : [];
+  const task = context?.task ?? null;
+  const items = [];
+
+  for (const subTask of subTasks) {
+    if (subTask.status === SUBTASK_STATUS.REWORK_REQUIRED) {
+      items.push({
+        createdAt: subTask.updatedAt ?? subTask.createdAt ?? null,
+        kind: "REWORK_REQUIRED",
+        primaryAction: "REWORK",
+        severity: 20,
+        subTaskId: subTask.id,
+        summary: subTask.latestReviewSummary ?? `${subTask.title} requires another worker pass.`,
+      });
+    }
+
+    if (subTask.status === SUBTASK_STATUS.DISCARD_PENDING) {
+      items.push({
+        createdAt: subTask.updatedAt ?? subTask.createdAt ?? null,
+        kind: "DISCARD_PENDING",
+        primaryAction: "CONFIRM_DISCARD",
+        severity: 10,
+        subTaskId: subTask.id,
+        summary: subTask.latestReviewSummary ?? `${subTask.title} is waiting for discard confirmation.`,
+      });
+    }
+
+    if (subTask.status === SUBTASK_STATUS.FAILED) {
+      items.push({
+        createdAt: subTask.updatedAt ?? subTask.createdAt ?? null,
+        kind: "FAILED_SUBTASK",
+        primaryAction: "REASSIGN",
+        severity: 15,
+        subTaskId: subTask.id,
+        summary: subTask.lastError ?? `${subTask.title} failed and needs operator intervention.`,
+      });
+    }
+
+    const latestMergeConflict = Array.isArray(subTask.mergeRecords)
+      ? [...subTask.mergeRecords].reverse().find((record) => record.status === MERGE_STATUS.CONFLICT) ?? null
+      : null;
+
+    if (latestMergeConflict) {
+      items.push({
+        createdAt: latestMergeConflict.completedAt ?? latestMergeConflict.createdAt ?? null,
+        kind: "MERGE_CONFLICT",
+        primaryAction: "REBASE_RETRY",
+        severity: 5,
+        subTaskId: subTask.id,
+        summary: latestMergeConflict.conflictSummary ?? `${subTask.title} hit a merge conflict.`,
+      });
+    }
+  }
+
+  for (const failure of launchFailures) {
+    items.push({
+      createdAt: failure.createdAt ?? null,
+      kind: failure.kind,
+      primaryAction: "REASSIGN",
+      severity: 12,
+      subTaskId: failure.subTaskId ?? null,
+      summary: failure.reason,
+    });
+  }
+
+  for (const message of mailboxMessages) {
+    if (![MAILBOX_MESSAGE_TYPE.BLOCKER, MAILBOX_MESSAGE_TYPE.REVIEW_REQUEST, MAILBOX_MESSAGE_TYPE.TEST_REQUEST].includes(message.messageType)) {
+      continue;
+    }
+
+    items.push({
+      createdAt: message.createdAt ?? null,
+      kind: message.messageType,
+      primaryAction: message.targetType === MAILBOX_TARGET_TYPE.LEAD ? "OPEN_MAILBOX" : "SEND_NOTE",
+      severity: message.messageType === MAILBOX_MESSAGE_TYPE.BLOCKER ? 18 : 25,
+      subTaskId: message.targetSubTaskId ?? message.senderSubTaskId ?? null,
+      summary: tailUtf8(message.content ?? "", 280),
+      targetType: message.targetType,
+    });
+  }
+
+  if (task?.status === TASK_STATUS.ACTION_REQUIRED && subTasks.length > 0 && isMergeResumeEligible(subTasks)) {
+    items.push({
+      createdAt: null,
+      kind: "TASK_RESUME_MERGE",
+      primaryAction: "RESUME_MERGE",
+      severity: 8,
+      subTaskId: null,
+      summary: "All merge blockers are resolved. Resume merge to continue integration.",
+    });
+  }
+
+  return items
+    .sort((left, right) => {
+      const severityDiff = (left.severity ?? 999) - (right.severity ?? 999);
+
+      if (severityDiff !== 0) {
+        return severityDiff;
+      }
+
+      return String(right.createdAt ?? "").localeCompare(String(left.createdAt ?? ""));
+    })
+    .map((item, index) => ({
+      ...item,
+      id: `${item.kind}:${item.subTaskId ?? "task"}:${index}`,
+    }));
+}
+
+function buildBoardActivityEntries(context) {
+  const subTasks = Array.isArray(context?.subTasks) ? context.subTasks : [];
+  const sessions = Array.isArray(context?.sessions) ? context.sessions : [];
+  const mailboxMessages = Array.isArray(context?.mailboxMessages) ? context.mailboxMessages : [];
+  const reviewRecords = Array.isArray(context?.reviewRecords) ? context.reviewRecords : [];
+  const launchFailures = Array.isArray(context?.launchFailures) ? context.launchFailures : [];
+  const subTaskById = new Map(subTasks.map((subTask) => [subTask.id, subTask]));
+  const entries = [];
+
+  for (const session of sessions) {
+    if (session.startedAt) {
+      entries.push({
+        createdAt: session.startedAt,
+        id: `session-start:${session.id}`,
+        kind: "SESSION_STARTED",
+        subTaskId: session.subTaskId ?? null,
+        summary: session.subTaskId
+          ? `${subTaskById.get(session.subTaskId)?.title ?? session.subTaskId} session started.`
+          : "Lead session started.",
+      });
+    }
+
+    if (session.endedAt) {
+      entries.push({
+        createdAt: session.endedAt,
+        id: `session-end:${session.id}`,
+        kind: "SESSION_ENDED",
+        subTaskId: session.subTaskId ?? null,
+        summary: session.subTaskId
+          ? `${subTaskById.get(session.subTaskId)?.title ?? session.subTaskId} session ended with ${session.status}.`
+          : `Lead session ended with ${session.status}.`,
+      });
+    }
+  }
+
+  for (const message of mailboxMessages) {
+    const senderSubTask = message.senderSubTaskId ? subTaskById.get(message.senderSubTaskId) : null;
+    const targetSubTask = message.targetSubTaskId ? subTaskById.get(message.targetSubTaskId) : null;
+    entries.push({
+      createdAt: message.createdAt,
+      id: `mailbox:${message.id}`,
+      kind: "MAILBOX_MESSAGE",
+      subTaskId: message.targetSubTaskId ?? message.senderSubTaskId ?? null,
+      summary: `${senderSubTask?.title ?? message.senderType.toLowerCase()} sent ${message.messageType} to ${targetSubTask?.title ?? message.targetType.toLowerCase()}.`,
+    });
+  }
+
+  for (const reviewRecord of reviewRecords) {
+    const subTask = subTaskById.get(reviewRecord.subTaskId);
+    entries.push({
+      createdAt: reviewRecord.createdAt,
+      id: `review:${reviewRecord.id}`,
+      kind: "REVIEW",
+      subTaskId: reviewRecord.subTaskId,
+      summary: `${subTask?.title ?? reviewRecord.subTaskId} received ${reviewRecord.phase} review: ${reviewRecord.decision}.`,
+    });
+  }
+
+  for (const subTask of subTasks) {
+    for (const mergeRecord of subTask.mergeRecords ?? []) {
+      entries.push({
+        createdAt: mergeRecord.completedAt ?? mergeRecord.createdAt,
+        id: `merge:${mergeRecord.id}`,
+        kind: "MERGE",
+        subTaskId: subTask.id,
+        summary: `${subTask.title} ${String(mergeRecord.operation).toLowerCase()} finished with ${String(mergeRecord.status).toLowerCase()}.`,
+      });
+    }
+  }
+
+  for (const failure of launchFailures) {
+    entries.push({
+      createdAt: failure.createdAt ?? null,
+      id: `launch-failure:${failure.subTaskId ?? failure.kind}:${failure.createdAt ?? ""}`,
+      kind: failure.kind,
+      subTaskId: failure.subTaskId ?? null,
+      summary: failure.reason,
+    });
+  }
+
+  return entries
+    .filter((entry) => entry.createdAt)
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+    .slice(0, 50);
+}
+
+function buildBoardActivityEvent(eventName, data) {
+  if (!eventName || eventName === "board:activity") {
+    return null;
+  }
+
+  const createdAt = new Date().toISOString();
+
+  switch (eventName) {
+    case "mailbox:message":
+      return {
+        createdAt,
+        kind: "MAILBOX_MESSAGE",
+        subTaskId: data?.message?.targetSubTaskId ?? data?.message?.senderSubTaskId ?? null,
+        summary: `Mailbox ${data?.message?.messageType ?? "NOTE"} recorded.`,
+      };
+    case "session:started":
+      return {
+        createdAt,
+        kind: "SESSION_STARTED",
+        subTaskId: data?.subtaskId ?? null,
+        summary: data?.subtaskId ? `Worker session started for ${data.subtaskId}.` : "Lead session started.",
+      };
+    case "session:ended":
+      return {
+        createdAt,
+        kind: "SESSION_ENDED",
+        subTaskId: data?.subtaskId ?? null,
+        summary: data?.subtaskId ? `Worker session ended for ${data.subtaskId}.` : "Lead session ended.",
+      };
+    case "subtask:review":
+      return {
+        createdAt,
+        kind: "REVIEW",
+        subTaskId: data?.subtaskId ?? data?.id ?? null,
+        summary: `Review recorded: ${data?.decision ?? "PENDING"}.`,
+      };
+    case "merge:status":
+      return {
+        createdAt,
+        kind: "MERGE",
+        subTaskId: data?.subtaskId ?? null,
+        summary: `Merge status changed to ${data?.status ?? "PENDING"}.`,
+      };
+    case "task:cleanup-warning":
+      return {
+        createdAt,
+        kind: "CLEANUP_WARNING",
+        subTaskId: null,
+        summary: data?.reason ?? "Cleanup warning recorded.",
+      };
+    default:
+      return null;
+  }
 }
 
 async function listConflictPaths(repoPath) {

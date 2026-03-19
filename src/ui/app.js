@@ -104,9 +104,74 @@ const UI_MESSAGES = {
     taskAttachmentsTitle: "任务范围文件",
     taskAttachmentsEmpty: "这个任务没有附加文件。",
     executionEyebrow: "执行",
-    executionBoardTitle: "摘要优先的 worker 看板",
-    executionBoardSummary: "先通过紧凑摘要监控全部子任务，再在需要时聚焦某个会话流获取更深层输出。",
+    executionBoardTitle: "监督式实时运行看板",
+    executionBoardSummary: "执行阶段默认切换到 board-first，总览团队状态、阻塞链路、风险聚合，再深入聚焦单个会话。",
     executionEmpty: "计划批准后，已批准的子任务和 worker 会话会显示在这里。",
+    operationsBoardEyebrow: "运行看板",
+    operationsBoardTitle: "实时运行总览",
+    operationsHealthTitle: "运行时与健康",
+    operationsRiskTitle: "风险聚合",
+    operationsActionEyebrow: "待处理",
+    operationsActionTitle: "需要人处理的事项",
+    operationsActionEmpty: "当前没有需要人工处理的事项。",
+    operationsModeLabel: "看板视图",
+    operationsGraphButton: "图谱",
+    operationsListButton: "列表",
+    operationsActivityButton: "活动",
+    operationsActivityEmpty: "当前还没有可展示的运行活动。",
+    operationsSummaryRunning: "运行中",
+    operationsSummaryBlocked: "阻塞中",
+    operationsSummaryActionRequired: "待处理",
+    operationsSummaryAccepted: "已接受",
+    operationsSummaryReviewPending: "待审查",
+    operationsSummaryFailed: "失败",
+    operationsSummaryMerged: "已合并",
+    operationsSummaryPending: "待启动",
+    operationsHealthLead: "Lead 健康",
+    operationsHealthWorkers: "Worker 健康",
+    operationsHealthSandbox: "Docker 沙箱",
+    operationsHealthRuntime: "运行时模式",
+    operationsRiskMailbox: "Mailbox blocker",
+    operationsRiskReview: "审查风险",
+    operationsRiskMerge: "Merge 冲突",
+    operationsRiskLaunch: "启动失败",
+    operationsRiskAck: "待确认 handoff",
+    operationsModeGraphBadge: "图谱",
+    operationsModeListBadge: "列表",
+    operationsModeActivityBadge: "活动",
+    operationsGraphNoDependencies: "当前执行计划没有依赖边。",
+    operationsGraphDependencies: "依赖边",
+    operationsGraphMailbox: "Handoff",
+    operationsGraphBlocking: "阻塞",
+    operationsGraphSatisfied: "已满足",
+    operationsGraphAttention: "需关注",
+    operationsGraphReady: "已交接",
+    operationsGraphLatestEvent: "最近事件",
+    operationsActionOpenButton: "打开",
+    operationsActionReworkButton: "返工",
+    operationsActionDiscardButton: "丢弃",
+    operationsActionRebaseButton: "Rebase",
+    operationsActionResumeButton: "恢复合并",
+    operationsActionReassignButton: "重派发",
+    operationsActionReplaceButton: "替换 Agent",
+    operationsActionSendNoteButton: "发消息",
+    operationsActivitySessionStarted: "会话启动",
+    operationsActivitySessionEnded: "会话结束",
+    operationsActivityMailbox: "Mailbox",
+    operationsActivityReview: "审查",
+    operationsActivityMerge: "合并",
+    operationsActivityFailure: "失败",
+    operationsActivityUnknown: "事件",
+    operationsActionKindMergeConflict: "Merge 冲突",
+    operationsActionKindDiscardPending: "待确认丢弃",
+    operationsActionKindReworkRequired: "需要返工",
+    operationsActionKindFailedSubtask: "执行失败",
+    operationsActionKindSandboxLaunchFailure: "沙箱启动失败",
+    operationsActionKindWorkerLaunchFailure: "Worker 启动失败",
+    operationsActionKindBlocker: "阻塞",
+    operationsActionKindReviewRequest: "审查请求",
+    operationsActionKindTestRequest: "测试请求",
+    operationsActionKindTaskResumeMerge: "恢复合并",
     focusedSessionEyebrow: "聚焦会话",
     selectSubtaskTitle: "选择一个子任务",
     reworkDescriptionLabel: "返工描述",
@@ -446,9 +511,74 @@ const UI_MESSAGES = {
     taskAttachmentsTitle: "Task-scoped files",
     taskAttachmentsEmpty: "No attachments were added for this task.",
     executionEyebrow: "Execution",
-    executionBoardTitle: "Summary-first worker board",
-    executionBoardSummary: "Monitor every subtask from compact live summaries, then focus a single session stream when you need deeper output.",
+    executionBoardTitle: "Supervised live operations board",
+    executionBoardSummary: "Execution now defaults to a board-first view: inspect team state, blockers, and risk hotspots before drilling into one focused session.",
     executionEmpty: "Approved subtasks and worker sessions will appear here after plan approval.",
+    operationsBoardEyebrow: "Operations board",
+    operationsBoardTitle: "Live execution overview",
+    operationsHealthTitle: "Runtime and health",
+    operationsRiskTitle: "Risk aggregation",
+    operationsActionEyebrow: "Action queue",
+    operationsActionTitle: "Human decisions required",
+    operationsActionEmpty: "No operator action is required right now.",
+    operationsModeLabel: "Board mode",
+    operationsGraphButton: "Graph",
+    operationsListButton: "List",
+    operationsActivityButton: "Activity",
+    operationsActivityEmpty: "No live execution activity is available yet.",
+    operationsSummaryRunning: "Running",
+    operationsSummaryBlocked: "Blocked",
+    operationsSummaryActionRequired: "Action required",
+    operationsSummaryAccepted: "Accepted",
+    operationsSummaryReviewPending: "Review pending",
+    operationsSummaryFailed: "Failed",
+    operationsSummaryMerged: "Merged",
+    operationsSummaryPending: "Queued",
+    operationsHealthLead: "Lead health",
+    operationsHealthWorkers: "Worker health",
+    operationsHealthSandbox: "Docker sandbox",
+    operationsHealthRuntime: "Runtime mode",
+    operationsRiskMailbox: "Mailbox blockers",
+    operationsRiskReview: "Review risk",
+    operationsRiskMerge: "Merge conflicts",
+    operationsRiskLaunch: "Launch failures",
+    operationsRiskAck: "Ack-required handoffs",
+    operationsModeGraphBadge: "Graph",
+    operationsModeListBadge: "List",
+    operationsModeActivityBadge: "Activity",
+    operationsGraphNoDependencies: "The current execution plan has no dependency edges.",
+    operationsGraphDependencies: "Dependencies",
+    operationsGraphMailbox: "Handoff",
+    operationsGraphBlocking: "Blocking",
+    operationsGraphSatisfied: "Satisfied",
+    operationsGraphAttention: "Needs attention",
+    operationsGraphReady: "Handoff ready",
+    operationsGraphLatestEvent: "Latest event",
+    operationsActionOpenButton: "Open",
+    operationsActionReworkButton: "Rework",
+    operationsActionDiscardButton: "Discard",
+    operationsActionRebaseButton: "Rebase",
+    operationsActionResumeButton: "Resume merge",
+    operationsActionReassignButton: "Reassign",
+    operationsActionReplaceButton: "Replace agent",
+    operationsActionSendNoteButton: "Send note",
+    operationsActivitySessionStarted: "Session started",
+    operationsActivitySessionEnded: "Session ended",
+    operationsActivityMailbox: "Mailbox",
+    operationsActivityReview: "Review",
+    operationsActivityMerge: "Merge",
+    operationsActivityFailure: "Failure",
+    operationsActivityUnknown: "Event",
+    operationsActionKindMergeConflict: "Merge conflict",
+    operationsActionKindDiscardPending: "Discard pending",
+    operationsActionKindReworkRequired: "Rework required",
+    operationsActionKindFailedSubtask: "Execution failed",
+    operationsActionKindSandboxLaunchFailure: "Sandbox launch failure",
+    operationsActionKindWorkerLaunchFailure: "Worker launch failure",
+    operationsActionKindBlocker: "Blocker",
+    operationsActionKindReviewRequest: "Review request",
+    operationsActionKindTestRequest: "Test request",
+    operationsActionKindTaskResumeMerge: "Resume merge",
     focusedSessionEyebrow: "Focused session",
     selectSubtaskTitle: "Select a subtask",
     reworkDescriptionLabel: "Rework description",
@@ -780,6 +910,7 @@ const state = {
   taskPlanDraftState: null,
   taskPlanNotice: null,
   taskPlanView: "graph",
+  taskOperationsView: "graph",
   tasks: [],
   taskStream: null,
   workerCandidates: [],
@@ -845,17 +976,31 @@ const elements = {
   taskDetailFeedback: document.querySelector("#task-detail-feedback"),
   taskDetailTitle: document.querySelector("#task-detail-title"),
   taskExecutionBoard: document.querySelector("#task-execution-board"),
+  taskExecutionActivityButton: document.querySelector("#task-operations-activity-button"),
+  taskExecutionActivityEmpty: document.querySelector("#task-operations-activity-empty"),
+  taskExecutionActivityList: document.querySelector("#task-operations-activity-list"),
+  taskExecutionActivityPanel: document.querySelector("#task-operations-activity-panel"),
+  taskExecutionActionCount: document.querySelector("#task-operations-action-count"),
+  taskExecutionActionEmpty: document.querySelector("#task-operations-action-empty"),
+  taskExecutionActionList: document.querySelector("#task-operations-action-list"),
   taskExecutionEmpty: document.querySelector("#task-execution-empty"),
   taskExecutionFocus: document.querySelector("#task-execution-focus"),
   taskExecutionFocusBadge: document.querySelector("#task-execution-focus-badge"),
   taskExecutionFocusEmpty: document.querySelector("#task-execution-focus-empty"),
   taskExecutionFocusMeta: document.querySelector("#task-execution-focus-meta"),
   taskExecutionFocusPreview: document.querySelector("#task-execution-focus-preview"),
+  taskExecutionGraphButton: document.querySelector("#task-operations-graph-button"),
+  taskExecutionGraphPanel: document.querySelector("#task-operations-graph-panel"),
+  taskExecutionGraphView: document.querySelector("#task-operations-graph"),
+  taskExecutionHealthList: document.querySelector("#task-operations-health-list"),
   taskExecutionAgentField: document.querySelector("#task-execution-agent-field"),
   taskExecutionAgentSelect: document.querySelector("#task-execution-agent-select"),
   taskExecutionChangeAgentButton: document.querySelector("#task-execution-change-agent-button"),
   taskExecutionCancelButton: document.querySelector("#task-execution-cancel-button"),
   taskExecutionConfirmDiscardButton: document.querySelector("#task-execution-confirm-discard-button"),
+  taskExecutionListButton: document.querySelector("#task-operations-list-button"),
+  taskExecutionListPanel: document.querySelector("#task-operations-list-panel"),
+  taskExecutionModeBadge: document.querySelector("#task-operations-mode-badge"),
   taskExecutionReworkButton: document.querySelector("#task-execution-rework-button"),
   taskExecutionRebaseRetryButton: document.querySelector("#task-execution-rebase-retry-button"),
   taskExecutionReassignButton: document.querySelector("#task-execution-reassign-button"),
@@ -895,9 +1040,11 @@ const elements = {
   taskExecutionReviewFeedback: document.querySelector("#task-execution-review-feedback"),
   taskExecutionReviewPhase: document.querySelector("#task-execution-review-phase"),
   taskExecutionReviewSummary: document.querySelector("#task-execution-review-summary"),
+  taskExecutionRiskList: document.querySelector("#task-operations-risk-list"),
   taskExecutionFocusTitle: document.querySelector("#task-execution-focus-title"),
   taskExecutionSessionList: document.querySelector("#task-execution-session-list"),
   taskExecutionList: document.querySelector("#task-execution-list"),
+  taskExecutionSummaryList: document.querySelector("#task-operations-summary-list"),
   taskTeamEmpty: document.querySelector("#task-team-empty"),
   taskTeamLeadMeta: document.querySelector("#task-team-lead-meta"),
   taskTeamLeadStatus: document.querySelector("#task-team-lead-status"),
@@ -987,6 +1134,9 @@ elements.taskPlanListViewButton.addEventListener("click", () => onSetPlanView("l
 elements.taskPlanResetDraftButton.addEventListener("click", onResetPlanDraft);
 elements.taskPlanSaveDraftButton.addEventListener("click", onSavePlanDraft);
 elements.taskPlanNotesInput.addEventListener("input", onPlanNotesInput);
+elements.taskExecutionGraphButton.addEventListener("click", () => onSetTaskOperationsView("graph"));
+elements.taskExecutionListButton.addEventListener("click", () => onSetTaskOperationsView("list"));
+elements.taskExecutionActivityButton.addEventListener("click", () => onSetTaskOperationsView("activity"));
 elements.taskExecutionAgentSelect.addEventListener("change", onExecutionDraftAgentInput);
 elements.taskExecutionChangeAgentButton.addEventListener("click", onChangeSubTaskAgent);
 elements.taskExecutionCancelButton.addEventListener("click", onCancelSubTask);
@@ -1706,6 +1856,633 @@ function renderCleanupWarnings(cleanupWarnings) {
   }
 }
 
+function buildTaskOperationsBoard(detail, sessionsBySubTaskId) {
+  const subTasks = detail.subTasks ?? [];
+  const mailboxMessages = detail.mailboxMessages ?? [];
+  const messages = detail.messages ?? [];
+  const launchFailures = messages
+    .map(parseLaunchFailureMessageFromDetail)
+    .filter(Boolean);
+  const summary = {
+    accepted: subTasks.filter((subTask) => subTask.status === "ACCEPTED").length,
+    actionRequired: 0,
+    blocked: subTasks.filter((subTask) => subTask.status === "BLOCKED").length,
+    failed: subTasks.filter((subTask) => subTask.status === "FAILED").length,
+    merged: subTasks.filter((subTask) => subTask.status === "MERGED").length,
+    pending: subTasks.filter((subTask) => ["PENDING", "READY"].includes(subTask.status)).length,
+    reviewPending: subTasks.filter((subTask) => subTask.status === "REVIEW_PENDING").length,
+    running: subTasks.filter((subTask) => subTask.status === "RUNNING").length,
+  };
+  const actionRequiredItems = buildTaskOperationActionItems(detail, launchFailures);
+  summary.actionRequired = actionRequiredItems.length;
+
+  return {
+    actionRequiredItems,
+    activity: buildTaskOperationActivities(detail, launchFailures, sessionsBySubTaskId),
+    graph: buildTaskOperationGraph(detail, mailboxMessages, sessionsBySubTaskId, actionRequiredItems),
+    health: buildTaskOperationHealth(detail, subTasks),
+    risk: {
+      launchFailures: launchFailures.length,
+      mailboxBlockers: mailboxMessages.filter((message) => message.messageType === "BLOCKER").length,
+      mergeConflicts: subTasks.filter((subTask) => (subTask.mergeRecords ?? []).some((record) => record.status === "CONFLICT")).length,
+      requiresAck: mailboxMessages.filter((message) => message.requiresAck).length,
+      reviewRequired: subTasks.filter((subTask) => ["DISCARD_PENDING", "REWORK_REQUIRED"].includes(subTask.status)).length,
+    },
+    summary,
+  };
+}
+
+function buildTaskOperationGraph(detail, mailboxMessages, sessionsBySubTaskId, actionRequiredItems) {
+  const subTasks = detail.subTasks ?? [];
+  const byBranchSuffix = new Map(subTasks.map((subTask) => [subTask.branchSuffix, subTask]));
+  const nodes = subTasks.map((subTask) => ({
+    ...subTask,
+    isSelected: subTask.id === state.selectedExecutionSubTaskId,
+    latestActivity: buildSubTaskLatestActivitySummary(detail, subTask.id, sessionsBySubTaskId),
+    latestSession: (sessionsBySubTaskId.get(subTask.id) ?? []).at(-1) ?? null,
+    requiresAction: actionRequiredItems.some((item) => item.subTaskId === subTask.id),
+  }));
+  const edges = subTasks.flatMap((subTask) => (
+    (subTask.dependencyBranchSuffixes ?? []).map((branchSuffix) => {
+      const fromSubTask = byBranchSuffix.get(branchSuffix) ?? null;
+      const handoffCount = mailboxMessages.filter((message) => (
+        message.senderSubTaskId === fromSubTask?.id && message.targetSubTaskId === subTask.id
+      )).length;
+      const blockerCount = mailboxMessages.filter((message) => (
+        message.targetSubTaskId === subTask.id
+        && ["BLOCKER", "REVIEW_REQUEST", "TEST_REQUEST"].includes(message.messageType)
+      )).length;
+      const dependencySatisfied = ["ACCEPTED", "MERGED", "REVIEW_PENDING"].includes(fromSubTask?.status);
+
+      return {
+        blockerCount,
+        from: fromSubTask?.id ?? branchSuffix,
+        fromBranchSuffix: branchSuffix,
+        handoffCount,
+        state: !dependencySatisfied
+          ? "BLOCKING"
+          : blockerCount > 0
+            ? "ATTENTION"
+            : handoffCount > 0
+              ? "HANDOFF_READY"
+              : "SATISFIED",
+        to: subTask.id,
+      };
+    })
+  ));
+
+  return { edges, nodes };
+}
+
+function buildSubTaskLatestActivitySummary(detail, subTaskId, sessionsBySubTaskId) {
+  const latestSession = (sessionsBySubTaskId.get(subTaskId) ?? []).at(-1) ?? null;
+  const latestMailbox = [...(detail.mailboxMessages ?? [])]
+    .filter((message) => message.targetSubTaskId === subTaskId || message.senderSubTaskId === subTaskId)
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+    .at(0) ?? null;
+
+  if (latestMailbox) {
+    return latestMailbox.content ?? buildMailboxMessageTypeLabel(latestMailbox.messageType);
+  }
+
+  if (latestSession?.endedAt) {
+    return `${translateStatusLabel(latestSession.status)} · ${formatTimestamp(latestSession.endedAt)}`;
+  }
+
+  if (latestSession?.startedAt) {
+    return `${translateStatusLabel(latestSession.status)} · ${formatTimestamp(latestSession.startedAt)}`;
+  }
+
+  return null;
+}
+
+function buildTaskOperationHealth(detail, subTasks) {
+  const distinctWorkerAgents = [...new Set(subTasks.map((subTask) => subTask.agentType).filter(Boolean))];
+  const workerHealthSnapshots = distinctWorkerAgents.map((agentType) => state.agentHealth?.[agentType]).filter(Boolean);
+  const runtimeModes = distinctWorkerAgents
+    .map((agentType) => {
+      const agent = state.agents.find((entry) => entry.name === agentType);
+      return agent ? buildAgentRuntimeModeLabel(agent, state.agentHealth?.[agentType] ?? null) : null;
+    })
+    .filter(Boolean);
+
+  return {
+    lead: buildAgentStatusLabel(state.agentHealth?.[detail.task.leadAgentType] ?? { available: true, checks: [] }),
+    runtimeMode: runtimeModes.length > 0 ? runtimeModes.join(" / ") : t("notConfigured"),
+    sandbox: buildDockerHealthLabel(state.systemDockerHealth ?? null),
+    workers: workerHealthSnapshots.length > 0
+      ? `${workerHealthSnapshots.filter((snapshot) => snapshot.available).length}/${workerHealthSnapshots.length}`
+      : "0/0",
+  };
+}
+
+function buildTaskOperationActionItems(detail, launchFailures) {
+  const items = [];
+  const subTasks = detail.subTasks ?? [];
+  const mailboxMessages = detail.mailboxMessages ?? [];
+
+  for (const subTask of subTasks) {
+    if (subTask.status === "DISCARD_PENDING") {
+      items.push({
+        kind: "DISCARD_PENDING",
+        label: t("operationsActionDiscardButton"),
+        primaryAction: "CONFIRM_DISCARD",
+        subTaskId: subTask.id,
+        summary: subTask.latestReviewSummary ?? subTask.runSummary ?? subTask.title,
+      });
+    }
+
+    if (subTask.status === "REWORK_REQUIRED") {
+      items.push({
+        kind: "REWORK_REQUIRED",
+        label: t("operationsActionReworkButton"),
+        primaryAction: "REWORK",
+        subTaskId: subTask.id,
+        summary: subTask.latestReviewSummary ?? subTask.runSummary ?? subTask.title,
+      });
+    }
+
+    if (subTask.status === "FAILED") {
+      items.push({
+        kind: "FAILED_SUBTASK",
+        label: t("operationsActionReassignButton"),
+        primaryAction: "REASSIGN",
+        subTaskId: subTask.id,
+        summary: subTask.lastError ?? subTask.runSummary ?? subTask.title,
+      });
+    }
+
+    const latestConflict = [...(subTask.mergeRecords ?? [])].reverse().find((record) => record.status === "CONFLICT") ?? null;
+
+    if (latestConflict) {
+      items.push({
+        kind: "MERGE_CONFLICT",
+        label: t("operationsActionRebaseButton"),
+        primaryAction: "REBASE_RETRY",
+        subTaskId: subTask.id,
+        summary: latestConflict.conflictSummary ?? subTask.title,
+      });
+    }
+  }
+
+  for (const failure of launchFailures) {
+    items.push({
+      kind: failure.kind,
+      label: t("operationsActionReplaceButton"),
+      primaryAction: "OPEN",
+      subTaskId: failure.subTaskId ?? null,
+      summary: failure.reason,
+    });
+  }
+
+  for (const message of mailboxMessages) {
+    if (!["BLOCKER", "REVIEW_REQUEST", "TEST_REQUEST"].includes(message.messageType)) {
+      continue;
+    }
+
+    items.push({
+      kind: message.messageType,
+      label: message.targetType === "LEAD" ? t("operationsActionOpenButton") : t("operationsActionSendNoteButton"),
+      primaryAction: "OPEN",
+      subTaskId: message.targetSubTaskId ?? message.senderSubTaskId ?? null,
+      summary: message.content,
+    });
+  }
+
+  if (
+    detail.task?.status === "ACTION_REQUIRED"
+    && subTasks.length > 0
+    && subTasks.every((subTask) => ["ACCEPTED", "CANCELLED", "DISCARDED", "MERGED"].includes(subTask.status))
+  ) {
+    items.push({
+      kind: "TASK_RESUME_MERGE",
+      label: t("operationsActionResumeButton"),
+      primaryAction: "RESUME_MERGE",
+      subTaskId: null,
+      summary: detail.task.lastError ?? t("mergeResumed"),
+    });
+  }
+
+  return items.sort((left, right) => buildActionPriority(left.kind) - buildActionPriority(right.kind));
+}
+
+function buildActionPriority(kind) {
+  switch (kind) {
+    case "MERGE_CONFLICT":
+      return 1;
+    case "DISCARD_PENDING":
+      return 2;
+    case "REWORK_REQUIRED":
+      return 3;
+    case "FAILED_SUBTASK":
+    case "SANDBOX_LAUNCH_FAILURE":
+    case "WORKER_LAUNCH_FAILURE":
+      return 4;
+    case "BLOCKER":
+      return 5;
+    default:
+      return 10;
+  }
+}
+
+function buildTaskOperationActivities(detail, launchFailures, sessionsBySubTaskId) {
+  const subTaskById = new Map((detail.subTasks ?? []).map((subTask) => [subTask.id, subTask]));
+  const activities = [];
+
+  for (const session of detail.sessions ?? []) {
+    if (session.startedAt) {
+      activities.push({
+        createdAt: session.startedAt,
+        kind: "SESSION_STARTED",
+        subTaskId: session.subTaskId ?? null,
+        summary: session.subTaskId
+          ? `${subTaskById.get(session.subTaskId)?.title ?? session.subTaskId} ${t("operationsActivitySessionStarted")}`
+          : `Lead ${t("operationsActivitySessionStarted")}`,
+      });
+    }
+
+    if (session.endedAt) {
+      activities.push({
+        createdAt: session.endedAt,
+        kind: "SESSION_ENDED",
+        subTaskId: session.subTaskId ?? null,
+        summary: session.subTaskId
+          ? `${subTaskById.get(session.subTaskId)?.title ?? session.subTaskId} ${t("operationsActivitySessionEnded")}`
+          : `Lead ${t("operationsActivitySessionEnded")}`,
+      });
+    }
+  }
+
+  for (const message of detail.mailboxMessages ?? []) {
+    activities.push({
+      createdAt: message.createdAt,
+      kind: "MAILBOX_MESSAGE",
+      subTaskId: message.targetSubTaskId ?? message.senderSubTaskId ?? null,
+      summary: `${buildMailboxDirectionLabel(detail, message)} · ${buildMailboxMessageTypeLabel(message.messageType)}`,
+    });
+  }
+
+  for (const subTask of detail.subTasks ?? []) {
+    for (const mergeRecord of subTask.mergeRecords ?? []) {
+      activities.push({
+        createdAt: mergeRecord.completedAt ?? mergeRecord.createdAt,
+        kind: "MERGE",
+        subTaskId: subTask.id,
+        summary: `${subTask.title} · ${buildMergeOperationLabel(mergeRecord.operation)} · ${buildMergeStatusLabel(mergeRecord.status)}`,
+      });
+    }
+
+    if (subTask.latestReviewPhase && subTask.latestReviewDecision) {
+      activities.push({
+        createdAt: (sessionsBySubTaskId.get(subTask.id) ?? []).at(-1)?.endedAt ?? subTask.updatedAt ?? null,
+        kind: "REVIEW",
+        subTaskId: subTask.id,
+        summary: `${subTask.title} · ${buildReviewPhaseLabel(subTask.latestReviewPhase)} · ${buildReviewDecisionLabel(subTask.latestReviewDecision)}`,
+      });
+    }
+  }
+
+  for (const failure of launchFailures) {
+    activities.push({
+      createdAt: failure.createdAt,
+      kind: "FAILURE",
+      subTaskId: failure.subTaskId ?? null,
+      summary: failure.reason,
+    });
+  }
+
+  return activities
+    .filter((activity) => activity.createdAt)
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+    .slice(0, 40);
+}
+
+function parseLaunchFailureMessageFromDetail(message) {
+  if (
+    message?.role !== "SYSTEM"
+    || typeof message.content !== "string"
+    || !message.content.startsWith("Launch failure: ")
+  ) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(message.content.slice("Launch failure: ".length));
+  } catch {
+    return null;
+  }
+}
+
+function renderTaskOperationsSummary(boardSnapshot) {
+  const summaryItems = [
+    ["operationsSummaryRunning", boardSnapshot.summary.running],
+    ["operationsSummaryBlocked", boardSnapshot.summary.blocked],
+    ["operationsSummaryActionRequired", boardSnapshot.summary.actionRequired],
+    ["operationsSummaryAccepted", boardSnapshot.summary.accepted],
+    ["operationsSummaryReviewPending", boardSnapshot.summary.reviewPending],
+    ["operationsSummaryFailed", boardSnapshot.summary.failed],
+    ["operationsSummaryMerged", boardSnapshot.summary.merged],
+    ["operationsSummaryPending", boardSnapshot.summary.pending],
+  ];
+
+  elements.taskExecutionSummaryList.replaceChildren();
+
+  for (const [labelKey, count] of summaryItems) {
+    const card = document.createElement("article");
+    card.className = "operations-summary-card";
+    card.innerHTML = `
+      <p class="operations-summary-card__label">${escapeHtml(t(labelKey))}</p>
+      <p class="operations-summary-card__value">${escapeHtml(String(count))}</p>
+    `;
+    elements.taskExecutionSummaryList.append(card);
+  }
+}
+
+function renderTaskOperationsHealth(boardSnapshot) {
+  renderOperationsMetaList(elements.taskExecutionHealthList, [
+    [t("operationsHealthLead"), boardSnapshot.health.lead],
+    [t("operationsHealthWorkers"), boardSnapshot.health.workers],
+    [t("operationsHealthSandbox"), boardSnapshot.health.sandbox],
+    [t("operationsHealthRuntime"), boardSnapshot.health.runtimeMode],
+  ]);
+}
+
+function renderTaskOperationsRisk(boardSnapshot) {
+  renderOperationsMetaList(elements.taskExecutionRiskList, [
+    [t("operationsRiskMailbox"), boardSnapshot.risk.mailboxBlockers],
+    [t("operationsRiskReview"), boardSnapshot.risk.reviewRequired],
+    [t("operationsRiskMerge"), boardSnapshot.risk.mergeConflicts],
+    [t("operationsRiskLaunch"), boardSnapshot.risk.launchFailures],
+    [t("operationsRiskAck"), boardSnapshot.risk.requiresAck],
+  ]);
+}
+
+function renderOperationsMetaList(element, entries) {
+  element.replaceChildren();
+
+  for (const [label, value] of entries) {
+    const item = document.createElement("div");
+    item.className = "operations-meta-item";
+    item.innerHTML = `
+      <span class="operations-meta-item__label">${escapeHtml(String(label))}</span>
+      <span class="operations-meta-item__value">${escapeHtml(String(value))}</span>
+    `;
+    element.append(item);
+  }
+}
+
+function renderTaskOperationsActionQueue(boardSnapshot) {
+  elements.taskExecutionActionList.replaceChildren();
+  elements.taskExecutionActionCount.textContent = String(boardSnapshot.actionRequiredItems.length);
+  elements.taskExecutionActionEmpty.hidden = boardSnapshot.actionRequiredItems.length > 0;
+
+  for (const item of boardSnapshot.actionRequiredItems) {
+    const card = document.createElement("article");
+    card.className = "operations-action-card";
+    const buttonLabel = item.label ?? buildOperationsActionButtonLabel(item.primaryAction);
+    card.innerHTML = `
+      <div class="operations-action-card__header">
+        <div>
+          <p class="operations-action-card__title">${escapeHtml(buildOperationsActionTitle(item.kind))}</p>
+          <p class="operations-action-card__summary">${escapeHtml(item.summary ?? "")}</p>
+        </div>
+        <button class="button button--secondary" type="button">${escapeHtml(buttonLabel)}</button>
+      </div>
+    `;
+    card.querySelector("button")?.addEventListener("click", () => {
+      void onTaskOperationsAction(item);
+    });
+    elements.taskExecutionActionList.append(card);
+  }
+}
+
+async function onTaskOperationsAction(item) {
+  if (item.subTaskId) {
+    state.selectedExecutionSubTaskId = item.subTaskId;
+    state.selectedExecutionSessionId = resolveFocusedSession(state.taskDetail, item.subTaskId)?.id ?? null;
+    renderTaskDetail();
+  }
+
+  switch (item.primaryAction) {
+    case "REWORK":
+      await onReworkSubTask();
+      break;
+    case "CONFIRM_DISCARD":
+      await onConfirmDiscardSubTask();
+      break;
+    case "REBASE_RETRY":
+      await onRebaseRetrySubTask();
+      break;
+    case "RESUME_MERGE":
+      await onResumeTaskMerge();
+      break;
+    case "REASSIGN":
+      await onReassignSubTask();
+      break;
+    default:
+      renderTaskDetail();
+      break;
+  }
+}
+
+function renderTaskOperationsGraph(boardSnapshot) {
+  elements.taskExecutionGraphView.replaceChildren();
+
+  const columns = buildTaskOperationsGraphColumns(boardSnapshot.graph.nodes);
+
+  if (columns.length === 0) {
+    return;
+  }
+
+  for (const column of columns) {
+    const section = document.createElement("section");
+    section.className = "operations-graph__column";
+    section.innerHTML = `
+      <div class="operations-graph__column-header">
+        <p class="panel__eyebrow">${escapeHtml(t("graphColumnLabel", { count: column.level + 1 }))}</p>
+        <span class="badge badge--outline">${escapeHtml(countLabel(column.nodes.length, "nodeCountOne", "nodeCountOther"))}</span>
+      </div>
+    `;
+
+    for (const node of column.nodes) {
+      const nodeCard = document.createElement("button");
+      const nodeEdges = boardSnapshot.graph.edges.filter((edge) => edge.to === node.id);
+      nodeCard.type = "button";
+      nodeCard.className = `operations-graph__node${node.isSelected ? " is-selected" : ""}`;
+      nodeCard.innerHTML = `
+        <div class="operations-graph__node-header">
+          <div>
+            <p class="operations-graph__node-title">${escapeHtml(node.displayName ?? node.title)}</p>
+            <p class="operations-graph__node-meta">${escapeHtml([node.role ?? node.branchSuffix, node.agentType].filter(Boolean).join(" · "))}</p>
+          </div>
+          <span class="badge ${buildExecutionStatusBadgeClass(node.status)}">${escapeHtml(buildSubTaskStatusLabel(node.status))}</span>
+        </div>
+        <p class="operations-graph__node-summary">${escapeHtml(node.latestActivity ?? node.runSummary ?? "")}</p>
+        <div class="operations-graph__edge-list">
+          ${nodeEdges.length > 0 ? nodeEdges.map((edge) => `
+            <span class="operations-edge operations-edge--${escapeHtmlAttribute(edge.state.toLowerCase())}">
+              ${escapeHtml(edge.fromBranchSuffix)} · ${escapeHtml(buildOperationsEdgeStateLabel(edge.state))}
+              ${edge.handoffCount > 0 ? ` · ${escapeHtml(t("operationsGraphMailbox"))} ${escapeHtml(String(edge.handoffCount))}` : ""}
+              ${edge.blockerCount > 0 ? ` · ${escapeHtml(t("operationsGraphBlocking"))} ${escapeHtml(String(edge.blockerCount))}` : ""}
+            </span>
+          `).join("") : `<span class="operations-edge operations-edge--satisfied">${escapeHtml(t("operationsGraphNoDependencies"))}</span>`}
+        </div>
+      `;
+      nodeCard.addEventListener("click", () => {
+        state.selectedExecutionSubTaskId = node.id;
+        state.selectedExecutionSessionId = resolveFocusedSession(state.taskDetail, node.id)?.id ?? null;
+        renderTaskDetail();
+      });
+      section.append(nodeCard);
+    }
+
+    elements.taskExecutionGraphView.append(section);
+  }
+}
+
+function buildTaskOperationsGraphColumns(nodes) {
+  const nodeByBranchSuffix = new Map(nodes.map((node) => [node.branchSuffix, node]));
+  const levelCache = new Map();
+  const resolveLevel = (node) => {
+    if (levelCache.has(node.id)) {
+      return levelCache.get(node.id);
+    }
+
+    const level = (node.dependencyBranchSuffixes ?? []).length === 0
+      ? 0
+      : Math.max(...node.dependencyBranchSuffixes.map((branchSuffix) => resolveLevel(nodeByBranchSuffix.get(branchSuffix) ?? { id: branchSuffix, dependencyBranchSuffixes: [] }))) + 1;
+
+    levelCache.set(node.id, level);
+    return level;
+  };
+  const columns = new Map();
+
+  for (const node of nodes) {
+    const level = resolveLevel(node);
+    const entries = columns.get(level) ?? [];
+    entries.push(node);
+    columns.set(level, entries);
+  }
+
+  return [...columns.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([level, columnNodes]) => ({ level, nodes: columnNodes }));
+}
+
+function renderTaskOperationsActivity(boardSnapshot) {
+  elements.taskExecutionActivityList.replaceChildren();
+  elements.taskExecutionActivityEmpty.hidden = boardSnapshot.activity.length > 0;
+
+  for (const activity of boardSnapshot.activity) {
+    const item = document.createElement("article");
+    item.className = "operations-activity-item";
+    item.innerHTML = `
+      <div class="operations-activity-item__header">
+        <p class="operations-activity-item__kind">${escapeHtml(buildOperationsActivityKindLabel(activity.kind))}</p>
+        <p class="operations-activity-item__time">${escapeHtml(formatTimestamp(activity.createdAt))}</p>
+      </div>
+      <p class="operations-activity-item__summary">${escapeHtml(activity.summary)}</p>
+    `;
+    elements.taskExecutionActivityList.append(item);
+  }
+}
+
+function toggleBoardModeButton(button, active) {
+  button.classList.toggle("is-active", active);
+  button.setAttribute("aria-pressed", active ? "true" : "false");
+}
+
+function buildOperationsModeBadgeLabel(view) {
+  switch (view) {
+    case "list":
+      return t("operationsModeListBadge");
+    case "activity":
+      return t("operationsModeActivityBadge");
+    default:
+      return t("operationsModeGraphBadge");
+  }
+}
+
+function buildOperationsEdgeStateLabel(state) {
+  switch (state) {
+    case "BLOCKING":
+      return t("operationsGraphBlocking");
+    case "ATTENTION":
+      return t("operationsGraphAttention");
+    case "HANDOFF_READY":
+      return t("operationsGraphReady");
+    default:
+      return t("operationsGraphSatisfied");
+  }
+}
+
+function buildOperationsActivityKindLabel(kind) {
+  switch (kind) {
+    case "SESSION_STARTED":
+      return t("operationsActivitySessionStarted");
+    case "SESSION_ENDED":
+      return t("operationsActivitySessionEnded");
+    case "MAILBOX_MESSAGE":
+      return t("operationsActivityMailbox");
+    case "REVIEW":
+      return t("operationsActivityReview");
+    case "MERGE":
+      return t("operationsActivityMerge");
+    case "FAILURE":
+    case "SANDBOX_LAUNCH_FAILURE":
+    case "WORKER_LAUNCH_FAILURE":
+      return t("operationsActivityFailure");
+    default:
+      return t("operationsActivityUnknown");
+  }
+}
+
+function buildOperationsActionTitle(kind) {
+  switch (kind) {
+    case "MERGE_CONFLICT":
+      return t("operationsActionKindMergeConflict");
+    case "DISCARD_PENDING":
+      return t("operationsActionKindDiscardPending");
+    case "REWORK_REQUIRED":
+      return t("operationsActionKindReworkRequired");
+    case "FAILED_SUBTASK":
+      return t("operationsActionKindFailedSubtask");
+    case "SANDBOX_LAUNCH_FAILURE":
+      return t("operationsActionKindSandboxLaunchFailure");
+    case "WORKER_LAUNCH_FAILURE":
+      return t("operationsActionKindWorkerLaunchFailure");
+    case "BLOCKER":
+      return t("operationsActionKindBlocker");
+    case "REVIEW_REQUEST":
+      return t("operationsActionKindReviewRequest");
+    case "TEST_REQUEST":
+      return t("operationsActionKindTestRequest");
+    case "TASK_RESUME_MERGE":
+      return t("operationsActionKindTaskResumeMerge");
+    default:
+      return kind.replaceAll("_", " ");
+  }
+}
+
+function buildOperationsActionButtonLabel(primaryAction) {
+  switch (primaryAction) {
+    case "CONFIRM_DISCARD":
+      return t("operationsActionDiscardButton");
+    case "REASSIGN":
+      return t("operationsActionReassignButton");
+    case "REBASE_RETRY":
+      return t("operationsActionRebaseButton");
+    case "REWORK":
+      return t("operationsActionReworkButton");
+    case "RESUME_MERGE":
+      return t("operationsActionResumeButton");
+    case "SEND_NOTE":
+      return t("operationsActionSendNoteButton");
+    default:
+      return t("operationsActionOpenButton");
+  }
+}
+
 function renderSubTaskExecution(detail) {
   const subTasks = detail.subTasks ?? [];
   const sessionsBySubTaskId = new Map();
@@ -1726,8 +2503,45 @@ function renderSubTaskExecution(detail) {
 
   if (subTasks.length === 0) {
     elements.taskExecutionFocus.hidden = true;
+    elements.taskExecutionSummaryList.replaceChildren();
+    elements.taskExecutionHealthList.replaceChildren();
+    elements.taskExecutionRiskList.replaceChildren();
+    elements.taskExecutionActionCount.textContent = "0";
+    elements.taskExecutionActionEmpty.hidden = true;
+    elements.taskExecutionActionList.replaceChildren();
+    elements.taskExecutionGraphView.replaceChildren();
+    elements.taskExecutionActivityList.replaceChildren();
+    elements.taskExecutionActivityEmpty.hidden = true;
     return;
   }
+
+  const boardSnapshot = buildTaskOperationsBoard(detail, sessionsBySubTaskId);
+  renderTaskOperationsSummary(boardSnapshot);
+  renderTaskOperationsHealth(boardSnapshot);
+  renderTaskOperationsRisk(boardSnapshot);
+  renderTaskOperationsActionQueue(boardSnapshot);
+  renderTaskOperationsView(detail, boardSnapshot, sessionsBySubTaskId);
+  renderFocusedExecution(detail, sessionsBySubTaskId);
+}
+
+function renderTaskOperationsView(detail, boardSnapshot, sessionsBySubTaskId) {
+  elements.taskExecutionGraphPanel.hidden = state.taskOperationsView !== "graph";
+  elements.taskExecutionListPanel.hidden = state.taskOperationsView !== "list";
+  elements.taskExecutionActivityPanel.hidden = state.taskOperationsView !== "activity";
+  elements.taskExecutionModeBadge.textContent = buildOperationsModeBadgeLabel(state.taskOperationsView);
+  toggleBoardModeButton(elements.taskExecutionGraphButton, state.taskOperationsView === "graph");
+  toggleBoardModeButton(elements.taskExecutionListButton, state.taskOperationsView === "list");
+  toggleBoardModeButton(elements.taskExecutionActivityButton, state.taskOperationsView === "activity");
+
+  renderTaskOperationsGraph(boardSnapshot);
+  renderTaskExecutionList(detail, sessionsBySubTaskId);
+  renderTaskOperationsActivity(boardSnapshot);
+}
+
+function renderTaskExecutionList(detail, sessionsBySubTaskId) {
+  const subTasks = detail.subTasks ?? [];
+
+  elements.taskExecutionList.replaceChildren();
 
   for (const subTask of subTasks) {
     const sessions = sessionsBySubTaskId.get(subTask.id) ?? [];
@@ -1787,8 +2601,6 @@ function renderSubTaskExecution(detail) {
 
     elements.taskExecutionList.append(card);
   }
-
-  renderFocusedExecution(detail, sessionsBySubTaskId);
 }
 
 function renderPlanDraft(detail) {
@@ -2136,6 +2948,19 @@ function clearTaskDetail() {
   elements.taskAttachmentsList.replaceChildren();
   elements.taskExecutionList.replaceChildren();
   elements.taskExecutionBoard.hidden = true;
+  elements.taskExecutionSummaryList.replaceChildren();
+  elements.taskExecutionHealthList.replaceChildren();
+  elements.taskExecutionRiskList.replaceChildren();
+  elements.taskExecutionActionList.replaceChildren();
+  elements.taskExecutionActionCount.textContent = "0";
+  elements.taskExecutionActionEmpty.hidden = true;
+  elements.taskExecutionGraphView.replaceChildren();
+  elements.taskExecutionActivityList.replaceChildren();
+  elements.taskExecutionActivityEmpty.hidden = true;
+  elements.taskExecutionGraphPanel.hidden = false;
+  elements.taskExecutionListPanel.hidden = true;
+  elements.taskExecutionActivityPanel.hidden = true;
+  elements.taskExecutionModeBadge.textContent = buildOperationsModeBadgeLabel(state.taskOperationsView);
   elements.taskTeamEmpty.hidden = false;
   elements.taskTeamLeadMeta.textContent = "";
   elements.taskTeamLeadSummary.textContent = "";
@@ -2434,6 +3259,15 @@ function onSetPlanView(view) {
 
   state.taskPlanView = view;
   renderPlanDraft(state.taskDetail);
+}
+
+function onSetTaskOperationsView(view) {
+  if (!["activity", "graph", "list"].includes(view)) {
+    return;
+  }
+
+  state.taskOperationsView = view;
+  renderTaskDetail();
 }
 
 function onResetPlanDraft() {

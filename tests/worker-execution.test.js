@@ -552,6 +552,149 @@ test("persists web-posted lead mailbox notes and exposes them in task detail", a
   }
 });
 
+test("builds a live operations board snapshot and emits board activity events", async () => {
+  const fixture = await makeTempDir("eat-operations-board-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Backend contract",
+            description: "Define the API contract first.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "backend-contract",
+            role: "architect",
+          },
+          {
+            title: "Frontend implementation",
+            description: "Wait for the contract before building the UI.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "frontend-ui",
+            depends_on: ["backend-contract"],
+            role: "frontend",
+          },
+        ],
+      },
+      workerBehavior: (config) => config.branchName.includes("backend-contract")
+        ? {
+            delayMs: 400,
+            exitCode: 0,
+            output: "backend contract ready\n",
+          }
+        : {
+            delayMs: 20,
+            exitCode: 0,
+            output: "frontend ready\n",
+          },
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "operations-board-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Expose a board-first view for live execution supervision.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Operations board",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId);
+
+        const detailBefore = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const blockedSubTask = detailBefore.body.subTasks.find((subTask) => subTask.branchSuffix === "frontend-ui");
+        assert.ok(blockedSubTask);
+        assert.equal(blockedSubTask.status, "BLOCKED");
+
+        const mailboxResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/mailbox`,
+          {
+            body: {
+              content: "Waiting for backend auth contract handoff.",
+              messageType: "BLOCKER",
+              targetSubTaskId: blockedSubTask.id,
+              targetType: "SUBTASK",
+            },
+            method: "POST",
+          },
+        );
+        assert.equal(mailboxResponse.status, 201);
+
+        const boardActivityEvent = await nextEvent(
+          events,
+          (event) => event.eventName === "board:activity" && event.data.kind === "MAILBOX_MESSAGE",
+        );
+        assert.equal(boardActivityEvent.data.taskId, taskId);
+
+        const boardResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/board`);
+        assert.equal(boardResponse.status, 200);
+        assert.equal(boardResponse.body.board.task.id, taskId);
+        assert.equal(boardResponse.body.board.summary.running, 1);
+        assert.equal(boardResponse.body.board.summary.blocked, 1);
+        assert.ok(boardResponse.body.board.summary.actionRequired >= 1);
+        assert.ok(
+          boardResponse.body.board.actionRequiredItems.some((item) => (
+            item.kind === "BLOCKER" && item.subTaskId === blockedSubTask.id
+          )),
+        );
+        assert.ok(
+          boardResponse.body.board.graph.nodes.some((node) => (
+            node.subtaskId === blockedSubTask.id && node.mailboxInboxCount === 1
+          )),
+        );
+        assert.ok(
+          boardResponse.body.board.graph.edges.some((edge) => (
+            edge.to === blockedSubTask.id && edge.state === "BLOCKING"
+          )),
+        );
+        assert.ok(
+          boardResponse.body.board.activity.some((entry) => (
+            entry.kind === "SESSION_STARTED" || entry.kind === "MAILBOX_MESSAGE"
+          )),
+        );
+
+        const detailAfter = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailAfter.status, 200);
+        assert.ok(detailAfter.body.board);
+        assert.ok(
+          detailAfter.body.board.actionRequiredItems.some((item) => (
+            item.kind === "BLOCKER" && item.subTaskId === blockedSubTask.id
+          )),
+        );
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("supports subtask-to-lead mailbox blocker messages", async () => {
   const fixture = await makeTempDir("eat-mailbox-subtask-lead-");
 

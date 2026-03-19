@@ -49,7 +49,12 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /批准草稿/);
     assert.match(rootResponse.body, /重置本地修改/);
     assert.match(rootResponse.body, /规划备注/);
-    assert.match(rootResponse.body, /摘要优先的 worker 看板/);
+    assert.match(rootResponse.body, /监督式实时运行看板/);
+    assert.match(rootResponse.body, /实时运行总览/);
+    assert.match(rootResponse.body, /需要人处理的事项/);
+    assert.match(rootResponse.body, /看板视图/);
+    assert.match(rootResponse.body, /task-operations-graph-button/);
+    assert.match(rootResponse.body, /task-operations-activity-button/);
     assert.match(rootResponse.body, /聚焦会话/);
     assert.match(rootResponse.body, /交接说明/);
     assert.match(rootResponse.body, /收件箱/);
@@ -78,6 +83,8 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(cssResponse.headers.get("content-type"), /^text\/css/);
     assert.match(cssResponse.body, /backdrop-filter|backdrop-blur/);
     assert.match(cssResponse.body, /team-member-card/);
+    assert.match(cssResponse.body, /operations-board/);
+    assert.match(cssResponse.body, /operations-graph__node/);
 
     assert.equal(jsResponse.status, 200);
     assert.match(jsResponse.headers.get("content-type"), /^text\/javascript/);

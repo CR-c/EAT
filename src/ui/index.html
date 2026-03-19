@@ -356,17 +356,85 @@
               <div class="panel__header">
                 <div>
                   <p class="panel__eyebrow" data-i18n="executionEyebrow">执行</p>
-                  <h3 id="task-execution-title" data-i18n="executionBoardTitle">摘要优先的 worker 看板</h3>
+                  <h3 id="task-execution-title" data-i18n="executionBoardTitle">监督式实时运行看板</h3>
                 </div>
               </div>
               <p class="panel__summary" data-i18n="executionBoardSummary">
-                先通过紧凑摘要监控全部子任务，再在需要时聚焦某个会话流获取更深层输出。
+                执行阶段默认切换到 board-first，总览团队状态、阻塞链路、风险聚合，再深入聚焦单个会话。
               </p>
               <div id="task-execution-empty" class="empty-state" data-i18n="executionEmpty">
                 计划批准后，已批准的子任务和 worker 会话会显示在这里。
               </div>
               <div id="task-execution-board" class="execution-board">
-                <div id="task-execution-list" class="execution-list"></div>
+                <div class="operations-board">
+                  <section class="operations-section" aria-labelledby="task-operations-summary-title">
+                    <div class="panel__header panel__header--inline">
+                      <div>
+                        <p class="panel__eyebrow" data-i18n="operationsBoardEyebrow">运行看板</p>
+                        <h4 id="task-operations-summary-title" class="plan-history__title" data-i18n="operationsBoardTitle">实时运行总览</h4>
+                      </div>
+                      <span id="task-operations-mode-badge" class="badge badge--outline">Graph</span>
+                    </div>
+                    <div id="task-operations-summary-list" class="operations-summary-grid"></div>
+                    <div class="operations-meta-grid">
+                      <section class="operations-meta-card">
+                        <div class="mailbox-stream__header">
+                          <h5 class="plan-history__title" data-i18n="operationsHealthTitle">运行时与健康</h5>
+                        </div>
+                        <div id="task-operations-health-list" class="operations-meta-list"></div>
+                      </section>
+                      <section class="operations-meta-card">
+                        <div class="mailbox-stream__header">
+                          <h5 class="plan-history__title" data-i18n="operationsRiskTitle">风险聚合</h5>
+                        </div>
+                        <div id="task-operations-risk-list" class="operations-meta-list"></div>
+                      </section>
+                    </div>
+                  </section>
+
+                  <section class="operations-section" aria-labelledby="task-operations-action-title">
+                    <div class="panel__header panel__header--inline">
+                      <div>
+                        <p class="panel__eyebrow" data-i18n="operationsActionEyebrow">待处理</p>
+                        <h4 id="task-operations-action-title" class="plan-history__title" data-i18n="operationsActionTitle">需要人处理的事项</h4>
+                      </div>
+                      <span id="task-operations-action-count" class="badge badge--outline">0</span>
+                    </div>
+                    <div id="task-operations-action-empty" class="empty-state" hidden data-i18n="operationsActionEmpty">
+                      当前没有需要人工处理的事项。
+                    </div>
+                    <div id="task-operations-action-list" class="operations-action-list"></div>
+                  </section>
+
+                  <section class="operations-section" aria-labelledby="task-operations-mode-title">
+                    <div class="segmented-control">
+                      <span class="segmented-control__label" id="task-operations-mode-title" data-i18n="operationsModeLabel">看板视图</span>
+                      <div class="plan-editor__actions">
+                        <button id="task-operations-graph-button" class="button button--secondary" type="button" data-i18n="operationsGraphButton">
+                          Graph
+                        </button>
+                        <button id="task-operations-list-button" class="button button--secondary" type="button" data-i18n="operationsListButton">
+                          List
+                        </button>
+                        <button id="task-operations-activity-button" class="button button--secondary" type="button" data-i18n="operationsActivityButton">
+                          Activity
+                        </button>
+                      </div>
+                    </div>
+                    <div id="task-operations-graph-panel" class="operations-panel">
+                      <div id="task-operations-graph" class="operations-graph"></div>
+                    </div>
+                    <div id="task-operations-list-panel" class="operations-panel" hidden>
+                      <div id="task-execution-list" class="execution-list"></div>
+                    </div>
+                    <div id="task-operations-activity-panel" class="operations-panel" hidden>
+                      <div id="task-operations-activity-empty" class="empty-state" hidden data-i18n="operationsActivityEmpty">
+                        当前还没有可展示的运行活动。
+                      </div>
+                      <div id="task-operations-activity-list" class="operations-activity-list"></div>
+                    </div>
+                  </section>
+                </div>
                 <aside id="task-execution-focus" class="execution-focus" hidden>
                   <div class="execution-focus__header">
                     <div>
