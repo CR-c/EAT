@@ -8,33 +8,33 @@
 
 - `docs/phase/01-project-registration-and-repo-validation.md`
 
-子任务顺序：
+内部开发顺序：
 
-1. `CRC-22`
-2. `CRC-23`
-3. `CRC-24`
-4. `CRC-25`
-
-本阶段目标：
-
-- 先把项目注册、仓库校验、项目 API、项目 UI 做完整
+1. `CRC-22` Project schema and persistence
+2. `CRC-23` repo validation and probing service
+3. `CRC-24` project APIs and repo-status contract
+4. `CRC-25` project list/detail UI and dirty-repo warning
 
 在 Vibe Kanban 中的操作：
 
-1. 找到 `CRC-22`
-2. 从 `CRC-22` 创建 workspace
-3. 基准分支选最新 `main`
-4. 把下面 `CRC-22` 的提示词发给 AI
-5. 完成后再做 `CRC-23`
-6. 依次做到 `CRC-25`
-7. 子任务都完成后，如有需要，再从父任务 `CRC-7` 创建收尾 workspace
+1. 找到父任务 `CRC-7`。
+2. 只从父任务 `CRC-7` 创建 workspace。
+3. 基准分支始终选择最新 `main`。
+4. 把父任务 `CRC-7` 的 issue 描述直接发给 AI。
+5. 在同一个父任务 workspace / 分支里，严格按上面的内部开发顺序实现。
+6. 每完成一个内部步骤，就在同一个父任务分支提交一个非空 commit。
+7. 所有内部步骤完成后，继续在同一分支做联调、补洞、验收和修复。
+8. review 通过后，将父任务分支合并到 `main`。
+9. 合并完成后删除父任务分支，并把最新 `main` 推送到远端。
 
 父任务 `CRC-7` 要做的事：
 
-- 检查 `CRC-22` 到 `CRC-25` 是否都已完成
-- 检查这些子任务的分支是否都已经 review 并合并回 `main`
-- 站在 phase 视角补齐缺失的小整合项
-- 对照 `docs/phase/01-project-registration-and-repo-validation.md` 的 acceptance checklist 做最终验收
+- 在同一个父任务分支内完成本 phase 的全部开发
+- 严格按内部开发顺序推进，不要跳步骤
+- 每完成一个内部步骤都提交实际代码，避免后续步骤建立在未提交状态上
+- 后一个内部步骤必须直接基于当前父任务分支的最新代码继续开发
+- 统一联调 project registration、repo validation、project APIs、project UI、dirty-repo warning
+- 对照 `docs/phase/01-project-registration-and-repo-validation.md` 与 checklist 做最终验收
 - 确认仓库已经为 Phase 02 做好准备
 
 ## CRC-22
@@ -182,16 +182,14 @@
 - Phase 01 是否可进入父任务收尾
 ```
 
-## 父任务 CRC-7 收尾提示词
-
-只有当 `CRC-22` 到 `CRC-25` 都完成后，再使用这段提示词，从父任务 `CRC-7` 创建 workspace。
+## 父任务 CRC-7 执行提示词
 
 ```text
-对 EAT 项目的父任务 CRC-7 Phase 01 - Project Registration And Repo Validation 做阶段收尾、联调和验收。
+实现 EAT 项目的父任务 CRC-7 Phase 01 - Project Registration And Repo Validation，并在一个 workspace 中完成整个 phase。
 
 仓库路径：/home/code/EAT
-父任务：CRC-7 Phase 01 - Project Registration And Repo Validation
 阶段文档：docs/phase/01-project-registration-and-repo-validation.md
+父任务：CRC-7 Phase 01 - Project Registration And Repo Validation
 
 开始前请按顺序阅读：
 1. AGENTS.md
@@ -202,22 +200,34 @@
 6. docs/phase/CHECKLISTS.md
 7. docs/phase/01-project-registration-and-repo-validation.md
 8. 父任务 CRC-7 的 issue 描述
-9. 已完成的子任务 CRC-22、CRC-23、CRC-24、CRC-25 的 issue 描述
+9. docs/me/CRC-7-phase-01.md
 
-本次只做父任务收尾：
-- 检查 CRC-22 到 CRC-25 是否都已经实现并合并到 main
-- 处理少量跨子任务的小整合问题
-- 对照 phase 文档完成最终验收
-- 补足本阶段遗漏但仍属于 Phase 01 范围的小项
+执行规则：
+- 只使用父任务 CRC-7 workspace，不创建子任务 workspace
+- 在同一个父任务分支内完成整个 phase 的开发、联调、修复和验收
+- 严格按下面顺序实现内部步骤，不要跳步：
+1. CRC-22 Project schema and persistence
+2. CRC-23 repo validation and probing service
+3. CRC-24 project APIs and repo-status contract
+4. CRC-25 project list/detail UI and dirty-repo warning
+- 每完成一个内部步骤，就在当前父任务分支提交一个与该步骤对应的非空 commit
+- 后一个内部步骤必须直接基于当前父任务分支的最新代码继续开发
+- 全部步骤完成后，在同一个父任务分支完成联调、补洞、checklist 验收和必要修复
+- review 通过后，再将父任务分支合并到 `main`
+- 合并完成后删除父任务分支，并把最新 `main` 推送到远端
+
+本次 phase 重点：
+- 统一联调 project registration、repo validation、project APIs、project UI、dirty-repo warning
 
 不要实现：
 - Phase 02 的功能
 - 与 Phase 01 无关的大改动
 
 完成后请输出：
-- 父任务收尾完成内容
-- 核对过的子任务与合并情况
+- 本 phase 已完成内容
+- 修改的文件
+- 父任务分支上的 commits
 - 测试结果
-- 剩余未完成 checklist
+- 剩余风险 / 假设
 - 是否可以进入 Phase 02
 ```

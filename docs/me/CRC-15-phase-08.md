@@ -8,25 +8,34 @@
 
 - `docs/phase/08-worker-session-manager-and-concurrent-execution.md`
 
-子任务顺序：
+内部开发顺序：
 
-1. `CRC-50`
-2. `CRC-51`
-3. `CRC-52`
-4. `CRC-53`
+1. `CRC-50` branch naming and collision resolution
+2. `CRC-51` worktree creation and persistence
+3. `CRC-52` worker launch, attachment filtering, and session ownership
+4. `CRC-53` retry flow and concurrent execution safeguards
+
+在 Vibe Kanban 中的操作：
+
+1. 找到父任务 `CRC-15`。
+2. 只从父任务 `CRC-15` 创建 workspace。
+3. 基准分支始终选择最新 `main`。
+4. 把父任务 `CRC-15` 的 issue 描述直接发给 AI。
+5. 在同一个父任务 workspace / 分支里，严格按上面的内部开发顺序实现。
+6. 每完成一个内部步骤，就在同一个父任务分支提交一个非空 commit。
+7. 所有内部步骤完成后，继续在同一分支做联调、补洞、验收和修复。
+8. review 通过后，将父任务分支合并到 `main`。
+9. 合并完成后删除父任务分支，并把最新 `main` 推送到远端。
 
 父任务 `CRC-15` 要做的事：
 
-- 检查 `CRC-50` 到 `CRC-53` 是否都已完成
-- 先确认这些子任务分支都包含对应子任务的实际提交，避免后续合并空分支
-- 再将所有已完成但未合并的子任务分支合并到 `main`
-- 合并后在 `main` 上做联调、检查和必要修复
-- 验证 `main` 已包含这些子任务的最终代码
-- 验收通过后删除对应的已完成子任务分支
-- 最后将最新 `main` 推送到远端
-- 联调 branch naming、worktree creation、worker launch、attachment filtering、retry、execution state machine
-- 核对 concurrent execution 和 duplicate live session 约束
-- 确认仓库已准备好进入 Phase 09
+- 在同一个父任务分支内完成本 phase 的全部开发
+- 严格按内部开发顺序推进，不要跳步骤
+- 每完成一个内部步骤都提交实际代码，避免后续步骤建立在未提交状态上
+- 后一个内部步骤必须直接基于当前父任务分支的最新代码继续开发
+- 统一联调 branch naming、worktree、worker launch、attachment filtering、retry、execution state machine 和 concurrent execution 约束
+- 对照 `docs/phase/08-worker-session-manager-and-concurrent-execution.md` 与 checklist 做最终验收
+- 确认仓库已经为 Phase 09 做好准备
 
 ## CRC-50
 
@@ -173,38 +182,52 @@
 - Phase 08 是否可收尾
 ```
 
-## 父任务 CRC-15 收尾提示词
+## 父任务 CRC-15 执行提示词
 
 ```text
-对 EAT 项目的父任务 CRC-15 Phase 08 - Worker Session Manager And Concurrent Execution 做阶段收尾、联调和验收。
+实现 EAT 项目的父任务 CRC-15 Phase 08 - Worker Session Manager And Concurrent Execution，并在一个 workspace 中完成整个 phase。
 
 仓库路径：/home/code/EAT
 阶段文档：docs/phase/08-worker-session-manager-and-concurrent-execution.md
+父任务：CRC-15 Phase 08 - Worker Session Manager And Concurrent Execution
 
-开始前请按顺序阅读标准文档，以及父任务 CRC-15 和已完成子任务 CRC-50、CRC-51、CRC-52、CRC-53 的 issue 描述。
+开始前请按顺序阅读：
+1. AGENTS.md
+2. docs/PRD.md
+3. docs/phase/README.md
+4. docs/phase/PRISMA-MIGRATIONS.md
+5. docs/phase/API-EVENT-EXAMPLES.md
+6. docs/phase/CHECKLISTS.md
+7. docs/phase/08-worker-session-manager-and-concurrent-execution.md
+8. 父任务 CRC-15 的 issue 描述
+9. docs/me/CRC-15-phase-08.md
 
-本次只做父任务收尾：
-- 先确认 4 个子任务都已完成，且各自分支包含实际提交
-- 再将所有已完成但未合并的子任务分支合并到 `main`
-- 在 `main` 上完成联调、检查和必要修复
-- 验证 `main` 已包含所有子任务最终代码
-- 验收通过后删除已完成子任务分支
-- 联调 branch naming、worktree、worker launch、attachment filtering、retry、execution state machine
-- 验证 concurrent execution 与 duplicate live session 防护
-- 对照 phase 文档做最终验收
+执行规则：
+- 只使用父任务 CRC-15 workspace，不创建子任务 workspace
+- 在同一个父任务分支内完成整个 phase 的开发、联调、修复和验收
+- 严格按下面顺序实现内部步骤，不要跳步：
+1. CRC-50 branch naming and collision resolution
+2. CRC-51 worktree creation and persistence
+3. CRC-52 worker launch, attachment filtering, and session ownership
+4. CRC-53 retry flow and concurrent execution safeguards
+- 每完成一个内部步骤，就在当前父任务分支提交一个与该步骤对应的非空 commit
+- 后一个内部步骤必须直接基于当前父任务分支的最新代码继续开发
+- 全部步骤完成后，在同一个父任务分支完成联调、补洞、checklist 验收和必要修复
+- review 通过后，再将父任务分支合并到 `main`
+- 合并完成后删除父任务分支，并把最新 `main` 推送到远端
 
-完成前必须：
-- 所有合并与修复提交都已经进入 `main`
-- 将最新 `main` 推送到远端
+本次 phase 重点：
+- 统一联调 branch naming、worktree、worker launch、attachment filtering、retry、execution state machine 和 concurrent execution 约束
 
 不要实现：
 - Phase 09 output streaming / terminal UX
 - review / merge 逻辑
 
 完成后请输出：
-- 父任务收尾完成内容
-- 子任务合并、修复、删分支、push 情况
+- 本 phase 已完成内容
+- 修改的文件
+- 父任务分支上的 commits
 - 测试结果
-- 剩余未完成 checklist
+- 剩余风险 / 假设
 - 是否可以进入 Phase 09
 ```
