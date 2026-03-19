@@ -41,6 +41,10 @@ export function buildTaskErrorMessage(error) {
       return "This action is only available during plan review.";
     case "PLAN_SNAPSHOT_NOT_FOUND":
       return "The selected plan snapshot no longer exists.";
+    case "AGENT_TYPE_REQUIRED":
+      return "Select a replacement worker agent before relaunching.";
+    case "SUBTASK_CHANGE_AGENT_NOT_ALLOWED":
+      return "Switch Agent & Relaunch is not available for the current subtask state.";
     case "SUBTASK_REWORK_NOT_ALLOWED":
       return "Rework Now is only available for subtasks with an actionable incremental review.";
     case "ATTACHMENT_TYPE_UNSUPPORTED":

@@ -364,6 +364,7 @@ test("triggers incremental review after a successful worker run and exposes advi
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.subTasks[0].status, "REVIEW_PENDING");
         assert.equal(detailResponse.body.subTasks[0].latestReviewDecision, "REWORK");
         assert.equal(detailResponse.body.subTasks[0].latestReviewPhase, "INCREMENTAL");
         assert.match(detailResponse.body.subTasks[0].latestReviewSummary, /skipped the validation branch/i);
@@ -479,6 +480,7 @@ test("reworks a reviewed subtask on the same branch and worktree while keeping t
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailResponse.status, 200);
         assert.equal(detailResponse.body.task.status, "EXECUTING");
+        assert.equal(detailResponse.body.subTasks[0].status, "REVIEW_PENDING");
         assert.equal(detailResponse.body.subTasks[0].retryCount, 1);
         assert.equal(
           detailResponse.body.subTasks[0].description,
@@ -491,6 +493,147 @@ test("reworks a reviewed subtask on the same branch and worktree while keeping t
           detailResponse.body.sessions.filter((session) => session.subTaskId === subTask.id && session.sessionType === "WORKER").length,
           2,
         );
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("changes agent before relaunch, revalidates attachments, and keeps the task executing", async () => {
+  const fixture = await makeTempDir("eat-worker-change-agent-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const imagePath = path.join(fixture.path, "flow.png");
+    await writeFile(imagePath, "png\n", "utf8");
+
+    let reviewAttempt = 0;
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Switchable worker",
+            description: "Needs a vision-capable rerun.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "switchable-worker",
+          },
+        ],
+      },
+      reviewBehavior: () => {
+        reviewAttempt += 1;
+        return reviewAttempt === 1
+          ? {
+              decision: "REWORK",
+              summary: "Switch to a vision-capable worker before relaunch so the image attachment can be used.",
+            }
+          : {
+              decision: "ACCEPTED",
+              summary: "The vision-capable rerun used the attachment and resolved the gap.",
+            };
+      },
+      workerBehavior: (config) => ({
+        delayMs: 20,
+        exitCode: 0,
+        output: `worker run for ${path.basename(config.workDir)} via ${config.branchName}\n`,
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "change-agent-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          attachments: [
+            {
+              fileName: "flow.png",
+              filePath: imagePath,
+              fileType: "IMAGE",
+              mimeType: "image/png",
+            },
+          ],
+          baseBranch: "main",
+          description: "Switch worker agent during early rework.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Change agent",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        const initialStarted = await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId);
+        assert.equal(initialStarted.data.attachments.included.length, 0);
+        assert.equal(initialStarted.data.attachments.excluded[0].fileName, "flow.png");
+
+        await nextEvent(events, (event) => event.eventName === "subtask:review" && event.data.decision === "REWORK");
+
+        const beforeChange = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const subTask = beforeChange.body.subTasks[0];
+        const originalBranchName = subTask.branchName;
+        const originalWorktreePath = subTask.worktreePath;
+
+        const changeAgentResponse = await requestJson(
+          server,
+          `/api/subtasks/${encodeURIComponent(subTask.id)}/change-agent`,
+          {
+            body: {
+              agentType: "vision-worker",
+              description: "Use the screenshot attachment during the rerun.",
+            },
+            method: "POST",
+          },
+        );
+        assert.equal(changeAgentResponse.status, 200);
+
+        const changedEvent = await nextEvent(events, (event) => event.eventName === "subtask:agent-changed");
+        assert.equal(changedEvent.data.oldAgentType, "worker-agent");
+        assert.equal(changedEvent.data.newAgentType, "vision-worker");
+
+        const relaunchedEvent = await nextEvent(
+          events,
+          (event) => event.eventName === "session:started" && event.data.subtaskId === subTask.id,
+        );
+        assert.equal(relaunchedEvent.data.attachments.included[0].fileName, "flow.png");
+        assert.equal(relaunchedEvent.data.attachments.excluded.length, 0);
+
+        await nextEvent(events, (event) => (
+          event.eventName === "subtask:review"
+          && event.data.subtaskId === subTask.id
+          && event.data.decision === "ACCEPTED"
+        ));
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "EXECUTING");
+        assert.equal(detailResponse.body.subTasks[0].status, "REVIEW_PENDING");
+        assert.equal(detailResponse.body.subTasks[0].agentType, "vision-worker");
+        assert.equal(detailResponse.body.subTasks[0].retryCount, 1);
+        assert.equal(detailResponse.body.subTasks[0].description, "Use the screenshot attachment during the rerun.");
+        assert.equal(detailResponse.body.subTasks[0].branchName, originalBranchName);
+        assert.equal(detailResponse.body.subTasks[0].worktreePath, originalWorktreePath);
+        assert.equal(detailResponse.body.subTasks[0].launchMetadata.included[0].fileName, "flow.png");
       } finally {
         unsubscribe();
       }
@@ -1075,6 +1218,74 @@ function createPhase08AgentService(options) {
         containerId: `container-${path.basename(config.workDir)}`,
         pid: 5200 + stats.maxConcurrent,
         sessionId: `worker-${path.basename(config.workDir)}`,
+        async kill() {},
+        onExit(callback) {
+          exitListeners.add(callback);
+        },
+        onOutput(callback) {
+          outputListeners.add(callback);
+        },
+        async sendInput() {},
+        async stop() {},
+      };
+    },
+  });
+
+  registry.register({
+    capabilities: {
+      canExecute: true,
+      canOrchestrate: false,
+      description: "Vision-capable worker for relaunch tests.",
+      supportedSandboxTypes: [SESSION_SANDBOX_TYPES.DOCKER],
+      supportsInteractiveInput: true,
+      supportsVision: true,
+    },
+    async healthCheck() {
+      return {
+        available: true,
+        version: "1.0.0-test",
+      };
+    },
+    name: "vision-worker",
+    async spawnSession(config) {
+      const outputListeners = new Set();
+      const exitListeners = new Set();
+      const behavior = options.workerBehavior?.(config) ?? {
+        delayMs: 20,
+        exitCode: 0,
+        output: "worker completed\n",
+      };
+      const outputChunks = Array.isArray(behavior.outputChunks)
+        ? behavior.outputChunks
+        : [behavior.output ?? ""];
+      const outputSpacingMs = behavior.outputSpacingMs ?? 0;
+      const exitDelayMs = Math.max(
+        behavior.delayMs,
+        outputSpacingMs * Math.max(0, outputChunks.length - 1) + 5,
+      );
+
+      stats.active += 1;
+      stats.maxConcurrent = Math.max(stats.maxConcurrent, stats.active);
+
+      for (const [index, outputChunk] of outputChunks.entries()) {
+        setTimeout(() => {
+          for (const listener of outputListeners) {
+            listener(outputChunk);
+          }
+        }, index * outputSpacingMs);
+      }
+
+      setTimeout(() => {
+        stats.active -= 1;
+        for (const listener of exitListeners) {
+          listener(behavior.exitCode);
+        }
+      }, exitDelayMs);
+
+      return {
+        containerId: `container-vision-${path.basename(config.workDir)}`,
+        pid: 6200 + stats.maxConcurrent,
+        sessionId: `vision-worker-${path.basename(config.workDir)}`,
         async kill() {},
         onExit(callback) {
           exitListeners.add(callback);

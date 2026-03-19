@@ -343,8 +343,15 @@
                       ></textarea>
                     </label>
                     <div id="task-execution-review-actions" class="review-panel__actions" hidden>
+                      <label id="task-execution-agent-field" class="field" hidden>
+                        <span class="field__label">Replacement agent</span>
+                        <select id="task-execution-agent-select" class="field__control"></select>
+                      </label>
                       <button id="task-execution-rework-button" class="button button--primary" type="button">
                         Rework now
+                      </button>
+                      <button id="task-execution-change-agent-button" class="button button--secondary" type="button">
+                        Switch agent &amp; relaunch
                       </button>
                     </div>
                   </section>

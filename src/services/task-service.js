@@ -68,6 +68,7 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   ATTACHMENT_PATH_NOT_FOUND: "ATTACHMENT_PATH_NOT_FOUND",
   ATTACHMENT_SIZE_EXCEEDED: "ATTACHMENT_SIZE_EXCEEDED",
   ATTACHMENT_TYPE_UNSUPPORTED: "ATTACHMENT_TYPE_UNSUPPORTED",
+  AGENT_TYPE_REQUIRED: "AGENT_TYPE_REQUIRED",
   BASE_BRANCH_NOT_FOUND: "BASE_BRANCH_NOT_FOUND",
   BASE_BRANCH_REQUIRED: "BASE_BRANCH_REQUIRED",
   DESCRIPTION_REQUIRED: "DESCRIPTION_REQUIRED",
@@ -85,6 +86,7 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   TASK_NOT_PLAN_REVIEW: "TASK_NOT_PLAN_REVIEW",
   PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
   SUBTASK_ACTIVE_SESSION_EXISTS: "SUBTASK_ACTIVE_SESSION_EXISTS",
+  SUBTASK_CHANGE_AGENT_NOT_ALLOWED: "SUBTASK_CHANGE_AGENT_NOT_ALLOWED",
   SUBTASK_NOT_FOUND: "SUBTASK_NOT_FOUND",
   SUBTASK_REWORK_NOT_ALLOWED: "SUBTASK_REWORK_NOT_ALLOWED",
   SUBTASK_RETRY_NOT_ALLOWED: "SUBTASK_RETRY_NOT_ALLOWED",
@@ -827,6 +829,102 @@ export class TaskService {
     };
   }
 
+  async changeSubTaskAgent(subTaskId, input = {}) {
+    const subTask = await this.taskRepository.findSubTaskById(subTaskId);
+
+    if (!subTask) {
+      return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", { subTaskId });
+    }
+
+    const task = await this.taskRepository.findTaskById(subTask.taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId: subTask.taskId });
+    }
+
+    if (!isAgentChangeEligible(task, subTask)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_CHANGE_AGENT_NOT_ALLOWED,
+        "Changing the assigned worker is not allowed from the current subtask state.",
+        {
+          status: subTask.status,
+          subTaskId,
+          taskStatus: task.status,
+        },
+      );
+    }
+
+    if (await this.#hasLiveWorkerSession(subTaskId)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_ACTIVE_SESSION_EXISTS,
+        "The subtask already has a live worker session.",
+        { subTaskId },
+      );
+    }
+
+    const nextAgentType = normalizeRequiredString(input.agentType);
+
+    if (!nextAgentType) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.AGENT_TYPE_REQUIRED,
+        "A replacement worker agent is required before relaunch.",
+        { subTaskId },
+      );
+    }
+
+    if (nextAgentType === subTask.agentType) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_CHANGE_AGENT_NOT_ALLOWED,
+        "Select a different worker agent before using Switch Agent & Relaunch.",
+        { agentType: nextAgentType, subTaskId },
+      );
+    }
+
+    const nextDescription = normalizeRequiredString(input.description) ?? subTask.description;
+    const resumedTask = task.status === TASK_STATUS.ACTION_REQUIRED
+      ? await this.taskRepository.updateTask(task.id, {
+          lastError: null,
+          status: TASK_STATUS.EXECUTING,
+        })
+      : task;
+    const pendingSubTask = await this.taskRepository.updateSubTask(subTaskId, {
+      agentType: nextAgentType,
+      autoAssigned: false,
+      description: nextDescription,
+      lastError: null,
+      retryCount: (subTask.retryCount ?? 0) + 1,
+      status: SUBTASK_STATUS.PENDING,
+    });
+
+    if (resumedTask.status !== task.status) {
+      this.#publish(task.id, "task:status", {
+        taskId: task.id,
+        status: resumedTask.status,
+      });
+    }
+
+    this.#publish(task.id, "subtask:agent-changed", {
+      newAgentType: nextAgentType,
+      oldAgentType: subTask.agentType,
+      subtaskId: subTaskId,
+      taskId: task.id,
+    });
+    this.#publishSubTaskStatus(task.id, pendingSubTask);
+
+    const launchResult = await this.#launchSubTask(task.id, subTaskId, { isRetry: true });
+
+    if (!launchResult.ok) {
+      return launchResult;
+    }
+
+    return {
+      ok: true,
+      session: this.#decorateSession(launchResult.session),
+      subTask: this.#decorateSubTask(launchResult.subTask),
+      task: launchResult.task,
+    };
+  }
+
   async #launchApprovedSubTasks(taskId) {
     const task = await this.taskRepository.findTaskById(taskId);
 
@@ -1194,6 +1292,7 @@ export class TaskService {
 
   async #handleWorkerExit(taskId, subTaskId, sessionId, exitCode) {
     this.runningWorkerSessions.delete(subTaskId);
+    await this.sessionOutputAppends.get(sessionId);
 
     const sessionStatus = exitCode === 0 ? SESSION_STATUS.COMPLETED : SESSION_STATUS.FAILED;
     const nextSession = await this.taskRepository.updateSession(sessionId, {
@@ -1934,4 +2033,9 @@ function sanitizeLaunchMetadata(launchMetadata) {
 function isEarlyReworkEligible(subTask) {
   return subTask?.status === SUBTASK_STATUS.REVIEW_PENDING
     && ["REJECTED", "REWORK"].includes(subTask.latestReviewDecision);
+}
+
+function isAgentChangeEligible(task, subTask) {
+  return [TASK_STATUS.ACTION_REQUIRED, TASK_STATUS.EXECUTING].includes(task?.status)
+    && (subTask?.status === SUBTASK_STATUS.FAILED || isEarlyReworkEligible(subTask));
 }

@@ -265,6 +265,20 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const subTaskChangeAgentMatch = pathName.match(/^\/api\/subtasks\/([^/]+)\/change-agent$/);
+
+  if (request.method === "POST" && subTaskChangeAgentMatch) {
+    const subTaskId = decodeURIComponent(subTaskChangeAgentMatch[1]);
+    const body = await readOptionalJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.changeSubTaskAgent(subTaskId, body.value);
+    return respondServiceResult(response, result);
+  }
+
   return respondJson(response, 404, {
     error: {
       code: "NOT_FOUND",
@@ -384,6 +398,7 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.ATTACHMENT_NAME_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.ATTACHMENT_SIZE_EXCEEDED:
     case TASK_SERVICE_ERROR_CODES.ATTACHMENT_TYPE_UNSUPPORTED:
+    case TASK_SERVICE_ERROR_CODES.AGENT_TYPE_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.BASE_BRANCH_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.BASE_BRANCH_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.DESCRIPTION_REQUIRED:
@@ -411,6 +426,7 @@ function mapErrorCodeToStatus(errorCode) {
       return 404;
     case TASK_SERVICE_ERROR_CODES.SUBTASK_RETRY_NOT_ALLOWED:
     case TASK_SERVICE_ERROR_CODES.SUBTASK_REWORK_NOT_ALLOWED:
+    case TASK_SERVICE_ERROR_CODES.SUBTASK_CHANGE_AGENT_NOT_ALLOWED:
       return 400;
     case TASK_SERVICE_ERROR_CODES.SUBTASK_ACTIVE_SESSION_EXISTS:
       return 409;
