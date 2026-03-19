@@ -640,6 +640,87 @@ export class SqliteTaskRepository {
     return subTask;
   }
 
+  async findSubTaskById(subTaskId) {
+    const subTask = this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          title,
+          description,
+          branch_suffix AS branchSuffix,
+          branch_name AS branchName,
+          worktree_path AS worktreePath,
+          agent_type AS agentType,
+          status,
+          auto_assigned AS autoAssigned,
+          retry_count AS retryCount,
+          last_error AS lastError,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM sub_tasks
+        WHERE id = ?
+      `)
+      .get(subTaskId);
+
+    if (!subTask) {
+      return null;
+    }
+
+    return {
+      ...subTask,
+      autoAssigned: Boolean(subTask.autoAssigned),
+    };
+  }
+
+  async updateSubTask(subTaskId, updates) {
+    const existingSubTask = await this.findSubTaskById(subTaskId);
+
+    if (!existingSubTask) {
+      return null;
+    }
+
+    const nextSubTask = {
+      ...existingSubTask,
+      ...updates,
+      updatedAt: updates.updatedAt ?? new Date().toISOString(),
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        UPDATE sub_tasks
+        SET
+          title = ?,
+          description = ?,
+          branch_suffix = ?,
+          branch_name = ?,
+          worktree_path = ?,
+          agent_type = ?,
+          status = ?,
+          auto_assigned = ?,
+          retry_count = ?,
+          last_error = ?,
+          updated_at = ?
+        WHERE id = ?
+      `)
+      .run(
+        nextSubTask.title,
+        nextSubTask.description,
+        nextSubTask.branchSuffix,
+        nextSubTask.branchName,
+        nextSubTask.worktreePath,
+        nextSubTask.agentType,
+        nextSubTask.status,
+        nextSubTask.autoAssigned ? 1 : 0,
+        nextSubTask.retryCount,
+        nextSubTask.lastError,
+        nextSubTask.updatedAt,
+        subTaskId,
+      );
+
+    return nextSubTask;
+  }
+
   async listSubTasksByTaskId(taskId) {
     return this.#getDatabase()
       .prepare(`
@@ -667,6 +748,34 @@ export class SqliteTaskRepository {
         ...subTask,
         autoAssigned: Boolean(subTask.autoAssigned),
       }));
+  }
+
+  async listSessionsBySubTaskId(subTaskId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          sub_task_id AS subTaskId,
+          agent_type AS agentType,
+          session_type AS sessionType,
+          sandbox_type AS sandboxType,
+          container_id AS containerId,
+          status,
+          pid,
+          started_at AS startedAt,
+          ended_at AS endedAt,
+          exit_code AS exitCode,
+          log_path AS logPath,
+          output_buffer AS outputBuffer,
+          output_buffer_max_bytes AS outputBufferMaxBytes,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM agent_sessions
+        WHERE sub_task_id = ?
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all(subTaskId);
   }
 
   async runInTransaction(work) {

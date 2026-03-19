@@ -117,6 +117,10 @@ test("persists task plan fields, messages, attachments, sessions, subtasks, and 
     assert.equal(attachment.taskId, task.id);
     assert.equal(session.sessionType, SESSION_TYPE.LEAD);
     assert.equal(subTask.autoAssigned, false);
+    assert.deepEqual(
+      normalizeRecord(await taskRepository.findSubTaskById(subTask.id)),
+      subTask,
+    );
 
     assert.deepEqual(
       normalizeRecord(await taskRepository.findTaskById(task.id)),
@@ -135,6 +139,10 @@ test("persists task plan fields, messages, attachments, sessions, subtasks, and 
       [session],
     );
     assert.deepEqual(
+      (await taskRepository.listSessionsBySubTaskId(subTask.id)).map(normalizeRecord),
+      [],
+    );
+    assert.deepEqual(
       (await taskRepository.listSubTasksByTaskId(task.id)).map(normalizeRecord),
       [subTask],
     );
@@ -145,6 +153,29 @@ test("persists task plan fields, messages, attachments, sessions, subtasks, and 
     assert.deepEqual(
       (await taskRepository.listTasksByProjectId(project.id)).map((entry) => entry.id),
       [task.id],
+    );
+
+    const updatedSubTask = await taskRepository.updateSubTask(subTask.id, {
+      branchName: "eat/task-1/lead-session-chat-flow",
+      retryCount: 1,
+      status: SUBTASK_STATUS.RUNNING,
+      worktreePath: "/tmp/eat-worktree/subtask-1",
+    });
+    const workerSession = await taskRepository.createSession({
+      agentType: "claude-cli",
+      sandboxType: "DOCKER",
+      sessionType: SESSION_TYPE.WORKER,
+      status: SESSION_STATUS.RUNNING,
+      subTaskId: subTask.id,
+      taskId: task.id,
+    });
+
+    assert.equal(updatedSubTask.branchName, "eat/task-1/lead-session-chat-flow");
+    assert.equal(updatedSubTask.retryCount, 1);
+    assert.equal(updatedSubTask.worktreePath, "/tmp/eat-worktree/subtask-1");
+    assert.equal(
+      (await taskRepository.listSessionsBySubTaskId(subTask.id)).map((entry) => entry.id)[0],
+      workerSession.id,
     );
   } finally {
     await fixture.dispose();
