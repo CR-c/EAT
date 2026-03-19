@@ -218,6 +218,20 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const subTaskRetryMatch = pathName.match(/^\/api\/subtasks\/([^/]+)\/retry$/);
+
+  if (request.method === "POST" && subTaskRetryMatch) {
+    const subTaskId = decodeURIComponent(subTaskRetryMatch[1]);
+    const body = await readOptionalJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.retrySubTask(subTaskId, body.value);
+    return respondServiceResult(response, result);
+  }
+
   return respondJson(response, 404, {
     error: {
       code: "NOT_FOUND",
@@ -240,6 +254,36 @@ async function readJsonBody(request) {
         code: PROJECT_SERVICE_ERROR_CODES.INVALID_REQUEST_BODY,
         message: "Request body must be valid JSON.",
       },
+    };
+  }
+
+  try {
+    return {
+      ok: true,
+      value: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+    };
+  } catch {
+    return {
+      ok: false,
+      error: {
+        code: PROJECT_SERVICE_ERROR_CODES.INVALID_REQUEST_BODY,
+        message: "Request body must be valid JSON.",
+      },
+    };
+  }
+}
+
+async function readOptionalJsonBody(request) {
+  const chunks = [];
+
+  for await (const chunk of request) {
+    chunks.push(chunk);
+  }
+
+  if (chunks.length === 0) {
+    return {
+      ok: true,
+      value: {},
     };
   }
 
@@ -330,7 +374,12 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.PLAN_SNAPSHOT_NOT_FOUND:
+    case TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND:
       return 404;
+    case TASK_SERVICE_ERROR_CODES.SUBTASK_RETRY_NOT_ALLOWED:
+      return 400;
+    case TASK_SERVICE_ERROR_CODES.SUBTASK_ACTIVE_SESSION_EXISTS:
+      return 409;
     default:
       return 400;
   }
