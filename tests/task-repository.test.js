@@ -10,11 +10,12 @@ import {
   SESSION_STATUS,
   SESSION_TYPE,
   SqliteTaskRepository,
+  SUBTASK_STATUS,
   TASK_STATUS,
 } from "../src/repositories/task-repository.js";
 import { SqliteProjectRepository } from "../src/repositories/project-repository.js";
 
-test("persists task plan fields, messages, attachments, sessions, and append-only plan snapshots", async () => {
+test("persists task plan fields, messages, attachments, sessions, subtasks, and append-only plan snapshots", async () => {
   const fixture = await makeTempDir("eat-task-repo-");
 
   try {
@@ -60,6 +61,17 @@ test("persists task plan fields, messages, attachments, sessions, and append-onl
       taskId: task.id,
     });
     const updatedTask = await taskRepository.updateTask(task.id, {
+      approvedPlanJson: JSON.stringify({
+        notes: "Frozen approved plan.",
+        subtasks: [
+          {
+            branch_suffix: "lead-session-chat-flow",
+            description: "Execute the approved implementation plan.",
+            recommended_agent: "claude-cli",
+            title: "Approved lead session chat flow",
+          },
+        ],
+      }),
       currentPlanJson: JSON.stringify({
         notes: "Parallelize independent work only.",
         subtasks: [
@@ -73,6 +85,15 @@ test("persists task plan fields, messages, attachments, sessions, and append-onl
       }),
       planVersion: 1,
       status: TASK_STATUS.PLANNING,
+    });
+    const subTask = await taskRepository.createSubTask({
+      agentType: "claude-cli",
+      autoAssigned: false,
+      branchSuffix: "lead-session-chat-flow",
+      description: "Implement the approved work item.",
+      status: SUBTASK_STATUS.PENDING,
+      taskId: task.id,
+      title: "Approved subtask",
     });
     const leadGeneratedSnapshot = await taskRepository.createPlanSnapshot({
       payload: updatedTask.currentPlanJson,
@@ -91,9 +112,11 @@ test("persists task plan fields, messages, attachments, sessions, and append-onl
     assert.equal(task.baseCommitSha, "abc123def456");
     assert.equal(updatedTask.planVersion, 1);
     assert.equal(typeof updatedTask.currentPlanJson, "string");
+    assert.equal(typeof updatedTask.approvedPlanJson, "string");
     assert.equal(message.role, MESSAGE_ROLE.LEAD_AGENT);
     assert.equal(attachment.taskId, task.id);
     assert.equal(session.sessionType, SESSION_TYPE.LEAD);
+    assert.equal(subTask.autoAssigned, false);
 
     assert.deepEqual(
       normalizeRecord(await taskRepository.findTaskById(task.id)),
@@ -110,6 +133,10 @@ test("persists task plan fields, messages, attachments, sessions, and append-onl
     assert.deepEqual(
       (await taskRepository.listSessionsByTaskId(task.id)).map(normalizeRecord),
       [session],
+    );
+    assert.deepEqual(
+      (await taskRepository.listSubTasksByTaskId(task.id)).map(normalizeRecord),
+      [subTask],
     );
     assert.deepEqual(
       (await taskRepository.listPlanSnapshotsByTaskId(task.id)).map(normalizeRecord),
