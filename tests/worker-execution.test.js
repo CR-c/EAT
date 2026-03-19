@@ -11,6 +11,7 @@ import { AgentRegistry } from "../src/agents/agent-registry.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { TaskEventBus } from "../src/services/task-event-bus.js";
 import { SESSION_SANDBOX_TYPES } from "../src/agents/agent-contract.js";
+import { REVIEW_PHASE, SqliteTaskRepository } from "../src/repositories/task-repository.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -1174,6 +1175,150 @@ test("enters REVIEWING and assembles final review inputs after all worker runs f
   }
 });
 
+test("persists FINAL review records and writes authoritative subtask statuses", async () => {
+  const fixture = await makeTempDir("eat-worker-final-review-writeback-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const taskRepository = new SqliteTaskRepository({ databasePath });
+    const phase08 = createPhase08AgentService({
+      finalReviewBehavior: (config) => {
+        const [acceptedId, reworkId, rejectedId] = extractPromptSubtaskIds(config.prompt);
+
+        return {
+          reviews: [
+            {
+              decision: "ACCEPTED",
+              subtask_id: acceptedId,
+              summary: "Final review accepted this subtask for merge.",
+            },
+            {
+              decision: "REWORK",
+              subtask_id: reworkId,
+              summary: "Final review requires another worker pass.",
+            },
+            {
+              decision: "REJECTED",
+              subtask_id: rejectedId,
+              summary: "Final review marked this subtask for discard.",
+            },
+          ],
+        };
+      },
+      plan: {
+        subtasks: [
+          {
+            title: "Accepted worker",
+            description: "This subtask should be accepted.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "accepted-worker",
+          },
+          {
+            title: "Rework worker",
+            description: "This subtask should require rework.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "rework-worker",
+          },
+          {
+            title: "Rejected worker",
+            description: "This subtask should be discarded.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "rejected-worker",
+          },
+        ],
+      },
+      reviewBehavior: () => ({
+        decision: "ACCEPTED",
+        summary: "Incremental review accepted the worker result.",
+      }),
+      workerBehavior: () => ({
+        delayMs: 20,
+        exitCode: 0,
+        output: "worker completed for final review writeback\n",
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "final-review-writeback-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Persist final review records and authoritative decisions.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Final review writeback",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => (
+          event.eventName === "task:status" && event.data.status === "REVIEWING"
+        ));
+        await nextEvent(events, (event) => (
+          event.eventName === "subtask:review"
+          && event.data.phase === "FINAL"
+          && event.data.decision === "ACCEPTED"
+        ));
+        await nextEvent(events, (event) => (
+          event.eventName === "subtask:review"
+          && event.data.phase === "FINAL"
+          && event.data.decision === "REWORK"
+        ));
+        await nextEvent(events, (event) => (
+          event.eventName === "subtask:review"
+          && event.data.phase === "FINAL"
+          && event.data.decision === "REJECTED"
+        ));
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+
+        assert.deepEqual(
+          detailResponse.body.subTasks.map((subTask) => subTask.status).sort(),
+          ["ACCEPTED", "DISCARD_PENDING", "REWORK_REQUIRED"],
+        );
+        assert.deepEqual(
+          detailResponse.body.subTasks.map((subTask) => subTask.latestReviewDecision).sort(),
+          ["ACCEPTED", "REJECTED", "REWORK"],
+        );
+        assert.ok(detailResponse.body.subTasks.every((subTask) => subTask.latestReviewPhase === "FINAL"));
+        assert.equal(detailResponse.body.task.status, "REVIEWING");
+
+        for (const subTask of detailResponse.body.subTasks) {
+          const reviewRecords = await taskRepository.listReviewRecordsBySubTaskId(subTask.id);
+          assert.equal(reviewRecords.filter((record) => record.phase === REVIEW_PHASE.FINAL).length, 1);
+          assert.equal(reviewRecords.filter((record) => record.phase === REVIEW_PHASE.INCREMENTAL).length, 1);
+        }
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+      taskRepository.close();
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 function createPhase08AgentService(options) {
   const registry = new AgentRegistry();
   const plan = options.plan;
@@ -1586,4 +1731,9 @@ function tailUtf8(value, maxBytes) {
 
 function escapeRegExp(value) {
   return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractPromptSubtaskIds(prompt) {
+  return [...String(prompt ?? "").matchAll(/"subtask_id":\s*"([0-9a-f-]{36})"/g)]
+    .map((match) => match[1]);
 }

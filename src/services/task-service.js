@@ -35,6 +35,7 @@ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_FINAL_REVIEW_DIFF_BYTES = 32_768;
 const MAX_FINAL_REVIEW_LOG_BYTES = 32_768;
 const MAX_INCREMENTAL_REVIEW_LOG_BYTES = 32_768;
+const FINAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
 const INCREMENTAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
 
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
@@ -1474,7 +1475,7 @@ export class TaskService {
         return;
       }
 
-      await collectAgentResponse(await finalReviewInput.agentFactory.spawnSession({
+      const reviewResponse = await collectAgentResponse(await finalReviewInput.agentFactory.spawnSession({
         attachments: [],
         branchName: finalReviewInput.task.baseBranch,
         prompt: buildFinalReviewPrompt(finalReviewInput.review),
@@ -1484,6 +1485,43 @@ export class TaskService {
         sessionType: SESSION_TYPE.LEAD,
         workDir: finalReviewInput.project.path,
       }));
+      const parsedReview = parseFinalReviewResponse(
+        reviewResponse,
+        finalReviewInput.review.subTasks.map((subTask) => subTask.id),
+      );
+
+      if (!parsedReview.ok) {
+        return;
+      }
+
+      for (const decision of parsedReview.reviews) {
+        const persistedReview = await this.taskRepository.createReviewRecord({
+          decision: decision.decision,
+          phase: REVIEW_PHASE.FINAL,
+          sessionId: null,
+          subTaskId: decision.subTaskId,
+          summary: decision.summary,
+        });
+        const reviewedSubTask = await this.taskRepository.updateSubTask(decision.subTaskId, {
+          latestReviewDecision: persistedReview.decision,
+          latestReviewPhase: persistedReview.phase,
+          latestReviewSummary: persistedReview.summary,
+          status: mapFinalReviewDecisionToSubTaskStatus(persistedReview.decision),
+        });
+
+        if (!reviewedSubTask) {
+          continue;
+        }
+
+        this.#publish(taskId, "subtask:review", {
+          decision: reviewedSubTask.latestReviewDecision,
+          phase: reviewedSubTask.latestReviewPhase,
+          summary: reviewedSubTask.latestReviewSummary,
+          subtaskId: reviewedSubTask.id,
+          taskId,
+        });
+        this.#publishSubTaskStatus(taskId, reviewedSubTask);
+      }
     } finally {
       this.pendingFinalReviews.delete(taskId);
     }
@@ -2139,6 +2177,59 @@ function parseIncrementalReviewResponse(response) {
   }
 }
 
+function parseFinalReviewResponse(response, expectedSubTaskIds) {
+  const rawResponse = typeof response === "string" ? response.trim() : "";
+
+  if (rawResponse.length === 0) {
+    return { ok: false };
+  }
+
+  const jsonCandidate = extractJsonObject(rawResponse);
+
+  if (!jsonCandidate) {
+    return { ok: false };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonCandidate);
+    const reviews = Array.isArray(parsed?.reviews)
+      ? parsed.reviews.map((review) => ({
+          decision: normalizeRequiredString(review?.decision)?.toUpperCase() ?? null,
+          subTaskId: normalizeRequiredString(review?.subtask_id),
+          summary: normalizeRequiredString(review?.summary),
+        }))
+      : [];
+
+    if (reviews.length !== expectedSubTaskIds.length) {
+      return { ok: false };
+    }
+
+    const expectedIds = new Set(expectedSubTaskIds);
+    const seenIds = new Set();
+
+    for (const review of reviews) {
+      if (
+        !review.subTaskId
+        || !review.summary
+        || !FINAL_REVIEW_DECISIONS.has(review.decision)
+        || !expectedIds.has(review.subTaskId)
+        || seenIds.has(review.subTaskId)
+      ) {
+        return { ok: false };
+      }
+
+      seenIds.add(review.subTaskId);
+    }
+
+    return {
+      ok: true,
+      reviews,
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+
 function extractJsonObject(value) {
   const startIndex = value.indexOf("{");
   const endIndex = value.lastIndexOf("}");
@@ -2201,6 +2292,19 @@ async function buildSubTaskDiffSummary(task, project, subTask) {
       : "(no diff detected)";
   } catch (error) {
     return `Diff unavailable: ${error?.message ?? "git diff failed."}`;
+  }
+}
+
+function mapFinalReviewDecisionToSubTaskStatus(decision) {
+  switch (decision) {
+    case "ACCEPTED":
+      return SUBTASK_STATUS.ACCEPTED;
+    case "REWORK":
+      return SUBTASK_STATUS.REWORK_REQUIRED;
+    case "REJECTED":
+      return SUBTASK_STATUS.DISCARD_PENDING;
+    default:
+      return SUBTASK_STATUS.REVIEW_PENDING;
   }
 }
 
