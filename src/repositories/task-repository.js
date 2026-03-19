@@ -344,13 +344,14 @@ export class SqliteTaskRepository {
   }
 
   async createSession(input) {
-    const timestamp = new Date().toISOString();
+    const timestamp = input.createdAt ?? new Date().toISOString();
     const session = {
       agentType: input.agentType,
       containerId: input.containerId ?? null,
       createdAt: timestamp,
       endedAt: input.endedAt ?? null,
       exitCode: input.exitCode ?? null,
+      firstOutputAt: input.firstOutputAt ?? null,
       id: input.id ?? randomUUID(),
       logPath: input.logPath ?? null,
       outputBuffer: input.outputBuffer ?? "",
@@ -362,7 +363,7 @@ export class SqliteTaskRepository {
       status: input.status ?? SESSION_STATUS.PENDING,
       subTaskId: input.subTaskId ?? null,
       taskId: input.taskId,
-      updatedAt: timestamp,
+      updatedAt: input.updatedAt ?? timestamp,
     };
 
     this.#getDatabase()
@@ -381,11 +382,12 @@ export class SqliteTaskRepository {
           ended_at,
           exit_code,
           log_path,
+          first_output_at,
           output_buffer,
           output_buffer_max_bytes,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         session.id,
@@ -401,6 +403,7 @@ export class SqliteTaskRepository {
         session.endedAt,
         session.exitCode,
         session.logPath,
+        session.firstOutputAt,
         session.outputBuffer,
         session.outputBufferMaxBytes,
         session.createdAt,
@@ -427,6 +430,7 @@ export class SqliteTaskRepository {
           ended_at AS endedAt,
           exit_code AS exitCode,
           log_path AS logPath,
+          first_output_at AS firstOutputAt,
           output_buffer AS outputBuffer,
           output_buffer_max_bytes AS outputBufferMaxBytes,
           created_at AS createdAt,
@@ -464,6 +468,7 @@ export class SqliteTaskRepository {
           ended_at = ?,
           exit_code = ?,
           log_path = ?,
+          first_output_at = ?,
           output_buffer = ?,
           output_buffer_max_bytes = ?,
           updated_at = ?
@@ -480,6 +485,7 @@ export class SqliteTaskRepository {
         nextSession.endedAt,
         nextSession.exitCode,
         nextSession.logPath,
+        nextSession.firstOutputAt,
         nextSession.outputBuffer,
         nextSession.outputBufferMaxBytes,
         nextSession.updatedAt,
@@ -501,6 +507,7 @@ export class SqliteTaskRepository {
     const boundedOutput = Buffer.from(appendedOutput, "utf8").subarray(-maxBytes).toString("utf8");
 
     return this.updateSession(sessionId, {
+      firstOutputAt: existingSession.firstOutputAt ?? new Date().toISOString(),
       outputBuffer: boundedOutput,
     });
   }
@@ -522,6 +529,7 @@ export class SqliteTaskRepository {
           ended_at AS endedAt,
           exit_code AS exitCode,
           log_path AS logPath,
+          first_output_at AS firstOutputAt,
           output_buffer AS outputBuffer,
           output_buffer_max_bytes AS outputBufferMaxBytes,
           created_at AS createdAt,
@@ -597,6 +605,22 @@ export class SqliteTaskRepository {
         ORDER BY created_at DESC, id DESC
       `)
       .all(taskId);
+  }
+
+  async listPlanSnapshots() {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          version,
+          source,
+          payload,
+          created_at AS createdAt
+        FROM plan_snapshots
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all();
   }
 
   async createSubTask(input) {
@@ -842,7 +866,6 @@ export class SqliteTaskRepository {
       .all(subTaskId);
   }
 
-
   async createMergeRecord(input) {
     const timestamp = new Date().toISOString();
     const attemptNumber = input.attemptNumber ?? this.#getNextMergeAttemptNumber(input.subTaskId);
@@ -943,6 +966,144 @@ export class SqliteTaskRepository {
       .all(taskId);
   }
 
+  async listTasks() {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          project_id AS projectId,
+          title,
+          description,
+          lead_agent_type AS leadAgentType,
+          base_branch AS baseBranch,
+          base_commit_sha AS baseCommitSha,
+          status,
+          plan_version AS planVersion,
+          current_plan_json AS currentPlanJson,
+          approved_plan_json AS approvedPlanJson,
+          last_error AS lastError,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM tasks
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all();
+  }
+
+  async listMessages() {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          sub_task_id AS subTaskId,
+          role,
+          content,
+          created_at AS createdAt
+        FROM messages
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all();
+  }
+
+  async listSessions() {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          sub_task_id AS subTaskId,
+          agent_type AS agentType,
+          session_type AS sessionType,
+          sandbox_type AS sandboxType,
+          container_id AS containerId,
+          status,
+          pid,
+          started_at AS startedAt,
+          ended_at AS endedAt,
+          exit_code AS exitCode,
+          log_path AS logPath,
+          first_output_at AS firstOutputAt,
+          output_buffer AS outputBuffer,
+          output_buffer_max_bytes AS outputBufferMaxBytes,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM agent_sessions
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all();
+  }
+
+  async listSubTasks() {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          title,
+          description,
+          branch_suffix AS branchSuffix,
+          branch_name AS branchName,
+          worktree_path AS worktreePath,
+          agent_type AS agentType,
+          status,
+          auto_assigned AS autoAssigned,
+          retry_count AS retryCount,
+          last_error AS lastError,
+          latest_review_decision AS latestReviewDecision,
+          latest_review_phase AS latestReviewPhase,
+          latest_review_summary AS latestReviewSummary,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM sub_tasks
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all()
+      .map((subTask) => ({
+        ...subTask,
+        autoAssigned: Boolean(subTask.autoAssigned),
+      }));
+  }
+
+  async listReviewRecords() {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          sub_task_id AS subTaskId,
+          session_id AS sessionId,
+          phase,
+          decision,
+          summary,
+          created_at AS createdAt
+        FROM review_records
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all();
+  }
+
+  async listMergeRecords() {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          sub_task_id AS subTaskId,
+          attempt_number AS attemptNumber,
+          operation,
+          source_branch AS sourceBranch,
+          target_branch AS targetBranch,
+          status,
+          result_commit_sha AS resultCommitSha,
+          conflict_summary AS conflictSummary,
+          completed_at AS completedAt,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM merge_records
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all();
+  }
+
   async listSessionsBySubTaskId(subTaskId) {
     return this.#getDatabase()
       .prepare(`
@@ -960,6 +1121,7 @@ export class SqliteTaskRepository {
           ended_at AS endedAt,
           exit_code AS exitCode,
           log_path AS logPath,
+          first_output_at AS firstOutputAt,
           output_buffer AS outputBuffer,
           output_buffer_max_bytes AS outputBufferMaxBytes,
           created_at AS createdAt,

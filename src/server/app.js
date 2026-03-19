@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { SqliteProjectRepository } from "../repositories/project-repository.js";
 import { SqliteTaskRepository } from "../repositories/task-repository.js";
 import { AgentService } from "../services/agent-service.js";
+import { MetricsService } from "../services/metrics-service.js";
 import { ProjectService, PROJECT_SERVICE_ERROR_CODES } from "../services/project-service.js";
 import { DockerSandboxManager, SystemService } from "../services/sandbox-manager.js";
 import { TaskService, TASK_SERVICE_ERROR_CODES } from "../services/task-service.js";
@@ -32,6 +33,9 @@ export function createApp(options = {}) {
   });
   const systemService = options.systemService ?? new SystemService({ sandboxManager });
   const eventBus = options.eventBus ?? new TaskEventBus();
+  const metricsService = options.metricsService ?? new MetricsService({
+    taskRepository,
+  });
   const taskService = options.taskService ?? new TaskService({
     agentService,
     eventBus,
@@ -43,7 +47,7 @@ export function createApp(options = {}) {
 
   const server = http.createServer(async (request, response) => {
     try {
-      await routeRequest(request, response, { agentService, projectService, systemService, taskService });
+      await routeRequest(request, response, { agentService, metricsService, projectService, systemService, taskService });
     } catch (error) {
       respondJson(response, 500, {
         error: {
@@ -117,6 +121,16 @@ async function routeRequest(request, response, services) {
 
   if (request.method === "GET" && pathName === "/api/system/sandbox-policy") {
     const result = await systemService.getSandboxPolicy();
+    return respondServiceResult(response, result);
+  }
+
+  if (request.method === "GET" && pathName === "/api/metrics/summary") {
+    const result = await metricsService.getSummary();
+    return respondServiceResult(response, result);
+  }
+
+  if (request.method === "GET" && pathName === "/api/metrics/export") {
+    const result = await metricsService.exportMetrics();
     return respondServiceResult(response, result);
   }
 
