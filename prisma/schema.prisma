@@ -7,6 +7,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum TaskStatus {
+  ACTION_REQUIRED
+  CANCELLED
+  CLARIFYING
+  COMPLETED
+  DRAFT
+  EXECUTING
+  FAILED
+  MERGING
+  PLANNING
+  PLAN_REVIEW
+  REVIEWING
+}
+
+enum PlanSnapshotSource {
+  APPROVED
+  LEAD_GENERATED
+  RESTORED_FROM_HISTORY
+}
+
 model Project {
   id            String   @id
   name          String
@@ -14,6 +34,42 @@ model Project {
   defaultBranch String   @map("default_branch")
   createdAt     DateTime @map("created_at")
   updatedAt     DateTime @map("updated_at")
+  tasks         Task[]
 
   @@map("projects")
+}
+
+model Task {
+  id               String         @id
+  projectId        String         @map("project_id")
+  title            String
+  description      String
+  leadAgentType    String         @map("lead_agent_type")
+  baseBranch       String         @map("base_branch")
+  baseCommitSha    String         @map("base_commit_sha")
+  status           TaskStatus     @default(DRAFT)
+  planVersion      Int            @default(0) @map("plan_version")
+  currentPlanJson  String?        @map("current_plan_json")
+  approvedPlanJson String?        @map("approved_plan_json")
+  lastError        String?        @map("last_error")
+  createdAt        DateTime       @map("created_at")
+  updatedAt        DateTime       @map("updated_at")
+  project          Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  planSnapshots    PlanSnapshot[]
+
+  @@index([projectId, createdAt], map: "idx_tasks_project_id_created_at")
+  @@map("tasks")
+}
+
+model PlanSnapshot {
+  id        String             @id
+  taskId     String            @map("task_id")
+  version   Int
+  source    PlanSnapshotSource
+  payload   String
+  createdAt DateTime           @map("created_at")
+  task      Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt, id], map: "idx_plan_snapshots_task_id_created_at")
+  @@map("plan_snapshots")
 }

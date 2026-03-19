@@ -37,6 +37,12 @@ export const SESSION_TYPE = Object.freeze({
   WORKER: "WORKER",
 });
 
+export const PLAN_SNAPSHOT_SOURCE = Object.freeze({
+  APPROVED: "APPROVED",
+  LEAD_GENERATED: "LEAD_GENERATED",
+  RESTORED_FROM_HISTORY: "RESTORED_FROM_HISTORY",
+});
+
 export class SqliteTaskRepository {
   constructor(options = {}) {
     this.databasePath = options.databasePath ?? DEFAULT_DATABASE_PATH;
@@ -492,6 +498,56 @@ export class SqliteTaskRepository {
         FROM agent_sessions
         WHERE task_id = ?
         ORDER BY created_at ASC, id ASC
+      `)
+      .all(taskId);
+  }
+
+  async createPlanSnapshot(input) {
+    const snapshot = {
+      createdAt: input.createdAt ?? new Date().toISOString(),
+      id: input.id ?? randomUUID(),
+      payload: input.payload,
+      source: input.source,
+      taskId: input.taskId,
+      version: input.version,
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        INSERT INTO plan_snapshots (
+          id,
+          task_id,
+          version,
+          source,
+          payload,
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        snapshot.id,
+        snapshot.taskId,
+        snapshot.version,
+        snapshot.source,
+        snapshot.payload,
+        snapshot.createdAt,
+      );
+
+    return snapshot;
+  }
+
+  async listPlanSnapshotsByTaskId(taskId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          version,
+          source,
+          payload,
+          created_at AS createdAt
+        FROM plan_snapshots
+        WHERE task_id = ?
+        ORDER BY created_at DESC, id DESC
       `)
       .all(taskId);
   }

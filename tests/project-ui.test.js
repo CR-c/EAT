@@ -14,7 +14,7 @@ import {
   buildTaskStatusLabel,
 } from "../src/ui/view-model.js";
 
-test("serves the Phase 04 lead-session UI shell and static assets", async () => {
+test("serves the Phase 05 planning UI shell and static assets", async () => {
   const server = createApp({
     repositoryOptions: {
       databasePath: path.join(process.cwd(), ".tmp-projects.db"),
@@ -35,6 +35,7 @@ test("serves the Phase 04 lead-session UI shell and static assets", async () => 
     assert.match(rootResponse.body, /Lead Session Chat Flow/);
     assert.match(rootResponse.body, /New clarification task/i);
     assert.match(rootResponse.body, /Lead session transcript/i);
+    assert.match(rootResponse.body, /Current plan draft/i);
 
     assert.equal(cssResponse.status, 200);
     assert.match(cssResponse.headers.get("content-type"), /^text\/css/);
@@ -80,6 +81,7 @@ test("formats project, task, agent health, and attachment UI messages", () => {
   assert.equal(buildAgentStatusLabel({ available: true, checks: [] }), "Healthy");
   assert.equal(buildAgentStatusLabel({ available: false, checks: [] }), "Unavailable");
   assert.equal(buildTaskStatusLabel("CLARIFYING"), "Clarifying");
+  assert.equal(buildTaskStatusLabel("PLAN_REVIEW"), "Plan review");
   assert.equal(
     buildTaskErrorMessage({
       code: "ATTACHMENT_TYPE_UNSUPPORTED",

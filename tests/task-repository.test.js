@@ -5,6 +5,7 @@ import path from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 
 import {
+  PLAN_SNAPSHOT_SOURCE,
   MESSAGE_ROLE,
   SESSION_STATUS,
   SESSION_TYPE,
@@ -13,7 +14,7 @@ import {
 } from "../src/repositories/task-repository.js";
 import { SqliteProjectRepository } from "../src/repositories/project-repository.js";
 
-test("persists phase 04 task, message, attachment, and lead session records", async () => {
+test("persists task plan fields, messages, attachments, sessions, and append-only plan snapshots", async () => {
   const fixture = await makeTempDir("eat-task-repo-");
 
   try {
@@ -58,16 +59,45 @@ test("persists phase 04 task, message, attachment, and lead session records", as
       status: SESSION_STATUS.RUNNING,
       taskId: task.id,
     });
+    const updatedTask = await taskRepository.updateTask(task.id, {
+      currentPlanJson: JSON.stringify({
+        notes: "Parallelize independent work only.",
+        subtasks: [
+          {
+            branch_suffix: "lead-session-chat-flow",
+            description: "Implement the Phase 04 clarification loop.",
+            recommended_agent: "claude-cli",
+            title: "Lead session chat flow",
+          },
+        ],
+      }),
+      planVersion: 1,
+      status: TASK_STATUS.PLANNING,
+    });
+    const leadGeneratedSnapshot = await taskRepository.createPlanSnapshot({
+      payload: updatedTask.currentPlanJson,
+      source: PLAN_SNAPSHOT_SOURCE.LEAD_GENERATED,
+      taskId: task.id,
+      version: updatedTask.planVersion,
+    });
+    const restoredSnapshot = await taskRepository.createPlanSnapshot({
+      payload: updatedTask.currentPlanJson,
+      source: PLAN_SNAPSHOT_SOURCE.RESTORED_FROM_HISTORY,
+      taskId: task.id,
+      version: updatedTask.planVersion,
+    });
 
     assert.equal(task.status, TASK_STATUS.DRAFT);
     assert.equal(task.baseCommitSha, "abc123def456");
+    assert.equal(updatedTask.planVersion, 1);
+    assert.equal(typeof updatedTask.currentPlanJson, "string");
     assert.equal(message.role, MESSAGE_ROLE.LEAD_AGENT);
     assert.equal(attachment.taskId, task.id);
     assert.equal(session.sessionType, SESSION_TYPE.LEAD);
 
     assert.deepEqual(
       normalizeRecord(await taskRepository.findTaskById(task.id)),
-      task,
+      updatedTask,
     );
     assert.deepEqual(
       (await taskRepository.listMessagesByTaskId(task.id)).map(normalizeRecord),
@@ -80,6 +110,10 @@ test("persists phase 04 task, message, attachment, and lead session records", as
     assert.deepEqual(
       (await taskRepository.listSessionsByTaskId(task.id)).map(normalizeRecord),
       [session],
+    );
+    assert.deepEqual(
+      (await taskRepository.listPlanSnapshotsByTaskId(task.id)).map(normalizeRecord),
+      [restoredSnapshot, leadGeneratedSnapshot],
     );
     assert.deepEqual(
       (await taskRepository.listTasksByProjectId(project.id)).map((entry) => entry.id),

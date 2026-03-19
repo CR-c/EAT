@@ -45,6 +45,8 @@ export function buildTaskErrorMessage(error) {
       return "One or more attachments do not match the supplied type or MIME metadata.";
     case "TASK_MESSAGE_REQUIRED":
       return "Write a message before sending it to the lead agent.";
+    case "INVALID_PLAN":
+      return error.message ?? "The generated plan is invalid and needs regeneration.";
     default:
       return error.message ?? "An unexpected task error occurred.";
   }
@@ -118,6 +120,8 @@ export function buildTaskStatusLabel(status) {
       return "Clarifying";
     case "PLANNING":
       return "Planning";
+    case "PLAN_REVIEW":
+      return "Plan review";
     case "ACTION_REQUIRED":
       return "Action required";
     case "FAILED":

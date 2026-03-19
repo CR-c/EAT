@@ -271,6 +271,14 @@
                 <dt>Messages persisted</dt>
                 <dd id="task-message-count">0</dd>
               </div>
+              <div class="stat-card">
+                <dt>Plan version</dt>
+                <dd id="task-plan-version">0</dd>
+              </div>
+              <div class="stat-card">
+                <dt>Snapshots</dt>
+                <dd id="task-plan-snapshot-count">0</dd>
+              </div>
             </dl>
 
             <section class="task-detail__attachments" aria-labelledby="task-attachments-title">
@@ -282,6 +290,23 @@
                 No attachments were added for this task.
               </div>
               <ul id="task-attachments-list" class="attachment-list"></ul>
+            </section>
+
+            <section class="task-detail__planning" aria-labelledby="task-plan-title">
+              <div class="panel__header">
+                <div>
+                  <p class="panel__eyebrow">Plan draft</p>
+                  <h3 id="task-plan-title">Current plan draft</h3>
+                </div>
+              </div>
+              <div id="task-plan-feedback" class="feedback" role="status" aria-live="polite"></div>
+              <div id="task-plan-empty" class="empty-state">
+                Confirm requirements to trigger plan generation, validation, and draft persistence.
+              </div>
+              <div id="task-plan-detail" class="plan-detail" hidden>
+                <p id="task-plan-summary" class="plan-detail__summary"></p>
+                <div id="task-plan-list" class="plan-list"></div>
+              </div>
             </section>
 
             <section class="task-detail__transcript" aria-labelledby="task-transcript-title">
