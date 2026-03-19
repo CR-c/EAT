@@ -220,6 +220,15 @@ function createScriptedLeadSession({ adapterName, prompt, sessionType }) {
       return;
     }
 
+    if (looksLikeIncrementalReviewPrompt(prompt)) {
+      emitOutput(JSON.stringify({
+        decision: "ACCEPTED",
+        summary: `${adapterName} stub incremental review accepted the worker run.`,
+      }));
+      close(0);
+      return;
+    }
+
     emitOutput(
       `${adapterName} lead stub session started.\nThis built-in adapter is running in explicit stub mode.\nPlease confirm the success criteria, constraints, and any must-keep files before planning.\n`,
     );
@@ -278,4 +287,8 @@ function createScriptedLeadSession({ adapterName, prompt, sessionType }) {
       listener(exitCode);
     }
   }
+}
+
+function looksLikeIncrementalReviewPrompt(prompt) {
+  return typeof prompt === "string" && prompt.includes("incremental advisory review");
 }

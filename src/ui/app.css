@@ -736,6 +736,49 @@ textarea {
   word-break: break-word;
 }
 
+.execution-card__review,
+.review-panel {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 244, 230, 0.72);
+  border: 1px solid rgba(182, 75, 45, 0.14);
+}
+
+.execution-card__review-title,
+.execution-card__review-summary,
+.review-panel__phase,
+.review-panel__summary {
+  margin: 0;
+}
+
+.execution-card__review-title,
+.review-panel__phase {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8f4b28;
+}
+
+.execution-card__review-summary,
+.review-panel__summary {
+  color: var(--text-default);
+  line-height: 1.6;
+}
+
+.review-panel[hidden] {
+  display: none;
+}
+
+.review-panel__header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .execution-card__preview,
 .execution-console {
   margin: 0;

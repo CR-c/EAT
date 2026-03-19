@@ -20,6 +20,7 @@ import {
 import {
   PLAN_SNAPSHOT_SOURCE,
   MESSAGE_ROLE,
+  REVIEW_PHASE,
   SESSION_STATUS,
   SESSION_TYPE,
   SUBTASK_STATUS,
@@ -28,6 +29,8 @@ import {
 
 const DEFAULT_UPLOAD_ROOT = path.resolve(process.cwd(), "uploads");
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_INCREMENTAL_REVIEW_LOG_BYTES = 32_768;
+const INCREMENTAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
 
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
 const DOCUMENT_EXTENSIONS = new Set([".md", ".pdf", ".txt"]);
@@ -1139,6 +1142,89 @@ export class TaskService {
       taskId,
     });
     this.#publishSubTaskStatus(taskId, nextSubTask);
+
+    if (exitCode === 0) {
+      await this.#runIncrementalReview(taskId, subTaskId, sessionId);
+    }
+  }
+
+  async #runIncrementalReview(taskId, subTaskId, sessionId) {
+    const [task, subTask, session] = await Promise.all([
+      this.taskRepository.findTaskById(taskId),
+      this.taskRepository.findSubTaskById(subTaskId),
+      this.taskRepository.findSessionById(sessionId),
+    ]);
+
+    if (!task || !subTask || !session || subTask.taskId !== taskId) {
+      return;
+    }
+
+    const project = await this.projectRepository.findProjectById(task.projectId);
+
+    if (!project) {
+      return;
+    }
+
+    const agentFactory = this.agentService.agentRegistry.get(task.leadAgentType);
+
+    if (!agentFactory?.capabilities?.canOrchestrate) {
+      return;
+    }
+
+    const health = await this.agentService.getHealth({ force: true });
+    const agentHealth = health.agents?.[task.leadAgentType] ?? null;
+
+    if (!agentHealth?.available) {
+      return;
+    }
+
+    let reviewResponse;
+
+    try {
+      reviewResponse = await collectAgentResponse(await agentFactory.spawnSession({
+        attachments: [],
+        branchName: task.baseBranch,
+        prompt: await buildIncrementalReviewPrompt(task, subTask, session),
+        sandbox: {
+          type: selectLeadSandboxType(agentFactory.capabilities.supportedSandboxTypes),
+        },
+        sessionType: SESSION_TYPE.LEAD,
+        workDir: project.path,
+      }));
+    } catch {
+      return;
+    }
+
+    const parsedReview = parseIncrementalReviewResponse(reviewResponse);
+
+    if (!parsedReview.ok) {
+      return;
+    }
+
+    const persistedReview = await this.taskRepository.createReviewRecord({
+      decision: parsedReview.review.decision,
+      phase: REVIEW_PHASE.INCREMENTAL,
+      sessionId: null,
+      subTaskId,
+      summary: parsedReview.review.summary,
+    });
+    const reviewedSubTask = await this.taskRepository.updateSubTask(subTaskId, {
+      latestReviewDecision: persistedReview.decision,
+      latestReviewPhase: persistedReview.phase,
+      latestReviewSummary: persistedReview.summary,
+    });
+
+    if (!reviewedSubTask) {
+      return;
+    }
+
+    this.#publish(taskId, "subtask:review", {
+      decision: reviewedSubTask.latestReviewDecision,
+      phase: reviewedSubTask.latestReviewPhase,
+      summary: reviewedSubTask.latestReviewSummary,
+      subtaskId: reviewedSubTask.id,
+      taskId,
+    });
   }
 
   #decorateSession(session) {
@@ -1604,6 +1690,111 @@ function buildWorkerPrompt(task, subTask) {
     `Branch: ${subTask.branchName}`,
     "Work only inside the provided worktree and use the supplied attachments when relevant.",
   ].join("\n");
+}
+
+async function buildIncrementalReviewPrompt(task, subTask, session) {
+  const persistedLog = session.logPath
+    ? await readFile(session.logPath, "utf8").catch(() => null)
+    : null;
+  const logExcerpt = tailUtf8(
+    persistedLog ?? session.outputBuffer ?? "",
+    MAX_INCREMENTAL_REVIEW_LOG_BYTES,
+  );
+
+  return [
+    "You are the lead reviewer for one completed EAT subtask.",
+    "This is an incremental advisory review only. Do not imply final authority.",
+    `Task title: ${task.title}`,
+    `Task description: ${task.description}`,
+    `Subtask title: ${subTask.title}`,
+    `Subtask description: ${subTask.description}`,
+    `Worker agent: ${subTask.agentType}`,
+    `Worker branch: ${subTask.branchName ?? "unknown"}`,
+    "Return JSON only with this exact shape:",
+    '{"decision":"ACCEPTED|REWORK|REJECTED","summary":"one concise actionable paragraph"}',
+    "Use REWORK for fixable issues and REJECTED for major misalignment or unusable output.",
+    "Persisted worker log excerpt follows:",
+    logExcerpt || "(no worker output captured)",
+  ].join("\n");
+}
+
+function parseIncrementalReviewResponse(response) {
+  const rawResponse = typeof response === "string" ? response.trim() : "";
+
+  if (rawResponse.length === 0) {
+    return { ok: false };
+  }
+
+  const jsonCandidate = extractJsonObject(rawResponse);
+
+  if (!jsonCandidate) {
+    return { ok: false };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonCandidate);
+    const decision = normalizeRequiredString(parsed?.decision)?.toUpperCase() ?? null;
+    const summary = normalizeRequiredString(parsed?.summary);
+
+    if (!decision || !INCREMENTAL_REVIEW_DECISIONS.has(decision) || !summary) {
+      return { ok: false };
+    }
+
+    return {
+      ok: true,
+      review: {
+        decision,
+        summary,
+      },
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function extractJsonObject(value) {
+  const startIndex = value.indexOf("{");
+  const endIndex = value.lastIndexOf("}");
+
+  if (startIndex < 0 || endIndex <= startIndex) {
+    return null;
+  }
+
+  return value.slice(startIndex, endIndex + 1);
+}
+
+async function collectAgentResponse(runtime) {
+  return new Promise((resolve, reject) => {
+    let output = "";
+    let settled = false;
+
+    runtime.onOutput((chunk) => {
+      if (typeof chunk !== "string") {
+        return;
+      }
+
+      output += chunk.replaceAll(/\r\n/g, "\n");
+    });
+
+    runtime.onExit((exitCode) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+
+      if (exitCode === 0) {
+        resolve(output);
+        return;
+      }
+
+      reject(new Error(`Lead review session exited with code ${exitCode}.`));
+    });
+  });
+}
+
+function tailUtf8(value, maxBytes) {
+  return Buffer.from(String(value ?? ""), "utf8").subarray(-maxBytes).toString("utf8");
 }
 
 function buildWorkerLaunchMetadata(attachments, capabilities) {

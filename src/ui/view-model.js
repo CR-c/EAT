@@ -200,6 +200,30 @@ export function buildSubTaskStatusLabel(status) {
   }
 }
 
+export function buildReviewDecisionLabel(decision) {
+  switch (decision) {
+    case "ACCEPTED":
+      return "Accepted";
+    case "REWORK":
+      return "Needs rework";
+    case "REJECTED":
+      return "Rejected";
+    default:
+      return "Pending";
+  }
+}
+
+export function buildReviewPhaseLabel(phase) {
+  switch (phase) {
+    case "INCREMENTAL":
+      return "Incremental review";
+    case "FINAL":
+      return "Final review";
+    default:
+      return "Review";
+  }
+}
+
 export function buildAttachmentCaption(attachment) {
   if (!attachment) {
     return "Unknown attachment";

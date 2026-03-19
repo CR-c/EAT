@@ -296,6 +296,88 @@ test("persists full worker logs to logPath while keeping a bounded output buffer
   }
 });
 
+test("triggers incremental review after a successful worker run and exposes advisory state", async () => {
+  const fixture = await makeTempDir("eat-worker-incremental-review-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Reviewable worker",
+            description: "Generate a worker result that needs follow-up.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "reviewable-worker",
+          },
+        ],
+      },
+      reviewBehavior: () => ({
+        decision: "REWORK",
+        summary: "Implementation completed, but the worker skipped the validation branch and needs a focused rerun.",
+      }),
+      workerBehavior: () => ({
+        delayMs: 20,
+        exitCode: 0,
+        output: "worker completed with TODOs\n",
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "incremental-review-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Run incremental review after worker completion.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Incremental review",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+        const reviewEvent = await nextEvent(events, (event) => event.eventName === "subtask:review");
+
+        assert.equal(reviewEvent.data.phase, "INCREMENTAL");
+        assert.equal(reviewEvent.data.decision, "REWORK");
+        assert.match(reviewEvent.data.summary, /needs a focused rerun/i);
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.subTasks[0].latestReviewDecision, "REWORK");
+        assert.equal(detailResponse.body.subTasks[0].latestReviewPhase, "INCREMENTAL");
+        assert.match(detailResponse.body.subTasks[0].latestReviewSummary, /skipped the validation branch/i);
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("emits session lifecycle and output events with session-scoped metadata", async () => {
   const fixture = await makeTempDir("eat-worker-stream-events-");
 
@@ -747,15 +829,36 @@ function createPhase08AgentService(options) {
       };
     },
     name: "healthy-lead",
-    async spawnSession() {
+    async spawnSession(config) {
       const outputListeners = new Set();
       const exitListeners = new Set();
 
-      setTimeout(() => {
-        for (const listener of outputListeners) {
-          listener("Confirm the task, then I will emit the plan.\n");
-        }
-      }, 0);
+      if (typeof config?.prompt === "string" && config.prompt.includes("incremental advisory review")) {
+        const review = options.reviewBehavior?.(config) ?? {
+          decision: "ACCEPTED",
+          summary: "Incremental review accepted the worker run.",
+        };
+
+        setTimeout(() => {
+          for (const listener of outputListeners) {
+            listener(JSON.stringify({
+              decision: review.decision ?? "ACCEPTED",
+              summary: review.summary ?? "Incremental review accepted the worker run.",
+            }));
+          }
+        }, review.delayMs ?? 0);
+        setTimeout(() => {
+          for (const listener of exitListeners) {
+            listener(review.exitCode ?? 0);
+          }
+        }, (review.delayMs ?? 0) + 5);
+      } else {
+        setTimeout(() => {
+          for (const listener of outputListeners) {
+            listener("Confirm the task, then I will emit the plan.\n");
+          }
+        }, 0);
+      }
 
       return {
         containerId: null,
@@ -924,6 +1027,10 @@ async function startServer(options = {}) {
 }
 
 async function stopServer(server) {
+  await new Promise((resolve) => {
+    setTimeout(resolve, 25);
+  });
+
   await new Promise((resolve, reject) => {
     server.close((error) => {
       if (error) {

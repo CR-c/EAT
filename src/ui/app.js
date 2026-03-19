@@ -1,6 +1,8 @@
 import {
   buildAgentErrorMessage,
   buildAgentRuntimeModeLabel,
+  buildReviewDecisionLabel,
+  buildReviewPhaseLabel,
   buildAgentStatusLabel,
   buildAttachmentCaption,
   buildBranchList,
@@ -107,6 +109,10 @@ const elements = {
   taskExecutionFocusEmpty: document.querySelector("#task-execution-focus-empty"),
   taskExecutionFocusMeta: document.querySelector("#task-execution-focus-meta"),
   taskExecutionFocusPreview: document.querySelector("#task-execution-focus-preview"),
+  taskExecutionReview: document.querySelector("#task-execution-review"),
+  taskExecutionReviewDecision: document.querySelector("#task-execution-review-decision"),
+  taskExecutionReviewPhase: document.querySelector("#task-execution-review-phase"),
+  taskExecutionReviewSummary: document.querySelector("#task-execution-review-summary"),
   taskExecutionFocusTitle: document.querySelector("#task-execution-focus-title"),
   taskExecutionSessionList: document.querySelector("#task-execution-session-list"),
   taskExecutionList: document.querySelector("#task-execution-list"),
@@ -780,6 +786,9 @@ function renderSubTaskExecution(detail) {
       `${attachment.fileName} (${attachment.reason})`
     )) ?? [];
     const previewText = stripAnsi(latestSession?.outputBuffer ?? "");
+    const reviewDecision = buildReviewDecisionLabel(subTask.latestReviewDecision);
+    const reviewPhase = buildReviewPhaseLabel(subTask.latestReviewPhase);
+    const reviewSummary = subTask.latestReviewSummary ?? "Incremental review will appear after a successful worker run.";
     const isSelected = subTask.id === state.selectedExecutionSubTaskId;
     const card = document.createElement("button");
 
@@ -797,6 +806,10 @@ function renderSubTaskExecution(detail) {
         <p class="execution-card__summary-line"><strong>Latest session:</strong> ${escapeHtml(latestSession ? `${latestSession.agentType} · ${latestSession.status}` : "None")}</p>
         <p class="execution-card__summary-line"><strong>Retries:</strong> ${escapeHtml(String(subTask.retryCount ?? 0))} · <strong>Sessions:</strong> ${escapeHtml(String(sessions.length))}</p>
         <p class="execution-card__summary-line"><strong>Attachments:</strong> ${escapeHtml(`${includedAttachments.length} included · ${excludedAttachments.length} excluded`)}</p>
+      </div>
+      <div class="execution-card__review">
+        <p class="execution-card__review-title">${escapeHtml(`${reviewPhase} · ${reviewDecision}`)}</p>
+        <p class="execution-card__review-summary">${escapeHtml(reviewSummary)}</p>
       </div>
       <dl class="execution-card__facts">
         <div>
@@ -1132,6 +1145,9 @@ function connectTaskStream(taskId) {
   });
   stream.addEventListener("subtask:status", (event) => {
     applySubTaskStatusEvent(JSON.parse(event.data));
+  });
+  stream.addEventListener("subtask:review", (event) => {
+    applySubTaskReviewEvent(JSON.parse(event.data));
   });
   stream.addEventListener("session:started", (event) => {
     applySessionStartedEvent(JSON.parse(event.data));
@@ -1671,6 +1687,30 @@ function applySubTaskStatusEvent(payload) {
   renderTaskDetail();
 }
 
+function applySubTaskReviewEvent(payload) {
+  if (!matchesSelectedTask(payload?.taskId)) {
+    return;
+  }
+
+  ensureExecutionCollections();
+
+  const existingSubTask = findRecordById(state.taskDetail.subTasks, payload.id ?? payload.subtaskId);
+
+  if (!existingSubTask) {
+    return;
+  }
+
+  const nextSubTask = {
+    ...existingSubTask,
+    latestReviewDecision: payload.decision ?? existingSubTask.latestReviewDecision ?? null,
+    latestReviewPhase: payload.phase ?? existingSubTask.latestReviewPhase ?? null,
+    latestReviewSummary: payload.summary ?? existingSubTask.latestReviewSummary ?? null,
+  };
+
+  state.taskDetail.subTasks = upsertRecord(state.taskDetail.subTasks, nextSubTask);
+  renderTaskDetail();
+}
+
 function applySessionStartedEvent(payload) {
   if (!matchesSelectedTask(payload?.taskId)) {
     return;
@@ -1849,6 +1889,13 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
     focusedSession?.logPath ? `log ${focusedSession.logPath}` : "log pending",
     selectedSubTask.lastError ? `error: ${selectedSubTask.lastError}` : null,
   ].filter(Boolean).join(" · ");
+  elements.taskExecutionReview.hidden = !selectedSubTask.latestReviewDecision && !selectedSubTask.latestReviewSummary;
+
+  if (!elements.taskExecutionReview.hidden) {
+    elements.taskExecutionReviewDecision.textContent = buildReviewDecisionLabel(selectedSubTask.latestReviewDecision);
+    elements.taskExecutionReviewPhase.textContent = buildReviewPhaseLabel(selectedSubTask.latestReviewPhase);
+    elements.taskExecutionReviewSummary.textContent = selectedSubTask.latestReviewSummary ?? "No review summary available.";
+  }
 
   const previewOutput = focusedSession
     ? stripAnsi(state.liveSessionOutputs.get(focusedSession.id) ?? focusedSession.outputBuffer ?? "")
