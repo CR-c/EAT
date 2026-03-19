@@ -544,6 +544,12 @@ export class TaskService {
       version: nextTask.planVersion,
     });
 
+    this.#publish(taskId, "task:plan-restored", {
+      currentPlan: parseCurrentPlanJson(snapshot.payload),
+      snapshotId,
+      taskId,
+    });
+
     return {
       ok: true,
       currentPlan: parseCurrentPlanJson(snapshot.payload),

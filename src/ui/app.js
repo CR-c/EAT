@@ -29,6 +29,8 @@ const state = {
   selectedTaskId: readStorage(STORAGE_KEYS.selectedTaskId),
   taskDetail: null,
   taskPlanDraft: null,
+  taskPlanDraftState: null,
+  taskPlanNotice: null,
   tasks: [],
   taskStream: null,
   workerCandidates: [],
@@ -740,6 +742,11 @@ function renderPlanDraft(detail) {
     );
   }
 
+  if (state.taskPlanNotice) {
+    showFeedback(elements.taskPlanFeedback, state.taskPlanNotice.tone, state.taskPlanNotice.message);
+    state.taskPlanNotice = null;
+  }
+
   elements.taskPlanDetail.hidden = false;
   elements.taskPlanEditor.hidden = detail.task.status !== "PLAN_REVIEW" || !editableDraft;
   elements.taskPlanSummary.textContent = buildPlanSummary(detail, failedAttempts, editableDraft ?? parsedPlan);
@@ -751,9 +758,18 @@ function renderPlanDraft(detail) {
 
   const subtasks = editableDraft?.subtasks ?? parsedPlan?.subtasks ?? [];
   const hasUnsavedDraft = editableDraft ? isEditablePlanDirty(detail) : false;
+  const hasStaleDraft = state.taskPlanDraftState?.stale === true;
 
-  elements.taskPlanSaveDraftButton.disabled = !editableDraft || !hasUnsavedDraft;
-  elements.taskPlanApproveButton.disabled = !editableDraft || hasUnsavedDraft;
+  if (hasStaleDraft) {
+    showFeedback(
+      elements.taskPlanFeedback,
+      "error",
+      "Server draft changed in another tab or after a restore. Reset local edits before continuing.",
+    );
+  }
+
+  elements.taskPlanSaveDraftButton.disabled = !editableDraft || !hasUnsavedDraft || hasStaleDraft;
+  elements.taskPlanApproveButton.disabled = !editableDraft || hasUnsavedDraft || hasStaleDraft;
   elements.taskPlanApproveButton.textContent = hasUnsavedDraft ? "Save before approval" : "Approve draft";
 
   if (!subtasks.length) {
@@ -896,6 +912,8 @@ function clearTaskList() {
 function clearTaskDetail() {
   state.taskDetail = null;
   state.taskPlanDraft = null;
+  state.taskPlanDraftState = null;
+  state.taskPlanNotice = null;
   state.selectedTaskId = null;
   writeStorage(STORAGE_KEYS.selectedTaskId, "");
   disconnectTaskStream();
@@ -974,6 +992,15 @@ function connectTaskStream(taskId) {
   stream.addEventListener("task:plan-generated", () => {
     void loadTaskDetail(taskId, { preserveStream: true });
   });
+  stream.addEventListener("task:plan-restored", (event) => {
+    const payload = JSON.parse(event.data);
+
+    state.taskPlanNotice = {
+      message: `Snapshot ${payload.snapshotId} was restored into the current draft.`,
+      tone: "success",
+    };
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
   stream.addEventListener("session:started", () => {
     void loadTaskDetail(taskId, { preserveStream: true });
   });
@@ -997,6 +1024,7 @@ function disconnectTaskStream() {
 function syncEditablePlanDraft(detail) {
   if (detail?.task?.status !== "PLAN_REVIEW") {
     state.taskPlanDraft = null;
+    state.taskPlanDraftState = null;
     return;
   }
 
@@ -1004,6 +1032,7 @@ function syncEditablePlanDraft(detail) {
 
   if (!serverPlan) {
     state.taskPlanDraft = null;
+    state.taskPlanDraftState = null;
     return;
   }
 
@@ -1014,9 +1043,25 @@ function syncEditablePlanDraft(detail) {
     && persistedDraft.serverFingerprint === serverFingerprint
     && persistedDraft.taskUpdatedAt === detail.task.updatedAt;
 
-  state.taskPlanDraft = canReusePersistedDraft
-    ? persistedDraft.draft
-    : clonePlanDraft(serverPlan);
+  const hasUnsavedPersistedDraft = persistedDraft
+    && JSON.stringify(persistedDraft.draft) !== persistedDraft.serverFingerprint;
+
+  if (canReusePersistedDraft) {
+    state.taskPlanDraft = persistedDraft.draft;
+    state.taskPlanDraftState = {
+      stale: false,
+    };
+  } else if (hasUnsavedPersistedDraft) {
+    state.taskPlanDraft = persistedDraft.draft;
+    state.taskPlanDraftState = {
+      stale: true,
+    };
+  } else {
+    state.taskPlanDraft = clonePlanDraft(serverPlan);
+    state.taskPlanDraftState = {
+      stale: false,
+    };
+  }
 
   persistCurrentTaskDraft();
 }
@@ -1117,6 +1162,12 @@ async function onSavePlanDraft() {
   }
 
   clearFeedback(elements.taskPlanFeedback);
+
+  if (state.taskPlanDraftState?.stale) {
+    showFeedback(elements.taskPlanFeedback, "error", "Reset local edits to review the latest server draft first.");
+    return;
+  }
+
   setButtonBusy(elements.taskPlanSaveDraftButton, true, "Saving...");
 
   try {
@@ -1145,6 +1196,11 @@ async function onApprovePlanDraft() {
   }
 
   clearFeedback(elements.taskPlanFeedback);
+
+  if (state.taskPlanDraftState?.stale) {
+    showFeedback(elements.taskPlanFeedback, "error", "Reset local edits to the latest server draft before approval.");
+    return;
+  }
 
   if (isEditablePlanDirty(state.taskDetail)) {
     showFeedback(elements.taskPlanFeedback, "error", "Save the draft before approval.");
@@ -1186,6 +1242,9 @@ async function onRestorePlanSnapshot(event) {
   }
 
   clearFeedback(elements.taskPlanFeedback);
+  if (!window.confirm("Restore this snapshot into the current draft? Unsaved local edits in this tab will be replaced.")) {
+    return;
+  }
   setButtonBusy(button, true, "Restoring...");
 
   try {

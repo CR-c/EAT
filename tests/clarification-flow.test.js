@@ -342,9 +342,11 @@ test("restores a historical plan snapshot into the current draft and appends res
 
   try {
     const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
     const server = await startServer({
       agentService: createClarificationAgentService(),
       databasePath,
+      eventBus,
     });
 
     try {
@@ -363,66 +365,78 @@ test("restores a historical plan snapshot into the current draft and appends res
         },
         method: "POST",
       });
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskResponse.body.task.id, (event) => {
+        events.push(event);
+      });
 
-      await requestJson(
-        server,
-        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
-        { method: "POST" },
-      );
-      await requestJson(
-        server,
-        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/confirm-requirements`,
-        { method: "POST" },
-      );
+      try {
+        await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+          { method: "POST" },
+        );
+        await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/confirm-requirements`,
+          { method: "POST" },
+        );
 
-      const detailBeforeEdit = await requestJson(
-        server,
-        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
-      );
-      const originalSnapshotId = detailBeforeEdit.body.planSnapshots[0].id;
+        const detailBeforeEdit = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+        );
+        const originalSnapshotId = detailBeforeEdit.body.planSnapshots[0].id;
 
-      await requestJson(
-        server,
-        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/current-plan`,
-        {
-          body: {
-            subtasks: [
-              {
-                title: "User edited draft",
-                description: "This should be replaced by the restored payload.",
-                recommended_agent: "healthy-lead",
-                branch_suffix: "user-edited-draft",
-              },
-            ],
+        await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/current-plan`,
+          {
+            body: {
+              subtasks: [
+                {
+                  title: "User edited draft",
+                  description: "This should be replaced by the restored payload.",
+                  recommended_agent: "healthy-lead",
+                  branch_suffix: "user-edited-draft",
+                },
+              ],
+            },
+            method: "PUT",
           },
-          method: "PUT",
-        },
-      );
+        );
 
-      const restoreResponse = await requestJson(
-        server,
-        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/restore-plan-snapshot`,
-        {
-          body: { snapshotId: originalSnapshotId },
-          method: "POST",
-        },
-      );
-      assert.equal(restoreResponse.status, 200);
-      assert.equal(
-        JSON.parse(restoreResponse.body.task.currentPlanJson).subtasks[0].branch_suffix,
-        "backend-slice",
-      );
+        const restoreResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/restore-plan-snapshot`,
+          {
+            body: { snapshotId: originalSnapshotId },
+            method: "POST",
+          },
+        );
+        assert.equal(restoreResponse.status, 200);
+        assert.equal(
+          JSON.parse(restoreResponse.body.task.currentPlanJson).subtasks[0].branch_suffix,
+          "backend-slice",
+        );
 
-      const detailAfterRestore = await requestJson(
-        server,
-        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
-      );
-      assert.equal(detailAfterRestore.body.planSnapshots.length, 2);
-      assert.equal(detailAfterRestore.body.planSnapshots[0].source, "RESTORED_FROM_HISTORY");
-      assert.equal(
-        JSON.parse(detailAfterRestore.body.task.currentPlanJson).subtasks[0].branch_suffix,
-        "backend-slice",
-      );
+        const restoredEvent = await nextEvent(events, (entry) => entry.eventName === "task:plan-restored");
+        assert.equal(restoredEvent.data.snapshotId, originalSnapshotId);
+        assert.equal(restoredEvent.data.currentPlan.subtasks[0].branch_suffix, "backend-slice");
+
+        const detailAfterRestore = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+        );
+        assert.equal(detailAfterRestore.body.planSnapshots.length, 2);
+        assert.equal(detailAfterRestore.body.planSnapshots[0].source, "RESTORED_FROM_HISTORY");
+        assert.equal(
+          JSON.parse(detailAfterRestore.body.task.currentPlanJson).subtasks[0].branch_suffix,
+          "backend-slice",
+        );
+      } finally {
+        unsubscribe();
+      }
     } finally {
       await stopServer(server);
     }
