@@ -113,6 +113,7 @@ const elements = {
   taskExecutionAgentField: document.querySelector("#task-execution-agent-field"),
   taskExecutionAgentSelect: document.querySelector("#task-execution-agent-select"),
   taskExecutionChangeAgentButton: document.querySelector("#task-execution-change-agent-button"),
+  taskExecutionConfirmDiscardButton: document.querySelector("#task-execution-confirm-discard-button"),
   taskExecutionReworkButton: document.querySelector("#task-execution-rework-button"),
   taskExecutionReworkDescription: document.querySelector("#task-execution-rework-description"),
   taskExecutionReworkField: document.querySelector("#task-execution-rework-field"),
@@ -198,6 +199,7 @@ elements.taskPlanSaveDraftButton.addEventListener("click", onSavePlanDraft);
 elements.taskPlanNotesInput.addEventListener("input", onPlanNotesInput);
 elements.taskExecutionAgentSelect.addEventListener("change", onExecutionDraftAgentInput);
 elements.taskExecutionChangeAgentButton.addEventListener("click", onChangeSubTaskAgent);
+elements.taskExecutionConfirmDiscardButton.addEventListener("click", onConfirmDiscardSubTask);
 elements.taskExecutionReworkButton.addEventListener("click", onReworkSubTask);
 elements.taskExecutionReworkDescription.addEventListener("input", onExecutionDraftDescriptionInput);
 
@@ -801,7 +803,7 @@ function renderSubTaskExecution(detail) {
     const previewText = stripAnsi(latestSession?.outputBuffer ?? "");
     const reviewDecision = buildReviewDecisionLabel(subTask.latestReviewDecision);
     const reviewPhase = buildReviewPhaseLabel(subTask.latestReviewPhase);
-    const reviewSummary = subTask.latestReviewSummary ?? "Incremental review will appear after a successful worker run.";
+    const reviewSummary = buildExecutionReviewSummary(subTask);
     const isSelected = subTask.id === state.selectedExecutionSubTaskId;
     const card = document.createElement("button");
 
@@ -813,7 +815,7 @@ function renderSubTaskExecution(detail) {
           <p class="execution-card__title">${escapeHtml(subTask.title)}</p>
           <p class="execution-card__meta">${escapeHtml(`${subTask.agentType} · ${buildSubTaskStatusLabel(subTask.status)}`)}</p>
         </div>
-        <span class="badge ${subTask.status === "FAILED" ? "badge--dirty" : subTask.status === "RUNNING" ? "badge--accent-soft" : "badge--outline"}">${escapeHtml(buildSubTaskStatusLabel(subTask.status))}</span>
+        <span class="badge ${buildExecutionStatusBadgeClass(subTask.status)}">${escapeHtml(buildSubTaskStatusLabel(subTask.status))}</span>
       </div>
       <div class="execution-card__summary">
         <p class="execution-card__summary-line"><strong>Latest session:</strong> ${escapeHtml(latestSession ? `${latestSession.agentType} · ${latestSession.status}` : "None")}</p>
@@ -1133,9 +1135,7 @@ function connectTaskStream(taskId) {
 
     if (state.taskDetail?.task?.id === payload.taskId) {
       state.taskDetail.task.status = payload.status;
-      if (payload.reason) {
-        state.taskDetail.task.lastError = payload.reason;
-      }
+      state.taskDetail.task.lastError = payload.reason ?? null;
       renderTaskDetail();
     }
 
@@ -1166,6 +1166,9 @@ function connectTaskStream(taskId) {
   });
   stream.addEventListener("subtask:review", (event) => {
     applySubTaskReviewEvent(JSON.parse(event.data));
+  });
+  stream.addEventListener("subtask:confirm-discard", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
   });
   stream.addEventListener("subtask:agent-changed", (event) => {
     applySubTaskAgentChangedEvent(JSON.parse(event.data));
@@ -1516,6 +1519,36 @@ async function onChangeSubTaskAgent() {
     showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
   } finally {
     setButtonBusy(elements.taskExecutionChangeAgentButton, false, "Switch agent & relaunch");
+  }
+}
+
+async function onConfirmDiscardSubTask() {
+  const selectedSubTask = getSelectedExecutionSubTask();
+
+  if (!state.selectedTaskId || !selectedSubTask) {
+    return;
+  }
+
+  clearFeedback(elements.taskExecutionReviewFeedback);
+  setButtonBusy(elements.taskExecutionConfirmDiscardButton, true, "Confirming...");
+
+  try {
+    const response = await fetchJson(
+      `/api/subtasks/${encodeURIComponent(selectedSubTask.id)}/confirm-discard`,
+      { method: "POST" },
+    );
+
+    if (state.taskDetail) {
+      state.taskDetail.task = response.task ?? state.taskDetail.task;
+      state.taskDetail.subTasks = upsertRecord(state.taskDetail.subTasks, response.subTask);
+    }
+
+    renderTaskDetail();
+    showFeedback(elements.taskExecutionReviewFeedback, "success", "Subtask discard confirmed.");
+  } catch (error) {
+    showFeedback(elements.taskExecutionReviewFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskExecutionConfirmDiscardButton, false, "Confirm discard");
   }
 }
 
@@ -2088,20 +2121,26 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
   const canReworkNow = selectedSubTask.status === "REVIEW_PENDING"
     && ["REJECTED", "REWORK"].includes(selectedSubTask.latestReviewDecision);
   const canChangeAgent = canReworkNow || selectedSubTask.status === "FAILED";
-  const hasRecoveryPanel = canChangeAgent || selectedSubTask.latestReviewDecision || selectedSubTask.latestReviewSummary;
+  const canConfirmDiscard = selectedSubTask.status === "DISCARD_PENDING";
+  const hasRecoveryPanel = canChangeAgent
+    || canConfirmDiscard
+    || selectedSubTask.latestReviewDecision
+    || selectedSubTask.latestReviewSummary
+    || ["ACCEPTED", "DISCARD_PENDING", "REWORK_REQUIRED"].includes(selectedSubTask.status);
 
   elements.taskExecutionReview.hidden = !hasRecoveryPanel;
   elements.taskExecutionReworkField.hidden = !canReworkNow;
   elements.taskExecutionAgentField.hidden = !canChangeAgent;
+  elements.taskExecutionConfirmDiscardButton.hidden = !canConfirmDiscard;
   elements.taskExecutionReworkButton.hidden = !canReworkNow;
   elements.taskExecutionChangeAgentButton.hidden = !canChangeAgent;
-  elements.taskExecutionReviewActions.hidden = !canReworkNow && !canChangeAgent;
+  elements.taskExecutionReviewActions.hidden = !canReworkNow && !canChangeAgent && !canConfirmDiscard;
 
   if (!elements.taskExecutionReview.hidden) {
     if (selectedSubTask.latestReviewDecision || selectedSubTask.latestReviewSummary) {
       elements.taskExecutionReviewDecision.textContent = buildReviewDecisionLabel(selectedSubTask.latestReviewDecision);
       elements.taskExecutionReviewPhase.textContent = buildReviewPhaseLabel(selectedSubTask.latestReviewPhase);
-      elements.taskExecutionReviewSummary.textContent = selectedSubTask.latestReviewSummary ?? "No review summary available.";
+      elements.taskExecutionReviewSummary.textContent = buildExecutionReviewSummary(selectedSubTask);
     } else {
       elements.taskExecutionReviewDecision.textContent = "Recovery";
       elements.taskExecutionReviewPhase.textContent = "Launch recovery";
@@ -2125,7 +2164,7 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
     elements.taskExecutionReworkDescription.value = "";
   }
 
-  if (!canReworkNow && !canChangeAgent) {
+  if (!canReworkNow && !canChangeAgent && !canConfirmDiscard) {
     clearFeedback(elements.taskExecutionReviewFeedback);
   }
 
@@ -2155,6 +2194,42 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
     elements.taskExecutionFocusPreview.textContent = previewOutput || "Waiting for worker output...";
   } else {
     elements.taskExecutionFocusPreview.textContent = "";
+  }
+}
+
+function buildExecutionStatusBadgeClass(status) {
+  switch (status) {
+    case "ACCEPTED":
+    case "MERGED":
+      return "badge--clean";
+    case "FAILED":
+    case "REWORK_REQUIRED":
+    case "DISCARD_PENDING":
+      return "badge--dirty";
+    case "RUNNING":
+    case "REVIEW_PENDING":
+      return "badge--accent-soft";
+    default:
+      return "badge--outline";
+  }
+}
+
+function buildExecutionReviewSummary(subTask) {
+  if (subTask.latestReviewSummary) {
+    return subTask.latestReviewSummary;
+  }
+
+  switch (subTask.status) {
+    case "ACCEPTED":
+      return "Final review accepted this subtask for the merge set.";
+    case "REWORK_REQUIRED":
+      return "Final review requires another worker pass before this subtask can merge.";
+    case "DISCARD_PENDING":
+      return "Final review marked this subtask for discard. Confirm before the task can continue.";
+    case "REVIEW_PENDING":
+      return "Incremental review will appear after a successful worker run.";
+    default:
+      return "No review summary available.";
   }
 }
 

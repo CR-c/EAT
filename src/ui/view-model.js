@@ -45,6 +45,8 @@ export function buildTaskErrorMessage(error) {
       return "Select a replacement worker agent before relaunching.";
     case "SUBTASK_CHANGE_AGENT_NOT_ALLOWED":
       return "Switch Agent & Relaunch is not available for the current subtask state.";
+    case "SUBTASK_DISCARD_NOT_ALLOWED":
+      return "Discard confirmation is only available after final review marks the subtask for discard.";
     case "SUBTASK_REWORK_NOT_ALLOWED":
       return "Rework Now is only available for subtasks with an actionable incremental review.";
     case "ATTACHMENT_TYPE_UNSUPPORTED":
@@ -164,6 +166,10 @@ export function buildTaskStatusLabel(status) {
       return "Plan review";
     case "EXECUTING":
       return "Executing";
+    case "REVIEWING":
+      return "Reviewing";
+    case "MERGING":
+      return "Merging";
     case "COMPLETED":
       return "Completed";
     case "ACTION_REQUIRED":

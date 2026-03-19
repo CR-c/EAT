@@ -46,6 +46,7 @@ test("serves the Phase 05 planning UI shell and static assets", async () => {
     assert.match(rootResponse.body, /Planning notes/i);
     assert.match(rootResponse.body, /Summary-first worker board/i);
     assert.match(rootResponse.body, /Focused session/i);
+    assert.match(rootResponse.body, /Confirm discard/i);
     assert.match(rootResponse.body, /Docker sandbox/i);
 
     assert.equal(cssResponse.status, 200);
@@ -97,7 +98,15 @@ test("formats project, task, agent health, and attachment UI messages", () => {
   assert.equal(buildTaskStatusLabel("CLARIFYING"), "Clarifying");
   assert.equal(buildTaskStatusLabel("PLAN_REVIEW"), "Plan review");
   assert.equal(buildTaskStatusLabel("EXECUTING"), "Executing");
+  assert.equal(buildTaskStatusLabel("REVIEWING"), "Reviewing");
+  assert.equal(buildTaskStatusLabel("MERGING"), "Merging");
   assert.equal(buildSubTaskStatusLabel("REVIEW_PENDING"), "Review pending");
+  assert.equal(
+    buildTaskErrorMessage({
+      code: "SUBTASK_DISCARD_NOT_ALLOWED",
+    }),
+    "Discard confirmation is only available after final review marks the subtask for discard.",
+  );
   assert.equal(
     buildTaskErrorMessage({
       code: "ATTACHMENT_TYPE_UNSUPPORTED",
