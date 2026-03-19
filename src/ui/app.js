@@ -96,12 +96,14 @@ const elements = {
   taskMessageInput: document.querySelector("#task-message-input"),
   taskPlanDetail: document.querySelector("#task-plan-detail"),
   taskPlanEditor: document.querySelector("#task-plan-editor"),
+  taskPlanApproveButton: document.querySelector("#task-plan-approve-button"),
   taskPlanEmpty: document.querySelector("#task-plan-empty"),
   taskPlanFeedback: document.querySelector("#task-plan-feedback"),
   taskPlanAddSubtaskButton: document.querySelector("#task-plan-add-subtask-button"),
   taskPlanList: document.querySelector("#task-plan-list"),
   taskPlanNotesInput: document.querySelector("#task-plan-notes-input"),
   taskPlanResetDraftButton: document.querySelector("#task-plan-reset-draft-button"),
+  taskPlanSaveDraftButton: document.querySelector("#task-plan-save-draft-button"),
   taskPlanSnapshotCount: document.querySelector("#task-plan-snapshot-count"),
   taskPlanSummary: document.querySelector("#task-plan-summary"),
   taskPlanVersion: document.querySelector("#task-plan-version"),
@@ -148,7 +150,9 @@ elements.startClarificationButton.addEventListener("click", onStartClarification
 elements.confirmRequirementsButton.addEventListener("click", onConfirmRequirements);
 elements.taskMessageForm.addEventListener("submit", onSendTaskMessage);
 elements.taskPlanAddSubtaskButton.addEventListener("click", onAddPlanSubtask);
+elements.taskPlanApproveButton.addEventListener("click", onApprovePlanDraft);
 elements.taskPlanResetDraftButton.addEventListener("click", onResetPlanDraft);
+elements.taskPlanSaveDraftButton.addEventListener("click", onSavePlanDraft);
 elements.taskPlanNotesInput.addEventListener("input", onPlanNotesInput);
 
 void Promise.all([loadProjects({ preserveSelection: true }), loadAgents()]);
@@ -742,6 +746,11 @@ function renderPlanDraft(detail) {
   }
 
   const subtasks = editableDraft?.subtasks ?? parsedPlan?.subtasks ?? [];
+  const hasUnsavedDraft = editableDraft ? isEditablePlanDirty(detail) : false;
+
+  elements.taskPlanSaveDraftButton.disabled = !editableDraft || !hasUnsavedDraft;
+  elements.taskPlanApproveButton.disabled = !editableDraft || hasUnsavedDraft;
+  elements.taskPlanApproveButton.textContent = hasUnsavedDraft ? "Save before approval" : "Approve draft";
 
   if (!subtasks.length) {
     return;
@@ -1065,6 +1074,68 @@ function onResetPlanDraft() {
   renderPlanDraft(state.taskDetail);
 }
 
+async function onSavePlanDraft() {
+  if (!state.taskDetail?.task?.id || !state.taskPlanDraft) {
+    return;
+  }
+
+  clearFeedback(elements.taskPlanFeedback);
+  setButtonBusy(elements.taskPlanSaveDraftButton, true, "Saving...");
+
+  try {
+    const response = await fetchJson(
+      `/api/tasks/${encodeURIComponent(state.taskDetail.task.id)}/current-plan`,
+      {
+        body: state.taskPlanDraft,
+        method: "PUT",
+      },
+    );
+
+    state.taskDetail.task = response.task;
+    syncEditablePlanDraft(state.taskDetail);
+    renderTaskDetail();
+    showFeedback(elements.taskPlanFeedback, "success", "Draft saved. Server validation passed.");
+  } catch (error) {
+    showFeedback(elements.taskPlanFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskPlanSaveDraftButton, false, "Save draft");
+  }
+}
+
+async function onApprovePlanDraft() {
+  if (!state.taskDetail?.task?.id || !state.taskPlanDraft) {
+    return;
+  }
+
+  clearFeedback(elements.taskPlanFeedback);
+
+  if (isEditablePlanDirty(state.taskDetail)) {
+    showFeedback(elements.taskPlanFeedback, "error", "Save the draft before approval.");
+    return;
+  }
+
+  setButtonBusy(elements.taskPlanApproveButton, true, "Checking...");
+
+  try {
+    const response = await fetchJson(
+      `/api/tasks/${encodeURIComponent(state.taskDetail.task.id)}/approve-plan`,
+      { method: "POST" },
+    );
+
+    state.taskDetail.task = response.task;
+    renderTaskDetail();
+    showFeedback(
+      elements.taskPlanFeedback,
+      "success",
+      "Draft passed approval checks and is ready for Phase 07 materialization.",
+    );
+  } catch (error) {
+    showFeedback(elements.taskPlanFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskPlanApproveButton, false, "Approve draft");
+  }
+}
+
 async function readDraftAttachments() {
   const attachments = [];
 
@@ -1310,4 +1381,12 @@ function readStoredPlanDraft(storageKey) {
 
 function normalizeOptionalText(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
+}
+
+function isEditablePlanDirty(detail) {
+  if (!detail?.task?.currentPlanJson || !state.taskPlanDraft) {
+    return false;
+  }
+
+  return JSON.stringify(state.taskPlanDraft) !== detail.task.currentPlanJson;
 }

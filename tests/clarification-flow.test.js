@@ -208,6 +208,135 @@ test("regenerates after an invalid syntactically valid plan and only snapshots t
   }
 });
 
+test("revalidates edited drafts on save and blocks approval when the stored plan becomes invalid", async () => {
+  const fixture = await makeTempDir("eat-plan-review-save-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const server = await startServer({
+      agentService: createClarificationAgentService(),
+      databasePath,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "plan-review-repo", { defaultBranch: "main" });
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Need editable draft validation before approval.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Plan review validation",
+        },
+        method: "POST",
+      });
+
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+        { method: "POST" },
+      );
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/confirm-requirements`,
+        { method: "POST" },
+      );
+
+      const updatedPlan = {
+        notes: "Edited before approval.",
+        subtasks: [
+          {
+            title: "Edited backend slice",
+            description: "Keep the server work parallel-safe after user edits.",
+            recommended_agent: "healthy-lead",
+            branch_suffix: "edited-backend-slice",
+          },
+        ],
+      };
+
+      const saveResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/current-plan`,
+        {
+          body: updatedPlan,
+          method: "PUT",
+        },
+      );
+      assert.equal(saveResponse.status, 200);
+      assert.equal(saveResponse.body.task.planVersion, 1);
+      assert.equal(JSON.parse(saveResponse.body.task.currentPlanJson).notes, updatedPlan.notes);
+      assert.equal(
+        JSON.parse(saveResponse.body.task.currentPlanJson).subtasks[0].branch_suffix,
+        "edited-backend-slice",
+      );
+
+      const invalidSaveResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/current-plan`,
+        {
+          body: {
+            subtasks: [
+              {
+                title: "Broken duplicate one",
+                description: "Invalid duplicate suffix.",
+                recommended_agent: "healthy-lead",
+                branch_suffix: "dup-suffix",
+              },
+              {
+                title: "Broken duplicate two",
+                description: "Still invalid duplicate suffix.",
+                recommended_agent: "healthy-lead",
+                branch_suffix: "dup-suffix",
+              },
+            ],
+          },
+          method: "PUT",
+        },
+      );
+      assert.equal(invalidSaveResponse.status, 400);
+      assert.equal(invalidSaveResponse.body.error.code, "INVALID_PLAN");
+
+      const repository = new SqliteTaskRepository({ databasePath });
+
+      try {
+        const task = await repository.findTaskById(taskResponse.body.task.id);
+        assert.equal(JSON.parse(task.currentPlanJson).subtasks[0].branch_suffix, "edited-backend-slice");
+
+        await repository.updateTask(task.id, {
+          currentPlanJson: JSON.stringify({
+            subtasks: [
+              {
+                title: "Now invalid",
+                description: "This stored plan should be blocked at approval time.",
+                recommended_agent: "healthy-lead",
+                branch_suffix: "Invalid Suffix",
+              },
+            ],
+          }),
+        });
+      } finally {
+        repository.close();
+      }
+
+      const approvalResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/approve-plan`,
+        { method: "POST" },
+      );
+      assert.equal(approvalResponse.status, 400);
+      assert.equal(approvalResponse.body.error.code, "INVALID_PLAN");
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 function createClarificationAgentService() {
   const registry = new AgentRegistry();
 
