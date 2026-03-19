@@ -407,6 +407,123 @@ test("emits session lifecycle and output events with session-scoped metadata", a
   }
 });
 
+test("keeps noisy concurrent output routed to the correct session buffers", async () => {
+  const fixture = await makeTempDir("eat-worker-noisy-output-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Noisy alpha",
+            description: "Emit many alpha chunks.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "noisy-alpha",
+          },
+          {
+            title: "Noisy beta",
+            description: "Emit many beta chunks.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "noisy-beta",
+          },
+        ],
+      },
+      workerBehavior: (config) => {
+        const label = path.basename(config.workDir);
+
+        return {
+          delayMs: 50,
+          exitCode: 0,
+          outputChunks: [
+            `${label}: chunk-1\n`,
+            `${label}: chunk-2\n`,
+            `${label}: chunk-3\n`,
+          ],
+          outputSpacingMs: 5,
+        };
+      },
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "noisy-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Verify noisy output routing.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Noisy routing",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        const startedEvents = [
+          await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId),
+          await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId),
+        ];
+        const outputEvents = [
+          await nextEvent(events, (event) => event.eventName === "session:output" && event.data.subtaskId),
+          await nextEvent(events, (event) => event.eventName === "session:output" && event.data.subtaskId),
+          await nextEvent(events, (event) => event.eventName === "session:output" && event.data.subtaskId),
+          await nextEvent(events, (event) => event.eventName === "session:output" && event.data.subtaskId),
+          await nextEvent(events, (event) => event.eventName === "session:output" && event.data.subtaskId),
+          await nextEvent(events, (event) => event.eventName === "session:output" && event.data.subtaskId),
+        ];
+
+        await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+        await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+
+        const chunksBySessionId = new Map();
+
+        for (const outputEvent of outputEvents) {
+          const existing = chunksBySessionId.get(outputEvent.data.sessionId) ?? "";
+          chunksBySessionId.set(outputEvent.data.sessionId, `${existing}${outputEvent.data.chunk}`);
+        }
+
+        assert.equal(chunksBySessionId.size, 2);
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+
+        for (const startedEvent of startedEvents) {
+          const session = detailResponse.body.sessions.find((entry) => entry.id === startedEvent.data.sessionId);
+
+          assert.ok(session);
+          assert.equal(session.outputBuffer, chunksBySessionId.get(session.id));
+          assert.match(session.outputBuffer, /chunk-1/);
+          assert.match(session.outputBuffer, /chunk-3/);
+        }
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("retries on the same branch and worktree while blocking duplicate live sessions", async () => {
   const fixture = await makeTempDir("eat-worker-retry-");
 
@@ -700,22 +817,32 @@ function createPhase08AgentService(options) {
         exitCode: 0,
         output: "worker completed\n",
       };
+      const outputChunks = Array.isArray(behavior.outputChunks)
+        ? behavior.outputChunks
+        : [behavior.output ?? ""];
+      const outputSpacingMs = behavior.outputSpacingMs ?? 0;
+      const exitDelayMs = Math.max(
+        behavior.delayMs,
+        outputSpacingMs * Math.max(0, outputChunks.length - 1) + 5,
+      );
 
       stats.active += 1;
       stats.maxConcurrent = Math.max(stats.maxConcurrent, stats.active);
 
-      setTimeout(() => {
-        for (const listener of outputListeners) {
-          listener(behavior.output);
-        }
-      }, 0);
+      for (const [index, outputChunk] of outputChunks.entries()) {
+        setTimeout(() => {
+          for (const listener of outputListeners) {
+            listener(outputChunk);
+          }
+        }, index * outputSpacingMs);
+      }
 
       setTimeout(() => {
         stats.active -= 1;
         for (const listener of exitListeners) {
           listener(behavior.exitCode);
         }
-      }, behavior.delayMs);
+      }, exitDelayMs);
 
       return {
         containerId: `container-${path.basename(config.workDir)}`,

@@ -108,6 +108,7 @@ const elements = {
   taskExecutionFocusMeta: document.querySelector("#task-execution-focus-meta"),
   taskExecutionFocusPreview: document.querySelector("#task-execution-focus-preview"),
   taskExecutionFocusTitle: document.querySelector("#task-execution-focus-title"),
+  taskExecutionSessionList: document.querySelector("#task-execution-session-list"),
   taskExecutionList: document.querySelector("#task-execution-list"),
   taskFormFeedback: document.querySelector("#task-form-feedback"),
   taskLeadAgent: document.querySelector("#task-lead-agent"),
@@ -1048,6 +1049,7 @@ function clearTaskDetail() {
   elements.taskExecutionBoard.hidden = true;
   elements.taskExecutionFocus.hidden = true;
   elements.taskExecutionFocusPreview.hidden = true;
+  elements.taskExecutionSessionList.replaceChildren();
   elements.taskPlanHistoryList.replaceChildren();
   elements.taskPlanList.replaceChildren();
 }
@@ -1839,9 +1841,9 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
   state.selectedExecutionSessionId = focusedSession?.id ?? null;
   elements.taskExecutionFocusTitle.textContent = selectedSubTask.title;
   elements.taskExecutionFocusBadge.textContent = focusedSession
-    ? buildSubTaskStatusLabel(selectedSubTask.status)
+    ? focusedSession.status
     : "Pending";
-  elements.taskExecutionFocusBadge.className = `badge ${selectedSubTask.status === "FAILED" ? "badge--dirty" : selectedSubTask.status === "RUNNING" ? "badge--accent-soft" : "badge--outline"}`;
+  elements.taskExecutionFocusBadge.className = `badge ${focusedSession?.status === "FAILED" ? "badge--dirty" : focusedSession?.status === "RUNNING" ? "badge--accent-soft" : "badge--outline"}`;
   elements.taskExecutionFocusMeta.textContent = [
     `${selectedSubTask.agentType} · ${focusedSessions.length} session${focusedSessions.length === 1 ? "" : "s"}`,
     focusedSession?.logPath ? `log ${focusedSession.logPath}` : "log pending",
@@ -1851,6 +1853,21 @@ function renderFocusedExecution(detail, sessionsBySubTaskId) {
   const previewOutput = focusedSession
     ? stripAnsi(state.liveSessionOutputs.get(focusedSession.id) ?? focusedSession.outputBuffer ?? "")
     : "";
+
+  elements.taskExecutionSessionList.replaceChildren(...focusedSessions.map((session, index) => {
+    const button = document.createElement("button");
+    const isSelected = session.id === focusedSession?.id;
+
+    button.type = "button";
+    button.className = `button ${isSelected ? "button--primary" : "button--secondary"}`;
+    button.textContent = `Session ${index + 1} · ${session.status}`;
+    button.addEventListener("click", () => {
+      state.selectedExecutionSessionId = session.id;
+      renderTaskDetail();
+    });
+
+    return button;
+  }));
 
   elements.taskExecutionFocusEmpty.hidden = Boolean(focusedSession);
   elements.taskExecutionFocusPreview.hidden = !focusedSession;

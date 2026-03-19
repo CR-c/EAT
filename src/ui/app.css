@@ -785,6 +785,12 @@ textarea {
   word-break: break-word;
 }
 
+.execution-session-list {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .panel--agents,
 .panel--task-form,
 .panel--tasks,
