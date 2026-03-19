@@ -305,6 +305,30 @@
               </div>
               <div id="task-plan-detail" class="plan-detail" hidden>
                 <p id="task-plan-summary" class="plan-detail__summary"></p>
+                <div id="task-plan-editor" class="plan-editor" hidden>
+                  <div class="plan-editor__toolbar">
+                    <p class="plan-editor__hint">
+                      Edit the draft before approval. Changes stay in this browser until plan draft sync is enabled.
+                    </p>
+                    <div class="plan-editor__actions">
+                      <button id="task-plan-add-subtask-button" class="button button--secondary" type="button">
+                        Add subtask
+                      </button>
+                      <button id="task-plan-reset-draft-button" class="button button--ghost" type="button">
+                        Reset local edits
+                      </button>
+                    </div>
+                  </div>
+                  <label class="field" for="task-plan-notes-input">
+                    <span class="field__label">Planning notes</span>
+                    <textarea
+                      id="task-plan-notes-input"
+                      name="notes"
+                      rows="3"
+                      placeholder="Optional execution notes for the current draft."
+                    ></textarea>
+                  </label>
+                </div>
                 <div id="task-plan-list" class="plan-list"></div>
               </div>
             </section>

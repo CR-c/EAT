@@ -36,6 +36,9 @@ test("serves the Phase 05 planning UI shell and static assets", async () => {
     assert.match(rootResponse.body, /New clarification task/i);
     assert.match(rootResponse.body, /Lead session transcript/i);
     assert.match(rootResponse.body, /Current plan draft/i);
+    assert.match(rootResponse.body, /Add subtask/i);
+    assert.match(rootResponse.body, /Reset local edits/i);
+    assert.match(rootResponse.body, /Planning notes/i);
 
     assert.equal(cssResponse.status, 200);
     assert.match(cssResponse.headers.get("content-type"), /^text\/css/);

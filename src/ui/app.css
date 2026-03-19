@@ -236,6 +236,12 @@ textarea {
   border: 1px solid rgba(71, 48, 24, 0.14);
 }
 
+.button--ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px dashed rgba(71, 48, 24, 0.2);
+}
+
 .button[disabled] {
   cursor: progress;
   opacity: 0.65;
@@ -443,6 +449,39 @@ textarea {
   gap: 14px;
 }
 
+.plan-editor {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.54);
+  border: 1px solid rgba(71, 48, 24, 0.12);
+}
+
+.plan-editor[hidden] {
+  display: none;
+}
+
+.plan-editor__toolbar,
+.plan-editor__actions,
+.plan-subtask__header,
+.plan-subtask__branch {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.plan-editor__hint {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.plan-editor__actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .plan-detail__summary {
   margin: 0;
 }
@@ -481,6 +520,37 @@ textarea {
 
 .plan-card__meta {
   font-size: 0.92rem;
+}
+
+.plan-subtask {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(71, 48, 24, 0.12);
+}
+
+.plan-subtask__index {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.plan-subtask__grid {
+  display: grid;
+  gap: 12px;
+}
+
+.plan-subtask__branch {
+  gap: 10px;
+}
+
+.plan-subtask__branch .badge {
+  white-space: nowrap;
 }
 
 .agent-card__description,
@@ -553,6 +623,15 @@ textarea {
 
   .agent-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .plan-subtask__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .plan-subtask__grid .field:nth-child(3),
+  .plan-subtask__grid .field:nth-child(4) {
+    grid-column: 1 / -1;
   }
 }
 

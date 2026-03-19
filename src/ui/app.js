@@ -11,6 +11,7 @@ import {
 } from "./view-model.js";
 
 const STORAGE_KEYS = {
+  draftPrefix: "eat.phase06.planDraft",
   selectedProjectId: "eat.phase04.selectedProjectId",
   selectedTaskId: "eat.phase04.selectedTaskId",
 };
@@ -27,6 +28,7 @@ const state = {
   selectedProjectId: readStorage(STORAGE_KEYS.selectedProjectId),
   selectedTaskId: readStorage(STORAGE_KEYS.selectedTaskId),
   taskDetail: null,
+  taskPlanDraft: null,
   tasks: [],
   taskStream: null,
   workerCandidates: [],
@@ -93,9 +95,13 @@ const elements = {
   taskMessageForm: document.querySelector("#task-message-form"),
   taskMessageInput: document.querySelector("#task-message-input"),
   taskPlanDetail: document.querySelector("#task-plan-detail"),
+  taskPlanEditor: document.querySelector("#task-plan-editor"),
   taskPlanEmpty: document.querySelector("#task-plan-empty"),
   taskPlanFeedback: document.querySelector("#task-plan-feedback"),
+  taskPlanAddSubtaskButton: document.querySelector("#task-plan-add-subtask-button"),
   taskPlanList: document.querySelector("#task-plan-list"),
+  taskPlanNotesInput: document.querySelector("#task-plan-notes-input"),
+  taskPlanResetDraftButton: document.querySelector("#task-plan-reset-draft-button"),
   taskPlanSnapshotCount: document.querySelector("#task-plan-snapshot-count"),
   taskPlanSummary: document.querySelector("#task-plan-summary"),
   taskPlanVersion: document.querySelector("#task-plan-version"),
@@ -141,6 +147,9 @@ elements.refreshTaskDetailButton.addEventListener("click", () => {
 elements.startClarificationButton.addEventListener("click", onStartClarification);
 elements.confirmRequirementsButton.addEventListener("click", onConfirmRequirements);
 elements.taskMessageForm.addEventListener("submit", onSendTaskMessage);
+elements.taskPlanAddSubtaskButton.addEventListener("click", onAddPlanSubtask);
+elements.taskPlanResetDraftButton.addEventListener("click", onResetPlanDraft);
+elements.taskPlanNotesInput.addEventListener("input", onPlanNotesInput);
 
 void Promise.all([loadProjects({ preserveSelection: true }), loadAgents()]);
 
@@ -657,6 +666,7 @@ function renderTaskDetail() {
   elements.taskPlanVersion.textContent = String(detail.task.planVersion ?? 0);
   elements.taskPlanSnapshotCount.textContent = String(detail.planSnapshots?.length ?? 0);
 
+  syncEditablePlanDraft(detail);
   renderTaskAttachments(detail.attachments ?? []);
   renderPlanDraft(detail);
   renderTranscript(detail.messages ?? []);
@@ -689,6 +699,7 @@ function renderPlanDraft(detail) {
   clearFeedback(elements.taskPlanFeedback);
 
   const parsedPlan = parseCurrentPlanJson(detail.task.currentPlanJson);
+  const editableDraft = detail.task.status === "PLAN_REVIEW" ? state.taskPlanDraft : null;
   const failedAttempts = countPlanValidationFailures(detail.messages ?? []);
   const hasPlanningState = detail.task.status === "PLANNING"
     || detail.task.status === "PLAN_REVIEW"
@@ -723,13 +734,25 @@ function renderPlanDraft(detail) {
   }
 
   elements.taskPlanDetail.hidden = false;
-  elements.taskPlanSummary.textContent = buildPlanSummary(detail, failedAttempts, parsedPlan);
+  elements.taskPlanEditor.hidden = detail.task.status !== "PLAN_REVIEW" || !editableDraft;
+  elements.taskPlanSummary.textContent = buildPlanSummary(detail, failedAttempts, editableDraft ?? parsedPlan);
 
-  if (!parsedPlan?.subtasks?.length) {
+  if (editableDraft) {
+    elements.taskPlanNotesInput.value = editableDraft.notes ?? "";
+  }
+
+  const subtasks = editableDraft?.subtasks ?? parsedPlan?.subtasks ?? [];
+
+  if (!subtasks.length) {
     return;
   }
 
-  for (const [index, subtask] of parsedPlan.subtasks.entries()) {
+  for (const [index, subtask] of subtasks.entries()) {
+    if (editableDraft) {
+      elements.taskPlanList.append(renderEditablePlanSubtask(index, subtask));
+      continue;
+    }
+
     const article = document.createElement("article");
     article.className = "plan-card";
     article.innerHTML = `
@@ -744,6 +767,51 @@ function renderPlanDraft(detail) {
     `;
     elements.taskPlanList.append(article);
   }
+}
+
+function renderEditablePlanSubtask(index, subtask) {
+  const article = document.createElement("article");
+  article.className = "plan-subtask";
+
+  article.innerHTML = `
+    <div class="plan-subtask__header">
+      <p class="plan-subtask__index">Subtask ${index + 1}</p>
+      <button class="button button--ghost" type="button" data-remove-subtask="${index}">
+        Remove
+      </button>
+    </div>
+    <div class="plan-subtask__grid">
+      <label class="field">
+        <span class="field__label">Title</span>
+        <input type="text" value="${escapeHtmlAttribute(subtask.title ?? "")}" data-plan-field="title" data-subtask-index="${index}">
+      </label>
+      <label class="field">
+        <span class="field__label">Worker agent</span>
+        <select class="field__control" data-plan-field="recommended_agent" data-subtask-index="${index}">
+          ${buildWorkerAgentOptions(subtask.recommended_agent)}
+        </select>
+      </label>
+      <label class="field">
+        <span class="field__label">Description</span>
+        <textarea rows="4" data-plan-field="description" data-subtask-index="${index}">${escapeHtml(subtask.description ?? "")}</textarea>
+      </label>
+      <label class="field">
+        <span class="field__label">Branch suffix</span>
+        <div class="plan-subtask__branch">
+          <input type="text" value="${escapeHtmlAttribute(subtask.branch_suffix ?? "")}" data-plan-field="branch_suffix" data-subtask-index="${index}">
+          <span class="badge badge--outline">${escapeHtml(subtask.branch_suffix ?? "missing-suffix")}</span>
+        </div>
+      </label>
+    </div>
+  `;
+
+  article.querySelectorAll("[data-plan-field]").forEach((input) => {
+    input.addEventListener("input", onPlanSubtaskInput);
+    input.addEventListener("change", onPlanSubtaskInput);
+  });
+  article.querySelector("[data-remove-subtask]")?.addEventListener("click", onRemovePlanSubtask);
+
+  return article;
 }
 
 function renderTranscript(messages) {
@@ -782,6 +850,7 @@ function clearTaskList() {
 
 function clearTaskDetail() {
   state.taskDetail = null;
+  state.taskPlanDraft = null;
   state.selectedTaskId = null;
   writeStorage(STORAGE_KEYS.selectedTaskId, "");
   disconnectTaskStream();
@@ -877,6 +946,123 @@ function disconnectTaskStream() {
     state.taskStream.close();
     state.taskStream = null;
   }
+}
+
+function syncEditablePlanDraft(detail) {
+  if (detail?.task?.status !== "PLAN_REVIEW") {
+    state.taskPlanDraft = null;
+    return;
+  }
+
+  const serverPlan = parseCurrentPlanJson(detail.task.currentPlanJson);
+
+  if (!serverPlan) {
+    state.taskPlanDraft = null;
+    return;
+  }
+
+  const storageKey = getTaskDraftStorageKey(detail.task.id);
+  const persistedDraft = readStoredPlanDraft(storageKey);
+  const serverFingerprint = detail.task.currentPlanJson;
+  const canReusePersistedDraft = persistedDraft
+    && persistedDraft.serverFingerprint === serverFingerprint
+    && persistedDraft.taskUpdatedAt === detail.task.updatedAt;
+
+  state.taskPlanDraft = canReusePersistedDraft
+    ? persistedDraft.draft
+    : clonePlanDraft(serverPlan);
+
+  persistCurrentTaskDraft();
+}
+
+function onPlanNotesInput(event) {
+  if (!state.taskPlanDraft) {
+    return;
+  }
+
+  const value = normalizeOptionalText(event.target.value);
+  const nextDraft = {
+    ...state.taskPlanDraft,
+  };
+
+  if (value) {
+    nextDraft.notes = value;
+  } else {
+    delete nextDraft.notes;
+  }
+
+  state.taskPlanDraft = nextDraft;
+  persistCurrentTaskDraft();
+  renderPlanDraft(state.taskDetail);
+}
+
+function onPlanSubtaskInput(event) {
+  if (!state.taskPlanDraft) {
+    return;
+  }
+
+  const index = Number.parseInt(event.target.dataset.subtaskIndex ?? "", 10);
+  const field = event.target.dataset.planField;
+
+  if (!Number.isInteger(index) || !field || !state.taskPlanDraft.subtasks[index]) {
+    return;
+  }
+
+  state.taskPlanDraft = {
+    ...state.taskPlanDraft,
+    subtasks: state.taskPlanDraft.subtasks.map((subtask, subtaskIndex) => (
+      subtaskIndex === index
+        ? { ...subtask, [field]: event.target.value }
+        : subtask
+    )),
+  };
+  persistCurrentTaskDraft();
+  renderPlanDraft(state.taskDetail);
+}
+
+function onAddPlanSubtask() {
+  if (!state.taskPlanDraft) {
+    return;
+  }
+
+  state.taskPlanDraft = {
+    ...state.taskPlanDraft,
+    subtasks: [
+      ...state.taskPlanDraft.subtasks,
+      createDefaultPlanSubtask(state.taskPlanDraft.subtasks.length),
+    ],
+  };
+  persistCurrentTaskDraft();
+  renderPlanDraft(state.taskDetail);
+}
+
+function onRemovePlanSubtask(event) {
+  if (!state.taskPlanDraft) {
+    return;
+  }
+
+  const index = Number.parseInt(event.currentTarget.dataset.removeSubtask ?? "", 10);
+
+  if (!Number.isInteger(index)) {
+    return;
+  }
+
+  state.taskPlanDraft = {
+    ...state.taskPlanDraft,
+    subtasks: state.taskPlanDraft.subtasks.filter((_, subtaskIndex) => subtaskIndex !== index),
+  };
+  persistCurrentTaskDraft();
+  renderPlanDraft(state.taskDetail);
+}
+
+function onResetPlanDraft() {
+  if (!state.taskDetail?.task?.id) {
+    return;
+  }
+
+  removeStorage(getTaskDraftStorageKey(state.taskDetail.task.id));
+  syncEditablePlanDraft(state.taskDetail);
+  renderPlanDraft(state.taskDetail);
 }
 
 async function readDraftAttachments() {
@@ -998,6 +1184,14 @@ function readStorage(key) {
   }
 }
 
+function removeStorage(key) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Local storage is optional for reload persistence.
+  }
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -1005,6 +1199,10 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function escapeHtmlAttribute(value) {
+  return escapeHtml(value).replaceAll('"', "&quot;");
 }
 
 function parseCurrentPlanJson(currentPlanJson) {
@@ -1042,4 +1240,74 @@ function buildPlanSummary(detail, failedAttempts, parsedPlan) {
   }
 
   return summaryParts.join(" · ");
+}
+
+function buildWorkerAgentOptions(selectedAgentName) {
+  const options = [];
+  const selectableCandidates = state.workerCandidates.filter((candidate) => candidate.selectable);
+  const knownNames = new Set(selectableCandidates.map((candidate) => candidate.agentName));
+
+  if (selectedAgentName && !knownNames.has(selectedAgentName)) {
+    options.push(
+      `<option value="${escapeHtmlAttribute(selectedAgentName)}" selected>${escapeHtml(`${selectedAgentName} (currently assigned)`)}</option>`,
+    );
+  }
+
+  for (const candidate of selectableCandidates) {
+    options.push(
+      `<option value="${escapeHtmlAttribute(candidate.agentName)}"${candidate.agentName === selectedAgentName ? " selected" : ""}>${escapeHtml(candidate.agentName)}</option>`,
+    );
+  }
+
+  return options.join("");
+}
+
+function createDefaultPlanSubtask(index) {
+  return {
+    branch_suffix: `draft-subtask-${index + 1}`,
+    description: "",
+    recommended_agent: state.workerCandidates.find((candidate) => candidate.selectable)?.agentName
+      ?? state.taskDetail?.task?.leadAgentType
+      ?? "",
+    title: "",
+  };
+}
+
+function clonePlanDraft(plan) {
+  return JSON.parse(JSON.stringify(plan));
+}
+
+function getTaskDraftStorageKey(taskId) {
+  return `${STORAGE_KEYS.draftPrefix}.${taskId}`;
+}
+
+function persistCurrentTaskDraft() {
+  if (!state.taskDetail?.task?.id || !state.taskPlanDraft) {
+    return;
+  }
+
+  writeStorage(getTaskDraftStorageKey(state.taskDetail.task.id), JSON.stringify({
+    draft: state.taskPlanDraft,
+    serverFingerprint: state.taskDetail.task.currentPlanJson,
+    taskUpdatedAt: state.taskDetail.task.updatedAt,
+  }));
+}
+
+function readStoredPlanDraft(storageKey) {
+  const rawValue = readStorage(storageKey);
+
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeOptionalText(value) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
 }
