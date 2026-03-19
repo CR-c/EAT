@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   DockerSandboxManager,
+  SANDBOX_NETWORK_PROFILES,
   SANDBOX_HEALTH_REASON_CODES,
 } from "../src/services/sandbox-manager.js";
 
@@ -61,4 +62,33 @@ test("parses Docker health failures into structured reasons", async () => {
 
   assert.equal(health.available, false);
   assert.equal(health.reasonCode, SANDBOX_HEALTH_REASON_CODES.DAEMON_UNREACHABLE);
+});
+
+test("allows explicitly allowlisted runtime mounts and host networking for specialized workers", () => {
+  const manager = new DockerSandboxManager({
+    uploadRootPath: "/tmp/eat-uploads",
+    worktreeRootPath: "/tmp/.eat-worktrees",
+  });
+
+  const sandbox = manager.createWorkerSandboxConfig({
+    allowedExtraReadonlyRoots: ["/opt/codex", "/etc/ssl/certs"],
+    allowedExtraReadwriteRoots: ["/tmp/eat-runtime", "/tmp/project/.git"],
+    attachments: [{ filePath: "/tmp/eat-uploads/task-1/brief.md" }],
+    containerUser: "0:0",
+    extraReadonlyMounts: ["/opt/codex", "/etc/ssl/certs"],
+    extraReadwriteMounts: ["/tmp/eat-runtime/session-1", "/tmp/project/.git"],
+    networkProfile: SANDBOX_NETWORK_PROFILES.HOST,
+    worktreePath: "/tmp/.eat-worktrees/project/task-1/subtask-a",
+  });
+
+  assert.equal(sandbox.networkProfile, SANDBOX_NETWORK_PROFILES.HOST);
+  assert.equal(sandbox.containerUser, "0:0");
+  assert.deepEqual(
+    sandbox.readonlyMounts,
+    ["/tmp/eat-uploads/task-1/brief.md", "/opt/codex", "/etc/ssl/certs"],
+  );
+  assert.deepEqual(
+    sandbox.readwriteMounts,
+    ["/tmp/.eat-worktrees/project/task-1/subtask-a", "/tmp/eat-runtime/session-1", "/tmp/project/.git"],
+  );
 });

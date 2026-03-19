@@ -1900,10 +1900,12 @@ export class TaskService {
 
     const task = await this.taskRepository.findTaskById(taskId);
 
-    if (task?.status === TASK_STATUS.CLARIFYING && exitCode !== 0) {
+    if ([TASK_STATUS.CLARIFYING, TASK_STATUS.PLANNING].includes(task?.status) && exitCode !== 0) {
       await this.#updateTaskStatus(taskId, TASK_STATUS.ACTION_REQUIRED, {
         currentTask: task,
-        lastError: "Lead session ended unexpectedly during clarification.",
+        lastError: task.status === TASK_STATUS.PLANNING
+          ? "Lead session ended unexpectedly during planning."
+          : "Lead session ended unexpectedly during clarification.",
       });
     }
 
@@ -2607,6 +2609,14 @@ export class TaskService {
 
   close() {
     this.closed = true;
+    for (const activeSession of this.runningLeadSessions.values()) {
+      void activeSession.runtime?.kill?.().catch(() => null);
+    }
+
+    for (const activeSession of this.runningWorkerSessions.values()) {
+      void activeSession.runtime?.kill?.().catch(() => null);
+    }
+
     this.pendingFinalReviews.clear();
     this.pendingMergeExecutions.clear();
     this.pendingCleanupTasks.clear();

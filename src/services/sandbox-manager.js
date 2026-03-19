@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile);
 
 export const SANDBOX_NETWORK_PROFILES = Object.freeze({
   DEFAULT: "DEFAULT",
+  HOST: "HOST",
   ISOLATED: "ISOLATED",
 });
 
@@ -27,6 +28,7 @@ export const DEFAULT_WORKER_IMAGE = process.env.EAT_WORKER_IMAGE ?? "node:22-boo
 export class DockerSandboxManager {
   constructor(options = {}) {
     this.defaultWorkerImage = options.defaultWorkerImage ?? DEFAULT_WORKER_IMAGE;
+    this.defaultContainerUser = options.defaultContainerUser ?? resolveDefaultContainerUser();
     this.execFile = options.execFile ?? execFileAsync;
     this.spawnProcess = options.spawnProcess ?? spawn;
     this.uploadRootPath = path.resolve(options.uploadRootPath ?? DEFAULT_UPLOAD_ROOT);
@@ -75,6 +77,8 @@ export class DockerSandboxManager {
       defaultSandboxType: SESSION_SANDBOX_TYPES.DOCKER,
       defaultWorkerImage: this.defaultWorkerImage,
       mountPolicy: {
+        managedReadonly: ["adapter-declared runtime tool mounts validated against explicit allowlists"],
+        managedReadwrite: ["adapter-declared runtime state mounts validated against explicit allowlists"],
         readonly: ["task attachments persisted under the app upload root"],
         readwrite: ["subtask worktree persisted under the app worktree root"],
       },
@@ -103,12 +107,31 @@ export class DockerSandboxManager {
       assertAllowedMountPath(filePath, this.uploadRootPath, "attachment.filePath");
       return filePath;
     }));
+    const extraReadonlyMounts = uniquePaths((input.extraReadonlyMounts ?? []).map((mountPath) => {
+      const normalizedPath = normalizeAbsolutePath(mountPath, "extraReadonlyMount");
+      assertAllowedMountPathAgainstRoots(
+        normalizedPath,
+        normalizeAllowedRoots(input.allowedExtraReadonlyRoots, "allowedExtraReadonlyRoots"),
+        "extraReadonlyMount",
+      );
+      return normalizedPath;
+    }));
+    const extraReadwriteMounts = uniquePaths((input.extraReadwriteMounts ?? []).map((mountPath) => {
+      const normalizedPath = normalizeAbsolutePath(mountPath, "extraReadwriteMount");
+      assertAllowedMountPathAgainstRoots(
+        normalizedPath,
+        normalizeAllowedRoots(input.allowedExtraReadwriteRoots, "allowedExtraReadwriteRoots"),
+        "extraReadwriteMount",
+      );
+      return normalizedPath;
+    }));
 
     return {
       containerImage: normalizeNonEmptyString(input.containerImage) ?? this.defaultWorkerImage,
+      containerUser: normalizeNonEmptyString(input.containerUser) ?? this.defaultContainerUser,
       networkProfile: input.networkProfile ?? SANDBOX_NETWORK_PROFILES.ISOLATED,
-      readonlyMounts,
-      readwriteMounts: [worktreePath],
+      readonlyMounts: uniquePaths([...readonlyMounts, ...extraReadonlyMounts]),
+      readwriteMounts: uniquePaths([worktreePath, ...extraReadwriteMounts]),
       type: SESSION_SANDBOX_TYPES.DOCKER,
       workDir: worktreePath,
     };
@@ -314,12 +337,14 @@ function buildDockerCreateArgs({ command, env, sandbox, sessionLabel }) {
     "--interactive",
     "--init",
     "--label", `eat.session=${sessionLabel}`,
-    "--user", "1000:1000",
+    "--user", sandbox.containerUser,
     "--workdir", sandbox.workDir,
   ];
 
   if (sandbox.networkProfile === SANDBOX_NETWORK_PROFILES.ISOLATED) {
     args.push("--network", "none");
+  } else if (sandbox.networkProfile === SANDBOX_NETWORK_PROFILES.HOST) {
+    args.push("--network", "host");
   }
 
   for (const [key, value] of Object.entries(env)) {
@@ -341,10 +366,13 @@ function buildDockerCreateArgs({ command, env, sandbox, sessionLabel }) {
 }
 
 function assertAllowedMountPath(targetPath, allowedRootPath, fieldName) {
+  assertAllowedMountPathAgainstRoots(targetPath, [allowedRootPath], fieldName);
+}
+
+function assertAllowedMountPathAgainstRoots(targetPath, allowedRootPaths, fieldName) {
   const homeDirectoryPath = path.resolve(os.homedir());
   const sshDirectoryPath = path.join(homeDirectoryPath, ".ssh");
   const normalizedTargetPath = path.resolve(targetPath);
-  const normalizedAllowedRootPath = path.resolve(allowedRootPath);
 
   if (normalizedTargetPath === homeDirectoryPath || normalizedTargetPath.startsWith(`${homeDirectoryPath}${path.sep}`)) {
     throw buildSandboxConfigError(
@@ -360,13 +388,16 @@ function assertAllowedMountPath(targetPath, allowedRootPath, fieldName) {
     );
   }
 
-  if (
-    normalizedTargetPath !== normalizedAllowedRootPath
-    && !normalizedTargetPath.startsWith(`${normalizedAllowedRootPath}${path.sep}`)
-  ) {
+  const normalizedAllowedRootPaths = normalizeAllowedRoots(allowedRootPaths, "allowedRootPaths");
+  const isAllowed = normalizedAllowedRootPaths.some((allowedRootPath) => (
+    normalizedTargetPath === allowedRootPath
+    || normalizedTargetPath.startsWith(`${allowedRootPath}${path.sep}`)
+  ));
+
+  if (!isAllowed) {
     throw buildSandboxConfigError(
       SANDBOX_HEALTH_REASON_CODES.INVALID_CONFIG,
-      `${fieldName} must stay inside ${normalizedAllowedRootPath}.`,
+      `${fieldName} must stay inside ${normalizedAllowedRootPaths.join(", ")}.`,
     );
   }
 }
@@ -396,4 +427,27 @@ function normalizeNonEmptyString(value) {
 
 function uniquePaths(paths) {
   return [...new Set(paths)];
+}
+
+function normalizeAllowedRoots(roots, fieldName) {
+  if (!Array.isArray(roots) || roots.length === 0) {
+    throw buildSandboxConfigError(
+      SANDBOX_HEALTH_REASON_CODES.INVALID_CONFIG,
+      `${fieldName} must be a non-empty array.`,
+    );
+  }
+
+  return uniquePaths(roots.map((rootPath) => normalizeAbsolutePath(rootPath, fieldName)));
+}
+
+function resolveDefaultContainerUser() {
+  if (normalizeNonEmptyString(process.env.EAT_WORKER_CONTAINER_USER)) {
+    return process.env.EAT_WORKER_CONTAINER_USER.trim();
+  }
+
+  if (typeof process.getuid === "function" && typeof process.getgid === "function") {
+    return `${process.getuid()}:${process.getgid()}`;
+  }
+
+  return "1000:1000";
 }
