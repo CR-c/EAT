@@ -42,6 +42,7 @@ export function createApp(options = {}) {
     projectRepository,
     sandboxManager,
     taskRepository,
+    ...options.taskServiceOptions,
     uploadRootPath: options.uploadRootPath,
   });
 
@@ -300,6 +301,14 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const taskIntegrationRunsMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/integration-runs$/);
+
+  if (request.method === "POST" && taskIntegrationRunsMatch) {
+    const taskId = decodeURIComponent(taskIntegrationRunsMatch[1]);
+    const result = await taskService.startIntegrationRun(taskId);
+    return respondServiceResult(response, result, 201);
+  }
+
   const taskRestorePlanSnapshotMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/restore-plan-snapshot$/);
 
   if (request.method === "POST" && taskRestorePlanSnapshotMatch) {
@@ -339,6 +348,30 @@ async function routeRequest(request, response, services) {
     }
 
     const result = await taskService.reworkSubTask(subTaskId, body.value);
+    return respondServiceResult(response, result);
+  }
+
+  const integrationRunRetryMatch = pathName.match(/^\/api\/integration-runs\/([^/]+)\/retry$/);
+
+  if (request.method === "POST" && integrationRunRetryMatch) {
+    const integrationRunId = decodeURIComponent(integrationRunRetryMatch[1]);
+    const result = await taskService.retryIntegrationRun(integrationRunId);
+    return respondServiceResult(response, result);
+  }
+
+  const integrationRunRollbackMatch = pathName.match(/^\/api\/integration-runs\/([^/]+)\/rollback$/);
+
+  if (request.method === "POST" && integrationRunRollbackMatch) {
+    const integrationRunId = decodeURIComponent(integrationRunRollbackMatch[1]);
+    const result = await taskService.rollbackIntegrationRun(integrationRunId);
+    return respondServiceResult(response, result);
+  }
+
+  const integrationQueueItemDequeueMatch = pathName.match(/^\/api\/integration-queue-items\/([^/]+)\/dequeue$/);
+
+  if (request.method === "POST" && integrationQueueItemDequeueMatch) {
+    const integrationQueueItemId = decodeURIComponent(integrationQueueItemDequeueMatch[1]);
+    const result = await taskService.dequeueIntegrationQueueItem(integrationQueueItemId);
     return respondServiceResult(response, result);
   }
 

@@ -2481,7 +2481,7 @@ test("keeps the task ACTION_REQUIRED when final review finishes with unresolved 
   }
 });
 
-test("merges accepted subtasks in order, persists merge history, and completes the task", async () => {
+test("runs accepted subtasks through an explicit integration branch and completes after release gates pass", async () => {
   const fixture = await makeTempDir("eat-phase12-merge-success-");
 
   try {
@@ -2546,9 +2546,19 @@ test("merges accepted subtasks in order, persists merge history, and completes t
       try {
         await moveTaskToPlanReview(server, taskId, events);
         await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "MERGING");
 
-        await nextEvent(events, (event) => event.eventName === "merge:status" && event.data.status === "SUCCEEDED");
-        await nextEvent(events, (event) => event.eventName === "merge:status" && event.data.status === "SUCCEEDED");
+        const integrationResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/integration-runs`,
+          { method: "POST" },
+        );
+        assert.equal(integrationResponse.status, 201);
+
+        await nextEvent(events, (event) => event.eventName === "integration:queued");
+        await nextEvent(events, (event) => event.eventName === "integration:started");
+        await nextEvent(events, (event) => event.eventName === "integration:gate-result" && event.data.status === "PASSED");
+        await nextEvent(events, (event) => event.eventName === "integration:completed" && event.data.status === "COMPLETED");
         await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
@@ -2561,6 +2571,11 @@ test("merges accepted subtasks in order, persists merge history, and completes t
         assert.deepEqual(detailResponse.body.cleanupWarnings, []);
         assert.ok(detailResponse.body.subTasks.every((subTask) => subTask.mergeRecords.length === 1));
         assert.ok(detailResponse.body.subTasks.every((subTask) => subTask.mergeRecords[0].status === "SUCCEEDED"));
+        assert.equal(detailResponse.body.integration.latestRun.status, "COMPLETED");
+        assert.deepEqual(
+          detailResponse.body.integration.latestRun.queueItems.map((queueItem) => queueItem.status),
+          ["RELEASED", "RELEASED"],
+        );
         assert.equal(await readFile(path.join(repo.repoPath, "alpha.txt"), "utf8"), "alpha\n");
         assert.equal(await readFile(path.join(repo.repoPath, "beta.txt"), "utf8"), "beta\n");
         await assert.rejects(access(detailResponse.body.subTasks[0].worktreePath));
@@ -2569,9 +2584,10 @@ test("merges accepted subtasks in order, persists merge history, and completes t
         const mergeSubjects = (await git(repo.repoPath, ["log", "main", "--merges", "--reverse", "--format=%s"]))
           .split("\n")
           .filter(Boolean);
-        assert.equal(mergeSubjects.length, 2);
+        assert.equal(mergeSubjects.length, 3);
         assert.match(mergeSubjects[0], /alpha-merge/);
         assert.match(mergeSubjects[1], /beta-merge/);
+        assert.match(mergeSubjects[2], /integration-1/);
       } finally {
         unsubscribe();
       }
@@ -2583,35 +2599,55 @@ test("merges accepted subtasks in order, persists merge history, and completes t
   }
 });
 
-test("moves merge execution to ACTION_REQUIRED when the target branch is dirty and resumes after cleanup", async () => {
-  const fixture = await makeTempDir("eat-phase12-dirty-resume-");
+test("keeps the base branch clean on gate failure and completes after integration retry", async () => {
+  const fixture = await makeTempDir("eat-phase21-gate-retry-");
 
   try {
     const databasePath = path.join(fixture.path, "data", "eat.db");
     const eventBus = new TaskEventBus();
+    let gateRunCount = 0;
     const phase08 = createPhase08AgentService({
       plan: {
         subtasks: [
           {
-            title: "Dirty branch merge",
-            description: "Create a merge candidate while the base branch is dirty.",
+            title: "Retryable integration change",
+            description: "Fail the release gate once, then retry cleanly.",
             recommended_agent: "worker-agent",
-            branch_suffix: "dirty-merge",
+            branch_suffix: "gate-retry",
           },
         ],
       },
       prepareWorkerSession: async (config) => {
-        await commitWorktreeChange(config.workDir, "dirty-merge.txt", "merge me\n");
+        await commitWorktreeChange(config.workDir, "gate-retry.txt", "retry me\n");
       },
     });
     const server = await startServer({
       agentService: phase08.agentService,
       databasePath,
       eventBus,
+      taskServiceOptions: {
+        integrationGateRunner: async () => {
+          gateRunCount += 1;
+
+          if (gateRunCount === 1) {
+            return [{
+              gateType: "TEST",
+              status: "FAILED",
+              summary: "Intentional integration gate failure for retry coverage.",
+            }];
+          }
+
+          return [{
+            gateType: "TEST",
+            status: "PASSED",
+            summary: "Integration gate passed on retry.",
+          }];
+        },
+      },
     });
 
     try {
-      const repo = await createRepository(fixture.path, "phase12-dirty-resume-repo");
+      const repo = await createRepository(fixture.path, "phase21-gate-retry-repo");
       const registerResponse = await requestJson(server, "/api/projects", {
         body: { path: repo.repoPath },
         method: "POST",
@@ -2619,10 +2655,10 @@ test("moves merge execution to ACTION_REQUIRED when the target branch is dirty a
       const taskResponse = await requestJson(server, "/api/tasks", {
         body: {
           baseBranch: "main",
-          description: "Block merge on a dirty target branch, then resume after cleanup.",
+          description: "Keep base clean when release gates fail, then retry integration.",
           leadAgentType: "healthy-lead",
           projectId: registerResponse.body.project.id,
-          title: "Phase 12 dirty resume",
+          title: "Phase 21 gate retry",
         },
         method: "POST",
       });
@@ -2635,33 +2671,42 @@ test("moves merge execution to ACTION_REQUIRED when the target branch is dirty a
       try {
         await moveTaskToPlanReview(server, taskId, events);
         await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
-        await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "MERGING");
 
-        const dirtyFilePath = path.join(repo.repoPath, "dirty-blocker.txt");
-        await writeFile(dirtyFilePath, "dirty\n", "utf8");
-
-        const actionRequiredEvent = await nextEvent(
-          events,
-          (event) => event.eventName === "task:status" && event.data.status === "ACTION_REQUIRED",
+        const startResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/integration-runs`,
+          { method: "POST" },
         );
-        assert.match(actionRequiredEvent.data.reason, /dirty/i);
+        assert.equal(startResponse.status, 201);
+
+        await nextEvent(events, (event) => event.eventName === "integration:queued");
+        await nextEvent(events, (event) => event.eventName === "integration:started");
+        const failedGateEvent = await nextEvent(
+          events,
+          (event) => event.eventName === "integration:gate-result" && event.data.status === "FAILED",
+        );
+        assert.match(failedGateEvent.data.summary, /intentional integration gate failure/i);
+        await nextEvent(events, (event) => event.eventName === "integration:failed" && event.data.status === "ACTION_REQUIRED");
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "ACTION_REQUIRED");
 
         const blockedResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(blockedResponse.status, 200);
         assert.equal(blockedResponse.body.task.status, "ACTION_REQUIRED");
-        assert.match(blockedResponse.body.task.lastError, /dirty/i);
+        assert.equal(blockedResponse.body.integration.latestRun.status, "ACTION_REQUIRED");
+        await assert.rejects(git(repo.repoPath, ["show", "main:gate-retry.txt"]));
 
-        const removedWorktreePath = blockedResponse.body.subTasks[0].worktreePath;
-        await rm(removedWorktreePath, { force: true, recursive: true });
-
-        await rm(dirtyFilePath);
-
-        const resumeResponse = await requestJson(
+        const retryResponse = await requestJson(
           server,
-          `/api/tasks/${encodeURIComponent(taskId)}/resume`,
+          `/api/integration-runs/${encodeURIComponent(blockedResponse.body.integration.latestRun.id)}/retry`,
           { method: "POST" },
         );
-        assert.equal(resumeResponse.status, 200);
+        assert.equal(retryResponse.status, 200);
+
+        await nextEvent(events, (event) => event.eventName === "integration:queued");
+        await nextEvent(events, (event) => event.eventName === "integration:started");
+        await nextEvent(events, (event) => event.eventName === "integration:gate-result" && event.data.status === "PASSED");
+        await nextEvent(events, (event) => event.eventName === "integration:completed" && event.data.status === "COMPLETED");
         await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
@@ -2669,9 +2714,12 @@ test("moves merge execution to ACTION_REQUIRED when the target branch is dirty a
         assert.equal(detailResponse.body.task.status, "COMPLETED");
         assert.equal(detailResponse.body.subTasks[0].status, "MERGED");
         assert.deepEqual(detailResponse.body.cleanupWarnings, []);
-        assert.equal(detailResponse.body.subTasks[0].mergeRecords.length, 1);
-        assert.equal(detailResponse.body.subTasks[0].mergeRecords[0].status, "SUCCEEDED");
-        await assert.rejects(access(removedWorktreePath));
+        assert.equal(detailResponse.body.subTasks[0].mergeRecords.length, 2);
+        assert.ok(detailResponse.body.subTasks[0].mergeRecords.every((record) => record.status === "SUCCEEDED"));
+        assert.equal(detailResponse.body.integration.runs.length, 2);
+        assert.equal(detailResponse.body.integration.runs[0].gateResults[0].status, "FAILED");
+        assert.equal(detailResponse.body.integration.latestRun.status, "COMPLETED");
+        assert.equal(await readFile(path.join(repo.repoPath, "gate-retry.txt"), "utf8"), "retry me\n");
       } finally {
         unsubscribe();
       }
@@ -2689,6 +2737,7 @@ test("persists cleanup warnings and keeps completed tasks terminal when worktree
   try {
     const databasePath = path.join(fixture.path, "data", "eat.db");
     const eventBus = new TaskEventBus();
+    let gateRunCount = 0;
     const phase08 = createPhase08AgentService({
       plan: {
         subtasks: [
@@ -2708,6 +2757,25 @@ test("persists cleanup warnings and keeps completed tasks terminal when worktree
       agentService: phase08.agentService,
       databasePath,
       eventBus,
+      taskServiceOptions: {
+        integrationGateRunner: async () => {
+          gateRunCount += 1;
+
+          if (gateRunCount === 1) {
+            return [{
+              gateType: "TEST",
+              status: "FAILED",
+              summary: "Pause before cleanup warning verification.",
+            }];
+          }
+
+          return [{
+            gateType: "TEST",
+            status: "PASSED",
+            summary: "Cleanup warning retry gate passed.",
+          }];
+        },
+      },
     });
 
     try {
@@ -2735,10 +2803,18 @@ test("persists cleanup warnings and keeps completed tasks terminal when worktree
       try {
         await moveTaskToPlanReview(server, taskId, events);
         await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
-        await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "MERGING");
 
-        const dirtyFilePath = path.join(repo.repoPath, "cleanup-warning-dirty.txt");
-        await writeFile(dirtyFilePath, "dirty\n", "utf8");
+        const startResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/integration-runs`,
+          { method: "POST" },
+        );
+        assert.equal(startResponse.status, 201);
+
+        await nextEvent(events, (event) => event.eventName === "integration:queued");
+        await nextEvent(events, (event) => event.eventName === "integration:started");
+        await nextEvent(events, (event) => event.eventName === "integration:gate-result" && event.data.status === "FAILED");
         await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "ACTION_REQUIRED");
 
         const repository = new SqliteTaskRepository({ databasePath });
@@ -2748,13 +2824,12 @@ test("persists cleanup warnings and keeps completed tasks terminal when worktree
           worktreePath: repo.repoPath,
         });
 
-        await rm(dirtyFilePath);
-        const resumeResponse = await requestJson(
+        const retryResponse = await requestJson(
           server,
-          `/api/tasks/${encodeURIComponent(taskId)}/resume`,
+          `/api/integration-runs/${encodeURIComponent(blockedResponse.body.integration.latestRun.id)}/retry`,
           { method: "POST" },
         );
-        assert.equal(resumeResponse.status, 200);
+        assert.equal(retryResponse.status, 200);
 
         const cleanupWarningEvent = await nextEvent(
           events,
@@ -2850,12 +2925,21 @@ test("records merge conflicts, supports rebase retry, and resumes merge flow aft
       try {
         await moveTaskToPlanReview(server, taskId, events);
         await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "MERGING");
+
+        const startResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/integration-runs`,
+          { method: "POST" },
+        );
+        assert.equal(startResponse.status, 201);
 
         const conflictEvent = await nextEvent(
           events,
           (event) => event.eventName === "merge:status" && event.data.status === "CONFLICT",
         );
         assert.match(conflictEvent.data.summary, /conflict/i);
+        await nextEvent(events, (event) => event.eventName === "integration:failed" && event.data.status === "ACTION_REQUIRED");
         await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "ACTION_REQUIRED");
 
         const blockedResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
@@ -2863,7 +2947,11 @@ test("records merge conflicts, supports rebase retry, and resumes merge flow aft
         assert.equal(blockedResponse.body.task.status, "ACTION_REQUIRED");
         assert.deepEqual(
           blockedResponse.body.subTasks.map((subTask) => subTask.status),
-          ["MERGED", "ACCEPTED"],
+          ["ACCEPTED", "ACCEPTED"],
+        );
+        assert.deepEqual(
+          blockedResponse.body.integration.latestRun.queueItems.map((queueItem) => queueItem.status),
+          ["MERGED", "FAILED"],
         );
         assert.equal(blockedResponse.body.subTasks[1].mergeRecords.at(-1).status, "CONFLICT");
 
@@ -2886,6 +2974,7 @@ test("records merge conflicts, supports rebase retry, and resumes merge flow aft
           && event.data.subtaskId === conflictedSubTask.id
           && event.data.status === "SUCCEEDED"
         ));
+        await nextEvent(events, (event) => event.eventName === "integration:completed" && event.data.status === "COMPLETED");
         await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
@@ -2900,6 +2989,7 @@ test("records merge conflicts, supports rebase retry, and resumes merge flow aft
           ["MERGE:CONFLICT", "REBASE:SUCCEEDED", "MERGE:SUCCEEDED"],
         );
         assert.equal(await readFile(path.join(repo.repoPath, "resolved.txt"), "utf8"), "resolved\n");
+        assert.equal(await readFile(path.join(repo.repoPath, "shared.txt"), "utf8"), "alpha\n");
       } finally {
         unsubscribe();
       }
@@ -3211,6 +3301,7 @@ async function startServer(options = {}) {
     repositoryOptions: {
       databasePath: options.databasePath,
     },
+    taskServiceOptions: options.taskServiceOptions,
     uploadRootPath: options.uploadRootPath,
   });
 

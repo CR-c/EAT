@@ -32,6 +32,9 @@ import {
 } from "./plan-draft.js";
 import { buildPlanSeedFromTemplate, listPlanTemplates } from "./task-templates.js";
 import {
+  GATE_RESULT_STATUS,
+  INTEGRATION_QUEUE_ITEM_STATUS,
+  INTEGRATION_RUN_STATUS,
   MAILBOX_MESSAGE_TYPE,
   MAILBOX_PARTICIPANT_TYPE,
   MAILBOX_TARGET_TYPE,
@@ -73,6 +76,7 @@ const TERMINAL_TASK_STATUSES = new Set([
 ]);
 const CLEANUP_WARNING_MESSAGE_PREFIX = "Cleanup warning: ";
 const LAUNCH_FAILURE_MESSAGE_PREFIX = "Launch failure: ";
+const DEFAULT_INTEGRATION_GATE_TYPES = ["TEST"];
 
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
 const DOCUMENT_EXTENSIONS = new Set([".md", ".pdf", ".txt"]);
@@ -143,6 +147,11 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   SUBTASK_REASSIGN_NOT_ALLOWED: "SUBTASK_REASSIGN_NOT_ALLOWED",
   SUBTASK_REWORK_NOT_ALLOWED: "SUBTASK_REWORK_NOT_ALLOWED",
   SUBTASK_RETRY_NOT_ALLOWED: "SUBTASK_RETRY_NOT_ALLOWED",
+  INTEGRATION_DEQUEUE_NOT_ALLOWED: "INTEGRATION_DEQUEUE_NOT_ALLOWED",
+  INTEGRATION_QUEUE_ITEM_NOT_FOUND: "INTEGRATION_QUEUE_ITEM_NOT_FOUND",
+  INTEGRATION_RETRY_NOT_ALLOWED: "INTEGRATION_RETRY_NOT_ALLOWED",
+  INTEGRATION_ROLLBACK_NOT_ALLOWED: "INTEGRATION_ROLLBACK_NOT_ALLOWED",
+  INTEGRATION_RUN_NOT_FOUND: "INTEGRATION_RUN_NOT_FOUND",
   TASK_NOT_FOUND: "TASK_NOT_FOUND",
   TASK_RESUME_NOT_ALLOWED: "TASK_RESUME_NOT_ALLOWED",
   TITLE_REQUIRED: "TITLE_REQUIRED",
@@ -187,7 +196,9 @@ export class TaskService {
     this.workerSessionMetadata = new Map();
     this.pendingFinalReviews = new Set();
     this.pendingMergeExecutions = new Set();
+    this.pendingIntegrationExecutions = new Set();
     this.pendingCleanupTasks = new Set();
+    this.integrationGateRunner = options.integrationGateRunner ?? defaultIntegrationGateRunner;
     this.closed = false;
   }
 
@@ -319,6 +330,19 @@ export class TaskService {
     const mailboxMessages = await this.taskRepository.listMailboxMessagesByTaskId(task.id);
     const reviewRecords = (await this.taskRepository.listReviewRecords())
       .filter((record) => subTasks.some((subTask) => subTask.id === record.subTaskId));
+    const integrationRuns = await this.taskRepository.listIntegrationRunsByTaskId(task.id);
+    const queueItemsByIntegrationRunId = new Map(
+      await Promise.all(integrationRuns.map(async (integrationRun) => [
+        integrationRun.id,
+        await this.taskRepository.listIntegrationQueueItemsByIntegrationRunId(integrationRun.id),
+      ])),
+    );
+    const gateResultsByIntegrationRunId = new Map(
+      await Promise.all(integrationRuns.map(async (integrationRun) => [
+        integrationRun.id,
+        await this.taskRepository.listGateResultsByIntegrationRunId(integrationRun.id),
+      ])),
+    );
     const mergeRecordsBySubTaskId = groupRecordsBySubTaskId(mergeRecords);
     const decoratedSessions = sessions.map((session) => this.#decorateSession(session));
     const decoratedSubTasks = subTasks.map((subTask) => this.#decorateSubTask({
@@ -334,10 +358,19 @@ export class TaskService {
       messages,
       planSnapshots: await this.taskRepository.listPlanSnapshotsByTaskId(task.id),
       board: this.#buildTaskBoardSnapshot(task, {
+        gateResultsByIntegrationRunId,
+        integrationRuns,
         mailboxMessages,
         messages,
+        queueItemsByIntegrationRunId,
         reviewRecords,
         sessions: decoratedSessions,
+        subTasks: decoratedSubTasks,
+      }),
+      integration: this.#buildTaskIntegrationView(task, {
+        gateResultsByIntegrationRunId,
+        integrationRuns,
+        queueItemsByIntegrationRunId,
         subTasks: decoratedSubTasks,
       }),
       sessions: decoratedSessions,
@@ -379,14 +412,27 @@ export class TaskService {
       return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
     }
 
-    const [messages, sessions, subTasks, mergeRecords, mailboxMessages, reviewRecords] = await Promise.all([
+    const [messages, sessions, subTasks, mergeRecords, mailboxMessages, reviewRecords, integrationRuns] = await Promise.all([
       this.taskRepository.listMessagesByTaskId(task.id),
       this.taskRepository.listSessionsByTaskId(task.id),
       this.taskRepository.listSubTasksByTaskId(task.id),
       this.taskRepository.listMergeRecordsByTaskId(task.id),
       this.taskRepository.listMailboxMessagesByTaskId(task.id),
       this.taskRepository.listReviewRecords(),
+      this.taskRepository.listIntegrationRunsByTaskId(task.id),
     ]);
+    const queueItemsByIntegrationRunId = new Map(
+      await Promise.all(integrationRuns.map(async (integrationRun) => [
+        integrationRun.id,
+        await this.taskRepository.listIntegrationQueueItemsByIntegrationRunId(integrationRun.id),
+      ])),
+    );
+    const gateResultsByIntegrationRunId = new Map(
+      await Promise.all(integrationRuns.map(async (integrationRun) => [
+        integrationRun.id,
+        await this.taskRepository.listGateResultsByIntegrationRunId(integrationRun.id),
+      ])),
+    );
     const mergeRecordsBySubTaskId = groupRecordsBySubTaskId(mergeRecords);
     const decoratedSessions = sessions.map((session) => this.#decorateSession(session));
     const decoratedSubTasks = subTasks.map((subTask) => this.#decorateSubTask({
@@ -397,12 +443,226 @@ export class TaskService {
     return {
       ok: true,
       board: this.#buildTaskBoardSnapshot(task, {
+        gateResultsByIntegrationRunId,
+        integrationRuns,
         mailboxMessages,
         messages,
+        queueItemsByIntegrationRunId,
         reviewRecords: reviewRecords.filter((record) => subTasks.some((subTask) => subTask.id === record.subTaskId)),
         sessions: decoratedSessions,
         subTasks: decoratedSubTasks,
       }),
+    };
+  }
+
+  async startIntegrationRun(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (![TASK_STATUS.MERGING, TASK_STATUS.ACTION_REQUIRED].includes(task.status)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.INTEGRATION_RETRY_NOT_ALLOWED,
+        "Integration runs can only start while merging or after an integration failure requires action.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const subTasks = await this.taskRepository.listSubTasksByTaskId(taskId);
+    const activeIntegrationRun = await this.taskRepository.findLatestIntegrationRunByTaskId?.(taskId);
+
+    if (
+      activeIntegrationRun
+      && [INTEGRATION_RUN_STATUS.QUEUED, INTEGRATION_RUN_STATUS.RUNNING].includes(activeIntegrationRun.status)
+    ) {
+      return {
+        ok: true,
+        integrationRun: activeIntegrationRun,
+        task,
+      };
+    }
+
+    const integrationRun = await this.#createIntegrationRun(task, subTasks);
+
+    return {
+      ok: true,
+      integrationRun,
+      task: await this.taskRepository.findTaskById(taskId),
+    };
+  }
+
+  async retryIntegrationRun(integrationRunId) {
+    const integrationRun = await this.taskRepository.findIntegrationRunById(integrationRunId);
+
+    if (!integrationRun) {
+      return failure(TASK_SERVICE_ERROR_CODES.INTEGRATION_RUN_NOT_FOUND, "Integration run not found.", { integrationRunId });
+    }
+
+    const task = await this.taskRepository.findTaskById(integrationRun.taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId: integrationRun.taskId });
+    }
+
+    if (
+      task.status !== TASK_STATUS.ACTION_REQUIRED
+      || ![INTEGRATION_RUN_STATUS.ACTION_REQUIRED, INTEGRATION_RUN_STATUS.FAILED, INTEGRATION_RUN_STATUS.ROLLED_BACK].includes(integrationRun.status)
+    ) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.INTEGRATION_RETRY_NOT_ALLOWED,
+        "Integration retry is only available after an actionable integration failure or rollback.",
+        {
+          integrationRunId,
+          integrationRunStatus: integrationRun.status,
+          taskStatus: task.status,
+        },
+      );
+    }
+
+    const subTasks = await this.taskRepository.listSubTasksByTaskId(task.id);
+    const resumedTask = await this.#updateTaskStatus(task.id, TASK_STATUS.MERGING, {
+      currentTask: task,
+      lastError: null,
+    });
+    const nextIntegrationRun = await this.#createIntegrationRun(resumedTask, subTasks);
+
+    return {
+      ok: true,
+      integrationRun: nextIntegrationRun,
+      task: await this.taskRepository.findTaskById(task.id),
+    };
+  }
+
+  async rollbackIntegrationRun(integrationRunId) {
+    const integrationRun = await this.taskRepository.findIntegrationRunById(integrationRunId);
+
+    if (!integrationRun) {
+      return failure(TASK_SERVICE_ERROR_CODES.INTEGRATION_RUN_NOT_FOUND, "Integration run not found.", { integrationRunId });
+    }
+
+    const task = await this.taskRepository.findTaskById(integrationRun.taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId: integrationRun.taskId });
+    }
+
+    if (
+      task.status !== TASK_STATUS.ACTION_REQUIRED
+      || ![INTEGRATION_RUN_STATUS.ACTION_REQUIRED, INTEGRATION_RUN_STATUS.FAILED].includes(integrationRun.status)
+    ) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.INTEGRATION_ROLLBACK_NOT_ALLOWED,
+        "Integration rollback is only available after an actionable integration failure.",
+        {
+          integrationRunId,
+          integrationRunStatus: integrationRun.status,
+          taskStatus: task.status,
+        },
+      );
+    }
+
+    const rolledBackRun = await this.taskRepository.updateIntegrationRun(integrationRunId, {
+      endedAt: new Date().toISOString(),
+      status: INTEGRATION_RUN_STATUS.ROLLED_BACK,
+    });
+    const queueItems = await this.taskRepository.listIntegrationQueueItemsByIntegrationRunId(integrationRunId);
+
+    await Promise.all(queueItems.map((queueItem) => this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
+      status: queueItem.status === INTEGRATION_QUEUE_ITEM_STATUS.RELEASED
+        ? INTEGRATION_QUEUE_ITEM_STATUS.RELEASED
+        : INTEGRATION_QUEUE_ITEM_STATUS.ROLLED_BACK,
+    })));
+
+    this.#publish(task.id, "integration:failed", {
+      integrationBranch: rolledBackRun.integrationBranch,
+      integrationRunId: rolledBackRun.id,
+      reason: "Integration run rolled back by operator.",
+      status: rolledBackRun.status,
+      taskId: task.id,
+    });
+
+    return {
+      ok: true,
+      integrationRun: rolledBackRun,
+      task,
+    };
+  }
+
+  async dequeueIntegrationQueueItem(integrationQueueItemId) {
+    const integrationQueueItem = await this.taskRepository.findIntegrationQueueItemById(integrationQueueItemId);
+
+    if (!integrationQueueItem) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.INTEGRATION_QUEUE_ITEM_NOT_FOUND,
+        "Integration queue item not found.",
+        { integrationQueueItemId },
+      );
+    }
+
+    const integrationRun = await this.taskRepository.findIntegrationRunById(integrationQueueItem.integrationRunId);
+
+    if (!integrationRun) {
+      return failure(TASK_SERVICE_ERROR_CODES.INTEGRATION_RUN_NOT_FOUND, "Integration run not found.", {
+        integrationQueueItemId,
+        integrationRunId: integrationQueueItem.integrationRunId,
+      });
+    }
+
+    const [task, subTask] = await Promise.all([
+      this.taskRepository.findTaskById(integrationRun.taskId),
+      this.taskRepository.findSubTaskById(integrationQueueItem.subTaskId),
+    ]);
+
+    if (!task || !subTask) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task or subtask not found for integration dequeue.", {
+        integrationQueueItemId,
+        subTaskId: integrationQueueItem.subTaskId,
+        taskId: integrationRun.taskId,
+      });
+    }
+
+    if (
+      task.status !== TASK_STATUS.ACTION_REQUIRED
+      || integrationRun.status !== INTEGRATION_RUN_STATUS.ACTION_REQUIRED
+      || [INTEGRATION_QUEUE_ITEM_STATUS.RELEASED, INTEGRATION_QUEUE_ITEM_STATUS.DEQUEUED].includes(integrationQueueItem.status)
+    ) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.INTEGRATION_DEQUEUE_NOT_ALLOWED,
+        "Integration dequeue is only available for actionable queue items during an interrupted integration run.",
+        {
+          integrationQueueItemId,
+          integrationRunStatus: integrationRun.status,
+          queueItemStatus: integrationQueueItem.status,
+          taskStatus: task.status,
+        },
+      );
+    }
+
+    const dequeuedQueueItem = await this.taskRepository.updateIntegrationQueueItem(integrationQueueItem.id, {
+      status: INTEGRATION_QUEUE_ITEM_STATUS.DEQUEUED,
+    });
+    const discardedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
+      lastError: "Removed from the integration queue by operator action.",
+      status: SUBTASK_STATUS.DISCARDED,
+    });
+
+    this.#publish(task.id, "integration:queued", {
+      integrationQueueItemId: dequeuedQueueItem.id,
+      integrationRunId: integrationRun.id,
+      queueOrder: dequeuedQueueItem.queueOrder,
+      status: dequeuedQueueItem.status,
+      subtaskId: discardedSubTask.id,
+      taskId: task.id,
+    });
+    this.#publishSubTaskStatus(task.id, discardedSubTask);
+
+    return {
+      ok: true,
+      integrationQueueItem: dequeuedQueueItem,
+      subTask: discardedSubTask,
+      task,
     };
   }
 
@@ -1584,7 +1844,6 @@ export class TaskService {
       currentTask: task,
       lastError: null,
     });
-    this.#queueMergeExecution(taskId);
 
     return {
       ok: true,
@@ -1645,7 +1904,8 @@ export class TaskService {
     }
 
     const rebasedSubTask = preparedSubTask.subTask;
-    const rebaseResult = await rebaseBranch(rebasedSubTask.worktreePath, task.baseBranch);
+    const rebaseTargetBranch = latestMergeRecord.targetBranch ?? task.baseBranch;
+    const rebaseResult = await rebaseBranch(rebasedSubTask.worktreePath, rebaseTargetBranch);
 
     if (!rebaseResult.ok) {
       const conflictSummary = await this.#buildRebaseConflictSummary(rebasedSubTask.worktreePath, rebaseResult);
@@ -1658,7 +1918,7 @@ export class TaskService {
         sourceBranch: rebasedSubTask.branchName,
         status: MERGE_STATUS.CONFLICT,
         subTaskId: rebasedSubTask.id,
-        targetBranch: task.baseBranch,
+        targetBranch: rebaseTargetBranch,
       });
 
       const conflictedSubTask = await this.taskRepository.updateSubTask(rebasedSubTask.id, {
@@ -1668,9 +1928,9 @@ export class TaskService {
       this.#publish(task.id, "merge:status", {
         status: MERGE_STATUS.CONFLICT,
         subtaskId: rebasedSubTask.id,
-        summary: conflictSummary,
-      });
-      this.#publishSubTaskStatus(task.id, conflictedSubTask);
+      summary: conflictSummary,
+    });
+    this.#publishSubTaskStatus(task.id, conflictedSubTask);
 
       return {
         ok: true,
@@ -1689,7 +1949,7 @@ export class TaskService {
       sourceBranch: rebasedSubTask.branchName,
       status: MERGE_STATUS.SUCCEEDED,
       subTaskId: rebasedSubTask.id,
-      targetBranch: task.baseBranch,
+      targetBranch: rebaseTargetBranch,
     });
 
     const nextSubTask = await this.taskRepository.updateSubTask(rebasedSubTask.id, {
@@ -1703,10 +1963,32 @@ export class TaskService {
     this.#publish(task.id, "merge:status", {
       status: MERGE_STATUS.SUCCEEDED,
       subtaskId: rebasedSubTask.id,
-      summary: `Rebased ${rebasedSubTask.branchName} onto ${task.baseBranch}. Retrying merge.`,
+      summary: `Rebased ${rebasedSubTask.branchName} onto ${rebaseTargetBranch}. Retrying merge.`,
     });
     this.#publishSubTaskStatus(task.id, nextSubTask);
-    this.#queueMergeExecution(task.id);
+
+    if (rebaseTargetBranch !== task.baseBranch) {
+      const latestIntegrationRun = await this.taskRepository.findLatestIntegrationRunByTaskId(task.id);
+
+      if (latestIntegrationRun) {
+        const queueItems = await this.taskRepository.listIntegrationQueueItemsByIntegrationRunId(latestIntegrationRun.id);
+        const conflictedQueueItem = queueItems.find((queueItem) => queueItem.subTaskId === rebasedSubTask.id) ?? null;
+
+        if (conflictedQueueItem) {
+          await this.taskRepository.updateIntegrationQueueItem(conflictedQueueItem.id, {
+            status: INTEGRATION_QUEUE_ITEM_STATUS.QUEUED,
+          });
+        }
+
+        await this.taskRepository.updateIntegrationRun(latestIntegrationRun.id, {
+          endedAt: null,
+          status: INTEGRATION_RUN_STATUS.QUEUED,
+        });
+        this.#queueIntegrationExecution(latestIntegrationRun.id);
+      }
+    } else {
+      this.#queueMergeExecution(task.id);
+    }
 
     return {
       ok: true,
@@ -1819,6 +2101,401 @@ export class TaskService {
       taskId,
       worktreePath,
     });
+  }
+
+  async #createIntegrationRun(task, subTasks) {
+    if (this.closed) {
+      return null;
+    }
+
+    const acceptedSubTasks = (subTasks ?? []).filter((subTask) => subTask.status === SUBTASK_STATUS.ACCEPTED);
+
+    if (acceptedSubTasks.length === 0) {
+      await this.#completeTaskIfMergeResolved(task.id);
+      return null;
+    }
+
+    const project = await this.projectRepository.findProjectById(task.projectId);
+
+    if (!project) {
+      await this.#setTaskActionRequired(task.id, "Project not found for integration run.");
+      return null;
+    }
+
+    const existingRuns = await this.taskRepository.listIntegrationRunsByTaskId(task.id);
+    const desiredIntegrationBranch = `eat/${task.id}/integration-${existingRuns.length + 1}`;
+    const integrationBranch = await resolveUniqueBranchName(project.path, desiredIntegrationBranch);
+    const integrationRun = await this.taskRepository.createIntegrationRun({
+      integrationBranch,
+      status: INTEGRATION_RUN_STATUS.QUEUED,
+      taskId: task.id,
+    });
+
+    for (const [index, subTask] of acceptedSubTasks.entries()) {
+      await this.taskRepository.createIntegrationQueueItem({
+        integrationRunId: integrationRun.id,
+        queueOrder: index + 1,
+        status: INTEGRATION_QUEUE_ITEM_STATUS.QUEUED,
+        subTaskId: subTask.id,
+      });
+    }
+
+    this.#publish(task.id, "integration:queued", {
+      integrationBranch,
+      integrationRunId: integrationRun.id,
+      queueLength: acceptedSubTasks.length,
+      status: integrationRun.status,
+      taskId: task.id,
+    });
+
+    if (this.closed) {
+      return integrationRun;
+    }
+
+    this.#queueIntegrationExecution(integrationRun.id);
+
+    return integrationRun;
+  }
+
+  #queueIntegrationExecution(integrationRunId) {
+    if (this.closed || this.pendingIntegrationExecutions.has(integrationRunId)) {
+      return;
+    }
+
+    this.pendingIntegrationExecutions.add(integrationRunId);
+
+    queueMicrotask(() => {
+      void this.#runIntegrationExecution(integrationRunId)
+        .catch(() => null)
+        .finally(() => {
+          this.pendingIntegrationExecutions.delete(integrationRunId);
+        });
+    });
+  }
+
+  async #runIntegrationExecution(integrationRunId) {
+    if (this.closed) {
+      return;
+    }
+
+    let integrationRun = await this.taskRepository.findIntegrationRunById(integrationRunId);
+
+    if (!integrationRun || ![INTEGRATION_RUN_STATUS.QUEUED, INTEGRATION_RUN_STATUS.RUNNING].includes(integrationRun.status)) {
+      return;
+    }
+
+    const task = await this.taskRepository.findTaskById(integrationRun.taskId);
+
+    if (!task || task.status !== TASK_STATUS.MERGING) {
+      return;
+    }
+
+    const project = await this.projectRepository.findProjectById(task.projectId);
+
+    if (!project) {
+      await this.#markIntegrationRunActionRequired(integrationRun, task, "Project not found for integration execution.");
+      return;
+    }
+
+    if (integrationRun.status === INTEGRATION_RUN_STATUS.QUEUED) {
+      integrationRun = await this.taskRepository.updateIntegrationRun(integrationRun.id, {
+        startedAt: integrationRun.startedAt ?? new Date().toISOString(),
+        status: INTEGRATION_RUN_STATUS.RUNNING,
+      });
+      this.#publish(task.id, "integration:started", {
+        integrationBranch: integrationRun.integrationBranch,
+        integrationRunId: integrationRun.id,
+        status: integrationRun.status,
+        taskId: task.id,
+      });
+    }
+
+    const prepareResult = await this.#prepareIntegrationBranch(task, project, integrationRun);
+
+    if (this.closed) {
+      return;
+    }
+
+    if (!prepareResult.ok) {
+      await this.#markIntegrationRunActionRequired(integrationRun, task, prepareResult.reason);
+      return;
+    }
+
+    let queueItems = await this.taskRepository.listIntegrationQueueItemsByIntegrationRunId(integrationRun.id);
+    const subTasks = await this.taskRepository.listSubTasksByTaskId(task.id);
+    const subTaskById = new Map(subTasks.map((subTask) => [subTask.id, subTask]));
+
+    for (const queueItem of queueItems) {
+      if (queueItem.status !== INTEGRATION_QUEUE_ITEM_STATUS.QUEUED) {
+        continue;
+      }
+
+      const subTask = subTaskById.get(queueItem.subTaskId) ?? null;
+
+      if (!subTask?.branchName) {
+        await this.#markIntegrationRunActionRequired(
+          integrationRun,
+          task,
+          `Accepted subtask ${subTask?.title ?? queueItem.subTaskId} does not have a branch available for integration.`,
+        );
+        return;
+      }
+
+      if (await isBranchMergedInto(project.path, subTask.branchName, integrationRun.integrationBranch)) {
+        await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
+          mergedCommitSha: await resolveRevision(project.path, "HEAD").catch(() => null),
+          status: INTEGRATION_QUEUE_ITEM_STATUS.MERGED,
+        });
+        continue;
+      }
+
+      const mergeResult = await mergeBranch(project.path, subTask.branchName);
+
+      if (this.closed) {
+        return;
+      }
+
+      if (!mergeResult.ok) {
+        const conflictSummary = await this.#buildMergeConflictSummary(
+          project.path,
+          subTask,
+          { baseBranch: integrationRun.integrationBranch },
+          mergeResult,
+        );
+
+        await abortMerge(project.path).catch(() => null);
+        await this.taskRepository.createMergeRecord({
+          completedAt: new Date().toISOString(),
+          conflictSummary,
+          operation: MERGE_OPERATION.MERGE,
+          sourceBranch: subTask.branchName,
+          status: MERGE_STATUS.CONFLICT,
+          subTaskId: subTask.id,
+          targetBranch: integrationRun.integrationBranch,
+        });
+        await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
+          status: INTEGRATION_QUEUE_ITEM_STATUS.FAILED,
+        });
+
+        const conflictedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
+          lastError: conflictSummary,
+        });
+
+        this.#publish(task.id, "merge:status", {
+          status: MERGE_STATUS.CONFLICT,
+          subtaskId: subTask.id,
+          summary: conflictSummary,
+        });
+        this.#publishSubTaskStatus(task.id, conflictedSubTask);
+        await this.#markIntegrationRunActionRequired(integrationRun, task, buildMergeConflictActionRequiredReason(subTask, conflictSummary));
+        return;
+      }
+
+      const mergedCommitSha = await resolveRevision(project.path, "HEAD").catch(() => null);
+      await this.taskRepository.createMergeRecord({
+        completedAt: new Date().toISOString(),
+        operation: MERGE_OPERATION.MERGE,
+        resultCommitSha: mergedCommitSha,
+        sourceBranch: subTask.branchName,
+        status: MERGE_STATUS.SUCCEEDED,
+        subTaskId: subTask.id,
+        targetBranch: integrationRun.integrationBranch,
+      });
+      await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
+        mergedCommitSha,
+        status: INTEGRATION_QUEUE_ITEM_STATUS.MERGED,
+      });
+    }
+
+    queueItems = await this.taskRepository.listIntegrationQueueItemsByIntegrationRunId(integrationRun.id);
+    const gateResults = await this.#runIntegrationGates(task, project, integrationRun, queueItems, subTasks);
+
+    if (this.closed) {
+      return;
+    }
+
+    if (gateResults.some((gateResult) => gateResult.status === GATE_RESULT_STATUS.FAILED)) {
+      await this.#markIntegrationRunActionRequired(
+        integrationRun,
+        task,
+        gateResults.filter((gateResult) => gateResult.status === GATE_RESULT_STATUS.FAILED).map((gateResult) => gateResult.summary).join(" "),
+      );
+      return;
+    }
+
+    const releaseResult = await this.#releaseIntegrationRun(task, project, integrationRun, queueItems, subTasks);
+
+    if (this.closed) {
+      return;
+    }
+
+    if (!releaseResult.ok) {
+      await this.#markIntegrationRunActionRequired(integrationRun, task, releaseResult.reason);
+      return;
+    }
+
+    const completedRun = await this.taskRepository.updateIntegrationRun(integrationRun.id, {
+      endedAt: new Date().toISOString(),
+      status: INTEGRATION_RUN_STATUS.COMPLETED,
+    });
+
+    for (const queueItem of queueItems) {
+      if (queueItem.status !== INTEGRATION_QUEUE_ITEM_STATUS.MERGED) {
+        continue;
+      }
+
+      await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
+        status: INTEGRATION_QUEUE_ITEM_STATUS.RELEASED,
+      });
+    }
+
+    this.#publish(task.id, "integration:completed", {
+      integrationBranch: completedRun.integrationBranch,
+      integrationRunId: completedRun.id,
+      status: completedRun.status,
+      taskId: task.id,
+    });
+    await this.#completeTaskIfMergeResolved(task.id);
+  }
+
+  async #prepareIntegrationBranch(task, project, integrationRun) {
+    try {
+      const mergeTarget = await this.#ensureMergeTargetReady(task, project);
+
+      if (!mergeTarget.ok) {
+        return mergeTarget;
+      }
+
+      const baseHeadSha = await resolveRevision(project.path, task.baseBranch).catch(() => null);
+
+      if (!baseHeadSha) {
+        return {
+          ok: false,
+          reason: `Failed to resolve ${task.baseBranch} before preparing the integration branch.`,
+        };
+      }
+
+      await ensureBranchExists(project.path, integrationRun.integrationBranch, baseHeadSha);
+      const checkoutResult = await checkoutBranch(project.path, integrationRun.integrationBranch);
+
+      if (!checkoutResult.ok) {
+        return {
+          ok: false,
+          reason: `Failed to checkout integration branch ${integrationRun.integrationBranch}.`,
+        };
+      }
+
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: error?.message ?? `Failed to prepare integration branch ${integrationRun.integrationBranch}.`,
+      };
+    }
+  }
+
+  async #runIntegrationGates(task, project, integrationRun, queueItems, subTasks) {
+    if (this.closed) {
+      return [];
+    }
+
+    const gateResults = await normalizeIntegrationGateResults(await this.integrationGateRunner({
+      integrationRun,
+      project,
+      queueItems,
+      subTasks,
+      task,
+    }));
+
+    const persistedGateResults = [];
+
+    for (const gateResult of gateResults) {
+      const createdGateResult = await this.taskRepository.createGateResult({
+        detailsJson: gateResult.detailsJson ?? null,
+        gateType: gateResult.gateType,
+        integrationRunId: integrationRun.id,
+        status: gateResult.status,
+        summary: gateResult.summary,
+      });
+      persistedGateResults.push(createdGateResult);
+      this.#publish(task.id, "integration:gate-result", {
+        gateType: createdGateResult.gateType,
+        integrationRunId: integrationRun.id,
+        status: createdGateResult.status,
+        summary: createdGateResult.summary,
+        taskId: task.id,
+      });
+    }
+
+    return persistedGateResults;
+  }
+
+  async #releaseIntegrationRun(task, project, integrationRun, queueItems, subTasks) {
+    if (this.closed) {
+      return { ok: false, reason: "Integration release stopped because the task service is closing." };
+    }
+
+    const checkoutBaseResult = await checkoutBranch(project.path, task.baseBranch);
+
+    if (!checkoutBaseResult.ok) {
+      return {
+        ok: false,
+        reason: buildBaseBranchCheckoutFailureReason(task.baseBranch, checkoutBaseResult),
+      };
+    }
+
+    const mergeTarget = await this.#ensureMergeTargetReady(task, project);
+
+    if (!mergeTarget.ok) {
+      return mergeTarget;
+    }
+
+    const mergeResult = await mergeBranch(project.path, integrationRun.integrationBranch);
+
+    if (!mergeResult.ok) {
+      await abortMerge(project.path).catch(() => null);
+      return {
+        ok: false,
+        reason: `Failed to release ${integrationRun.integrationBranch} into ${task.baseBranch}.`,
+      };
+    }
+
+    const queueItemSubTaskIds = new Set(queueItems.map((queueItem) => queueItem.subTaskId));
+
+    for (const subTask of subTasks) {
+      if (subTask.status !== SUBTASK_STATUS.ACCEPTED || !queueItemSubTaskIds.has(subTask.id)) {
+        continue;
+      }
+
+      const releasedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
+        lastError: null,
+        status: SUBTASK_STATUS.MERGED,
+      });
+      this.#publishSubTaskStatus(task.id, releasedSubTask);
+    }
+
+    return { ok: true };
+  }
+
+  async #markIntegrationRunActionRequired(integrationRun, task, reason) {
+    if (this.closed) {
+      return null;
+    }
+
+    const nextRun = await this.taskRepository.updateIntegrationRun(integrationRun.id, {
+      endedAt: new Date().toISOString(),
+      status: INTEGRATION_RUN_STATUS.ACTION_REQUIRED,
+    });
+
+    this.#publish(task.id, "integration:failed", {
+      integrationBranch: nextRun.integrationBranch,
+      integrationRunId: nextRun.id,
+      reason,
+      status: nextRun.status,
+      taskId: task.id,
+    });
+
+    await this.#setTaskActionRequired(task.id, reason);
   }
 
   #queueMergeExecution(taskId) {
@@ -2917,13 +3594,16 @@ export class TaskService {
     ]);
 
     if (subTasks.every((subTask) => mergeReadyStatuses.has(subTask.status))) {
-      const mergingTask = await this.#updateTaskStatus(taskId, TASK_STATUS.MERGING, {
+      const acceptedSubTasks = subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.ACCEPTED);
+
+      if (acceptedSubTasks.length === 0) {
+        return this.#completeTaskIfMergeResolved(taskId);
+      }
+
+      return this.#updateTaskStatus(taskId, TASK_STATUS.MERGING, {
         currentTask: task,
         lastError: null,
       });
-      this.#queueMergeExecution(taskId);
-
-      return mergingTask;
     }
 
     const unresolvedSubTasks = subTasks.filter((subTask) => actionRequiredStatuses.has(subTask.status));
@@ -3062,12 +3742,50 @@ export class TaskService {
     };
   }
 
+  #buildTaskIntegrationView(task, context) {
+    const integrationRuns = Array.isArray(context?.integrationRuns) ? context.integrationRuns : [];
+    const subTasks = Array.isArray(context?.subTasks) ? context.subTasks : [];
+    const queueItemsByIntegrationRunId = context?.queueItemsByIntegrationRunId instanceof Map
+      ? context.queueItemsByIntegrationRunId
+      : new Map();
+    const gateResultsByIntegrationRunId = context?.gateResultsByIntegrationRunId instanceof Map
+      ? context.gateResultsByIntegrationRunId
+      : new Map();
+    const subTaskById = new Map(subTasks.map((subTask) => [subTask.id, subTask]));
+    const runs = integrationRuns.map((integrationRun) => ({
+      ...integrationRun,
+      gateResults: gateResultsByIntegrationRunId.get(integrationRun.id) ?? [],
+      queueItems: (queueItemsByIntegrationRunId.get(integrationRun.id) ?? []).map((queueItem) => ({
+        ...queueItem,
+        subTask: subTaskById.get(queueItem.subTaskId) ?? null,
+      })),
+    }));
+    const latestRun = runs.at(-1) ?? null;
+
+    return {
+      latestRun,
+      runs,
+      task: {
+        id: task.id,
+        status: task.status,
+        title: task.title,
+      },
+    };
+  }
+
   #buildTaskBoardSnapshot(task, context) {
     const subTasks = Array.isArray(context?.subTasks) ? context.subTasks : [];
     const sessions = Array.isArray(context?.sessions) ? context.sessions : [];
     const mailboxMessages = Array.isArray(context?.mailboxMessages) ? context.mailboxMessages : [];
     const reviewRecords = Array.isArray(context?.reviewRecords) ? context.reviewRecords : [];
     const messages = Array.isArray(context?.messages) ? context.messages : [];
+    const integrationRuns = Array.isArray(context?.integrationRuns) ? context.integrationRuns : [];
+    const queueItemsByIntegrationRunId = context?.queueItemsByIntegrationRunId instanceof Map
+      ? context.queueItemsByIntegrationRunId
+      : new Map();
+    const gateResultsByIntegrationRunId = context?.gateResultsByIntegrationRunId instanceof Map
+      ? context.gateResultsByIntegrationRunId
+      : new Map();
     const subTaskById = new Map(subTasks.map((subTask) => [subTask.id, subTask]));
     const subTaskByBranchSuffix = new Map(subTasks.map((subTask) => [subTask.branchSuffix, subTask]));
     const mailboxMessagesByTargetSubTaskId = groupMailboxMessagesByTargetSubTaskId(mailboxMessages);
@@ -3089,8 +3807,11 @@ export class TaskService {
     }
 
     const actionRequiredItems = buildBoardActionRequiredItems({
+      gateResultsByIntegrationRunId,
+      integrationRuns,
       launchFailures,
       mailboxMessages,
+      queueItemsByIntegrationRunId,
       subTasks,
       task,
     });
@@ -3158,6 +3879,12 @@ export class TaskService {
         edges: graphEdges,
         nodes: graphNodes,
       },
+      integration: this.#buildTaskIntegrationView(task, {
+        gateResultsByIntegrationRunId,
+        integrationRuns,
+        queueItemsByIntegrationRunId,
+        subTasks,
+      }),
       list: {
         members: subTasks.map((subTask) => {
           const latestSession = sessions
@@ -3178,6 +3905,11 @@ export class TaskService {
         }),
       },
       riskSummary: {
+        integrationFailures: integrationRuns.reduce((count, integrationRun) => (
+          count + (gateResultsByIntegrationRunId.get(integrationRun.id) ?? [])
+            .filter((gateResult) => gateResult.status === GATE_RESULT_STATUS.FAILED)
+            .length
+        ), 0),
         failedLaunches: launchFailures.length,
         mailboxBlockers: mailboxMessages.filter((message) => message.messageType === MAILBOX_MESSAGE_TYPE.BLOCKER).length,
         mergeConflicts: subTasks.filter((subTask) => (
@@ -3509,6 +4241,7 @@ export class TaskService {
     }
 
     this.pendingFinalReviews.clear();
+    this.pendingIntegrationExecutions.clear();
     this.pendingMergeExecutions.clear();
     this.pendingCleanupTasks.clear();
     this.pendingWorkerLaunches.clear();
@@ -3748,6 +4481,30 @@ function normalizeMailboxTargetType(value) {
 function normalizeMailboxMessageType(value) {
   const normalizedValue = normalizeOptionalString(value) ?? MAILBOX_MESSAGE_TYPE.NOTE;
   return Object.values(MAILBOX_MESSAGE_TYPE).includes(normalizedValue) ? normalizedValue : null;
+}
+
+async function defaultIntegrationGateRunner() {
+  return DEFAULT_INTEGRATION_GATE_TYPES.map((gateType) => ({
+    detailsJson: {
+      mode: "default-pass",
+    },
+    gateType,
+    status: GATE_RESULT_STATUS.PASSED,
+    summary: "No project-specific integration gate runner is configured. The default local gate passed.",
+  }));
+}
+
+async function normalizeIntegrationGateResults(results) {
+  const entries = Array.isArray(results) && results.length > 0
+    ? results
+    : await defaultIntegrationGateRunner();
+
+  return entries.map((entry, index) => ({
+    detailsJson: normalizeOptionalJsonObject(entry?.detailsJson) ?? null,
+    gateType: normalizeRequiredString(entry?.gateType) ?? `GATE_${index + 1}`,
+    status: entry?.status === GATE_RESULT_STATUS.FAILED ? GATE_RESULT_STATUS.FAILED : GATE_RESULT_STATUS.PASSED,
+    summary: normalizeRequiredString(entry?.summary) ?? "Integration gate completed.",
+  }));
 }
 
 function failure(code, message, details) {
@@ -4389,6 +5146,13 @@ function buildBoardActionRequiredItems(context) {
   const subTasks = Array.isArray(context?.subTasks) ? context.subTasks : [];
   const mailboxMessages = Array.isArray(context?.mailboxMessages) ? context.mailboxMessages : [];
   const launchFailures = Array.isArray(context?.launchFailures) ? context.launchFailures : [];
+  const integrationRuns = Array.isArray(context?.integrationRuns) ? context.integrationRuns : [];
+  const gateResultsByIntegrationRunId = context?.gateResultsByIntegrationRunId instanceof Map
+    ? context.gateResultsByIntegrationRunId
+    : new Map();
+  const queueItemsByIntegrationRunId = context?.queueItemsByIntegrationRunId instanceof Map
+    ? context.queueItemsByIntegrationRunId
+    : new Map();
   const task = context?.task ?? null;
   const items = [];
 
@@ -4466,6 +5230,28 @@ function buildBoardActionRequiredItems(context) {
       subTaskId: message.targetSubTaskId ?? message.senderSubTaskId ?? null,
       summary: tailUtf8(message.content ?? "", 280),
       targetType: message.targetType,
+    });
+  }
+
+  const latestIntegrationRun = integrationRuns.at(-1) ?? null;
+
+  if (
+    task?.status === TASK_STATUS.ACTION_REQUIRED
+    && latestIntegrationRun
+    && [INTEGRATION_RUN_STATUS.ACTION_REQUIRED, INTEGRATION_RUN_STATUS.FAILED, INTEGRATION_RUN_STATUS.ROLLED_BACK].includes(latestIntegrationRun.status)
+  ) {
+    const failedGateResults = (gateResultsByIntegrationRunId.get(latestIntegrationRun.id) ?? [])
+      .filter((gateResult) => gateResult.status === GATE_RESULT_STATUS.FAILED);
+    const failedQueueItem = (queueItemsByIntegrationRunId.get(latestIntegrationRun.id) ?? [])
+      .find((queueItem) => queueItem.status === INTEGRATION_QUEUE_ITEM_STATUS.FAILED) ?? null;
+
+    items.push({
+      createdAt: latestIntegrationRun.updatedAt ?? latestIntegrationRun.endedAt ?? latestIntegrationRun.createdAt ?? null,
+      kind: "INTEGRATION_ATTENTION",
+      primaryAction: "OPEN_INTEGRATION",
+      severity: 6,
+      subTaskId: failedQueueItem?.subTaskId ?? null,
+      summary: failedGateResults.at(-1)?.summary ?? task.lastError ?? "Latest integration run requires operator action.",
     });
   }
 

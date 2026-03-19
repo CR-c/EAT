@@ -5,6 +5,9 @@ import path from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 
 import {
+  GATE_RESULT_STATUS,
+  INTEGRATION_QUEUE_ITEM_STATUS,
+  INTEGRATION_RUN_STATUS,
   MAILBOX_MESSAGE_TYPE,
   MAILBOX_PARTICIPANT_TYPE,
   MAILBOX_TARGET_TYPE,
@@ -313,6 +316,95 @@ test("persists structured mailbox contracts with refs, branch, schema, and ackno
       (await taskRepository.listMailboxMessagesByTargetSubTaskId(backend.id)).map(normalizeRecord),
       [mailboxMessage],
     );
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("persists integration runs, queue items, and gate results", async () => {
+  const fixture = await makeTempDir("eat-task-repo-integration-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const projectRepository = new SqliteProjectRepository({ databasePath });
+    const taskRepository = new SqliteTaskRepository({ databasePath });
+
+    const project = await projectRepository.createProject({
+      defaultBranch: "main",
+      name: "EAT",
+      path: "/home/code/EAT",
+    });
+    const task = await taskRepository.createTask({
+      baseBranch: "main",
+      baseCommitSha: "abc123def456",
+      description: "Persist integration lifecycle records.",
+      leadAgentType: "codex-cli",
+      projectId: project.id,
+      status: TASK_STATUS.MERGING,
+      title: "Integration lifecycle",
+    });
+    const subTask = await taskRepository.createSubTask({
+      agentType: "codex-cli",
+      branchName: `eat/${task.id}/backend`,
+      branchSuffix: "backend",
+      description: "Implement backend.",
+      status: SUBTASK_STATUS.ACCEPTED,
+      taskId: task.id,
+      title: "Backend",
+    });
+
+    const integrationRun = await taskRepository.createIntegrationRun({
+      integrationBranch: `eat/${task.id}/integration-1`,
+      startedAt: new Date().toISOString(),
+      status: INTEGRATION_RUN_STATUS.RUNNING,
+      taskId: task.id,
+    });
+    const queueItem = await taskRepository.createIntegrationQueueItem({
+      integrationRunId: integrationRun.id,
+      queueOrder: 1,
+      status: INTEGRATION_QUEUE_ITEM_STATUS.QUEUED,
+      subTaskId: subTask.id,
+    });
+    const gateResult = await taskRepository.createGateResult({
+      detailsJson: { failedTests: 2 },
+      gateType: "TEST",
+      integrationRunId: integrationRun.id,
+      status: GATE_RESULT_STATUS.FAILED,
+      summary: "2 integration tests failed.",
+    });
+
+    const updatedRun = await taskRepository.updateIntegrationRun(integrationRun.id, {
+      status: INTEGRATION_RUN_STATUS.ACTION_REQUIRED,
+    });
+    const updatedQueueItem = await taskRepository.updateIntegrationQueueItem(queueItem.id, {
+      status: INTEGRATION_QUEUE_ITEM_STATUS.FAILED,
+    });
+
+    assert.equal(updatedRun.status, INTEGRATION_RUN_STATUS.ACTION_REQUIRED);
+    assert.equal(updatedQueueItem.status, INTEGRATION_QUEUE_ITEM_STATUS.FAILED);
+    assert.deepEqual(
+      normalizeRecord(await taskRepository.findIntegrationRunById(integrationRun.id)),
+      updatedRun,
+    );
+    assert.deepEqual(
+      normalizeRecord(await taskRepository.findLatestIntegrationRunByTaskId(task.id)),
+      updatedRun,
+    );
+    assert.deepEqual(
+      (await taskRepository.listIntegrationRunsByTaskId(task.id)).map(normalizeRecord),
+      [updatedRun],
+    );
+    assert.deepEqual(
+      (await taskRepository.listIntegrationQueueItemsByIntegrationRunId(integrationRun.id)).map(normalizeRecord),
+      [updatedQueueItem],
+    );
+    assert.deepEqual(
+      (await taskRepository.listGateResultsByIntegrationRunId(integrationRun.id)).map(normalizeRecord),
+      [gateResult],
+    );
+    assert.deepEqual((await taskRepository.listIntegrationRuns()).map(normalizeRecord), [updatedRun]);
+    assert.deepEqual((await taskRepository.listIntegrationQueueItems()).map(normalizeRecord), [updatedQueueItem]);
+    assert.deepEqual((await taskRepository.listGateResults()).map(normalizeRecord), [gateResult]);
   } finally {
     await fixture.dispose();
   }

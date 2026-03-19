@@ -81,6 +81,29 @@ export const MERGE_STATUS = Object.freeze({
   SUCCEEDED: "SUCCEEDED",
 });
 
+export const INTEGRATION_RUN_STATUS = Object.freeze({
+  ACTION_REQUIRED: "ACTION_REQUIRED",
+  COMPLETED: "COMPLETED",
+  FAILED: "FAILED",
+  QUEUED: "QUEUED",
+  ROLLED_BACK: "ROLLED_BACK",
+  RUNNING: "RUNNING",
+});
+
+export const INTEGRATION_QUEUE_ITEM_STATUS = Object.freeze({
+  DEQUEUED: "DEQUEUED",
+  FAILED: "FAILED",
+  MERGED: "MERGED",
+  QUEUED: "QUEUED",
+  RELEASED: "RELEASED",
+  ROLLED_BACK: "ROLLED_BACK",
+});
+
+export const GATE_RESULT_STATUS = Object.freeze({
+  FAILED: "FAILED",
+  PASSED: "PASSED",
+});
+
 export const SUBTASK_STATUS = Object.freeze({
   ACCEPTED: "ACCEPTED",
   BLOCKED: "BLOCKED",
@@ -1110,6 +1133,305 @@ export class SqliteTaskRepository {
     return mergeRecord;
   }
 
+  async createIntegrationRun(input) {
+    const timestamp = new Date().toISOString();
+    const integrationRun = {
+      createdAt: input.createdAt ?? timestamp,
+      endedAt: input.endedAt ?? null,
+      id: input.id ?? randomUUID(),
+      integrationBranch: input.integrationBranch,
+      startedAt: input.startedAt ?? null,
+      status: input.status,
+      taskId: input.taskId,
+      updatedAt: input.updatedAt ?? timestamp,
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        INSERT INTO integration_runs (
+          id,
+          task_id,
+          integration_branch,
+          status,
+          started_at,
+          ended_at,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        integrationRun.id,
+        integrationRun.taskId,
+        integrationRun.integrationBranch,
+        integrationRun.status,
+        integrationRun.startedAt,
+        integrationRun.endedAt,
+        integrationRun.createdAt,
+        integrationRun.updatedAt,
+      );
+
+    return integrationRun;
+  }
+
+  async findIntegrationRunById(integrationRunId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          integration_branch AS integrationBranch,
+          status,
+          started_at AS startedAt,
+          ended_at AS endedAt,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM integration_runs
+        WHERE id = ?
+      `)
+      .get(integrationRunId) ?? null;
+  }
+
+  async updateIntegrationRun(integrationRunId, updates) {
+    const existingIntegrationRun = await this.findIntegrationRunById(integrationRunId);
+
+    if (!existingIntegrationRun) {
+      return null;
+    }
+
+    const nextIntegrationRun = {
+      ...existingIntegrationRun,
+      ...updates,
+      updatedAt: updates.updatedAt ?? new Date().toISOString(),
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        UPDATE integration_runs
+        SET
+          integration_branch = ?,
+          status = ?,
+          started_at = ?,
+          ended_at = ?,
+          updated_at = ?
+        WHERE id = ?
+      `)
+      .run(
+        nextIntegrationRun.integrationBranch,
+        nextIntegrationRun.status,
+        nextIntegrationRun.startedAt,
+        nextIntegrationRun.endedAt,
+        nextIntegrationRun.updatedAt,
+        integrationRunId,
+      );
+
+    return nextIntegrationRun;
+  }
+
+  async listIntegrationRunsByTaskId(taskId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          integration_branch AS integrationBranch,
+          status,
+          started_at AS startedAt,
+          ended_at AS endedAt,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM integration_runs
+        WHERE task_id = ?
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all(taskId);
+  }
+
+  async findLatestIntegrationRunByTaskId(taskId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          integration_branch AS integrationBranch,
+          status,
+          started_at AS startedAt,
+          ended_at AS endedAt,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM integration_runs
+        WHERE task_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+      `)
+      .get(taskId) ?? null;
+  }
+
+  async createIntegrationQueueItem(input) {
+    const timestamp = new Date().toISOString();
+    const integrationQueueItem = {
+      createdAt: input.createdAt ?? timestamp,
+      id: input.id ?? randomUUID(),
+      integrationRunId: input.integrationRunId,
+      mergedCommitSha: input.mergedCommitSha ?? null,
+      queueOrder: input.queueOrder,
+      status: input.status,
+      subTaskId: input.subTaskId,
+      updatedAt: input.updatedAt ?? timestamp,
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        INSERT INTO integration_queue_items (
+          id,
+          integration_run_id,
+          sub_task_id,
+          queue_order,
+          status,
+          merged_commit_sha,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        integrationQueueItem.id,
+        integrationQueueItem.integrationRunId,
+        integrationQueueItem.subTaskId,
+        integrationQueueItem.queueOrder,
+        integrationQueueItem.status,
+        integrationQueueItem.mergedCommitSha,
+        integrationQueueItem.createdAt,
+        integrationQueueItem.updatedAt,
+      );
+
+    return integrationQueueItem;
+  }
+
+  async findIntegrationQueueItemById(integrationQueueItemId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          integration_run_id AS integrationRunId,
+          sub_task_id AS subTaskId,
+          queue_order AS queueOrder,
+          status,
+          merged_commit_sha AS mergedCommitSha,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM integration_queue_items
+        WHERE id = ?
+      `)
+      .get(integrationQueueItemId) ?? null;
+  }
+
+  async updateIntegrationQueueItem(integrationQueueItemId, updates) {
+    const existingIntegrationQueueItem = await this.findIntegrationQueueItemById(integrationQueueItemId);
+
+    if (!existingIntegrationQueueItem) {
+      return null;
+    }
+
+    const nextIntegrationQueueItem = {
+      ...existingIntegrationQueueItem,
+      ...updates,
+      updatedAt: updates.updatedAt ?? new Date().toISOString(),
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        UPDATE integration_queue_items
+        SET
+          queue_order = ?,
+          status = ?,
+          merged_commit_sha = ?,
+          updated_at = ?
+        WHERE id = ?
+      `)
+      .run(
+        nextIntegrationQueueItem.queueOrder,
+        nextIntegrationQueueItem.status,
+        nextIntegrationQueueItem.mergedCommitSha,
+        nextIntegrationQueueItem.updatedAt,
+        integrationQueueItemId,
+      );
+
+    return nextIntegrationQueueItem;
+  }
+
+  async listIntegrationQueueItemsByIntegrationRunId(integrationRunId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          integration_run_id AS integrationRunId,
+          sub_task_id AS subTaskId,
+          queue_order AS queueOrder,
+          status,
+          merged_commit_sha AS mergedCommitSha,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM integration_queue_items
+        WHERE integration_run_id = ?
+        ORDER BY queue_order ASC, created_at ASC, id ASC
+      `)
+      .all(integrationRunId);
+  }
+
+  async createGateResult(input) {
+    const gateResult = {
+      createdAt: input.createdAt ?? new Date().toISOString(),
+      detailsJson: normalizeOptionalJsonObject(input.detailsJson),
+      gateType: input.gateType,
+      id: input.id ?? randomUUID(),
+      integrationRunId: input.integrationRunId,
+      status: input.status,
+      summary: input.summary,
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        INSERT INTO gate_results (
+          id,
+          integration_run_id,
+          gate_type,
+          status,
+          summary,
+          details_json,
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        gateResult.id,
+        gateResult.integrationRunId,
+        gateResult.gateType,
+        gateResult.status,
+        gateResult.summary,
+        gateResult.detailsJson ? JSON.stringify(gateResult.detailsJson) : null,
+        gateResult.createdAt,
+      );
+
+    return gateResult;
+  }
+
+  async listGateResultsByIntegrationRunId(integrationRunId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          integration_run_id AS integrationRunId,
+          gate_type AS gateType,
+          status,
+          summary,
+          details_json AS detailsJsonRaw,
+          created_at AS createdAt
+        FROM gate_results
+        WHERE integration_run_id = ?
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all(integrationRunId)
+      .map(normalizeGateResultRecord);
+  }
+
   async listMergeRecordsBySubTaskId(subTaskId) {
     return this.#getDatabase()
       .prepare(`
@@ -1327,6 +1649,60 @@ export class SqliteTaskRepository {
       .all();
   }
 
+  async listIntegrationRuns() {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          integration_branch AS integrationBranch,
+          status,
+          started_at AS startedAt,
+          ended_at AS endedAt,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM integration_runs
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all();
+  }
+
+  async listIntegrationQueueItems() {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          integration_run_id AS integrationRunId,
+          sub_task_id AS subTaskId,
+          queue_order AS queueOrder,
+          status,
+          merged_commit_sha AS mergedCommitSha,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM integration_queue_items
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all();
+  }
+
+  async listGateResults() {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          integration_run_id AS integrationRunId,
+          gate_type AS gateType,
+          status,
+          summary,
+          details_json AS detailsJsonRaw,
+          created_at AS createdAt
+        FROM gate_results
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all()
+      .map(normalizeGateResultRecord);
+  }
+
   async listSessionsBySubTaskId(subTaskId) {
     return this.#getDatabase()
       .prepare(`
@@ -1474,6 +1850,19 @@ function normalizeMailboxMessageRecord(record) {
     messageType: normalizeMailboxMessageType(record.messageType),
     requiresAck: Boolean(record.requiresAck),
     schemaJson: parseJsonObject(schemaJsonRaw),
+  };
+}
+
+function normalizeGateResultRecord(record) {
+  if (!record) {
+    return record;
+  }
+
+  const { detailsJsonRaw, ...rest } = record;
+
+  return {
+    ...rest,
+    detailsJson: parseJsonObject(detailsJsonRaw),
   };
 }
 

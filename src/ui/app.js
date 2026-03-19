@@ -134,6 +134,7 @@ const UI_MESSAGES = {
     operationsRiskMailbox: "Mailbox blocker",
     operationsRiskReview: "审查风险",
     operationsRiskMerge: "Merge 冲突",
+    operationsRiskIntegration: "Integration 失败",
     operationsRiskLaunch: "启动失败",
     operationsRiskAck: "待确认 handoff",
     operationsModeGraphBadge: "图谱",
@@ -172,6 +173,36 @@ const UI_MESSAGES = {
     operationsActionKindReviewRequest: "审查请求",
     operationsActionKindTestRequest: "测试请求",
     operationsActionKindTaskResumeMerge: "恢复合并",
+    operationsActionKindIntegrationAttention: "集成待处理",
+    integrationEyebrow: "集成发布",
+    integrationTitle: "Integration Queue 与 Gate",
+    integrationEmpty: "当前还没有 integration run。",
+    integrationQueueTitle: "Merge Queue",
+    integrationGateTitle: "Release Gates",
+    integrationStartButton: "启动集成",
+    integrationRetryButton: "重试 Gate",
+    integrationRollbackButton: "回退 Run",
+    integrationQueueEmpty: "当前没有待集成的队列项。",
+    integrationGateEmpty: "当前还没有 gate 结果。",
+    integrationMetaBranch: "集成分支",
+    integrationMetaRun: "Run 状态",
+    integrationMetaQueue: "队列项",
+    integrationMetaReleased: "已发布",
+    integrationRunQueued: "排队中",
+    integrationRunRunning: "运行中",
+    integrationRunActionRequired: "待处理",
+    integrationRunCompleted: "已完成",
+    integrationRunRolledBack: "已回退",
+    integrationRunFailed: "失败",
+    integrationQueueQueued: "待集成",
+    integrationQueueMerged: "已并入集成分支",
+    integrationQueueReleased: "已发布到基线",
+    integrationQueueDequeued: "已移出队列",
+    integrationQueueRolledBack: "已回退",
+    integrationQueueFailed: "集成失败",
+    integrationGatePassed: "通过",
+    integrationGateFailed: "失败",
+    integrationDequeueButton: "移出队列",
     focusedSessionEyebrow: "聚焦会话",
     selectSubtaskTitle: "选择一个子任务",
     reworkDescriptionLabel: "返工描述",
@@ -541,6 +572,7 @@ const UI_MESSAGES = {
     operationsRiskMailbox: "Mailbox blockers",
     operationsRiskReview: "Review risk",
     operationsRiskMerge: "Merge conflicts",
+    operationsRiskIntegration: "Integration failures",
     operationsRiskLaunch: "Launch failures",
     operationsRiskAck: "Ack-required handoffs",
     operationsModeGraphBadge: "Graph",
@@ -579,6 +611,36 @@ const UI_MESSAGES = {
     operationsActionKindReviewRequest: "Review request",
     operationsActionKindTestRequest: "Test request",
     operationsActionKindTaskResumeMerge: "Resume merge",
+    operationsActionKindIntegrationAttention: "Integration attention",
+    integrationEyebrow: "Release",
+    integrationTitle: "Integration Queue and Gates",
+    integrationEmpty: "No integration run has been created yet.",
+    integrationQueueTitle: "Merge queue",
+    integrationGateTitle: "Release gates",
+    integrationStartButton: "Start integration",
+    integrationRetryButton: "Retry gates",
+    integrationRollbackButton: "Rollback run",
+    integrationQueueEmpty: "No queue items are waiting for integration.",
+    integrationGateEmpty: "No gate results are available yet.",
+    integrationMetaBranch: "Integration branch",
+    integrationMetaRun: "Run status",
+    integrationMetaQueue: "Queue items",
+    integrationMetaReleased: "Released",
+    integrationRunQueued: "Queued",
+    integrationRunRunning: "Running",
+    integrationRunActionRequired: "Action required",
+    integrationRunCompleted: "Completed",
+    integrationRunRolledBack: "Rolled back",
+    integrationRunFailed: "Failed",
+    integrationQueueQueued: "Queued",
+    integrationQueueMerged: "Merged into integration branch",
+    integrationQueueReleased: "Released to base branch",
+    integrationQueueDequeued: "Dequeued",
+    integrationQueueRolledBack: "Rolled back",
+    integrationQueueFailed: "Integration failed",
+    integrationGatePassed: "Passed",
+    integrationGateFailed: "Failed",
+    integrationDequeueButton: "Dequeue",
     focusedSessionEyebrow: "Focused session",
     selectSubtaskTitle: "Select a subtask",
     reworkDescriptionLabel: "Rework description",
@@ -993,6 +1055,17 @@ const elements = {
   taskExecutionGraphPanel: document.querySelector("#task-operations-graph-panel"),
   taskExecutionGraphView: document.querySelector("#task-operations-graph"),
   taskExecutionHealthList: document.querySelector("#task-operations-health-list"),
+  taskIntegrationEmpty: document.querySelector("#task-integration-empty"),
+  taskIntegrationGateEmpty: document.querySelector("#task-integration-gate-empty"),
+  taskIntegrationGateList: document.querySelector("#task-integration-gate-list"),
+  taskIntegrationMetaList: document.querySelector("#task-integration-meta-list"),
+  taskIntegrationQueueEmpty: document.querySelector("#task-integration-queue-empty"),
+  taskIntegrationQueueList: document.querySelector("#task-integration-queue-list"),
+  taskIntegrationRetryButton: document.querySelector("#task-integration-retry-button"),
+  taskIntegrationRollbackButton: document.querySelector("#task-integration-rollback-button"),
+  taskIntegrationShell: document.querySelector("#task-integration-shell"),
+  taskIntegrationStartButton: document.querySelector("#task-integration-start-button"),
+  taskIntegrationStatusBadge: document.querySelector("#task-integration-status-badge"),
   taskExecutionAgentField: document.querySelector("#task-execution-agent-field"),
   taskExecutionAgentSelect: document.querySelector("#task-execution-agent-select"),
   taskExecutionChangeAgentButton: document.querySelector("#task-execution-change-agent-button"),
@@ -1137,6 +1210,9 @@ elements.taskPlanNotesInput.addEventListener("input", onPlanNotesInput);
 elements.taskExecutionGraphButton.addEventListener("click", () => onSetTaskOperationsView("graph"));
 elements.taskExecutionListButton.addEventListener("click", () => onSetTaskOperationsView("list"));
 elements.taskExecutionActivityButton.addEventListener("click", () => onSetTaskOperationsView("activity"));
+elements.taskIntegrationStartButton.addEventListener("click", onStartIntegrationRun);
+elements.taskIntegrationRetryButton.addEventListener("click", onRetryIntegrationRun);
+elements.taskIntegrationRollbackButton.addEventListener("click", onRollbackIntegrationRun);
 elements.taskExecutionAgentSelect.addEventListener("change", onExecutionDraftAgentInput);
 elements.taskExecutionChangeAgentButton.addEventListener("click", onChangeSubTaskAgent);
 elements.taskExecutionCancelButton.addEventListener("click", onCancelSubTask);
@@ -1713,6 +1789,7 @@ function renderTaskDetail() {
   renderTaskAttachments(detail.attachments ?? []);
   renderPlanDraft(detail);
   renderSubTaskExecution(detail);
+  renderTaskIntegration(detail);
   renderTranscript(detail.messages ?? []);
 
   const canStartClarification = detail.task.status === "DRAFT";
@@ -1882,6 +1959,9 @@ function buildTaskOperationsBoard(detail, sessionsBySubTaskId) {
     graph: buildTaskOperationGraph(detail, mailboxMessages, sessionsBySubTaskId, actionRequiredItems),
     health: buildTaskOperationHealth(detail, subTasks),
     risk: {
+      integrationFailures: (detail.integration?.runs ?? []).reduce((count, integrationRun) => (
+        count + (integrationRun.gateResults ?? []).filter((gateResult) => gateResult.status === "FAILED").length
+      ), 0),
       launchFailures: launchFailures.length,
       mailboxBlockers: mailboxMessages.filter((message) => message.messageType === "BLOCKER").length,
       mergeConflicts: subTasks.filter((subTask) => (subTask.mergeRecords ?? []).some((record) => record.status === "CONFLICT")).length,
@@ -1980,6 +2060,7 @@ function buildTaskOperationActionItems(detail, launchFailures) {
   const items = [];
   const subTasks = detail.subTasks ?? [];
   const mailboxMessages = detail.mailboxMessages ?? [];
+  const latestIntegrationRun = detail.integration?.latestRun ?? null;
 
   for (const subTask of subTasks) {
     if (subTask.status === "DISCARD_PENDING") {
@@ -2051,6 +2132,24 @@ function buildTaskOperationActionItems(detail, launchFailures) {
 
   if (
     detail.task?.status === "ACTION_REQUIRED"
+    && latestIntegrationRun
+    && ["ACTION_REQUIRED", "FAILED", "ROLLED_BACK"].includes(latestIntegrationRun.status)
+  ) {
+    const failedGateSummary = (latestIntegrationRun.gateResults ?? [])
+      .filter((gateResult) => gateResult.status === "FAILED")
+      .at(-1)?.summary ?? null;
+
+    items.push({
+      kind: "INTEGRATION_ATTENTION",
+      label: t("operationsActionOpenButton"),
+      primaryAction: "OPEN_INTEGRATION",
+      subTaskId: null,
+      summary: failedGateSummary ?? detail.task.lastError ?? buildIntegrationRunStatusLabel(latestIntegrationRun.status),
+    });
+  }
+
+  if (
+    detail.task?.status === "ACTION_REQUIRED"
     && subTasks.length > 0
     && subTasks.every((subTask) => ["ACCEPTED", "CANCELLED", "DISCARDED", "MERGED"].includes(subTask.status))
   ) {
@@ -2070,16 +2169,18 @@ function buildActionPriority(kind) {
   switch (kind) {
     case "MERGE_CONFLICT":
       return 1;
-    case "DISCARD_PENDING":
+    case "INTEGRATION_ATTENTION":
       return 2;
-    case "REWORK_REQUIRED":
+    case "DISCARD_PENDING":
       return 3;
+    case "REWORK_REQUIRED":
+      return 4;
     case "FAILED_SUBTASK":
     case "SANDBOX_LAUNCH_FAILURE":
     case "WORKER_LAUNCH_FAILURE":
-      return 4;
-    case "BLOCKER":
       return 5;
+    case "BLOCKER":
+      return 6;
     default:
       return 10;
   }
@@ -2212,6 +2313,7 @@ function renderTaskOperationsRisk(boardSnapshot) {
     [t("operationsRiskMailbox"), boardSnapshot.risk.mailboxBlockers],
     [t("operationsRiskReview"), boardSnapshot.risk.reviewRequired],
     [t("operationsRiskMerge"), boardSnapshot.risk.mergeConflicts],
+    [t("operationsRiskIntegration"), boardSnapshot.risk.integrationFailures],
     [t("operationsRiskLaunch"), boardSnapshot.risk.launchFailures],
     [t("operationsRiskAck"), boardSnapshot.risk.requiresAck],
   ]);
@@ -2441,6 +2543,8 @@ function buildOperationsActionTitle(kind) {
   switch (kind) {
     case "MERGE_CONFLICT":
       return t("operationsActionKindMergeConflict");
+    case "INTEGRATION_ATTENTION":
+      return t("operationsActionKindIntegrationAttention");
     case "DISCARD_PENDING":
       return t("operationsActionKindDiscardPending");
     case "REWORK_REQUIRED":
@@ -2503,10 +2607,22 @@ function renderSubTaskExecution(detail) {
 
   if (subTasks.length === 0) {
     elements.taskExecutionFocus.hidden = true;
-    elements.taskExecutionSummaryList.replaceChildren();
-    elements.taskExecutionHealthList.replaceChildren();
-    elements.taskExecutionRiskList.replaceChildren();
-    elements.taskExecutionActionCount.textContent = "0";
+  elements.taskExecutionSummaryList.replaceChildren();
+  elements.taskExecutionHealthList.replaceChildren();
+  elements.taskExecutionRiskList.replaceChildren();
+  elements.taskIntegrationMetaList.replaceChildren();
+  elements.taskIntegrationGateList.replaceChildren();
+  elements.taskIntegrationQueueList.replaceChildren();
+  elements.taskIntegrationEmpty.hidden = true;
+  elements.taskIntegrationGateEmpty.hidden = true;
+  elements.taskIntegrationQueueEmpty.hidden = true;
+  elements.taskIntegrationShell.hidden = false;
+  elements.taskIntegrationStatusBadge.textContent = t("integrationRunQueued");
+  elements.taskIntegrationStatusBadge.className = "badge badge--outline";
+  elements.taskIntegrationStartButton.hidden = true;
+  elements.taskIntegrationRetryButton.hidden = true;
+  elements.taskIntegrationRollbackButton.hidden = true;
+  elements.taskExecutionActionCount.textContent = "0";
     elements.taskExecutionActionEmpty.hidden = true;
     elements.taskExecutionActionList.replaceChildren();
     elements.taskExecutionGraphView.replaceChildren();
@@ -2601,6 +2717,139 @@ function renderTaskExecutionList(detail, sessionsBySubTaskId) {
 
     elements.taskExecutionList.append(card);
   }
+}
+
+function renderTaskIntegration(detail) {
+  const latestRun = detail.integration?.latestRun ?? null;
+  const queueItems = latestRun?.queueItems ?? [];
+  const gateResults = latestRun?.gateResults ?? [];
+  const showSection = Boolean(latestRun) || ["ACTION_REQUIRED", "COMPLETED", "MERGING"].includes(detail.task.status);
+
+  elements.taskIntegrationShell.hidden = !showSection || !latestRun;
+  elements.taskIntegrationEmpty.hidden = !showSection || Boolean(latestRun);
+  elements.taskIntegrationMetaList.replaceChildren();
+  elements.taskIntegrationGateList.replaceChildren();
+  elements.taskIntegrationQueueList.replaceChildren();
+  elements.taskIntegrationGateEmpty.hidden = gateResults.length > 0;
+  elements.taskIntegrationQueueEmpty.hidden = queueItems.length > 0;
+
+  if (!showSection) {
+    return;
+  }
+
+  if (!latestRun) {
+    elements.taskIntegrationStatusBadge.textContent = t("integrationRunQueued");
+    elements.taskIntegrationStatusBadge.className = "badge badge--outline";
+    elements.taskIntegrationStartButton.hidden = detail.task.status !== "MERGING" && detail.task.status !== "ACTION_REQUIRED";
+    elements.taskIntegrationRetryButton.hidden = true;
+    elements.taskIntegrationRollbackButton.hidden = true;
+    return;
+  }
+
+  elements.taskIntegrationStatusBadge.textContent = buildIntegrationRunStatusLabel(latestRun.status);
+  elements.taskIntegrationStatusBadge.className = `badge ${buildIntegrationRunBadgeClass(latestRun.status)}`;
+  renderOperationsMetaList(elements.taskIntegrationMetaList, [
+    [t("integrationMetaBranch"), latestRun.integrationBranch],
+    [t("integrationMetaRun"), buildIntegrationRunStatusLabel(latestRun.status)],
+    [t("integrationMetaQueue"), String(queueItems.length)],
+    [t("integrationMetaReleased"), String(queueItems.filter((item) => item.status === "RELEASED").length)],
+  ]);
+
+  elements.taskIntegrationStartButton.hidden = true;
+  elements.taskIntegrationRetryButton.hidden = !(detail.task.status === "ACTION_REQUIRED" && ["ACTION_REQUIRED", "FAILED", "ROLLED_BACK"].includes(latestRun.status));
+  elements.taskIntegrationRollbackButton.hidden = !(detail.task.status === "ACTION_REQUIRED" && ["ACTION_REQUIRED", "FAILED"].includes(latestRun.status));
+
+  for (const gateResult of gateResults) {
+    const card = document.createElement("article");
+    card.className = "operations-action-card";
+    card.innerHTML = `
+      <div class="operations-action-card__header">
+        <div>
+          <p class="operations-action-card__title">${escapeHtml(gateResult.gateType)}</p>
+          <p class="operations-action-card__summary">${escapeHtml(gateResult.summary)}</p>
+        </div>
+        <span class="badge ${gateResult.status === "FAILED" ? "badge--dirty" : "badge--clean"}">${escapeHtml(buildIntegrationGateStatusLabel(gateResult.status))}</span>
+      </div>
+    `;
+    elements.taskIntegrationGateList.append(card);
+  }
+
+  for (const queueItem of queueItems) {
+    const card = document.createElement("article");
+    card.className = "operations-action-card";
+    const canDequeue = detail.task.status === "ACTION_REQUIRED"
+      && latestRun.status === "ACTION_REQUIRED"
+      && !["DEQUEUED", "RELEASED"].includes(queueItem.status);
+    card.innerHTML = `
+      <div class="operations-action-card__header">
+        <div>
+          <p class="operations-action-card__title">${escapeHtml(queueItem.subTask?.title ?? queueItem.subTaskId)}</p>
+          <p class="operations-action-card__summary">${escapeHtml(buildIntegrationQueueItemStatusLabel(queueItem.status))}</p>
+        </div>
+        ${canDequeue ? `<button class="button button--ghost" type="button">${escapeHtml(t("integrationDequeueButton"))}</button>` : `<span class="badge badge--outline">${escapeHtml(buildIntegrationQueueItemStatusLabel(queueItem.status))}</span>`}
+      </div>
+    `;
+
+    if (canDequeue) {
+      card.querySelector("button")?.addEventListener("click", () => {
+        void onDequeueIntegrationQueueItem(queueItem.id);
+      });
+    }
+
+    elements.taskIntegrationQueueList.append(card);
+  }
+}
+
+function buildIntegrationRunStatusLabel(status) {
+  switch (status) {
+    case "ACTION_REQUIRED":
+      return t("integrationRunActionRequired");
+    case "COMPLETED":
+      return t("integrationRunCompleted");
+    case "FAILED":
+      return t("integrationRunFailed");
+    case "ROLLED_BACK":
+      return t("integrationRunRolledBack");
+    case "RUNNING":
+      return t("integrationRunRunning");
+    default:
+      return t("integrationRunQueued");
+  }
+}
+
+function buildIntegrationRunBadgeClass(status) {
+  switch (status) {
+    case "ACTION_REQUIRED":
+    case "FAILED":
+      return "badge--dirty";
+    case "COMPLETED":
+      return "badge--clean";
+    case "RUNNING":
+      return "badge--accent-soft";
+    default:
+      return "badge--outline";
+  }
+}
+
+function buildIntegrationQueueItemStatusLabel(status) {
+  switch (status) {
+    case "DEQUEUED":
+      return t("integrationQueueDequeued");
+    case "FAILED":
+      return t("integrationQueueFailed");
+    case "MERGED":
+      return t("integrationQueueMerged");
+    case "RELEASED":
+      return t("integrationQueueReleased");
+    case "ROLLED_BACK":
+      return t("integrationQueueRolledBack");
+    default:
+      return t("integrationQueueQueued");
+  }
+}
+
+function buildIntegrationGateStatusLabel(status) {
+  return status === "FAILED" ? t("integrationGateFailed") : t("integrationGatePassed");
 }
 
 function renderPlanDraft(detail) {
@@ -3096,6 +3345,21 @@ function connectTaskStream(taskId) {
   stream.addEventListener("merge:status", () => {
     void loadTaskDetail(taskId, { preserveStream: true });
   });
+  stream.addEventListener("integration:queued", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
+  stream.addEventListener("integration:started", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
+  stream.addEventListener("integration:gate-result", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
+  stream.addEventListener("integration:completed", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
+  stream.addEventListener("integration:failed", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
   stream.addEventListener("task:cleanup-warning", () => {
     void loadTaskDetail(taskId, { preserveStream: true });
   });
@@ -3268,6 +3532,72 @@ function onSetTaskOperationsView(view) {
 
   state.taskOperationsView = view;
   renderTaskDetail();
+}
+
+async function onStartIntegrationRun() {
+  if (!state.taskDetail?.task?.id) {
+    return;
+  }
+
+  setButtonBusy(elements.taskIntegrationStartButton, true, t("starting"));
+
+  try {
+    await fetchJson(`/api/tasks/${encodeURIComponent(state.taskDetail.task.id)}/integration-runs`, {
+      method: "POST",
+    });
+    await loadTaskDetail(state.taskDetail.task.id, { preserveStream: true });
+  } finally {
+    setButtonBusy(elements.taskIntegrationStartButton, false, t("integrationStartButton"));
+  }
+}
+
+async function onRetryIntegrationRun() {
+  const integrationRunId = state.taskDetail?.integration?.latestRun?.id;
+
+  if (!integrationRunId || !state.taskDetail?.task?.id) {
+    return;
+  }
+
+  setButtonBusy(elements.taskIntegrationRetryButton, true, t("restoring"));
+
+  try {
+    await fetchJson(`/api/integration-runs/${encodeURIComponent(integrationRunId)}/retry`, {
+      method: "POST",
+    });
+    await loadTaskDetail(state.taskDetail.task.id, { preserveStream: true });
+  } finally {
+    setButtonBusy(elements.taskIntegrationRetryButton, false, t("integrationRetryButton"));
+  }
+}
+
+async function onRollbackIntegrationRun() {
+  const integrationRunId = state.taskDetail?.integration?.latestRun?.id;
+
+  if (!integrationRunId || !state.taskDetail?.task?.id) {
+    return;
+  }
+
+  setButtonBusy(elements.taskIntegrationRollbackButton, true, t("restoring"));
+
+  try {
+    await fetchJson(`/api/integration-runs/${encodeURIComponent(integrationRunId)}/rollback`, {
+      method: "POST",
+    });
+    await loadTaskDetail(state.taskDetail.task.id, { preserveStream: true });
+  } finally {
+    setButtonBusy(elements.taskIntegrationRollbackButton, false, t("integrationRollbackButton"));
+  }
+}
+
+async function onDequeueIntegrationQueueItem(integrationQueueItemId) {
+  if (!integrationQueueItemId || !state.taskDetail?.task?.id) {
+    return;
+  }
+
+  await fetchJson(`/api/integration-queue-items/${encodeURIComponent(integrationQueueItemId)}/dequeue`, {
+    method: "POST",
+  });
+  await loadTaskDetail(state.taskDetail.task.id, { preserveStream: true });
 }
 
 function onResetPlanDraft() {

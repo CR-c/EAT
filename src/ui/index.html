@@ -407,6 +407,53 @@
                   </section>
 
                   <section class="operations-section" aria-labelledby="task-operations-mode-title">
+                    <div class="panel__header panel__header--inline">
+                      <div>
+                        <p class="panel__eyebrow" data-i18n="integrationEyebrow">集成发布</p>
+                        <h4 id="task-integration-title" class="plan-history__title" data-i18n="integrationTitle">Integration Queue 与 Gate</h4>
+                      </div>
+                      <span id="task-integration-status-badge" class="badge badge--outline">未开始</span>
+                    </div>
+                    <div id="task-integration-empty" class="empty-state" hidden data-i18n="integrationEmpty">
+                      当前还没有 integration run。
+                    </div>
+                    <div id="task-integration-shell">
+                      <div class="operations-meta-grid">
+                        <section class="operations-meta-card">
+                          <div class="mailbox-stream__header">
+                            <h5 class="plan-history__title" data-i18n="integrationQueueTitle">Merge Queue</h5>
+                          </div>
+                          <div id="task-integration-meta-list" class="operations-meta-list"></div>
+                        </section>
+                        <section class="operations-meta-card">
+                          <div class="mailbox-stream__header">
+                            <h5 class="plan-history__title" data-i18n="integrationGateTitle">Release Gates</h5>
+                          </div>
+                          <div id="task-integration-gate-empty" class="empty-state" hidden data-i18n="integrationGateEmpty">
+                            当前还没有 gate 结果。
+                          </div>
+                          <div id="task-integration-gate-list" class="operations-action-list"></div>
+                        </section>
+                      </div>
+                      <div class="plan-editor__actions">
+                        <button id="task-integration-start-button" class="button button--secondary" type="button" hidden data-i18n="integrationStartButton">
+                          启动集成
+                        </button>
+                        <button id="task-integration-retry-button" class="button button--secondary" type="button" hidden data-i18n="integrationRetryButton">
+                          重试 Gate
+                        </button>
+                        <button id="task-integration-rollback-button" class="button button--ghost" type="button" hidden data-i18n="integrationRollbackButton">
+                          回退 Run
+                        </button>
+                      </div>
+                      <div id="task-integration-queue-empty" class="empty-state" hidden data-i18n="integrationQueueEmpty">
+                        当前没有待集成的队列项。
+                      </div>
+                      <div id="task-integration-queue-list" class="operations-action-list"></div>
+                    </div>
+                  </section>
+
+                  <section class="operations-section" aria-labelledby="task-operations-mode-title">
                     <div class="segmented-control">
                       <span class="segmented-control__label" id="task-operations-mode-title" data-i18n="operationsModeLabel">看板视图</span>
                       <div class="plan-editor__actions">
