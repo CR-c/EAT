@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 
 import {
   PLAN_DRAFT_PARSE_ERROR_CODES,
+  PLAN_VALIDATION_ERROR_CODES,
   buildPlanningPrompt,
+  looksLikeCompletePlanText,
   parsePlanDraftText,
+  validatePlanDraft,
 } from "../src/services/plan-draft.js";
 
 test("buildPlanningPrompt requests JSON-only plan output", () => {
@@ -48,4 +51,90 @@ test("parsePlanDraftText rejects payloads without valid JSON", () => {
   const invalidJson = parsePlanDraftText("```json\n{\"subtasks\":[}\n```");
   assert.equal(invalidJson.ok, false);
   assert.equal(invalidJson.error.code, PLAN_DRAFT_PARSE_ERROR_CODES.INVALID_JSON);
+});
+
+test("looksLikeCompletePlanText waits for a complete fenced or raw JSON object", () => {
+  assert.equal(looksLikeCompletePlanText("```json\n{\"subtasks\": []"), false);
+  assert.equal(looksLikeCompletePlanText("{\"subtasks\": []}"), true);
+  assert.equal(looksLikeCompletePlanText("```json\n{\"subtasks\": []}\n```"), true);
+});
+
+test("validatePlanDraft normalizes a valid plan and rejects duplicate or unhealthy subtasks", () => {
+  const validPlan = validatePlanDraft(
+    {
+      notes: "Keep the work parallel-safe.",
+      subtasks: [
+        {
+          title: " Backend ",
+          description: " Implement the API ",
+          recommended_agent: "codex-cli",
+          branch_suffix: "backend-api",
+        },
+      ],
+    },
+    {
+      agentHealth: {
+        "codex-cli": { available: true },
+      },
+    },
+  );
+
+  assert.equal(validPlan.ok, true);
+  assert.deepEqual(validPlan.plan, {
+    notes: "Keep the work parallel-safe.",
+    subtasks: [
+      {
+        branch_suffix: "backend-api",
+        description: "Implement the API",
+        recommended_agent: "codex-cli",
+        title: "Backend",
+      },
+    ],
+  });
+
+  const duplicateBranchSuffix = validatePlanDraft(
+    {
+      subtasks: [
+        {
+          title: "One",
+          description: "One",
+          recommended_agent: "codex-cli",
+          branch_suffix: "dup",
+        },
+        {
+          title: "Two",
+          description: "Two",
+          recommended_agent: "codex-cli",
+          branch_suffix: "dup",
+        },
+      ],
+    },
+    {
+      agentHealth: {
+        "codex-cli": { available: true },
+      },
+    },
+  );
+  assert.equal(duplicateBranchSuffix.ok, false);
+  assert.equal(duplicateBranchSuffix.error.code, PLAN_VALIDATION_ERROR_CODES.BRANCH_SUFFIX_DUPLICATE);
+
+  const unhealthyAgent = validatePlanDraft(
+    {
+      subtasks: [
+        {
+          title: "One",
+          description: "One",
+          recommended_agent: "broken-agent",
+          branch_suffix: "one",
+        },
+      ],
+    },
+    {
+      agentHealth: {
+        "broken-agent": { available: false, failureReason: { message: "offline" } },
+      },
+    },
+  );
+  assert.equal(unhealthyAgent.ok, false);
+  assert.equal(unhealthyAgent.error.code, PLAN_VALIDATION_ERROR_CODES.RECOMMENDED_AGENT_UNHEALTHY);
 });

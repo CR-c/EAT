@@ -4,8 +4,14 @@ import { randomUUID } from "node:crypto";
 
 import { ATTACHMENT_TYPES } from "../agents/agent-contract.js";
 import { resolveBranchHeadCommit } from "./repo-validation-service.js";
-import { buildPlanningPrompt, parsePlanDraftText } from "./plan-draft.js";
 import {
+  buildPlanningPrompt,
+  looksLikeCompletePlanText,
+  parsePlanDraftText,
+  validatePlanDraft,
+} from "./plan-draft.js";
+import {
+  PLAN_SNAPSHOT_SOURCE,
   MESSAGE_ROLE,
   SESSION_STATUS,
   SESSION_TYPE,
@@ -190,6 +196,7 @@ export class TaskService {
       ok: true,
       attachments: await this.taskRepository.listAttachmentsByTaskId(task.id),
       messages: await this.taskRepository.listMessagesByTaskId(task.id),
+      planSnapshots: await this.taskRepository.listPlanSnapshotsByTaskId(task.id),
       sessions: await this.taskRepository.listSessionsByTaskId(task.id),
       task,
     };
@@ -537,6 +544,16 @@ export class TaskService {
 
   #capturePlanDraftChunk(taskId, chunk) {
     const nextBuffer = `${this.pendingPlanDrafts.get(taskId)?.buffer ?? ""}\n${chunk}`.trim();
+
+    if (!looksLikeCompletePlanText(nextBuffer)) {
+      this.pendingPlanDrafts.set(taskId, {
+        buffer: nextBuffer,
+        parseError: null,
+        parsedDraft: null,
+      });
+      return;
+    }
+
     const parsedDraft = parsePlanDraftText(nextBuffer);
 
     this.pendingPlanDrafts.set(taskId, {
@@ -544,6 +561,84 @@ export class TaskService {
       parsedDraft: parsedDraft.ok ? parsedDraft : null,
       parseError: parsedDraft.ok ? null : parsedDraft.error,
     });
+
+    void this.#processPlanDraftAttempt(taskId, parsedDraft);
+  }
+
+  async #processPlanDraftAttempt(taskId, parsedDraft) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task || task.status !== TASK_STATUS.PLANNING) {
+      return;
+    }
+
+    if (!parsedDraft.ok) {
+      await this.#requestPlanRegeneration(task, parsedDraft.error.message);
+      return;
+    }
+
+    const nextPlanVersion = (task.planVersion ?? 0) + 1;
+    const taskWithIncrementedVersion = await this.taskRepository.updateTask(taskId, {
+      lastError: null,
+      planVersion: nextPlanVersion,
+    });
+    const health = await this.agentService.getHealth();
+    const validation = validatePlanDraft(parsedDraft.payload, {
+      agentHealth: health.agents,
+    });
+
+    if (!validation.ok) {
+      await this.#requestPlanRegeneration(taskWithIncrementedVersion ?? task, validation.error.message, validation.error.details);
+      return;
+    }
+
+    const currentPlanJson = JSON.stringify(validation.plan);
+    const planReviewTask = await this.taskRepository.updateTask(taskId, {
+      currentPlanJson,
+      lastError: null,
+      status: TASK_STATUS.PLAN_REVIEW,
+    });
+
+    await this.taskRepository.createPlanSnapshot({
+      payload: currentPlanJson,
+      source: PLAN_SNAPSHOT_SOURCE.LEAD_GENERATED,
+      taskId,
+      version: planReviewTask.planVersion,
+    });
+
+    this.pendingPlanDrafts.delete(taskId);
+  }
+
+  async #requestPlanRegeneration(task, reason, details) {
+    this.pendingPlanDrafts.delete(task.id);
+
+    const updatedTask = await this.taskRepository.updateTask(task.id, {
+      lastError: reason,
+      status: TASK_STATUS.PLANNING,
+    });
+    await this.taskRepository.createMessage({
+      content: `Plan validation failed: ${reason}`,
+      role: MESSAGE_ROLE.SYSTEM,
+      taskId: task.id,
+    });
+
+    const activeSession = this.runningLeadSessions.get(task.id);
+
+    if (activeSession) {
+      try {
+        await activeSession.runtime.sendInput(buildPlanRegenerationPrompt(reason, details));
+      } catch {
+        // Keep the task in PLANNING so the user can retry manually once recovery flows exist.
+      }
+    }
+
+    if (updatedTask?.status === TASK_STATUS.PLANNING) {
+      this.#publish(task.id, "task:status", {
+        reason,
+        taskId: task.id,
+        status: updatedTask.status,
+      });
+    }
   }
 }
 
@@ -731,4 +826,15 @@ function failure(code, message, details) {
       ...(details ? { details } : {}),
     },
   };
+}
+
+function buildPlanRegenerationPrompt(reason, details) {
+  const detailText = details ? `Validation details: ${JSON.stringify(details)}` : null;
+
+  return [
+    "The previous plan draft was invalid. Regenerate the full plan as JSON only.",
+    `Validation failure: ${reason}`,
+    detailText,
+    "Return a complete replacement object with `subtasks` and optional `notes`.",
+  ].filter(Boolean).join("\n");
 }
