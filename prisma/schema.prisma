@@ -28,6 +28,7 @@ enum PlanSnapshotSource {
 }
 
 enum SubTaskStatus {
+  BLOCKED
   PENDING
   READY
   RUNNING
@@ -107,6 +108,7 @@ model SubTask {
   title                String
   description          String
   branchSuffix         String        @map("branch_suffix")
+  dependencyBranchSuffixesJson String @default("[]") @map("dependency_branch_suffixes_json")
   branchName           String?       @map("branch_name")
   worktreePath         String?       @map("worktree_path")
   agentType            String        @map("agent_type")
@@ -114,6 +116,14 @@ model SubTask {
   autoAssigned         Boolean       @default(true) @map("auto_assigned")
   retryCount           Int           @default(0) @map("retry_count")
   lastError            String?       @map("last_error")
+  latestReviewDecision String?       @map("latest_review_decision")
+  latestReviewPhase    String?       @map("latest_review_phase")
+  latestReviewSummary  String?       @map("latest_review_summary")
+  role                 String?
+  displayName          String?       @map("display_name")
+  executionOrder       Int?          @map("execution_order")
+  assignmentSource     String?       @map("assignment_source")
+  runSummary           String?       @map("run_summary")
   createdAt            DateTime      @map("created_at")
   updatedAt            DateTime      @map("updated_at")
   mergeRecords         MergeRecord[]

@@ -90,6 +90,7 @@ This product choice is intentional. It keeps failures inspectable and reduces th
 - Let the user edit and approve the plan before execution
 - Materialize approved subtasks into isolated branches and worktrees
 - Respect optional subtask dependencies and launch downstream work only after prerequisites complete
+- Preserve directed mailbox handoff notes between lead and subtasks, and inject downstream handoff context into worker prompts
 - Run multiple worker agents concurrently in Docker sandboxes on separate branches
 - Stream terminal output per running session
 - Allow cancel, retry, rework, agent switching, and message injection during execution
@@ -115,6 +116,7 @@ To keep v0.1 buildable, the following restrictions apply:
 
 - Subtasks may mix parallel and dependency-constrained execution in MVP
 - Dependencies must be expressed explicitly in the approved plan and must form an acyclic graph
+- Mailbox handoff stays task-scoped. MVP does not support cross-task or cross-project agent messaging
 - Images are passed only to vision-capable agents in MVP
 - If a selected worker agent cannot consume an attachment type, that attachment is omitted and the omission is surfaced in the UI and task log
 - Worker sessions must run in a sandbox that does not expose the host home directory by default
@@ -140,6 +142,7 @@ To keep v0.1 buildable, the following restrictions apply:
 | Task Worktree | A dedicated local git worktree used to keep one running subtask isolated from the user's main working directory |
 | Session Sandbox | The runtime isolation boundary used for an agent session, such as `HOST` or `DOCKER` |
 | Review Record | One persisted lead-agent review result for a subtask in either incremental or final phase |
+| Mailbox Message | One persisted directed handoff note scoped to a task and targeted at either one subtask or the lead |
 | Plan Snapshot | A lightweight persisted JSON copy of a lead-generated or approved plan |
 | Plan Approval | The explicit user confirmation that freezes the approved plan and allows execution to start |
 
@@ -238,6 +241,18 @@ To support concurrent workers safely, EAT uses both dedicated git worktrees and 
   - logs/output path as write-only or append-only via app-controlled path when needed
 - The host home directory, SSH directory, and unrelated repositories are not mounted by default
 - Worker containers run as non-root by default and must not use `--privileged`
+
+### 6.9 Agent Mailbox And Handoff Model
+
+MVP supports lightweight directed handoff notes inside one task so downstream workers can start with structured upstream context in the web UI.
+
+- Mailbox messages are append-only task-scoped records
+- A mailbox message may be sent from the lead, a subtask, or the system
+- A mailbox message targets either one subtask or the lead
+- The UI must surface mailbox history while execution is active
+- Downstream worker prompts should include mailbox messages targeted to that subtask
+- The system may auto-generate upstream-to-downstream handoff notes when prerequisite subtasks finish successfully
+- Mailbox delivery is advisory context only and does not bypass the documented task or review state machines
 - Uncommitted changes in the user's main working tree do not block task creation in MVP
 - Merge safety checks happen at merge time, not task creation time
 - If the user starts a new task from the same project while the project working directory has uncommitted changes, EAT must prompt:

@@ -30,6 +30,8 @@ import {
   validatePlanDraft,
 } from "./plan-draft.js";
 import {
+  MAILBOX_PARTICIPANT_TYPE,
+  MAILBOX_TARGET_TYPE,
   MERGE_OPERATION,
   MERGE_STATUS,
   PLAN_SNAPSHOT_SOURCE,
@@ -37,6 +39,7 @@ import {
   REVIEW_PHASE,
   SESSION_STATUS,
   SESSION_TYPE,
+  SUBTASK_ASSIGNMENT_SOURCE,
   SUBTASK_STATUS,
   TASK_STATUS,
 } from "../repositories/task-repository.js";
@@ -47,6 +50,7 @@ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_FINAL_REVIEW_DIFF_BYTES = 32_768;
 const MAX_FINAL_REVIEW_LOG_BYTES = 32_768;
 const MAX_INCREMENTAL_REVIEW_LOG_BYTES = 32_768;
+const MAX_MAILBOX_PROMPT_MESSAGE_BYTES = 1_024;
 const FINAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
 const INCREMENTAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
 const COMPLETED_SUBTASK_STATUSES = new Set([
@@ -112,6 +116,9 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   LEAD_AGENT_UNHEALTHY: "LEAD_AGENT_UNHEALTHY",
   LEAD_AGENT_REQUIRED: "LEAD_AGENT_REQUIRED",
   INVALID_PLAN: "INVALID_PLAN",
+  MAILBOX_MESSAGE_REQUIRED: "MAILBOX_MESSAGE_REQUIRED",
+  MAILBOX_NOT_AVAILABLE: "MAILBOX_NOT_AVAILABLE",
+  MAILBOX_TARGET_REQUIRED: "MAILBOX_TARGET_REQUIRED",
   PLAN_SNAPSHOT_NOT_FOUND: "PLAN_SNAPSHOT_NOT_FOUND",
   REQUIREMENTS_ALREADY_CONFIRMED: "REQUIREMENTS_ALREADY_CONFIRMED",
   SESSION_NOT_RUNNING: "SESSION_NOT_RUNNING",
@@ -121,10 +128,12 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   TASK_NOT_PLAN_REVIEW: "TASK_NOT_PLAN_REVIEW",
   PROJECT_NOT_FOUND: "PROJECT_NOT_FOUND",
   SUBTASK_ACTIVE_SESSION_EXISTS: "SUBTASK_ACTIVE_SESSION_EXISTS",
+  SUBTASK_CANCEL_NOT_ALLOWED: "SUBTASK_CANCEL_NOT_ALLOWED",
   SUBTASK_CHANGE_AGENT_NOT_ALLOWED: "SUBTASK_CHANGE_AGENT_NOT_ALLOWED",
   SUBTASK_DISCARD_NOT_ALLOWED: "SUBTASK_DISCARD_NOT_ALLOWED",
   SUBTASK_NOT_FOUND: "SUBTASK_NOT_FOUND",
   SUBTASK_REBASE_RETRY_NOT_ALLOWED: "SUBTASK_REBASE_RETRY_NOT_ALLOWED",
+  SUBTASK_REASSIGN_NOT_ALLOWED: "SUBTASK_REASSIGN_NOT_ALLOWED",
   SUBTASK_REWORK_NOT_ALLOWED: "SUBTASK_REWORK_NOT_ALLOWED",
   SUBTASK_RETRY_NOT_ALLOWED: "SUBTASK_RETRY_NOT_ALLOWED",
   TASK_NOT_FOUND: "TASK_NOT_FOUND",
@@ -151,6 +160,7 @@ export class TaskService {
     this.pendingPlanDrafts = new Map();
     this.pendingWorkerLaunches = new Set();
     this.runningWorkerSessions = new Map();
+    this.cancelledWorkerSessionIds = new Set();
     this.sessionLogPaths = new Map();
     this.sessionOutputAppends = new Map();
     this.workerLaunchMetadata = new Map();
@@ -286,20 +296,50 @@ export class TaskService {
     const sessions = await this.taskRepository.listSessionsByTaskId(task.id);
     const subTasks = await this.taskRepository.listSubTasksByTaskId(task.id);
     const mergeRecords = await this.taskRepository.listMergeRecordsByTaskId(task.id);
+    const mailboxMessages = await this.taskRepository.listMailboxMessagesByTaskId(task.id);
     const mergeRecordsBySubTaskId = groupRecordsBySubTaskId(mergeRecords);
+    const decoratedSessions = sessions.map((session) => this.#decorateSession(session));
+    const decoratedSubTasks = subTasks.map((subTask) => this.#decorateSubTask({
+      ...subTask,
+      mergeRecords: mergeRecordsBySubTaskId.get(subTask.id) ?? [],
+    }));
 
     return {
       ok: true,
       attachments: await this.taskRepository.listAttachmentsByTaskId(task.id),
       cleanupWarnings: parseCleanupWarningsFromMessages(messages),
+      mailboxMessages,
       messages,
       planSnapshots: await this.taskRepository.listPlanSnapshotsByTaskId(task.id),
-      sessions: sessions.map((session) => this.#decorateSession(session)),
-      subTasks: subTasks.map((subTask) => this.#decorateSubTask({
-        ...subTask,
-        mergeRecords: mergeRecordsBySubTaskId.get(subTask.id) ?? [],
-      })),
+      sessions: decoratedSessions,
+      subTasks: decoratedSubTasks,
       task,
+      team: this.#buildTaskTeamView(task, decoratedSessions, decoratedSubTasks),
+    };
+  }
+
+  async getTaskTeam(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    const [sessions, subTasks, mergeRecords] = await Promise.all([
+      this.taskRepository.listSessionsByTaskId(task.id),
+      this.taskRepository.listSubTasksByTaskId(task.id),
+      this.taskRepository.listMergeRecordsByTaskId(task.id),
+    ]);
+    const mergeRecordsBySubTaskId = groupRecordsBySubTaskId(mergeRecords);
+    const decoratedSessions = sessions.map((session) => this.#decorateSession(session));
+    const decoratedSubTasks = subTasks.map((subTask) => this.#decorateSubTask({
+      ...subTask,
+      mergeRecords: mergeRecordsBySubTaskId.get(subTask.id) ?? [],
+    }));
+
+    return {
+      ok: true,
+      team: this.#buildTaskTeamView(task, decoratedSessions, decoratedSubTasks),
     };
   }
 
@@ -541,6 +581,81 @@ export class TaskService {
     };
   }
 
+  async sendMailboxMessage(taskId, input = {}) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (![TASK_STATUS.ACTION_REQUIRED, TASK_STATUS.EXECUTING, TASK_STATUS.MERGING, TASK_STATUS.REVIEWING].includes(task.status)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.MAILBOX_NOT_AVAILABLE,
+        "Mailbox notes are only available after plan approval while the task is still active.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const content = normalizeRequiredString(input?.content);
+    const targetSubTaskId = normalizeRequiredString(input?.targetSubTaskId);
+    const senderSubTaskId = normalizeRequiredString(input?.senderSubTaskId);
+
+    if (!content) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.MAILBOX_MESSAGE_REQUIRED,
+        "Mailbox message content is required.",
+        { taskId },
+      );
+    }
+
+    if (!targetSubTaskId) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.MAILBOX_TARGET_REQUIRED,
+        "Mailbox messages must target a subtask in this phase.",
+        { taskId },
+      );
+    }
+
+    const targetSubTask = await this.taskRepository.findSubTaskById(targetSubTaskId);
+
+    if (!targetSubTask || targetSubTask.taskId !== taskId) {
+      return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", {
+        subTaskId: targetSubTaskId,
+        taskId,
+      });
+    }
+
+    let senderType = MAILBOX_PARTICIPANT_TYPE.LEAD;
+    let senderSubTask = null;
+
+    if (senderSubTaskId) {
+      senderSubTask = await this.taskRepository.findSubTaskById(senderSubTaskId);
+
+      if (!senderSubTask || senderSubTask.taskId !== taskId) {
+        return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", {
+          subTaskId: senderSubTaskId,
+          taskId,
+        });
+      }
+
+      senderType = MAILBOX_PARTICIPANT_TYPE.SUBTASK;
+    }
+
+    const message = await this.#createMailboxMessage({
+      content,
+      senderSubTaskId: senderSubTask?.id ?? null,
+      senderType,
+      targetSubTaskId: targetSubTask.id,
+      targetType: MAILBOX_TARGET_TYPE.SUBTASK,
+      taskId,
+    });
+
+    return {
+      ok: true,
+      message,
+    };
+  }
+
   async updateCurrentPlanDraft(taskId, payload) {
     const task = await this.taskRepository.findTaskById(taskId);
 
@@ -653,12 +768,16 @@ export class TaskService {
         const dependencyBranchSuffixes = subtask.depends_on ?? [];
         subTasks.push(await repository.createSubTask({
           agentType: subtask.recommended_agent,
+          assignmentSource: SUBTASK_ASSIGNMENT_SOURCE.LEAD,
           autoAssigned: true,
           branchName: null,
           branchSuffix: subtask.branch_suffix,
           createdAt: new Date(subTaskSeedTime + index).toISOString(),
           dependencyBranchSuffixes,
           description: subtask.description,
+          displayName: subtask.title,
+          executionOrder: index + 1,
+          role: subtask.branch_suffix,
           status: dependencyBranchSuffixes.length > 0 ? SUBTASK_STATUS.BLOCKED : SUBTASK_STATUS.PENDING,
           taskId,
           title: subtask.title,
@@ -687,8 +806,18 @@ export class TaskService {
       });
 
       for (const subTask of approvalResult.subTasks) {
+        this.#publish(taskId, "subtask:assigned", {
+          agentType: subTask.agentType,
+          assignmentSource: subTask.assignmentSource,
+          displayName: subTask.displayName,
+          role: subTask.role,
+          status: subTask.status,
+          subtaskId: subTask.id,
+          taskId,
+        });
         this.#publishSubTaskStatus(taskId, subTask);
       }
+      void this.#publishTeamUpdated(taskId);
 
       queueMicrotask(() => {
         void this.#progressDependencySchedule(taskId);
@@ -795,6 +924,7 @@ export class TaskService {
         })
       : task;
     const pendingSubTask = await this.taskRepository.updateSubTask(subTaskId, {
+      assignmentSource: SUBTASK_ASSIGNMENT_SOURCE.OPERATOR,
       description: nextDescription,
       lastError: null,
       retryCount: (subTask.retryCount ?? 0) + 1,
@@ -872,6 +1002,7 @@ export class TaskService {
 
     const nextDescription = normalizeRequiredString(input.description) ?? subTask.description;
     const pendingSubTask = await this.taskRepository.updateSubTask(subTaskId, {
+      assignmentSource: SUBTASK_ASSIGNMENT_SOURCE.OPERATOR,
       description: nextDescription,
       lastError: null,
       retryCount: (subTask.retryCount ?? 0) + 1,
@@ -960,6 +1091,7 @@ export class TaskService {
       : task;
     const pendingSubTask = await this.taskRepository.updateSubTask(subTaskId, {
       agentType: nextAgentType,
+      assignmentSource: SUBTASK_ASSIGNMENT_SOURCE.OPERATOR,
       autoAssigned: false,
       description: nextDescription,
       lastError: null,
@@ -981,6 +1113,7 @@ export class TaskService {
       taskId: task.id,
     });
     this.#publishSubTaskStatus(task.id, pendingSubTask);
+    void this.#publishTeamUpdated(task.id);
 
     const launchResult = await this.#launchSubTask(task.id, subTaskId, { isRetry: true });
 
@@ -993,6 +1126,179 @@ export class TaskService {
       session: this.#decorateSession(launchResult.session),
       subTask: this.#decorateSubTask(launchResult.subTask),
       task: launchResult.task,
+    };
+  }
+
+  async reassignSubTask(subTaskId, input = {}) {
+    const subTask = await this.taskRepository.findSubTaskById(subTaskId);
+
+    if (!subTask) {
+      return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", { subTaskId });
+    }
+
+    const task = await this.taskRepository.findTaskById(subTask.taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId: subTask.taskId });
+    }
+
+    if (!isSubTaskReassignEligible(task, subTask)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_REASSIGN_NOT_ALLOWED,
+        "Reassigning this member is not allowed from the current task or subtask state.",
+        {
+          status: subTask.status,
+          subTaskId,
+          taskStatus: task.status,
+        },
+      );
+    }
+
+    if (await this.#hasLiveWorkerSession(subTaskId)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_ACTIVE_SESSION_EXISTS,
+        "The subtask already has a live worker session.",
+        { subTaskId },
+      );
+    }
+
+    const nextAgentType = normalizeRequiredString(input.agentType) ?? subTask.agentType;
+    const nextDescription = normalizeRequiredString(input.description) ?? subTask.description;
+    const resumedTask = task.status === TASK_STATUS.ACTION_REQUIRED
+      ? await this.#updateTaskStatus(task.id, TASK_STATUS.EXECUTING, {
+          currentTask: task,
+          lastError: null,
+          publish: false,
+        })
+      : task;
+    const siblingSubTasks = await this.taskRepository.listSubTasksByTaskId(task.id);
+    const nextStatus = areSubTaskDependenciesSatisfied(subTask, siblingSubTasks)
+      ? SUBTASK_STATUS.PENDING
+      : SUBTASK_STATUS.BLOCKED;
+    const pendingSubTask = await this.taskRepository.updateSubTask(subTaskId, {
+      agentType: nextAgentType,
+      assignmentSource: SUBTASK_ASSIGNMENT_SOURCE.OPERATOR,
+      autoAssigned: false,
+      description: nextDescription,
+      lastError: null,
+      retryCount: (subTask.retryCount ?? 0) + 1,
+      status: nextStatus,
+    });
+
+    if (resumedTask.status !== task.status) {
+      this.#publish(task.id, "task:status", {
+        taskId: task.id,
+        status: resumedTask.status,
+      });
+    }
+
+    this.#publish(task.id, "subtask:assigned", {
+      agentType: pendingSubTask.agentType,
+      assignmentSource: pendingSubTask.assignmentSource,
+      displayName: pendingSubTask.displayName,
+      reason: normalizeRequiredString(input.reason) ?? null,
+      role: pendingSubTask.role,
+      status: pendingSubTask.status,
+      subtaskId: subTaskId,
+      taskId: task.id,
+    });
+    this.#publishSubTaskStatus(task.id, pendingSubTask);
+    void this.#publishTeamUpdated(task.id);
+
+    if (pendingSubTask.status === SUBTASK_STATUS.BLOCKED) {
+      await this.#progressDependencySchedule(task.id);
+      await this.#maybeStartFinalReview(task.id);
+
+      return {
+        ok: true,
+        session: null,
+        subTask: this.#decorateSubTask(pendingSubTask),
+        task: resumedTask,
+      };
+    }
+
+    const launchResult = await this.#launchSubTask(task.id, subTaskId, { isRetry: true });
+
+    if (!launchResult.ok) {
+      return launchResult;
+    }
+
+    return {
+      ok: true,
+      session: this.#decorateSession(launchResult.session),
+      subTask: this.#decorateSubTask(launchResult.subTask),
+      task: launchResult.task ?? resumedTask,
+    };
+  }
+
+  async cancelSubTask(subTaskId) {
+    const subTask = await this.taskRepository.findSubTaskById(subTaskId);
+
+    if (!subTask) {
+      return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", { subTaskId });
+    }
+
+    const task = await this.taskRepository.findTaskById(subTask.taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId: subTask.taskId });
+    }
+
+    if (!isSubTaskCancelEligible(task, subTask)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SUBTASK_CANCEL_NOT_ALLOWED,
+        "Cancelling this member is not allowed from the current task or subtask state.",
+        {
+          status: subTask.status,
+          subTaskId,
+          taskStatus: task.status,
+        },
+      );
+    }
+
+    const liveSession = resolveLatestLiveWorkerSession(await this.taskRepository.listSessionsBySubTaskId(subTaskId));
+    const runningSession = this.runningWorkerSessions.get(subTaskId) ?? null;
+    const cancelledAt = new Date().toISOString();
+
+    if (runningSession?.sessionId) {
+      this.cancelledWorkerSessionIds.add(runningSession.sessionId);
+      await runningSession.runtime?.kill?.().catch(() => null);
+      this.runningWorkerSessions.delete(subTaskId);
+    }
+
+    const cancelledSession = liveSession
+      ? await this.taskRepository.updateSession(liveSession.id, {
+          endedAt: cancelledAt,
+          exitCode: null,
+          status: SESSION_STATUS.CANCELLED,
+        })
+      : null;
+    const cancelledSubTask = await this.taskRepository.updateSubTask(subTaskId, {
+      assignmentSource: SUBTASK_ASSIGNMENT_SOURCE.OPERATOR,
+      lastError: null,
+      status: SUBTASK_STATUS.CANCELLED,
+    });
+
+    if (cancelledSession) {
+      this.#publishSessionEvent(task.id, "session:ended", cancelledSession);
+    }
+
+    this.#publish(task.id, "subtask:cancelled", {
+      status: cancelledSubTask.status,
+      subtaskId: subTaskId,
+      taskId: task.id,
+    });
+    this.#publishSubTaskStatus(task.id, cancelledSubTask);
+    void this.#publishTeamUpdated(task.id);
+
+    await this.#progressDependencySchedule(task.id);
+    await this.#maybeStartFinalReview(task.id);
+
+    return {
+      ok: true,
+      session: cancelledSession ? this.#decorateSession(cancelledSession) : null,
+      subTask: this.#decorateSubTask(cancelledSubTask),
+      task: await this.taskRepository.findTaskById(task.id),
     };
   }
 
@@ -1713,6 +2019,10 @@ export class TaskService {
       this.workerSessionMetadata.set(session.id, launchMetadata);
 
       try {
+        const [mailboxMessages, promptSubTasks] = await Promise.all([
+          this.taskRepository.listMailboxMessagesByTargetSubTaskId(preparedSubTask.id),
+          this.taskRepository.listSubTasksByTaskId(task.id),
+        ]);
         const runtime = await agentFactory.spawnSession({
           attachments: launchMetadata.included.map((attachment) => ({
             attachmentId: attachment.attachmentId,
@@ -1721,7 +2031,10 @@ export class TaskService {
             fileType: attachment.fileType,
           })),
           branchName: preparedSubTask.branchName,
-          prompt: buildWorkerPrompt(task, preparedSubTask),
+          prompt: buildWorkerPrompt(task, preparedSubTask, {
+            mailboxMessages,
+            subTasks: promptSubTasks,
+          }),
           sandbox: sandboxConfig ?? { type: sandboxType },
           sessionType: SESSION_TYPE.WORKER,
           workDir: preparedSubTask.worktreePath,
@@ -2007,15 +2320,20 @@ export class TaskService {
     this.runningWorkerSessions.delete(subTaskId);
     await this.sessionOutputAppends.get(sessionId);
 
-    const sessionStatus = exitCode === 0 ? SESSION_STATUS.COMPLETED : SESSION_STATUS.FAILED;
+    const wasCancelled = this.cancelledWorkerSessionIds.delete(sessionId);
+    const sessionStatus = wasCancelled
+      ? SESSION_STATUS.CANCELLED
+      : exitCode === 0
+        ? SESSION_STATUS.COMPLETED
+        : SESSION_STATUS.FAILED;
     const nextSession = await this.taskRepository.updateSession(sessionId, {
       endedAt: new Date().toISOString(),
-      exitCode,
+      exitCode: wasCancelled ? null : exitCode,
       status: sessionStatus,
     });
     const nextSubTask = await this.taskRepository.updateSubTask(subTaskId, {
-      lastError: exitCode === 0 ? null : `Worker exited with code ${exitCode}.`,
-      status: exitCode === 0 ? SUBTASK_STATUS.REVIEW_PENDING : SUBTASK_STATUS.FAILED,
+      lastError: wasCancelled ? null : exitCode === 0 ? null : `Worker exited with code ${exitCode}.`,
+      status: wasCancelled ? SUBTASK_STATUS.CANCELLED : exitCode === 0 ? SUBTASK_STATUS.REVIEW_PENDING : SUBTASK_STATUS.FAILED,
     });
 
     this.#publishSessionEvent(taskId, "session:ended", nextSession ?? {
@@ -2027,8 +2345,15 @@ export class TaskService {
     });
     this.#publishSubTaskStatus(taskId, nextSubTask);
 
+    if (wasCancelled) {
+      await this.#progressDependencySchedule(taskId);
+      await this.#maybeStartFinalReview(taskId);
+      return;
+    }
+
     if (exitCode === 0) {
       await this.#runIncrementalReview(taskId, subTaskId, sessionId);
+      await this.#createDependencyHandoffMessages(taskId, subTaskId, sessionId);
     }
 
     await this.#progressDependencySchedule(taskId);
@@ -2408,6 +2733,55 @@ export class TaskService {
     });
   }
 
+  async #createMailboxMessage(input) {
+    const message = await this.taskRepository.createMailboxMessage(input);
+
+    this.#publish(message.taskId, "mailbox:message", {
+      message,
+      taskId: message.taskId,
+    });
+
+    return message;
+  }
+
+  async #createDependencyHandoffMessages(taskId, upstreamSubTaskId, sessionId) {
+    if (this.closed) {
+      return;
+    }
+
+    const [upstreamSubTask, session, subTasks] = await Promise.all([
+      this.taskRepository.findSubTaskById(upstreamSubTaskId),
+      this.taskRepository.findSessionById(sessionId),
+      this.taskRepository.listSubTasksByTaskId(taskId),
+    ]);
+
+    if (!upstreamSubTask || !session || upstreamSubTask.taskId !== taskId) {
+      return;
+    }
+
+    const downstreamSubTasks = subTasks.filter((subTask) => (
+      subTask.id !== upstreamSubTask.id
+      && subTask.dependencyBranchSuffixes.includes(upstreamSubTask.branchSuffix)
+    ));
+
+    if (downstreamSubTasks.length === 0) {
+      return;
+    }
+
+    const content = buildAutomaticHandoffMessage(upstreamSubTask, session);
+
+    await Promise.all(downstreamSubTasks.map((downstreamSubTask) => (
+      this.#createMailboxMessage({
+        content,
+        senderSubTaskId: upstreamSubTask.id,
+        senderType: MAILBOX_PARTICIPANT_TYPE.SUBTASK,
+        targetSubTaskId: downstreamSubTask.id,
+        targetType: MAILBOX_TARGET_TYPE.SUBTASK,
+        taskId,
+      })
+    )));
+  }
+
   #decorateSession(session) {
     return {
       ...session,
@@ -2418,7 +2792,58 @@ export class TaskService {
   #decorateSubTask(subTask) {
     return {
       ...subTask,
+      assignmentSource: subTask.assignmentSource
+        ?? (subTask.autoAssigned ? SUBTASK_ASSIGNMENT_SOURCE.LEAD : SUBTASK_ASSIGNMENT_SOURCE.OPERATOR),
+      displayName: subTask.displayName ?? subTask.title,
       launchMetadata: sanitizeLaunchMetadata(this.workerLaunchMetadata.get(subTask.id)),
+      role: subTask.role ?? subTask.branchSuffix ?? "worker",
+      runSummary: subTask.runSummary ?? buildDerivedRunSummary(subTask),
+    };
+  }
+
+  #buildTaskTeamView(task, sessions, subTasks) {
+    const latestLeadSession = sessions
+      .filter((session) => session.sessionType === SESSION_TYPE.LEAD)
+      .at(-1) ?? null;
+    const members = subTasks.map((subTask, index) => {
+      const latestWorkerSession = sessions
+        .filter((session) => session.sessionType === SESSION_TYPE.WORKER && session.subTaskId === subTask.id)
+        .at(-1) ?? null;
+
+      return {
+        agentType: subTask.agentType,
+        assignmentSource: subTask.assignmentSource
+          ?? (subTask.autoAssigned ? SUBTASK_ASSIGNMENT_SOURCE.LEAD : SUBTASK_ASSIGNMENT_SOURCE.OPERATOR),
+        autoAssigned: Boolean(subTask.autoAssigned),
+        branchName: subTask.branchName ?? null,
+        branchSuffix: subTask.branchSuffix,
+        displayName: subTask.displayName ?? subTask.title,
+        executionOrder: subTask.executionOrder ?? index + 1,
+        latestSessionId: latestWorkerSession?.id ?? null,
+        latestSessionStatus: latestWorkerSession?.status ?? null,
+        role: subTask.role ?? subTask.branchSuffix ?? "worker",
+        runSummary: subTask.runSummary ?? buildDerivedRunSummary(subTask),
+        status: subTask.status,
+        subtaskId: subTask.id,
+        taskId: task.id,
+        title: subTask.title,
+        worktreePath: subTask.worktreePath ?? null,
+      };
+    });
+
+    return {
+      lead: {
+        agentType: task.leadAgentType,
+        lastError: task.lastError ?? null,
+        sessionId: latestLeadSession?.id ?? null,
+        status: latestLeadSession?.status ?? deriveLeadLifecycleStatus(task.status),
+      },
+      members,
+      task: {
+        id: task.id,
+        status: task.status,
+        title: task.title,
+      },
     };
   }
 
@@ -2448,6 +2873,15 @@ export class TaskService {
 
   #publish(taskId, eventName, data) {
     this.eventBus?.publish(taskId, eventName, data);
+  }
+
+  async #publishTeamUpdated(taskId) {
+    const subTasks = await this.taskRepository.listSubTasksByTaskId(taskId).catch(() => []);
+
+    this.#publish(taskId, "team:updated", {
+      memberCount: subTasks.length,
+      taskId,
+    });
   }
 
   #publishSessionEvent(taskId, eventName, session) {
@@ -2694,6 +3128,7 @@ export class TaskService {
     this.pendingWorkerLaunches.clear();
     this.runningLeadSessions.clear();
     this.runningWorkerSessions.clear();
+    this.cancelledWorkerSessionIds.clear();
   }
 }
 
@@ -2915,7 +3350,7 @@ function buildPlanRegenerationPrompt(reason, details) {
   ].filter(Boolean).join("\n");
 }
 
-function buildWorkerPrompt(task, subTask) {
+function buildWorkerPrompt(task, subTask, context = {}) {
   return [
     "You are the worker agent for one approved EAT subtask.",
     `Task title: ${task.title}`,
@@ -2923,7 +3358,61 @@ function buildWorkerPrompt(task, subTask) {
     `Subtask title: ${subTask.title}`,
     `Subtask description: ${subTask.description}`,
     `Branch: ${subTask.branchName}`,
+    subTask.dependencyBranchSuffixes.length > 0
+      ? `Depends on: ${subTask.dependencyBranchSuffixes.join(", ")}`
+      : "Depends on: none",
+    "Mailbox handoff notes targeted to this subtask:",
+    formatWorkerPromptMailboxNotes(context.mailboxMessages, context.subTasks),
     "Work only inside the provided worktree and use the supplied attachments when relevant.",
+  ].join("\n");
+}
+
+function formatWorkerPromptMailboxNotes(mailboxMessages = [], subTasks = []) {
+  if (!Array.isArray(mailboxMessages) || mailboxMessages.length === 0) {
+    return "(no mailbox handoff notes were recorded for this subtask)";
+  }
+
+  const subTaskMap = new Map(subTasks.map((subTask) => [subTask.id, subTask]));
+
+  return mailboxMessages.map((message, index) => [
+    `${index + 1}. From ${buildMailboxSenderLabel(message, subTaskMap)} at ${message.createdAt}:`,
+    tailUtf8(stripAnsiControlCodes(message.content ?? ""), MAX_MAILBOX_PROMPT_MESSAGE_BYTES),
+  ].join("\n")).join("\n\n");
+}
+
+function buildMailboxSenderLabel(message, subTaskMap) {
+  if (message?.senderType === MAILBOX_PARTICIPANT_TYPE.SUBTASK) {
+    const senderSubTask = subTaskMap.get(message.senderSubTaskId);
+
+    if (senderSubTask) {
+      return `subtask "${senderSubTask.title}" on ${senderSubTask.branchName ?? senderSubTask.branchSuffix}`;
+    }
+
+    return `subtask ${message.senderSubTaskId ?? "unknown"}`;
+  }
+
+  if (message?.senderType === MAILBOX_PARTICIPANT_TYPE.SYSTEM) {
+    return "system";
+  }
+
+  return "lead";
+}
+
+function buildAutomaticHandoffMessage(subTask, session) {
+  const reviewLine = subTask.latestReviewDecision
+    ? `Latest incremental review: ${subTask.latestReviewDecision}${subTask.latestReviewSummary ? ` - ${subTask.latestReviewSummary}` : ""}`
+    : "Latest incremental review: unavailable";
+  const outputExcerpt = tailUtf8(
+    stripAnsiControlCodes(session.outputBuffer ?? ""),
+    MAX_MAILBOX_PROMPT_MESSAGE_BYTES,
+  ) || "(no worker output captured)";
+
+  return [
+    `Upstream subtask "${subTask.title}" finished successfully.`,
+    `Branch: ${subTask.branchName ?? subTask.branchSuffix}`,
+    reviewLine,
+    "Worker output excerpt:",
+    outputExcerpt,
   ].join("\n");
 }
 
@@ -3400,6 +3889,10 @@ function tailUtf8(value, maxBytes) {
   return Buffer.from(String(value ?? ""), "utf8").subarray(-maxBytes).toString("utf8");
 }
 
+function stripAnsiControlCodes(value) {
+  return String(value ?? "").replaceAll(/\u001b\[[0-9;]*m/g, "");
+}
+
 function buildWorkerLaunchMetadata(attachments, capabilities) {
   const included = [];
   const excluded = [];
@@ -3455,7 +3948,95 @@ function isEarlyReworkEligible(subTask) {
     && ["REJECTED", "REWORK"].includes(subTask.latestReviewDecision);
 }
 
+function isSubTaskReassignEligible(task, subTask) {
+  return [TASK_STATUS.ACTION_REQUIRED, TASK_STATUS.EXECUTING].includes(task?.status)
+    && [
+      SUBTASK_STATUS.BLOCKED,
+      SUBTASK_STATUS.CANCELLED,
+      SUBTASK_STATUS.FAILED,
+      SUBTASK_STATUS.PENDING,
+      SUBTASK_STATUS.READY,
+      SUBTASK_STATUS.REVIEW_PENDING,
+      SUBTASK_STATUS.REWORK_REQUIRED,
+    ].includes(subTask?.status);
+}
+
+function isSubTaskCancelEligible(task, subTask) {
+  return [TASK_STATUS.ACTION_REQUIRED, TASK_STATUS.EXECUTING].includes(task?.status)
+    && [
+      SUBTASK_STATUS.BLOCKED,
+      SUBTASK_STATUS.FAILED,
+      SUBTASK_STATUS.PENDING,
+      SUBTASK_STATUS.READY,
+      SUBTASK_STATUS.REVIEW_PENDING,
+      SUBTASK_STATUS.REWORK_REQUIRED,
+      SUBTASK_STATUS.RUNNING,
+    ].includes(subTask?.status);
+}
+
 function isAgentChangeEligible(task, subTask) {
   return [TASK_STATUS.ACTION_REQUIRED, TASK_STATUS.EXECUTING].includes(task?.status)
-    && (subTask?.status === SUBTASK_STATUS.FAILED || isEarlyReworkEligible(subTask));
+    && [
+      SUBTASK_STATUS.CANCELLED,
+      SUBTASK_STATUS.FAILED,
+      SUBTASK_STATUS.REVIEW_PENDING,
+      SUBTASK_STATUS.REWORK_REQUIRED,
+    ].includes(subTask?.status);
+}
+
+function resolveLatestLiveWorkerSession(sessions) {
+  return [...(sessions ?? [])]
+    .reverse()
+    .find((session) => WORKER_LIVE_STATUSES.has(session.status)) ?? null;
+}
+
+function deriveLeadLifecycleStatus(taskStatus) {
+  if ([TASK_STATUS.CLARIFYING, TASK_STATUS.PLANNING, TASK_STATUS.REVIEWING].includes(taskStatus)) {
+    return SESSION_STATUS.RUNNING;
+  }
+
+  if ([TASK_STATUS.EXECUTING, TASK_STATUS.MERGING, TASK_STATUS.ACTION_REQUIRED, TASK_STATUS.COMPLETED].includes(taskStatus)) {
+    return SESSION_STATUS.COMPLETED;
+  }
+
+  if ([TASK_STATUS.FAILED, TASK_STATUS.CANCELLED].includes(taskStatus)) {
+    return SESSION_STATUS.FAILED;
+  }
+
+  return SESSION_STATUS.PENDING;
+}
+
+function buildDerivedRunSummary(subTask) {
+  switch (subTask?.status) {
+    case SUBTASK_STATUS.BLOCKED:
+      return Array.isArray(subTask?.dependencyBranchSuffixes) && subTask.dependencyBranchSuffixes.length > 0
+        ? `Waiting on ${subTask.dependencyBranchSuffixes.join(", ")} before this member can run.`
+        : "Waiting on upstream prerequisites.";
+    case SUBTASK_STATUS.PENDING:
+      return "Queued for team execution.";
+    case SUBTASK_STATUS.READY:
+      return "Workspace prepared. Waiting for worker launch.";
+    case SUBTASK_STATUS.RUNNING:
+      return subTask?.worktreePath
+        ? `Running inside ${subTask.worktreePath}.`
+        : "Worker session is running.";
+    case SUBTASK_STATUS.REVIEW_PENDING:
+      return "Worker run finished. Waiting for review outcome.";
+    case SUBTASK_STATUS.ACCEPTED:
+      return "Accepted for integration.";
+    case SUBTASK_STATUS.REWORK_REQUIRED:
+      return normalizeRequiredString(subTask?.latestReviewSummary) ?? "Needs another worker pass before integration.";
+    case SUBTASK_STATUS.DISCARD_PENDING:
+      return normalizeRequiredString(subTask?.latestReviewSummary) ?? "Marked for discard and waiting for operator confirmation.";
+    case SUBTASK_STATUS.MERGED:
+      return "Merged into the task base branch.";
+    case SUBTASK_STATUS.FAILED:
+      return normalizeRequiredString(subTask?.lastError) ?? "Worker execution failed.";
+    case SUBTASK_STATUS.CANCELLED:
+      return "Cancelled by the operator.";
+    case SUBTASK_STATUS.DISCARDED:
+      return "Discarded from the merge set.";
+    default:
+      return "Waiting for team lifecycle events.";
+  }
 }

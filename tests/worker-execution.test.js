@@ -348,6 +348,423 @@ test("keeps dependent subtasks blocked until prerequisites finish and auto-launc
   }
 });
 
+test("returns a team view with lead status, member ordering, and persisted orchestration fields", async () => {
+  const fixture = await makeTempDir("eat-team-view-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Architecture Lead",
+            description: "Define the API and database contracts.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "architect",
+          },
+          {
+            title: "Frontend Worker",
+            description: "Implement the React application after the contracts are ready.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "frontend",
+            depends_on: ["architect"],
+          },
+        ],
+      },
+      workerBehavior: () => ({
+        delayMs: 120,
+        exitCode: 0,
+        output: "worker complete\n",
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "team-view-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Expose a leader orchestration team view.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Team view",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => event.eventName === "team:updated");
+
+        const teamResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/team`);
+        assert.equal(teamResponse.status, 200);
+        assert.equal(teamResponse.body.team.task.id, taskId);
+        assert.equal(teamResponse.body.team.lead.agentType, "healthy-lead");
+        assert.equal(teamResponse.body.team.members.length, 2);
+        assert.equal(teamResponse.body.team.members[0].role, "architect");
+        assert.equal(teamResponse.body.team.members[0].displayName, "Architecture Lead");
+        assert.equal(teamResponse.body.team.members[0].executionOrder, 1);
+        assert.equal(teamResponse.body.team.members[0].assignmentSource, "LEAD");
+        assert.match(teamResponse.body.team.members[0].runSummary, /queued|running|workspace/i);
+        assert.equal(teamResponse.body.team.members[1].role, "frontend");
+        assert.equal(teamResponse.body.team.members[1].executionOrder, 2);
+        assert.equal(teamResponse.body.team.members[1].status, "BLOCKED");
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.team.members.length, 2);
+        assert.equal(detailResponse.body.team.members[0].displayName, "Architecture Lead");
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("persists web-posted lead mailbox notes and exposes them in task detail", async () => {
+  const fixture = await makeTempDir("eat-mailbox-api-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Frontend implementation",
+            description: "Build the React application shell.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "frontend-implementation",
+          },
+        ],
+      },
+      workerBehavior: () => ({
+        delayMs: 200,
+        exitCode: 0,
+        output: "frontend complete\n",
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "mailbox-api-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Send a lead handoff note from the web API.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Mailbox API",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId);
+
+        const detailBefore = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const targetSubTask = detailBefore.body.subTasks[0];
+
+        const mailboxResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/mailbox`,
+          {
+            body: {
+              content: "Keep the route layout aligned with the backend contract.",
+              targetSubTaskId: targetSubTask.id,
+            },
+            method: "POST",
+          },
+        );
+
+        assert.equal(mailboxResponse.status, 201);
+        assert.equal(mailboxResponse.body.message.senderType, "LEAD");
+        assert.equal(mailboxResponse.body.message.targetSubTaskId, targetSubTask.id);
+
+        const mailboxEvent = await nextEvent(events, (event) => event.eventName === "mailbox:message");
+        assert.equal(mailboxEvent.data.message.targetSubTaskId, targetSubTask.id);
+
+        const detailAfter = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailAfter.status, 200);
+        assert.equal(detailAfter.body.mailboxMessages.length, 1);
+        assert.equal(detailAfter.body.mailboxMessages[0].content, "Keep the route layout aligned with the backend contract.");
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("cancels and reassigns one member from the web orchestration lifecycle APIs", async () => {
+  const fixture = await makeTempDir("eat-team-lifecycle-actions-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Backend Worker",
+            description: "Keep the backend worker running in parallel.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "backend-worker",
+          },
+          {
+            title: "Frontend Worker",
+            description: "Cancel and reassign this member during execution.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "frontend-worker",
+          },
+        ],
+      },
+      workerBehavior: (config) => ({
+        delayMs: config.branchName.endsWith("frontend-worker") ? 500 : 350,
+        exitCode: 0,
+        output: `${config.branchName} finished\n`,
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "team-lifecycle-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Cancel and reassign one running team member.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Team lifecycle actions",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId);
+        await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId);
+
+        const beforeCancel = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const targetSubTask = beforeCancel.body.subTasks.find((subTask) => subTask.branchSuffix === "frontend-worker");
+        assert.ok(targetSubTask);
+
+        const cancelResponse = await requestJson(
+          server,
+          `/api/subtasks/${encodeURIComponent(targetSubTask.id)}/cancel`,
+          { method: "POST" },
+        );
+        assert.equal(cancelResponse.status, 200);
+
+        const cancelledEvent = await nextEvent(events, (event) => (
+          event.eventName === "subtask:cancelled" && event.data.subtaskId === targetSubTask.id
+        ));
+        assert.equal(cancelledEvent.data.status, "CANCELLED");
+
+        const afterCancel = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const cancelledMember = afterCancel.body.subTasks.find((subTask) => subTask.id === targetSubTask.id);
+        assert.equal(cancelledMember.status, "CANCELLED");
+        assert.equal(cancelledMember.assignmentSource, "OPERATOR");
+
+        const reassignResponse = await requestJson(
+          server,
+          `/api/subtasks/${encodeURIComponent(targetSubTask.id)}/reassign`,
+          {
+            body: {
+              description: "Relaunch the frontend worker from the operator team view.",
+            },
+            method: "POST",
+          },
+        );
+        assert.equal(reassignResponse.status, 200);
+
+        const assignedEvent = await nextEvent(events, (event) => (
+          event.eventName === "subtask:assigned"
+          && event.data.subtaskId === targetSubTask.id
+          && event.data.assignmentSource === "OPERATOR"
+        ));
+        assert.equal(assignedEvent.data.assignmentSource, "OPERATOR");
+        await nextEvent(events, (event) => (
+          event.eventName === "session:started" && event.data.subtaskId === targetSubTask.id
+        ));
+
+        const finalDetail = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const reassignedMember = finalDetail.body.subTasks.find((subTask) => subTask.id === targetSubTask.id);
+        assert.equal(reassignedMember.assignmentSource, "OPERATOR");
+        assert.equal(reassignedMember.retryCount, 1);
+        assert.equal(reassignedMember.description, "Relaunch the frontend worker from the operator team view.");
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("auto-generates dependency handoff notes and injects them into downstream worker prompts", async () => {
+  const fixture = await makeTempDir("eat-mailbox-handoff-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const workerPrompts = [];
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Backend contract",
+            description: "Finalize auth and todo API contracts.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "backend-contract",
+          },
+          {
+            title: "React frontend",
+            description: "Build the frontend after the backend contract is ready.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "react-frontend",
+            depends_on: ["backend-contract"],
+          },
+        ],
+      },
+      prepareWorkerSession: async (config) => {
+        workerPrompts.push({
+          branchName: config.branchName,
+          prompt: config.prompt,
+        });
+      },
+      reviewBehavior: (config) => ({
+        decision: "ACCEPTED",
+        summary: config.prompt.includes("Backend contract")
+          ? "Backend contract accepted for downstream work."
+          : "Frontend pass accepted.",
+      }),
+      workerBehavior: (config) => config.branchName.endsWith("backend-contract")
+        ? {
+            delayMs: 40,
+            exitCode: 0,
+            output: "backend routes ready\n",
+          }
+        : {
+            delayMs: 20,
+            exitCode: 0,
+            output: "frontend ready\n",
+          },
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "mailbox-handoff-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Pass upstream backend context into the frontend worker prompt.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Mailbox prompt handoff",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        const mailboxEvent = await nextEvent(events, (event) => (
+          event.eventName === "mailbox:message"
+          && event.data.message.senderType === "SUBTASK"
+        ));
+        assert.ok(mailboxEvent.data.message.content.includes("Upstream subtask \"Backend contract\" finished successfully."));
+
+        await waitFor(() => workerPrompts.some((entry) => entry.branchName.endsWith("react-frontend")));
+        const frontendPrompt = workerPrompts.find((entry) => entry.branchName.endsWith("react-frontend"))?.prompt ?? "";
+
+        assert.match(frontendPrompt, /Mailbox handoff notes targeted to this subtask:/);
+        assert.match(frontendPrompt, /Upstream subtask "Backend contract" finished successfully\./);
+        assert.match(frontendPrompt, /Latest incremental review: ACCEPTED - Backend contract accepted for downstream work\./);
+        assert.match(frontendPrompt, /backend routes ready/);
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.mailboxMessages.length, 1);
+        assert.equal(detailResponse.body.mailboxMessages[0].senderType, "SUBTASK");
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("persists full worker logs to logPath while keeping a bounded output buffer", async () => {
   const fixture = await makeTempDir("eat-worker-logs-");
 

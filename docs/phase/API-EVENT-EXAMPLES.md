@@ -260,6 +260,56 @@ Content-Type: application/json
     }
   }
 }
+
+## Phase 16 - Mailbox And Handoff
+
+### Post Lead Handoff Note
+
+```http
+POST /api/tasks/task_123/mailbox
+Content-Type: application/json
+```
+
+```json
+{
+  "targetSubTaskId": "subtask_frontend",
+  "content": "Use the auth endpoints from the backend branch and keep the token shape unchanged."
+}
+```
+
+```json
+{
+  "message": {
+    "id": "mail_001",
+    "taskId": "task_123",
+    "senderType": "LEAD",
+    "senderSubTaskId": null,
+    "targetType": "SUBTASK",
+    "targetSubTaskId": "subtask_frontend",
+    "content": "Use the auth endpoints from the backend branch and keep the token shape unchanged.",
+    "createdAt": "2026-03-19T05:30:00.000Z"
+  }
+}
+```
+
+### Mailbox Event
+
+```json
+{
+  "event": "mailbox:message",
+  "data": {
+    "taskId": "task_123",
+    "message": {
+      "id": "mail_002",
+      "senderType": "SUBTASK",
+      "senderSubTaskId": "subtask_backend",
+      "targetType": "SUBTASK",
+      "targetSubTaskId": "subtask_frontend",
+      "content": "Backend contract is ready on eat/task_123/backend-contract. Auth routes are under /api/auth/*.",
+      "createdAt": "2026-03-19T05:31:00.000Z"
+    }
+  }
+}
 ```
 
 ## Phase 07 - Approve Plan

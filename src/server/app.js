@@ -47,7 +47,14 @@ export function createApp(options = {}) {
 
   const server = http.createServer(async (request, response) => {
     try {
-      await routeRequest(request, response, { agentService, metricsService, projectService, systemService, taskService });
+      await routeRequest(request, response, {
+        agentService,
+        eventBus,
+        metricsService,
+        projectService,
+        systemService,
+        taskService,
+      });
     } catch (error) {
       respondJson(response, 500, {
         error: {
@@ -66,7 +73,7 @@ export function createApp(options = {}) {
 }
 
 async function routeRequest(request, response, services) {
-  const { agentService, metricsService, projectService, systemService, taskService } = services;
+  const { agentService, eventBus, metricsService, projectService, systemService, taskService } = services;
   const url = new URL(request.url, "http://127.0.0.1");
   const pathName = url.pathname;
   const staticRoute = STATIC_ROUTES.get(pathName);
@@ -184,6 +191,14 @@ async function routeRequest(request, response, services) {
     return respondTaskEventStream(request, response, eventBus, taskId);
   }
 
+  const taskTeamMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/team$/);
+
+  if (request.method === "GET" && taskTeamMatch) {
+    const taskId = decodeURIComponent(taskTeamMatch[1]);
+    const result = await taskService.getTaskTeam(taskId);
+    return respondServiceResult(response, result);
+  }
+
   const taskStartClarificationMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/start-clarification$/);
 
   if (request.method === "POST" && taskStartClarificationMatch) {
@@ -212,6 +227,20 @@ async function routeRequest(request, response, services) {
     const taskId = decodeURIComponent(taskConfirmRequirementsMatch[1]);
     const result = await taskService.confirmRequirements(taskId);
     return respondServiceResult(response, result);
+  }
+
+  const taskMailboxMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/mailbox$/);
+
+  if (request.method === "POST" && taskMailboxMatch) {
+    const taskId = decodeURIComponent(taskMailboxMatch[1]);
+    const body = await readJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.sendMailboxMessage(taskId, body.value);
+    return respondServiceResult(response, result, 201);
   }
 
   const taskCurrentPlanMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/current-plan$/);
@@ -283,6 +312,28 @@ async function routeRequest(request, response, services) {
     }
 
     const result = await taskService.reworkSubTask(subTaskId, body.value);
+    return respondServiceResult(response, result);
+  }
+
+  const subTaskCancelMatch = pathName.match(/^\/api\/subtasks\/([^/]+)\/cancel$/);
+
+  if (request.method === "POST" && subTaskCancelMatch) {
+    const subTaskId = decodeURIComponent(subTaskCancelMatch[1]);
+    const result = await taskService.cancelSubTask(subTaskId);
+    return respondServiceResult(response, result);
+  }
+
+  const subTaskReassignMatch = pathName.match(/^\/api\/subtasks\/([^/]+)\/reassign$/);
+
+  if (request.method === "POST" && subTaskReassignMatch) {
+    const subTaskId = decodeURIComponent(subTaskReassignMatch[1]);
+    const body = await readOptionalJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.reassignSubTask(subTaskId, body.value);
     return respondServiceResult(response, result);
   }
 
@@ -444,6 +495,9 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.LEAD_AGENT_UNHEALTHY:
     case TASK_SERVICE_ERROR_CODES.LEAD_AGENT_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.INVALID_PLAN:
+    case TASK_SERVICE_ERROR_CODES.MAILBOX_MESSAGE_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.MAILBOX_NOT_AVAILABLE:
+    case TASK_SERVICE_ERROR_CODES.MAILBOX_TARGET_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.REQUIREMENTS_ALREADY_CONFIRMED:
     case TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING:
     case TASK_SERVICE_ERROR_CODES.TASK_MESSAGE_REQUIRED:
@@ -462,6 +516,8 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND:
       return 404;
     case TASK_SERVICE_ERROR_CODES.SUBTASK_RETRY_NOT_ALLOWED:
+    case TASK_SERVICE_ERROR_CODES.SUBTASK_CANCEL_NOT_ALLOWED:
+    case TASK_SERVICE_ERROR_CODES.SUBTASK_REASSIGN_NOT_ALLOWED:
     case TASK_SERVICE_ERROR_CODES.SUBTASK_REWORK_NOT_ALLOWED:
     case TASK_SERVICE_ERROR_CODES.SUBTASK_CHANGE_AGENT_NOT_ALLOWED:
     case TASK_SERVICE_ERROR_CODES.SUBTASK_DISCARD_NOT_ALLOWED:

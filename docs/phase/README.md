@@ -25,6 +25,7 @@ This folder breaks [PRD.md](/home/code/EAT/docs/PRD.md) into implementation phas
 13. [13-worktree-cleanup-and-terminal-warnings.md](/home/code/EAT/docs/phase/13-worktree-cleanup-and-terminal-warnings.md)
 14. [14-metrics-observability-and-export.md](/home/code/EAT/docs/phase/14-metrics-observability-and-export.md)
 15. [15-dependent-subtask-scheduling.md](/home/code/EAT/docs/phase/15-dependent-subtask-scheduling.md)
+16. [16-agent-mailbox-and-web-handoff.md](/home/code/EAT/docs/phase/16-agent-mailbox-and-web-handoff.md)
 
 ## Supplementary Delivery Docs
 

@@ -250,6 +250,29 @@ This document maps schema work to delivery phases. It is intentionally conservat
 - Keep dependency metadata additive and append-only friendly.
 - For MVP, storing dependency branch suffixes as JSON is sufficient; a normalized edge table can wait until later if needed.
 
+## Phase 16
+
+### New Or Changed Models
+
+- `MailboxMessage`
+
+### Fields
+
+#### `MailboxMessage`
+
+- `taskId`
+- `senderType`
+- `senderSubTaskId?`
+- `targetType`
+- `targetSubTaskId?`
+- `content`
+- `createdAt`
+
+### Notes
+
+- Keep mailbox records append-only.
+- A single mailbox table is sufficient for MVP; read-state tracking can wait.
+
 ## Phase 10
 
 ### New Or Changed Models

@@ -212,3 +212,16 @@ This document turns the 14 phase plans into execution checklists. Each phase sho
 - [ ] Route unresolved blocked subtasks to `ACTION_REQUIRED`
 - [ ] Expose dependency metadata in task APIs and UI
 - [ ] Verify ordered execution on a seeded dependency chain
+
+## Phase 16 Checklist
+
+- [x] Add mailbox message persistence
+- [x] Expose mailbox history in task detail APIs
+- [x] Add task-scoped mailbox posting API
+- [x] Emit realtime mailbox message events
+- [x] Auto-generate dependency handoff notes after successful upstream completion
+- [x] Inject targeted mailbox notes into worker prompts
+- [x] Build focused execution mailbox UI
+- [x] Allow lead note entry from the web UI
+- [x] Verify mailbox persistence and ordering
+- [x] Verify downstream prompt handoff on a seeded dependency chain

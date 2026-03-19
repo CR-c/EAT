@@ -22,6 +22,17 @@ export const MESSAGE_ROLE = Object.freeze({
   USER: "USER",
 });
 
+export const MAILBOX_PARTICIPANT_TYPE = Object.freeze({
+  LEAD: "LEAD",
+  SUBTASK: "SUBTASK",
+  SYSTEM: "SYSTEM",
+});
+
+export const MAILBOX_TARGET_TYPE = Object.freeze({
+  LEAD: "LEAD",
+  SUBTASK: "SUBTASK",
+});
+
 export const SESSION_STATUS = Object.freeze({
   CANCELLED: "CANCELLED",
   COMPLETED: "COMPLETED",
@@ -73,6 +84,11 @@ export const SUBTASK_STATUS = Object.freeze({
   REVIEW_PENDING: "REVIEW_PENDING",
   REWORK_REQUIRED: "REWORK_REQUIRED",
   RUNNING: "RUNNING",
+});
+
+export const SUBTASK_ASSIGNMENT_SOURCE = Object.freeze({
+  LEAD: "LEAD",
+  OPERATOR: "OPERATOR",
 });
 
 export class SqliteTaskRepository {
@@ -284,6 +300,83 @@ export class SqliteTaskRepository {
         ORDER BY created_at ASC, id ASC
       `)
       .all(taskId);
+  }
+
+  async createMailboxMessage(input) {
+    const mailboxMessage = {
+      content: input.content,
+      createdAt: input.createdAt ?? new Date().toISOString(),
+      id: input.id ?? randomUUID(),
+      senderSubTaskId: input.senderSubTaskId ?? null,
+      senderType: input.senderType,
+      targetSubTaskId: input.targetSubTaskId ?? null,
+      targetType: input.targetType,
+      taskId: input.taskId,
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        INSERT INTO mailbox_messages (
+          id,
+          task_id,
+          sender_type,
+          sender_sub_task_id,
+          target_type,
+          target_sub_task_id,
+          content,
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        mailboxMessage.id,
+        mailboxMessage.taskId,
+        mailboxMessage.senderType,
+        mailboxMessage.senderSubTaskId,
+        mailboxMessage.targetType,
+        mailboxMessage.targetSubTaskId,
+        mailboxMessage.content,
+        mailboxMessage.createdAt,
+      );
+
+    return mailboxMessage;
+  }
+
+  async listMailboxMessagesByTaskId(taskId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          sender_type AS senderType,
+          sender_sub_task_id AS senderSubTaskId,
+          target_type AS targetType,
+          target_sub_task_id AS targetSubTaskId,
+          content,
+          created_at AS createdAt
+        FROM mailbox_messages
+        WHERE task_id = ?
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all(taskId);
+  }
+
+  async listMailboxMessagesByTargetSubTaskId(targetSubTaskId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          sender_type AS senderType,
+          sender_sub_task_id AS senderSubTaskId,
+          target_type AS targetType,
+          target_sub_task_id AS targetSubTaskId,
+          content,
+          created_at AS createdAt
+        FROM mailbox_messages
+        WHERE target_sub_task_id = ?
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all(targetSubTaskId);
   }
 
   async createAttachment(input) {
@@ -626,26 +719,34 @@ export class SqliteTaskRepository {
 
   async createSubTask(input) {
     const timestamp = input.createdAt ?? new Date().toISOString();
+    const autoAssigned = input.autoAssigned ?? true;
     const subTask = {
       agentType: input.agentType,
-      autoAssigned: input.autoAssigned ?? true,
+      assignmentSource: input.assignmentSource
+        ?? (autoAssigned ? SUBTASK_ASSIGNMENT_SOURCE.LEAD : SUBTASK_ASSIGNMENT_SOURCE.OPERATOR),
+      autoAssigned,
       branchName: input.branchName ?? null,
       branchSuffix: input.branchSuffix,
       createdAt: timestamp,
       dependencyBranchSuffixes: normalizeStringArray(input.dependencyBranchSuffixes),
+      displayName: normalizeOptionalString(input.displayName) ?? normalizeOptionalString(input.title),
       description: input.description,
+      executionOrder: normalizeOptionalInteger(input.executionOrder),
       id: input.id ?? randomUUID(),
       lastError: input.lastError ?? null,
       latestReviewDecision: input.latestReviewDecision ?? null,
       latestReviewPhase: input.latestReviewPhase ?? null,
       latestReviewSummary: input.latestReviewSummary ?? null,
+      role: normalizeOptionalString(input.role) ?? inferSubTaskRole(input.branchSuffix, input.title),
       retryCount: input.retryCount ?? 0,
+      runSummary: normalizeOptionalString(input.runSummary),
       status: input.status ?? SUBTASK_STATUS.PENDING,
       taskId: input.taskId,
       title: input.title,
       updatedAt: input.updatedAt ?? timestamp,
       worktreePath: input.worktreePath ?? null,
     };
+    subTask.runSummary = subTask.runSummary ?? buildSubTaskRunSummary(subTask);
 
     this.#getDatabase()
       .prepare(`
@@ -666,9 +767,14 @@ export class SqliteTaskRepository {
           latest_review_decision,
           latest_review_phase,
           latest_review_summary,
+          role,
+          display_name,
+          execution_order,
+          assignment_source,
+          run_summary,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         subTask.id,
@@ -687,6 +793,11 @@ export class SqliteTaskRepository {
         subTask.latestReviewDecision,
         subTask.latestReviewPhase,
         subTask.latestReviewSummary,
+        subTask.role,
+        subTask.displayName,
+        subTask.executionOrder,
+        subTask.assignmentSource,
+        subTask.runSummary,
         subTask.createdAt,
         subTask.updatedAt,
       );
@@ -714,6 +825,11 @@ export class SqliteTaskRepository {
           latest_review_decision AS latestReviewDecision,
           latest_review_phase AS latestReviewPhase,
           latest_review_summary AS latestReviewSummary,
+          role,
+          display_name AS displayName,
+          execution_order AS executionOrder,
+          assignment_source AS assignmentSource,
+          run_summary AS runSummary,
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM sub_tasks
@@ -746,6 +862,12 @@ export class SqliteTaskRepository {
       ...updates,
       updatedAt: updates.updatedAt ?? new Date().toISOString(),
     };
+    nextSubTask.role = normalizeOptionalString(nextSubTask.role) ?? inferSubTaskRole(nextSubTask.branchSuffix, nextSubTask.title);
+    nextSubTask.displayName = normalizeOptionalString(nextSubTask.displayName) ?? normalizeOptionalString(nextSubTask.title);
+    nextSubTask.executionOrder = normalizeOptionalInteger(nextSubTask.executionOrder);
+    nextSubTask.assignmentSource = normalizeOptionalString(nextSubTask.assignmentSource)
+      ?? (nextSubTask.autoAssigned ? SUBTASK_ASSIGNMENT_SOURCE.LEAD : SUBTASK_ASSIGNMENT_SOURCE.OPERATOR);
+    nextSubTask.runSummary = normalizeOptionalString(nextSubTask.runSummary) ?? buildSubTaskRunSummary(nextSubTask);
 
     this.#getDatabase()
       .prepare(`
@@ -765,6 +887,11 @@ export class SqliteTaskRepository {
           latest_review_decision = ?,
           latest_review_phase = ?,
           latest_review_summary = ?,
+          role = ?,
+          display_name = ?,
+          execution_order = ?,
+          assignment_source = ?,
+          run_summary = ?,
           updated_at = ?
         WHERE id = ?
       `)
@@ -783,6 +910,11 @@ export class SqliteTaskRepository {
         nextSubTask.latestReviewDecision,
         nextSubTask.latestReviewPhase,
         nextSubTask.latestReviewSummary,
+        nextSubTask.role,
+        nextSubTask.displayName,
+        nextSubTask.executionOrder,
+        nextSubTask.assignmentSource,
+        nextSubTask.runSummary,
         nextSubTask.updatedAt,
         subTaskId,
       );
@@ -810,11 +942,16 @@ export class SqliteTaskRepository {
           latest_review_decision AS latestReviewDecision,
           latest_review_phase AS latestReviewPhase,
           latest_review_summary AS latestReviewSummary,
+          role,
+          display_name AS displayName,
+          execution_order AS executionOrder,
+          assignment_source AS assignmentSource,
+          run_summary AS runSummary,
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM sub_tasks
         WHERE task_id = ?
-        ORDER BY created_at ASC, id ASC
+        ORDER BY COALESCE(execution_order, 2147483647) ASC, created_at ASC, id ASC
       `)
       .all(taskId)
       .map((subTask) => ({
@@ -1018,6 +1155,24 @@ export class SqliteTaskRepository {
       .all();
   }
 
+  async listMailboxMessages() {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          task_id AS taskId,
+          sender_type AS senderType,
+          sender_sub_task_id AS senderSubTaskId,
+          target_type AS targetType,
+          target_sub_task_id AS targetSubTaskId,
+          content,
+          created_at AS createdAt
+        FROM mailbox_messages
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all();
+  }
+
   async listSessions() {
     return this.#getDatabase()
       .prepare(`
@@ -1066,10 +1221,15 @@ export class SqliteTaskRepository {
           latest_review_decision AS latestReviewDecision,
           latest_review_phase AS latestReviewPhase,
           latest_review_summary AS latestReviewSummary,
+          role,
+          display_name AS displayName,
+          execution_order AS executionOrder,
+          assignment_source AS assignmentSource,
+          run_summary AS runSummary,
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM sub_tasks
-        ORDER BY created_at ASC, id ASC
+        ORDER BY COALESCE(execution_order, 2147483647) ASC, created_at ASC, id ASC
       `)
       .all()
       .map((subTask) => ({
@@ -1199,6 +1359,14 @@ function normalizeStringArray(value) {
     .map((entry) => entry.trim()))];
 }
 
+function normalizeOptionalString(value) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeOptionalInteger(value) {
+  return Number.isInteger(value) ? value : null;
+}
+
 function parseJsonStringArray(value) {
   if (typeof value !== "string" || value.trim().length === 0) {
     return [];
@@ -1215,4 +1383,45 @@ function parseJsonStringArray(value) {
 function omitDependencyBranchSuffixesJson(record) {
   const { dependencyBranchSuffixesJson, ...rest } = record;
   return rest;
+}
+
+function inferSubTaskRole(branchSuffix, title) {
+  return normalizeOptionalString(branchSuffix)
+    ?? normalizeOptionalString(title)?.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")
+    ?? "worker";
+}
+
+function buildSubTaskRunSummary(subTask) {
+  switch (subTask?.status) {
+    case SUBTASK_STATUS.BLOCKED:
+      return subTask.dependencyBranchSuffixes?.length > 0
+        ? `Waiting on ${subTask.dependencyBranchSuffixes.join(", ")} before this member can run.`
+        : "Waiting on upstream dependencies before this member can run.";
+    case SUBTASK_STATUS.PENDING:
+      return "Queued for team execution.";
+    case SUBTASK_STATUS.READY:
+      return "Workspace is ready. Waiting for worker launch.";
+    case SUBTASK_STATUS.RUNNING:
+      return subTask.worktreePath
+        ? `Running in ${subTask.worktreePath}.`
+        : "Worker session is running.";
+    case SUBTASK_STATUS.REVIEW_PENDING:
+      return "Worker run finished. Waiting for review outcome.";
+    case SUBTASK_STATUS.ACCEPTED:
+      return "Accepted for integration.";
+    case SUBTASK_STATUS.REWORK_REQUIRED:
+      return normalizeOptionalString(subTask.latestReviewSummary) ?? "Needs another worker pass before integration.";
+    case SUBTASK_STATUS.DISCARD_PENDING:
+      return normalizeOptionalString(subTask.latestReviewSummary) ?? "Marked for discard. Waiting for operator confirmation.";
+    case SUBTASK_STATUS.MERGED:
+      return "Merged into the task base branch.";
+    case SUBTASK_STATUS.FAILED:
+      return normalizeOptionalString(subTask.lastError) ?? "Worker execution failed.";
+    case SUBTASK_STATUS.CANCELLED:
+      return "Cancelled by the operator.";
+    case SUBTASK_STATUS.DISCARDED:
+      return "Discarded from the merge set.";
+    default:
+      return "Waiting for team lifecycle events.";
+  }
 }
