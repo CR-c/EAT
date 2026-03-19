@@ -73,6 +73,8 @@ export function normalizeAgentHealthSnapshot(factory, rawResult, options = {}) {
     checkedAt,
     checks: withFallbackFailureCheck(normalizedChecks, failureReason),
     failureReason,
+    runtimeMode: factory.runtimeMode ?? null,
+    usesSandboxManager: factory.usesSandboxManager === true,
     version: normalizeVersion(rawResult?.version),
   };
 }

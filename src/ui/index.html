@@ -164,7 +164,18 @@
               <dt>Last health refresh</dt>
               <dd id="agent-health-checked-at">Not yet checked</dd>
             </div>
+            <div class="stat-card">
+              <dt>Default runtime</dt>
+              <dd id="agent-runtime-summary">Not configured</dd>
+            </div>
+            <div class="stat-card">
+              <dt>Docker sandbox</dt>
+              <dd><span id="docker-health-badge" class="badge badge--outline">Unknown</span></dd>
+            </div>
           </dl>
+          <p id="docker-health-reason" class="panel__summary">
+            Docker sandbox health is loaded with the agent directory.
+          </p>
           <div id="agent-health-empty" class="empty-state">
             No registered agents were found.
           </div>
@@ -290,6 +301,17 @@
                 No attachments were added for this task.
               </div>
               <ul id="task-attachments-list" class="attachment-list"></ul>
+            </section>
+
+            <section class="task-detail__execution" aria-labelledby="task-execution-title">
+              <div class="panel__header">
+                <p class="panel__eyebrow">Execution</p>
+                <h3 id="task-execution-title">Subtasks and worker sessions</h3>
+              </div>
+              <div id="task-execution-empty" class="empty-state">
+                Approved subtasks and worker sessions will appear here after plan approval.
+              </div>
+              <div id="task-execution-list" class="execution-list"></div>
             </section>
 
             <section class="task-detail__planning" aria-labelledby="task-plan-title">

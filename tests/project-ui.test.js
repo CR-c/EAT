@@ -4,12 +4,15 @@ import path from "node:path";
 
 import { createApp } from "../src/server/app.js";
 import {
+  buildAgentRuntimeModeLabel,
   buildAgentStatusLabel,
   buildAttachmentCaption,
   buildBranchList,
   buildCleanlinessLabel,
+  buildDockerHealthLabel,
   buildLeadSelectionState,
   buildProjectErrorMessage,
+  buildSubTaskStatusLabel,
   buildTaskErrorMessage,
   buildTaskStatusLabel,
 } from "../src/ui/view-model.js";
@@ -41,7 +44,8 @@ test("serves the Phase 05 planning UI shell and static assets", async () => {
     assert.match(rootResponse.body, /Approve draft/i);
     assert.match(rootResponse.body, /Reset local edits/i);
     assert.match(rootResponse.body, /Planning notes/i);
-    assert.match(rootResponse.body, /Plan snapshots/i);
+    assert.match(rootResponse.body, /Subtasks and worker sessions/i);
+    assert.match(rootResponse.body, /Docker sandbox/i);
 
     assert.equal(cssResponse.status, 200);
     assert.match(cssResponse.headers.get("content-type"), /^text\/css/);
@@ -86,8 +90,13 @@ test("formats project, task, agent health, and attachment UI messages", () => {
   assert.deepEqual(buildBranchList(["main", "feature/ui"]), ["main", "feature/ui"]);
   assert.equal(buildAgentStatusLabel({ available: true, checks: [] }), "Healthy");
   assert.equal(buildAgentStatusLabel({ available: false, checks: [] }), "Unavailable");
+  assert.equal(buildAgentRuntimeModeLabel({ runtimeMode: "STUB" }, null), "Stub runtime");
+  assert.equal(buildDockerHealthLabel({ available: true }), "Ready");
+  assert.equal(buildDockerHealthLabel({ available: false, daemonReachable: false }), "Unavailable");
   assert.equal(buildTaskStatusLabel("CLARIFYING"), "Clarifying");
   assert.equal(buildTaskStatusLabel("PLAN_REVIEW"), "Plan review");
+  assert.equal(buildTaskStatusLabel("EXECUTING"), "Executing");
+  assert.equal(buildSubTaskStatusLabel("REVIEW_PENDING"), "Review pending");
   assert.equal(
     buildTaskErrorMessage({
       code: "ATTACHMENT_TYPE_UNSUPPORTED",

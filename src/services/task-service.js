@@ -101,6 +101,7 @@ export class TaskService {
     this.taskRepository = options.taskRepository;
     this.agentService = options.agentService;
     this.eventBus = options.eventBus ?? null;
+    this.sandboxManager = options.sandboxManager ?? null;
     this.uploadRootPath = options.uploadRootPath ?? DEFAULT_UPLOAD_ROOT;
     this.runningLeadSessions = new Map();
     this.pendingPlanDrafts = new Map();
@@ -150,6 +151,20 @@ export class TaskService {
         TASK_SERVICE_ERROR_CODES.LEAD_AGENT_INVALID,
         "Lead agent must be a registered orchestrator.",
         { leadAgentType },
+      );
+    }
+
+    const health = await this.agentService.getHealth();
+    const agentHealth = health.agents?.[leadAgentType] ?? null;
+
+    if (!agentHealth?.available) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.LEAD_AGENT_UNHEALTHY,
+        "Lead agent is unhealthy and cannot be used for task creation.",
+        {
+          failureReason: agentHealth?.failureReason ?? null,
+          leadAgentType,
+        },
       );
     }
 
@@ -295,6 +310,7 @@ export class TaskService {
         sandbox: {
           type: session.sandboxType,
         },
+        sessionType: SESSION_TYPE.LEAD,
         workDir: project.path,
       });
 
@@ -804,11 +820,20 @@ export class TaskService {
 
       let sandboxType;
       let launchMetadata;
+      let sandboxConfig = null;
 
       try {
         sandboxType = selectWorkerSandboxType(agentFactory.capabilities.supportedSandboxTypes);
         const attachments = await this.taskRepository.listAttachmentsByTaskId(task.id);
         launchMetadata = buildWorkerLaunchMetadata(attachments, agentFactory.capabilities);
+
+        if (agentFactory.usesSandboxManager === true && this.sandboxManager) {
+          sandboxConfig = this.sandboxManager.createWorkerSandboxConfig({
+            attachments: launchMetadata.included,
+            worktreePath: preparedSubTask.worktreePath,
+          });
+          await this.sandboxManager.assertDockerReady();
+        }
       } catch (error) {
         return this.#failSubTaskLaunch(task, preparedSubTask, error?.message ?? "Worker launch validation failed.", {
           actionRequired: true,
@@ -837,9 +862,8 @@ export class TaskService {
           })),
           branchName: preparedSubTask.branchName,
           prompt: buildWorkerPrompt(task, preparedSubTask),
-          sandbox: {
-            type: sandboxType,
-          },
+          sandbox: sandboxConfig ?? { type: sandboxType },
+          sessionType: SESSION_TYPE.WORKER,
           workDir: preparedSubTask.worktreePath,
         });
 

@@ -7,6 +7,7 @@ import { SqliteProjectRepository } from "../repositories/project-repository.js";
 import { SqliteTaskRepository } from "../repositories/task-repository.js";
 import { AgentService } from "../services/agent-service.js";
 import { ProjectService, PROJECT_SERVICE_ERROR_CODES } from "../services/project-service.js";
+import { DockerSandboxManager, SystemService } from "../services/sandbox-manager.js";
 import { TaskService, TASK_SERVICE_ERROR_CODES } from "../services/task-service.js";
 import { TaskEventBus } from "../services/task-event-bus.js";
 
@@ -22,19 +23,27 @@ export function createApp(options = {}) {
   const projectRepository = options.projectRepository ?? new SqliteProjectRepository(options.repositoryOptions);
   const taskRepository = options.taskRepository ?? new SqliteTaskRepository(options.repositoryOptions);
   const projectService = options.projectService ?? new ProjectService({ projectRepository });
-  const agentService = options.agentService ?? new AgentService(options.agentServiceOptions);
+  const sandboxManager = options.sandboxManager ?? new DockerSandboxManager({
+    uploadRootPath: options.uploadRootPath,
+  });
+  const agentService = options.agentService ?? new AgentService({
+    ...options.agentServiceOptions,
+    sandboxManager,
+  });
+  const systemService = options.systemService ?? new SystemService({ sandboxManager });
   const eventBus = options.eventBus ?? new TaskEventBus();
   const taskService = options.taskService ?? new TaskService({
     agentService,
     eventBus,
     projectRepository,
+    sandboxManager,
     taskRepository,
     uploadRootPath: options.uploadRootPath,
   });
 
   const server = http.createServer(async (request, response) => {
     try {
-      await routeRequest(request, response, { agentService, projectService, taskService });
+      await routeRequest(request, response, { agentService, projectService, systemService, taskService });
     } catch (error) {
       respondJson(response, 500, {
         error: {
@@ -54,7 +63,7 @@ export function createApp(options = {}) {
 }
 
 async function routeRequest(request, response, services) {
-  const { agentService, projectService, taskService } = services;
+  const { agentService, projectService, systemService, taskService } = services;
   const url = new URL(request.url, "http://127.0.0.1");
   const pathName = url.pathname;
   const staticRoute = STATIC_ROUTES.get(pathName);
@@ -100,6 +109,16 @@ async function routeRequest(request, response, services) {
       ttlMs: health.ttlMs,
       workerCandidates: selection.workerCandidates,
     });
+  }
+
+  if (request.method === "GET" && pathName === "/api/system/docker-health") {
+    const result = await systemService.getDockerHealth();
+    return respondServiceResult(response, result);
+  }
+
+  if (request.method === "GET" && pathName === "/api/system/sandbox-policy") {
+    const result = await systemService.getSandboxPolicy();
+    return respondServiceResult(response, result);
   }
 
   if (request.method === "POST" && pathName === "/api/tasks") {

@@ -645,6 +645,64 @@ textarea {
   flex-wrap: wrap;
 }
 
+.execution-list {
+  display: grid;
+  gap: 16px;
+}
+
+.execution-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 251, 244, 0.92);
+}
+
+.execution-card__header {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.execution-card__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.execution-card__meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.execution-card__facts {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.execution-card__facts div {
+  display: grid;
+  gap: 4px;
+}
+
+.execution-card__facts dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.execution-card__facts dd {
+  margin: 0;
+  word-break: break-word;
+}
+
 .panel--agents,
 .panel--task-form,
 .panel--tasks,
@@ -668,6 +726,10 @@ textarea {
 
   .agent-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .execution-card__facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .plan-subtask__grid {

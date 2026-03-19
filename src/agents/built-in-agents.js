@@ -7,12 +7,13 @@ import { AgentRegistry } from "./agent-registry.js";
 import { AGENT_HEALTH_FAILURE_CODES } from "../services/agent-runtime.js";
 
 const execFileAsync = promisify(execFile);
+const BUILT_IN_RUNTIME_MODE = "STUB";
 
-export function createBuiltInAgentRegistry({ registerDefaults = true } = {}) {
+export function createBuiltInAgentRegistry({ registerDefaults = true, sandboxManager = null } = {}) {
   const registry = new AgentRegistry();
 
   if (registerDefaults) {
-    for (const adapter of createBuiltInAgentAdapters()) {
+    for (const adapter of createBuiltInAgentAdapters({ sandboxManager })) {
       registry.register(adapter);
     }
   }
@@ -20,7 +21,7 @@ export function createBuiltInAgentRegistry({ registerDefaults = true } = {}) {
   return registry;
 }
 
-export function createBuiltInAgentAdapters() {
+export function createBuiltInAgentAdapters({ sandboxManager = null } = {}) {
   return [
     createBinaryBackedAdapter({
       binaryName: "claude",
@@ -33,6 +34,7 @@ export function createBuiltInAgentAdapters() {
         supportsVision: true,
       },
       name: "claude-cli",
+      sandboxManager,
     }),
     createBinaryBackedAdapter({
       binaryName: "codex",
@@ -40,11 +42,12 @@ export function createBuiltInAgentAdapters() {
         canOrchestrate: true,
         canExecute: true,
         description: "OpenAI Codex CLI for lead planning and Docker-backed worker execution.",
-        supportedSandboxTypes: [SESSION_SANDBOX_TYPES.DOCKER],
+        supportedSandboxTypes: [SESSION_SANDBOX_TYPES.HOST, SESSION_SANDBOX_TYPES.DOCKER],
         supportsInteractiveInput: true,
         supportsVision: false,
       },
       name: "codex-cli",
+      sandboxManager,
     }),
     createBinaryBackedAdapter({
       binaryName: "gemini",
@@ -57,14 +60,36 @@ export function createBuiltInAgentAdapters() {
         supportsVision: true,
       },
       name: "gemini-cli",
+      sandboxManager,
     }),
   ];
 }
 
-function createBinaryBackedAdapter({ binaryName, capabilities, name }) {
+function createBinaryBackedAdapter({ binaryName, capabilities, name, sandboxManager }) {
   return defineAgentAdapterFactory({
     capabilities,
     async healthCheck() {
+      if (BUILT_IN_RUNTIME_MODE === "STUB") {
+        return {
+          available: true,
+          checks: [
+            {
+              details: null,
+              message: "Built-in adapter runs in explicit stub mode until a documented real CLI runtime is wired in.",
+              name: "runtime",
+              status: "WARN",
+            },
+            {
+              details: { binary: binaryName },
+              message: "Binary and auth checks are skipped because this adapter is running in stub mode.",
+              name: "binary",
+              status: "SKIP",
+            },
+          ],
+          version: `${name}@stub`,
+        };
+      }
+
       try {
         const { stderr, stdout } = await execFileAsync(binaryName, ["--version"], {
           encoding: "utf8",
@@ -133,10 +158,21 @@ function createBinaryBackedAdapter({ binaryName, capabilities, name }) {
       }
     },
     name,
+    runtimeMode: BUILT_IN_RUNTIME_MODE,
+    usesSandboxManager: true,
     async spawnSession(config) {
+      if (config?.sandbox?.type === SESSION_SANDBOX_TYPES.DOCKER && sandboxManager) {
+        return sandboxManager.spawnContainerSession({
+          command: buildStubDockerCommand(name, config.sessionType),
+          sandbox: config.sandbox,
+          sessionLabel: `${name}-${String(config.sessionType ?? "session").toLowerCase()}`,
+        });
+      }
+
       return createScriptedLeadSession({
         adapterName: name,
         prompt: config?.prompt,
+        sessionType: config?.sessionType,
       });
     },
   });
@@ -155,15 +191,37 @@ function extractVersion(output) {
   return trimmed.split(/\r?\n/u)[0];
 }
 
-function createScriptedLeadSession({ adapterName, prompt }) {
+function buildStubDockerCommand(adapterName, sessionType) {
+  const kind = String(sessionType ?? "SESSION").toLowerCase();
+
+  return [
+    "sh",
+    "-lc",
+    [
+      `printf '%s\n' '${adapterName} ${kind} started inside the Docker sandbox.'`,
+      "printf '%s\n' 'This built-in adapter is running in explicit stub mode.'",
+      "printf '%s\n' 'No real provider CLI was invoked by EAT for this session.'",
+    ].join(" && "),
+  ];
+}
+
+function createScriptedLeadSession({ adapterName, prompt, sessionType }) {
   const sessionId = `session_${randomUUID()}`;
   const outputListeners = new Set();
   const exitListeners = new Set();
   let closed = false;
 
   setTimeout(() => {
+    if (sessionType === "WORKER") {
+      emitOutput(
+        `${adapterName} worker stub session started.\nThis built-in adapter is running in explicit stub mode.\n`,
+      );
+      close(0);
+      return;
+    }
+
     emitOutput(
-      `${adapterName} lead session started.\nPlease confirm the success criteria, constraints, and any must-keep files before planning.\n`,
+      `${adapterName} lead stub session started.\nThis built-in adapter is running in explicit stub mode.\nPlease confirm the success criteria, constraints, and any must-keep files before planning.\n`,
     );
   }, 0);
 
@@ -188,11 +246,11 @@ function createScriptedLeadSession({ adapterName, prompt }) {
       const normalizedMessage = typeof message === "string" ? message.trim() : "";
 
       if (normalizedMessage.toLowerCase().includes("phase 05")) {
-        emitOutput("Requirements confirmed. Planning is deferred until Phase 05 lands.\n");
+        emitOutput("Requirements confirmed. Planning will continue through the stub lead adapter.\n");
         return;
       }
 
-      emitOutput(`Noted: ${normalizedMessage}\nWhat else should remain in scope for this task?\n`);
+      emitOutput(`Noted in stub mode: ${normalizedMessage}\nWhat else should remain in scope for this task?\n`);
     },
     async stop() {
       close(0);

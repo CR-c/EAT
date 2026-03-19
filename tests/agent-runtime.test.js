@@ -75,6 +75,8 @@ test("preserves structured checks and failure details in normalized health snaps
       details: { binary: "codex" },
       message: "Codex CLI is not installed.",
     },
+    runtimeMode: null,
+    usesSandboxManager: false,
     version: "1.2.3",
   });
 });

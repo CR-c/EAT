@@ -92,6 +92,36 @@ export function buildAgentStatusLabel(snapshot) {
   return "Healthy";
 }
 
+export function buildAgentRuntimeModeLabel(agent, snapshot) {
+  const runtimeMode = snapshot?.runtimeMode ?? agent?.runtimeMode ?? null;
+
+  if (runtimeMode === "STUB") {
+    return "Stub runtime";
+  }
+
+  if (runtimeMode === "REAL") {
+    return "Real runtime";
+  }
+
+  return "Custom runtime";
+}
+
+export function buildDockerHealthLabel(dockerHealth) {
+  if (!dockerHealth) {
+    return "Unknown";
+  }
+
+  if (dockerHealth.available) {
+    return "Ready";
+  }
+
+  if (dockerHealth.daemonReachable === false) {
+    return "Unavailable";
+  }
+
+  return "Blocked";
+}
+
 export function buildLeadSelectionState(candidate) {
   if (!candidate) {
     return {
@@ -126,12 +156,45 @@ export function buildTaskStatusLabel(status) {
       return "Planning";
     case "PLAN_REVIEW":
       return "Plan review";
+    case "EXECUTING":
+      return "Executing";
+    case "COMPLETED":
+      return "Completed";
     case "ACTION_REQUIRED":
       return "Action required";
     case "FAILED":
       return "Failed";
     case "CANCELLED":
       return "Cancelled";
+    default:
+      return status ?? "Unknown";
+  }
+}
+
+export function buildSubTaskStatusLabel(status) {
+  switch (status) {
+    case "PENDING":
+      return "Pending";
+    case "READY":
+      return "Ready";
+    case "RUNNING":
+      return "Running";
+    case "REVIEW_PENDING":
+      return "Review pending";
+    case "ACCEPTED":
+      return "Accepted";
+    case "REWORK_REQUIRED":
+      return "Rework required";
+    case "DISCARD_PENDING":
+      return "Discard pending";
+    case "MERGED":
+      return "Merged";
+    case "FAILED":
+      return "Failed";
+    case "CANCELLED":
+      return "Cancelled";
+    case "DISCARDED":
+      return "Discarded";
     default:
       return status ?? "Unknown";
   }

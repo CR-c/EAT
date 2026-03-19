@@ -1,11 +1,14 @@
 import {
   buildAgentErrorMessage,
+  buildAgentRuntimeModeLabel,
   buildAgentStatusLabel,
   buildAttachmentCaption,
   buildBranchList,
   buildCleanlinessLabel,
+  buildDockerHealthLabel,
   buildLeadSelectionState,
   buildProjectErrorMessage,
+  buildSubTaskStatusLabel,
   buildTaskErrorMessage,
   buildTaskStatusLabel,
 } from "./view-model.js";
@@ -27,6 +30,8 @@ const state = {
   selectedLeadAgentName: null,
   selectedProjectId: readStorage(STORAGE_KEYS.selectedProjectId),
   selectedTaskId: readStorage(STORAGE_KEYS.selectedTaskId),
+  systemDockerHealth: null,
+  systemSandboxPolicy: null,
   taskDetail: null,
   taskPlanDraft: null,
   taskPlanDraftState: null,
@@ -39,9 +44,12 @@ const state = {
 const elements = {
   agentCount: document.querySelector("#agent-count"),
   agentHealthCheckedAt: document.querySelector("#agent-health-checked-at"),
+  agentRuntimeSummary: document.querySelector("#agent-runtime-summary"),
   agentHealthEmpty: document.querySelector("#agent-health-empty"),
   agentHealthFeedback: document.querySelector("#agent-health-feedback"),
   agentHealthList: document.querySelector("#agent-health-list"),
+  dockerHealthBadge: document.querySelector("#docker-health-badge"),
+  dockerHealthReason: document.querySelector("#docker-health-reason"),
   baseBranchSelect: document.querySelector("#base-branch-select"),
   cleanlinessBadge: document.querySelector("#cleanliness-badge"),
   confirmRequirementsButton: document.querySelector("#confirm-requirements-button"),
@@ -88,6 +96,8 @@ const elements = {
   taskDetailEmpty: document.querySelector("#task-detail-empty"),
   taskDetailFeedback: document.querySelector("#task-detail-feedback"),
   taskDetailTitle: document.querySelector("#task-detail-title"),
+  taskExecutionEmpty: document.querySelector("#task-execution-empty"),
+  taskExecutionList: document.querySelector("#task-execution-list"),
   taskFormFeedback: document.querySelector("#task-form-feedback"),
   taskLeadAgent: document.querySelector("#task-lead-agent"),
   taskList: document.querySelector("#task-list"),
@@ -437,15 +447,19 @@ async function loadAgents(options = {}) {
 
   try {
     const refreshSuffix = options.force ? "?refresh=1" : "";
-    const [directory, health] = await Promise.all([
+    const [directory, health, dockerHealth, sandboxPolicy] = await Promise.all([
       fetchJson(`/api/agents${refreshSuffix}`),
       fetchJson(`/api/agents/health${refreshSuffix}`),
+      fetchJson("/api/system/docker-health"),
+      fetchJson("/api/system/sandbox-policy"),
     ]);
 
     state.agents = directory.agents ?? [];
     state.agentHealth = health.agents ?? {};
     state.healthCheckedAt = health.checkedAt ?? null;
     state.leadCandidates = health.leadCandidates ?? [];
+    state.systemDockerHealth = dockerHealth;
+    state.systemSandboxPolicy = sandboxPolicy.policy ?? null;
     state.workerCandidates = health.workerCandidates ?? [];
 
     if (!state.leadCandidates.some((candidate) => candidate.agentName === state.selectedLeadAgentName)) {
@@ -458,6 +472,8 @@ async function loadAgents(options = {}) {
     state.agents = [];
     state.agentHealth = {};
     state.leadCandidates = [];
+    state.systemDockerHealth = null;
+    state.systemSandboxPolicy = null;
     state.workerCandidates = [];
     state.selectedLeadAgentName = null;
     renderAgentHealth();
@@ -533,13 +549,27 @@ function renderAgentHealth() {
   elements.agentCount.textContent = String(state.agents.length);
   elements.healthyLeadCount.textContent = String(state.leadCandidates.filter((candidate) => candidate.selectable).length);
   elements.healthyWorkerCount.textContent = String(state.workerCandidates.filter((candidate) => candidate.selectable).length);
+  elements.agentRuntimeSummary.textContent = state.systemSandboxPolicy?.defaultWorkerImage
+    ? `${state.systemSandboxPolicy.defaultSandboxType} · ${state.systemSandboxPolicy.defaultWorkerImage}`
+    : "Not configured";
   elements.agentHealthCheckedAt.textContent = state.healthCheckedAt
     ? new Date(state.healthCheckedAt).toLocaleString()
     : "Not yet checked";
+  elements.dockerHealthBadge.textContent = buildDockerHealthLabel(state.systemDockerHealth);
+  elements.dockerHealthBadge.className = `badge ${state.systemDockerHealth?.available ? "badge--clean" : "badge--dirty"}`;
+  elements.dockerHealthReason.textContent = state.systemDockerHealth?.reason
+    ?? "Docker sandbox health is ready for worker sessions.";
   elements.agentHealthEmpty.hidden = state.agents.length > 0;
 
   for (const agent of state.agents) {
     const snapshot = state.agentHealth[agent.name];
+    const capabilityBadges = [
+      agent.roles.leadCandidate ? "Lead" : null,
+      agent.roles.workerCandidate ? "Worker" : null,
+      agent.capabilities.supportsVision ? "Vision" : "No vision",
+      agent.capabilities.supportsInteractiveInput ? "Interactive" : "One-shot",
+      ...(agent.capabilities.supportedSandboxTypes ?? []).map((sandboxType) => `${sandboxType} sandbox`),
+    ].filter(Boolean);
     const article = document.createElement("article");
     article.className = "agent-card";
 
@@ -551,6 +581,8 @@ function renderAgentHealth() {
         </div>
         <span class="badge ${snapshot?.available ? "badge--clean" : "badge--dirty"}">${escapeHtml(buildAgentStatusLabel(snapshot))}</span>
       </div>
+      <p class="agent-card__meta"><strong>Runtime:</strong> ${escapeHtml(buildAgentRuntimeModeLabel(agent, snapshot))}</p>
+      <p class="agent-card__meta"><strong>Capabilities:</strong> ${escapeHtml(capabilityBadges.join(" · "))}</p>
       <p class="agent-card__meta"><strong>Failure reason:</strong> ${escapeHtml(snapshot?.failureReason?.message ?? "None")}</p>
     `;
 
@@ -678,6 +710,7 @@ function renderTaskDetail() {
   syncEditablePlanDraft(detail);
   renderTaskAttachments(detail.attachments ?? []);
   renderPlanDraft(detail);
+  renderSubTaskExecution(detail);
   renderTranscript(detail.messages ?? []);
 
   const canStartClarification = detail.task.status === "DRAFT";
@@ -700,6 +733,69 @@ function renderTaskAttachments(attachments) {
       <span class="attachment-list__meta">${escapeHtml(buildAttachmentCaption(attachment))}</span>
     `;
     elements.taskAttachmentsList.append(item);
+  }
+}
+
+function renderSubTaskExecution(detail) {
+  const subTasks = detail.subTasks ?? [];
+  const sessionsBySubTaskId = new Map();
+
+  for (const session of detail.sessions ?? []) {
+    if (!session.subTaskId) {
+      continue;
+    }
+
+    const entry = sessionsBySubTaskId.get(session.subTaskId) ?? [];
+    entry.push(session);
+    sessionsBySubTaskId.set(session.subTaskId, entry);
+  }
+
+  elements.taskExecutionList.replaceChildren();
+  elements.taskExecutionEmpty.hidden = subTasks.length > 0;
+
+  for (const subTask of subTasks) {
+    const sessionSummary = (sessionsBySubTaskId.get(subTask.id) ?? []).map((session) => (
+      `${session.agentType} · ${session.status}${session.containerId ? ` · ${session.containerId}` : ""}`
+    ));
+    const includedAttachments = subTask.launchMetadata?.included?.map((attachment) => attachment.fileName) ?? [];
+    const excludedAttachments = subTask.launchMetadata?.excluded?.map((attachment) => (
+      `${attachment.fileName} (${attachment.reason})`
+    )) ?? [];
+    const article = document.createElement("article");
+    article.className = "execution-card";
+
+    article.innerHTML = `
+      <div class="execution-card__header">
+        <div>
+          <p class="execution-card__title">${escapeHtml(subTask.title)}</p>
+          <p class="execution-card__meta">${escapeHtml(`${subTask.agentType} · ${buildSubTaskStatusLabel(subTask.status)}`)}</p>
+        </div>
+        <span class="badge ${subTask.status === "FAILED" ? "badge--dirty" : subTask.status === "RUNNING" ? "badge--accent-soft" : "badge--outline"}">${escapeHtml(buildSubTaskStatusLabel(subTask.status))}</span>
+      </div>
+      <dl class="execution-card__facts">
+        <div>
+          <dt>Branch</dt>
+          <dd>${escapeHtml(subTask.branchName ?? "Pending")}</dd>
+        </div>
+        <div>
+          <dt>Worktree</dt>
+          <dd>${escapeHtml(subTask.worktreePath ?? "Pending")}</dd>
+        </div>
+        <div>
+          <dt>Retries</dt>
+          <dd>${escapeHtml(String(subTask.retryCount ?? 0))}</dd>
+        </div>
+        <div>
+          <dt>Last error</dt>
+          <dd>${escapeHtml(subTask.lastError ?? "None")}</dd>
+        </div>
+      </dl>
+      <p class="execution-card__meta"><strong>Worker sessions:</strong> ${escapeHtml(sessionSummary.join(" | ") || "None")}</p>
+      <p class="execution-card__meta"><strong>Included attachments:</strong> ${escapeHtml(includedAttachments.join(", ") || "None")}</p>
+      <p class="execution-card__meta"><strong>Excluded attachments:</strong> ${escapeHtml(excludedAttachments.join(", ") || "None")}</p>
+    `;
+
+    elements.taskExecutionList.append(article);
   }
 }
 
@@ -921,6 +1017,7 @@ function clearTaskDetail() {
   elements.taskDetailEmpty.hidden = false;
   elements.taskTranscript.replaceChildren();
   elements.taskAttachmentsList.replaceChildren();
+  elements.taskExecutionList.replaceChildren();
   elements.taskPlanHistoryList.replaceChildren();
   elements.taskPlanList.replaceChildren();
 }

@@ -148,7 +148,48 @@ test("rejects unsupported attachments before task creation completes", async () 
   }
 });
 
-function createLeadAgentService() {
+test("rejects task creation when the selected lead agent is unhealthy", async () => {
+  const fixture = await makeTempDir("eat-task-api-unhealthy-lead-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const uploadRootPath = path.join(fixture.path, "uploads");
+    const repo = await createRepository(fixture.path, "unhealthy-lead-repo", { defaultBranch: "main" });
+
+    const server = await startServer({
+      agentService: createLeadAgentService({ healthy: false }),
+      databasePath,
+      uploadRootPath,
+    });
+
+    try {
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+
+      const createResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "This should be blocked by the lead health guard.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Blocked unhealthy lead",
+        },
+        method: "POST",
+      });
+
+      assert.equal(createResponse.status, 400);
+      assert.equal(createResponse.body.error.code, "LEAD_AGENT_UNHEALTHY");
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+function createLeadAgentService(options = {}) {
   const registry = new AgentRegistry();
   registry.register({
     capabilities: {
@@ -160,6 +201,16 @@ function createLeadAgentService() {
       supportsVision: true,
     },
     async healthCheck() {
+      if (options.healthy === false) {
+        return {
+          available: false,
+          reason: {
+            code: "AUTH_MISSING",
+            message: "Login required.",
+          },
+        };
+      }
+
       return {
         available: true,
         version: "1.0.0-test",

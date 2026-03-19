@@ -4,7 +4,9 @@ export const AGENT_HEALTH_CACHE_TTL_MS = 30_000;
 
 export class AgentService {
   constructor(options = {}) {
-    this.agentRegistry = options.agentRegistry ?? createBuiltInAgentRegistry();
+    this.agentRegistry = options.agentRegistry ?? createBuiltInAgentRegistry({
+      sandboxManager: options.sandboxManager ?? null,
+    });
     this.cacheTtlMs = options.cacheTtlMs ?? AGENT_HEALTH_CACHE_TTL_MS;
     this.cachedHealth = null;
   }
@@ -73,9 +75,11 @@ function serializeAgent(factory) {
   return {
     capabilities: { ...factory.capabilities },
     name: factory.name,
+    runtimeMode: factory.runtimeMode ?? null,
     roles: {
       leadCandidate: factory.capabilities.canOrchestrate,
       workerCandidate: factory.capabilities.canExecute,
     },
+    usesSandboxManager: factory.usesSandboxManager === true,
   };
 }
