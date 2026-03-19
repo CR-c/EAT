@@ -18,12 +18,14 @@ const STORAGE_KEYS = {
   selectedProjectId: "eat.phase04.selectedProjectId",
   selectedTaskId: "eat.phase04.selectedTaskId",
 };
+const DEFAULT_OUTPUT_BUFFER_MAX_BYTES = 65_536;
 
 const state = {
   agentHealth: {},
   agents: [],
   healthCheckedAt: null,
   leadCandidates: [],
+  liveSessionOutputs: new Map(),
   projectDetail: null,
   projects: [],
   selectedBaseBranch: null,
@@ -426,6 +428,7 @@ async function loadTaskDetail(taskId, options = {}) {
     const response = await fetchJson(`/api/tasks/${encodeURIComponent(taskId)}`);
     state.selectedTaskId = taskId;
     state.taskDetail = response;
+    hydrateExecutionState(response);
     writeStorage(STORAGE_KEYS.selectedTaskId, taskId);
     renderTaskList();
     renderTaskDetail();
@@ -1006,6 +1009,7 @@ function clearTaskList() {
 }
 
 function clearTaskDetail() {
+  state.liveSessionOutputs = new Map();
   state.taskDetail = null;
   state.taskPlanDraft = null;
   state.taskPlanDraftState = null;
@@ -1098,14 +1102,17 @@ function connectTaskStream(taskId) {
     };
     void loadTaskDetail(taskId, { preserveStream: true });
   });
-  stream.addEventListener("subtask:status", () => {
-    void loadTaskDetail(taskId, { preserveStream: true });
+  stream.addEventListener("subtask:status", (event) => {
+    applySubTaskStatusEvent(JSON.parse(event.data));
   });
-  stream.addEventListener("session:started", () => {
-    void loadTaskDetail(taskId, { preserveStream: true });
+  stream.addEventListener("session:started", (event) => {
+    applySessionStartedEvent(JSON.parse(event.data));
   });
-  stream.addEventListener("session:ended", () => {
-    void loadTaskDetail(taskId, { preserveStream: true });
+  stream.addEventListener("session:output", (event) => {
+    applySessionOutputEvent(JSON.parse(event.data));
+  });
+  stream.addEventListener("session:ended", (event) => {
+    applySessionEndedEvent(JSON.parse(event.data));
   });
   stream.onerror = () => {
     stream.close();
@@ -1316,7 +1323,7 @@ async function onApprovePlanDraft() {
     );
 
     state.taskDetail.task = response.task;
-    renderTaskDetail();
+    await loadTaskDetail(state.taskDetail.task.id, { preserveStream: true });
     showFeedback(
       elements.taskPlanFeedback,
       "success",
@@ -1608,6 +1615,147 @@ function readStoredPlanDraft(storageKey) {
   } catch {
     return null;
   }
+}
+
+function hydrateExecutionState(detail) {
+  state.liveSessionOutputs = new Map(
+    (detail?.sessions ?? []).map((session) => [session.id, session.outputBuffer ?? ""]),
+  );
+}
+
+function applySubTaskStatusEvent(payload) {
+  if (!matchesSelectedTask(payload?.taskId)) {
+    return;
+  }
+
+  ensureExecutionCollections();
+
+  const nextSubTask = {
+    ...findRecordById(state.taskDetail.subTasks, payload.id ?? payload.subtaskId),
+    ...payload,
+    id: payload.id ?? payload.subtaskId,
+    launchMetadata: payload.launchMetadata ?? payload.attachments ?? null,
+  };
+
+  state.taskDetail.subTasks = upsertRecord(state.taskDetail.subTasks, nextSubTask);
+  renderTaskDetail();
+}
+
+function applySessionStartedEvent(payload) {
+  if (!matchesSelectedTask(payload?.taskId)) {
+    return;
+  }
+
+  ensureExecutionCollections();
+
+  const nextSession = normalizeSessionEventPayload(payload);
+  state.taskDetail.sessions = upsertRecord(state.taskDetail.sessions, nextSession);
+
+  if (!state.liveSessionOutputs.has(nextSession.id)) {
+    state.liveSessionOutputs.set(nextSession.id, nextSession.outputBuffer ?? "");
+  }
+
+  renderTaskDetail();
+}
+
+function applySessionOutputEvent(payload) {
+  if (!matchesSelectedTask(payload?.taskId)) {
+    return;
+  }
+
+  ensureExecutionCollections();
+
+  const sessionId = payload.sessionId;
+  const existingSession = findRecordById(state.taskDetail.sessions, sessionId) ?? {
+    id: sessionId,
+    outputBuffer: "",
+    outputBufferMaxBytes: DEFAULT_OUTPUT_BUFFER_MAX_BYTES,
+    sessionType: payload.subtaskId ? "WORKER" : "LEAD",
+    status: "RUNNING",
+    subTaskId: payload.subtaskId ?? null,
+    taskId: payload.taskId,
+  };
+  const nextVisibleOutput = `${existingSession.outputBuffer ?? ""}${payload.chunk ?? ""}`;
+  const nextLiveOutput = `${state.liveSessionOutputs.get(sessionId) ?? existingSession.outputBuffer ?? ""}${payload.chunk ?? ""}`;
+  const outputBufferMaxBytes = existingSession.outputBufferMaxBytes ?? DEFAULT_OUTPUT_BUFFER_MAX_BYTES;
+  const nextSession = {
+    ...existingSession,
+    outputBuffer: tailUtf8(nextVisibleOutput, outputBufferMaxBytes),
+    outputBufferMaxBytes,
+    subTaskId: existingSession.subTaskId ?? payload.subtaskId ?? null,
+  };
+
+  state.liveSessionOutputs.set(sessionId, nextLiveOutput);
+  state.taskDetail.sessions = upsertRecord(state.taskDetail.sessions, nextSession);
+  renderTaskDetail();
+}
+
+function applySessionEndedEvent(payload) {
+  if (!matchesSelectedTask(payload?.taskId)) {
+    return;
+  }
+
+  ensureExecutionCollections();
+
+  const nextSession = normalizeSessionEventPayload(payload);
+  state.taskDetail.sessions = upsertRecord(state.taskDetail.sessions, nextSession);
+  renderTaskDetail();
+}
+
+function matchesSelectedTask(taskId) {
+  return state.taskDetail?.task?.id && state.taskDetail.task.id === taskId;
+}
+
+function ensureExecutionCollections() {
+  if (!state.taskDetail) {
+    return;
+  }
+
+  state.taskDetail.sessions = Array.isArray(state.taskDetail.sessions)
+    ? state.taskDetail.sessions
+    : [];
+  state.taskDetail.subTasks = Array.isArray(state.taskDetail.subTasks)
+    ? state.taskDetail.subTasks
+    : [];
+}
+
+function normalizeSessionEventPayload(payload) {
+  const sessionId = payload.id ?? payload.sessionId;
+  const existingSession = findRecordById(state.taskDetail?.sessions, sessionId);
+
+  return {
+    ...existingSession,
+    ...payload,
+    id: sessionId,
+    launchMetadata: payload.launchMetadata ?? payload.attachments ?? existingSession?.launchMetadata ?? null,
+    subTaskId: payload.subTaskId ?? payload.subtaskId ?? existingSession?.subTaskId ?? null,
+  };
+}
+
+function findRecordById(records, recordId) {
+  if (!Array.isArray(records) || !recordId) {
+    return null;
+  }
+
+  return records.find((record) => record.id === recordId) ?? null;
+}
+
+function upsertRecord(records, nextRecord) {
+  const collection = Array.isArray(records) ? records : [];
+  const existingIndex = collection.findIndex((record) => record.id === nextRecord.id);
+
+  if (existingIndex < 0) {
+    return [...collection, nextRecord];
+  }
+
+  return collection.map((record, index) => (
+    index === existingIndex ? nextRecord : record
+  ));
+}
+
+function tailUtf8(value, maxBytes) {
+  const bytes = new TextEncoder().encode(value);
+  return new TextDecoder().decode(bytes.slice(-maxBytes));
 }
 
 function normalizeOptionalText(value) {

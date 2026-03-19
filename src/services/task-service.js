@@ -351,11 +351,7 @@ export class TaskService {
         taskId: task.id,
         status: clarifyingTask.status,
       });
-      this.#publish(task.id, "session:started", {
-        sessionId: runningSession.id,
-        taskId: task.id,
-        status: runningSession.status,
-      });
+      this.#publishSessionEvent(task.id, "session:started", runningSession);
 
       return {
         ok: true,
@@ -893,14 +889,7 @@ export class TaskService {
         });
 
         this.#publishSubTaskStatus(task.id, runningSubTask);
-        this.#publish(task.id, "session:started", {
-          attachments: sanitizeLaunchMetadata(launchMetadata),
-          pid: runningSession.pid,
-          sessionId: runningSession.id,
-          status: runningSession.status,
-          subtaskId: preparedSubTask.id,
-          taskId: task.id,
-        });
+        this.#publishSessionEvent(task.id, "session:started", runningSession);
 
         return {
           ok: true,
@@ -1104,10 +1093,10 @@ export class TaskService {
       });
     }
 
-    this.#publish(taskId, "session:ended", {
+    this.#publishSessionEvent(taskId, "session:ended", nextSession ?? {
       exitCode,
-      sessionId,
-      status: nextSession?.status ?? sessionStatus,
+      id: sessionId,
+      status: sessionStatus,
       taskId,
     });
   }
@@ -1142,11 +1131,11 @@ export class TaskService {
       status: exitCode === 0 ? SUBTASK_STATUS.REVIEW_PENDING : SUBTASK_STATUS.FAILED,
     });
 
-    this.#publish(taskId, "session:ended", {
+    this.#publishSessionEvent(taskId, "session:ended", nextSession ?? {
       exitCode,
-      sessionId,
-      status: nextSession?.status ?? sessionStatus,
-      subtaskId: subTaskId,
+      id: sessionId,
+      status: sessionStatus,
+      subTaskId,
       taskId,
     });
     this.#publishSubTaskStatus(taskId, nextSubTask);
@@ -1167,11 +1156,12 @@ export class TaskService {
   }
 
   #publishSubTaskStatus(taskId, subTask) {
+    const decoratedSubTask = this.#decorateSubTask(subTask);
+
     this.#publish(taskId, "subtask:status", {
-      attachments: sanitizeLaunchMetadata(this.workerLaunchMetadata.get(subTask.id)),
-      lastError: subTask.lastError,
-      status: subTask.status,
-      subtaskId: subTask.id,
+      ...decoratedSubTask,
+      attachments: decoratedSubTask.launchMetadata,
+      subtaskId: decoratedSubTask.id,
       taskId,
     });
   }
@@ -1191,6 +1181,18 @@ export class TaskService {
 
   #publish(taskId, eventName, data) {
     this.eventBus?.publish(taskId, eventName, data);
+  }
+
+  #publishSessionEvent(taskId, eventName, session) {
+    const decoratedSession = this.#decorateSession(session);
+
+    this.#publish(taskId, eventName, {
+      ...decoratedSession,
+      attachments: decoratedSession.launchMetadata,
+      sessionId: decoratedSession.id,
+      subtaskId: decoratedSession.subTaskId ?? null,
+      taskId,
+    });
   }
 
   async #createTrackedSession(input) {

@@ -296,6 +296,117 @@ test("persists full worker logs to logPath while keeping a bounded output buffer
   }
 });
 
+test("emits session lifecycle and output events with session-scoped metadata", async () => {
+  const fixture = await makeTempDir("eat-worker-stream-events-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Worker alpha",
+            description: "Emit alpha output.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "worker-alpha",
+          },
+          {
+            title: "Worker beta",
+            description: "Emit beta output.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "worker-beta",
+          },
+        ],
+      },
+      workerBehavior: (config) => ({
+        delayMs: 40,
+        exitCode: 0,
+        output: `${path.basename(config.workDir)} output\n`,
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "stream-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Verify session events are routed by session.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Session events",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        const startedEvents = [
+          await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId),
+          await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId),
+        ];
+        const outputEvents = [
+          await nextEvent(events, (event) => event.eventName === "session:output" && event.data.subtaskId),
+          await nextEvent(events, (event) => event.eventName === "session:output" && event.data.subtaskId),
+        ];
+        const endedEvents = [
+          await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId),
+          await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId),
+        ];
+
+        const startedSessionIds = new Set(startedEvents.map((event) => event.data.sessionId));
+        const outputSessionIds = new Set(outputEvents.map((event) => event.data.sessionId));
+        const endedSessionIds = new Set(endedEvents.map((event) => event.data.sessionId));
+
+        assert.equal(startedSessionIds.size, 2);
+        assert.deepEqual(outputSessionIds, startedSessionIds);
+        assert.deepEqual(endedSessionIds, startedSessionIds);
+
+        for (const startedEvent of startedEvents) {
+          assert.equal(startedEvent.data.sessionType, "WORKER");
+          assert.equal(startedEvent.data.status, "RUNNING");
+          assert.equal(startedEvent.data.taskId, taskId);
+          assert.ok(startedEvent.data.logPath);
+        }
+
+        for (const outputEvent of outputEvents) {
+          assert.match(outputEvent.data.chunk, /output/);
+          assert.ok(startedSessionIds.has(outputEvent.data.sessionId));
+          assert.ok(outputEvent.data.subtaskId);
+        }
+
+        for (const endedEvent of endedEvents) {
+          assert.equal(endedEvent.data.sessionType, "WORKER");
+          assert.equal(endedEvent.data.status, "COMPLETED");
+          assert.equal(endedEvent.data.exitCode, 0);
+        }
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("retries on the same branch and worktree while blocking duplicate live sessions", async () => {
   const fixture = await makeTempDir("eat-worker-retry-");
 
