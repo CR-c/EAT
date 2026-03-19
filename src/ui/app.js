@@ -29,6 +29,8 @@ const state = {
   projectDetail: null,
   projects: [],
   selectedBaseBranch: null,
+  selectedExecutionSessionId: null,
+  selectedExecutionSubTaskId: null,
   selectedLeadAgentName: null,
   selectedProjectId: readStorage(STORAGE_KEYS.selectedProjectId),
   selectedTaskId: readStorage(STORAGE_KEYS.selectedTaskId),
@@ -98,7 +100,14 @@ const elements = {
   taskDetailEmpty: document.querySelector("#task-detail-empty"),
   taskDetailFeedback: document.querySelector("#task-detail-feedback"),
   taskDetailTitle: document.querySelector("#task-detail-title"),
+  taskExecutionBoard: document.querySelector("#task-execution-board"),
   taskExecutionEmpty: document.querySelector("#task-execution-empty"),
+  taskExecutionFocus: document.querySelector("#task-execution-focus"),
+  taskExecutionFocusBadge: document.querySelector("#task-execution-focus-badge"),
+  taskExecutionFocusEmpty: document.querySelector("#task-execution-focus-empty"),
+  taskExecutionFocusMeta: document.querySelector("#task-execution-focus-meta"),
+  taskExecutionFocusPreview: document.querySelector("#task-execution-focus-preview"),
+  taskExecutionFocusTitle: document.querySelector("#task-execution-focus-title"),
   taskExecutionList: document.querySelector("#task-execution-list"),
   taskFormFeedback: document.querySelector("#task-form-feedback"),
   taskLeadAgent: document.querySelector("#task-lead-agent"),
@@ -755,25 +764,38 @@ function renderSubTaskExecution(detail) {
 
   elements.taskExecutionList.replaceChildren();
   elements.taskExecutionEmpty.hidden = subTasks.length > 0;
+  elements.taskExecutionBoard.hidden = subTasks.length === 0;
+
+  if (subTasks.length === 0) {
+    elements.taskExecutionFocus.hidden = true;
+    return;
+  }
 
   for (const subTask of subTasks) {
-    const sessionSummary = (sessionsBySubTaskId.get(subTask.id) ?? []).map((session) => (
-      `${session.agentType} · ${session.status}${session.containerId ? ` · ${session.containerId}` : ""}`
-    ));
+    const sessions = sessionsBySubTaskId.get(subTask.id) ?? [];
+    const latestSession = sessions.at(-1) ?? null;
     const includedAttachments = subTask.launchMetadata?.included?.map((attachment) => attachment.fileName) ?? [];
     const excludedAttachments = subTask.launchMetadata?.excluded?.map((attachment) => (
       `${attachment.fileName} (${attachment.reason})`
     )) ?? [];
-    const article = document.createElement("article");
-    article.className = "execution-card";
+    const previewText = stripAnsi(latestSession?.outputBuffer ?? "");
+    const isSelected = subTask.id === state.selectedExecutionSubTaskId;
+    const card = document.createElement("button");
 
-    article.innerHTML = `
+    card.type = "button";
+    card.className = `execution-card${isSelected ? " is-selected" : ""}`;
+    card.innerHTML = `
       <div class="execution-card__header">
         <div>
           <p class="execution-card__title">${escapeHtml(subTask.title)}</p>
           <p class="execution-card__meta">${escapeHtml(`${subTask.agentType} · ${buildSubTaskStatusLabel(subTask.status)}`)}</p>
         </div>
         <span class="badge ${subTask.status === "FAILED" ? "badge--dirty" : subTask.status === "RUNNING" ? "badge--accent-soft" : "badge--outline"}">${escapeHtml(buildSubTaskStatusLabel(subTask.status))}</span>
+      </div>
+      <div class="execution-card__summary">
+        <p class="execution-card__summary-line"><strong>Latest session:</strong> ${escapeHtml(latestSession ? `${latestSession.agentType} · ${latestSession.status}` : "None")}</p>
+        <p class="execution-card__summary-line"><strong>Retries:</strong> ${escapeHtml(String(subTask.retryCount ?? 0))} · <strong>Sessions:</strong> ${escapeHtml(String(sessions.length))}</p>
+        <p class="execution-card__summary-line"><strong>Attachments:</strong> ${escapeHtml(`${includedAttachments.length} included · ${excludedAttachments.length} excluded`)}</p>
       </div>
       <dl class="execution-card__facts">
         <div>
@@ -784,22 +806,21 @@ function renderSubTaskExecution(detail) {
           <dt>Worktree</dt>
           <dd>${escapeHtml(subTask.worktreePath ?? "Pending")}</dd>
         </div>
-        <div>
-          <dt>Retries</dt>
-          <dd>${escapeHtml(String(subTask.retryCount ?? 0))}</dd>
-        </div>
-        <div>
-          <dt>Last error</dt>
-          <dd>${escapeHtml(subTask.lastError ?? "None")}</dd>
-        </div>
       </dl>
-      <p class="execution-card__meta"><strong>Worker sessions:</strong> ${escapeHtml(sessionSummary.join(" | ") || "None")}</p>
-      <p class="execution-card__meta"><strong>Included attachments:</strong> ${escapeHtml(includedAttachments.join(", ") || "None")}</p>
-      <p class="execution-card__meta"><strong>Excluded attachments:</strong> ${escapeHtml(excludedAttachments.join(", ") || "None")}</p>
+      <pre class="execution-card__preview">${escapeHtml(previewText || "Waiting for worker output...")}</pre>
     `;
 
-    elements.taskExecutionList.append(article);
+    card.addEventListener("click", () => {
+      const nextSession = resolveFocusedSession(detail, subTask.id);
+      state.selectedExecutionSubTaskId = subTask.id;
+      state.selectedExecutionSessionId = nextSession?.id ?? null;
+      renderTaskDetail();
+    });
+
+    elements.taskExecutionList.append(card);
   }
+
+  renderFocusedExecution(detail, sessionsBySubTaskId);
 }
 
 function renderPlanDraft(detail) {
@@ -1010,6 +1031,8 @@ function clearTaskList() {
 
 function clearTaskDetail() {
   state.liveSessionOutputs = new Map();
+  state.selectedExecutionSessionId = null;
+  state.selectedExecutionSubTaskId = null;
   state.taskDetail = null;
   state.taskPlanDraft = null;
   state.taskPlanDraftState = null;
@@ -1022,6 +1045,9 @@ function clearTaskDetail() {
   elements.taskTranscript.replaceChildren();
   elements.taskAttachmentsList.replaceChildren();
   elements.taskExecutionList.replaceChildren();
+  elements.taskExecutionBoard.hidden = true;
+  elements.taskExecutionFocus.hidden = true;
+  elements.taskExecutionFocusPreview.hidden = true;
   elements.taskPlanHistoryList.replaceChildren();
   elements.taskPlanList.replaceChildren();
 }
@@ -1621,6 +1647,7 @@ function hydrateExecutionState(detail) {
   state.liveSessionOutputs = new Map(
     (detail?.sessions ?? []).map((session) => [session.id, session.outputBuffer ?? ""]),
   );
+  syncExecutionSelection(detail);
 }
 
 function applySubTaskStatusEvent(payload) {
@@ -1638,6 +1665,7 @@ function applySubTaskStatusEvent(payload) {
   };
 
   state.taskDetail.subTasks = upsertRecord(state.taskDetail.subTasks, nextSubTask);
+  syncExecutionSelection(state.taskDetail);
   renderTaskDetail();
 }
 
@@ -1655,6 +1683,7 @@ function applySessionStartedEvent(payload) {
     state.liveSessionOutputs.set(nextSession.id, nextSession.outputBuffer ?? "");
   }
 
+  syncExecutionSelection(state.taskDetail);
   renderTaskDetail();
 }
 
@@ -1687,6 +1716,7 @@ function applySessionOutputEvent(payload) {
 
   state.liveSessionOutputs.set(sessionId, nextLiveOutput);
   state.taskDetail.sessions = upsertRecord(state.taskDetail.sessions, nextSession);
+  syncExecutionSelection(state.taskDetail);
   renderTaskDetail();
 }
 
@@ -1699,6 +1729,7 @@ function applySessionEndedEvent(payload) {
 
   const nextSession = normalizeSessionEventPayload(payload);
   state.taskDetail.sessions = upsertRecord(state.taskDetail.sessions, nextSession);
+  syncExecutionSelection(state.taskDetail);
   renderTaskDetail();
 }
 
@@ -1756,6 +1787,86 @@ function upsertRecord(records, nextRecord) {
 function tailUtf8(value, maxBytes) {
   const bytes = new TextEncoder().encode(value);
   return new TextDecoder().decode(bytes.slice(-maxBytes));
+}
+
+function syncExecutionSelection(detail) {
+  const subTasks = detail?.subTasks ?? [];
+
+  if (subTasks.length === 0) {
+    state.selectedExecutionSubTaskId = null;
+    state.selectedExecutionSessionId = null;
+    return;
+  }
+
+  const selectedSubTask = subTasks.find((subTask) => subTask.id === state.selectedExecutionSubTaskId) ?? null;
+  const nextSubTask = selectedSubTask
+    ?? subTasks.find((subTask) => subTask.status === "RUNNING")
+    ?? subTasks.at(0)
+    ?? null;
+
+  state.selectedExecutionSubTaskId = nextSubTask?.id ?? null;
+  state.selectedExecutionSessionId = resolveFocusedSession(detail, state.selectedExecutionSubTaskId)?.id ?? null;
+}
+
+function resolveFocusedSession(detail, subTaskId) {
+  if (!subTaskId) {
+    return null;
+  }
+
+  const sessions = (detail?.sessions ?? []).filter((session) => session.subTaskId === subTaskId);
+
+  if (sessions.length === 0) {
+    return null;
+  }
+
+  return sessions.find((session) => session.id === state.selectedExecutionSessionId)
+    ?? sessions.find((session) => session.status === "RUNNING")
+    ?? sessions.at(-1)
+    ?? null;
+}
+
+function renderFocusedExecution(detail, sessionsBySubTaskId) {
+  const selectedSubTask = detail.subTasks?.find((subTask) => subTask.id === state.selectedExecutionSubTaskId) ?? null;
+  const focusedSession = resolveFocusedSession(detail, selectedSubTask?.id ?? null);
+  const focusedSessions = selectedSubTask ? (sessionsBySubTaskId.get(selectedSubTask.id) ?? []) : [];
+
+  elements.taskExecutionFocus.hidden = !selectedSubTask;
+
+  if (!selectedSubTask) {
+    return;
+  }
+
+  state.selectedExecutionSessionId = focusedSession?.id ?? null;
+  elements.taskExecutionFocusTitle.textContent = selectedSubTask.title;
+  elements.taskExecutionFocusBadge.textContent = focusedSession
+    ? buildSubTaskStatusLabel(selectedSubTask.status)
+    : "Pending";
+  elements.taskExecutionFocusBadge.className = `badge ${selectedSubTask.status === "FAILED" ? "badge--dirty" : selectedSubTask.status === "RUNNING" ? "badge--accent-soft" : "badge--outline"}`;
+  elements.taskExecutionFocusMeta.textContent = [
+    `${selectedSubTask.agentType} · ${focusedSessions.length} session${focusedSessions.length === 1 ? "" : "s"}`,
+    focusedSession?.logPath ? `log ${focusedSession.logPath}` : "log pending",
+    selectedSubTask.lastError ? `error: ${selectedSubTask.lastError}` : null,
+  ].filter(Boolean).join(" · ");
+
+  const previewOutput = focusedSession
+    ? stripAnsi(state.liveSessionOutputs.get(focusedSession.id) ?? focusedSession.outputBuffer ?? "")
+    : "";
+
+  elements.taskExecutionFocusEmpty.hidden = Boolean(focusedSession);
+  elements.taskExecutionFocusPreview.hidden = !focusedSession;
+
+  if (focusedSession) {
+    elements.taskExecutionFocusPreview.textContent = previewOutput || "Waiting for worker output...";
+  } else {
+    elements.taskExecutionFocusPreview.textContent = "";
+  }
+}
+
+function stripAnsi(value) {
+  return String(value ?? "").replaceAll(
+    /\u001B(?:\][^\u0007]*(?:\u0007|\u001B\\)|\[[0-?]*[ -/]*[@-~])/g,
+    "",
+  );
 }
 
 function normalizeOptionalText(value) {

@@ -305,13 +305,34 @@
 
             <section class="task-detail__execution" aria-labelledby="task-execution-title">
               <div class="panel__header">
-                <p class="panel__eyebrow">Execution</p>
-                <h3 id="task-execution-title">Subtasks and worker sessions</h3>
+                <div>
+                  <p class="panel__eyebrow">Execution</p>
+                  <h3 id="task-execution-title">Summary-first worker board</h3>
+                </div>
               </div>
+              <p class="panel__summary">
+                Monitor every subtask from compact live summaries, then focus a single session stream when you need deeper output.
+              </p>
               <div id="task-execution-empty" class="empty-state">
                 Approved subtasks and worker sessions will appear here after plan approval.
               </div>
-              <div id="task-execution-list" class="execution-list"></div>
+              <div id="task-execution-board" class="execution-board">
+                <div id="task-execution-list" class="execution-list"></div>
+                <aside id="task-execution-focus" class="execution-focus" hidden>
+                  <div class="execution-focus__header">
+                    <div>
+                      <p class="panel__eyebrow">Focused session</p>
+                      <h4 id="task-execution-focus-title" class="execution-focus__title">Select a subtask</h4>
+                    </div>
+                    <span id="task-execution-focus-badge" class="badge badge--outline">Idle</span>
+                  </div>
+                  <p id="task-execution-focus-meta" class="execution-focus__meta"></p>
+                  <div id="task-execution-focus-empty" class="empty-state">
+                    Pick a subtask summary to inspect the latest worker session without mounting every terminal at once.
+                  </div>
+                  <div id="task-execution-focus-preview" class="execution-console" hidden></div>
+                </aside>
+              </div>
             </section>
 
             <section class="task-detail__planning" aria-labelledby="task-plan-title">

@@ -44,7 +44,8 @@ test("serves the Phase 05 planning UI shell and static assets", async () => {
     assert.match(rootResponse.body, /Approve draft/i);
     assert.match(rootResponse.body, /Reset local edits/i);
     assert.match(rootResponse.body, /Planning notes/i);
-    assert.match(rootResponse.body, /Subtasks and worker sessions/i);
+    assert.match(rootResponse.body, /Summary-first worker board/i);
+    assert.match(rootResponse.body, /Focused session/i);
     assert.match(rootResponse.body, /Docker sandbox/i);
 
     assert.equal(cssResponse.status, 200);

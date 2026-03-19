@@ -650,13 +650,35 @@ textarea {
   gap: 16px;
 }
 
+.execution-board {
+  display: grid;
+  gap: 18px;
+}
+
+.execution-board[hidden],
+.execution-focus[hidden] {
+  display: none;
+}
+
 .execution-card {
   display: grid;
   gap: 14px;
+  width: 100%;
   padding: 18px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(71, 48, 24, 0.12);
   border-radius: 18px;
   background: rgba(255, 251, 244, 0.92);
+  text-align: left;
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.execution-card:hover {
+  transform: translateY(-2px);
+}
+
+.execution-card.is-selected {
+  border-color: rgba(182, 75, 45, 0.34);
+  background: rgba(255, 245, 236, 0.96);
 }
 
 .execution-card__header {
@@ -680,6 +702,17 @@ textarea {
   word-break: break-word;
 }
 
+.execution-card__summary {
+  display: grid;
+  gap: 6px;
+}
+
+.execution-card__summary-line {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
 .execution-card__facts {
   display: grid;
   gap: 12px;
@@ -700,6 +733,55 @@ textarea {
 
 .execution-card__facts dd {
   margin: 0;
+  word-break: break-word;
+}
+
+.execution-card__preview,
+.execution-console {
+  margin: 0;
+  padding: 14px;
+  min-height: 120px;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: #22170f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #f8e9d7;
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.execution-focus {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 253, 249, 0.82);
+  border: 1px solid rgba(71, 48, 24, 0.12);
+}
+
+.execution-focus__header {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.execution-focus__title,
+.execution-focus__meta {
+  margin: 0;
+}
+
+.execution-focus__title {
+  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+}
+
+.execution-focus__meta {
+  color: var(--text-muted);
+  line-height: 1.6;
   word-break: break-word;
 }
 
@@ -730,6 +812,11 @@ textarea {
 
   .execution-card__facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .execution-board {
+    grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.9fr);
+    align-items: start;
   }
 
   .plan-subtask__grid {
