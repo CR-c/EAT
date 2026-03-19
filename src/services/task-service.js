@@ -607,6 +607,15 @@ export class TaskService {
     });
 
     this.pendingPlanDrafts.delete(taskId);
+    this.#publish(taskId, "task:status", {
+      taskId,
+      status: planReviewTask.status,
+    });
+    this.#publish(taskId, "task:plan-generated", {
+      currentPlan: validation.plan,
+      planVersion: planReviewTask.planVersion,
+      taskId,
+    });
   }
 
   async #requestPlanRegeneration(task, reason, details) {

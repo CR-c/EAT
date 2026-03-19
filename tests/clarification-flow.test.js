@@ -104,6 +104,13 @@ test("runs clarification flow, triggers planning, and keeps the task in planning
         );
         assert.match(planningOutputEvent.data.content, /```json/i);
 
+        const planGeneratedEvent = await nextEvent(
+          events,
+          (entry) => entry.eventName === "task:plan-generated",
+        );
+        assert.equal(planGeneratedEvent.data.planVersion, 1);
+        assert.equal(planGeneratedEvent.data.currentPlan.subtasks[0].branch_suffix, "backend-slice");
+
         const detailResponse = await requestJson(
           server,
           `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,

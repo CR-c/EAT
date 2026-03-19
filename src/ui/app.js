@@ -92,6 +92,13 @@ const elements = {
   taskMessageCount: document.querySelector("#task-message-count"),
   taskMessageForm: document.querySelector("#task-message-form"),
   taskMessageInput: document.querySelector("#task-message-input"),
+  taskPlanDetail: document.querySelector("#task-plan-detail"),
+  taskPlanEmpty: document.querySelector("#task-plan-empty"),
+  taskPlanFeedback: document.querySelector("#task-plan-feedback"),
+  taskPlanList: document.querySelector("#task-plan-list"),
+  taskPlanSnapshotCount: document.querySelector("#task-plan-snapshot-count"),
+  taskPlanSummary: document.querySelector("#task-plan-summary"),
+  taskPlanVersion: document.querySelector("#task-plan-version"),
   taskSessionStatus: document.querySelector("#task-session-status"),
   taskStatusBadge: document.querySelector("#task-status-badge"),
   taskTitleInput: document.querySelector("#task-title-input"),
@@ -647,8 +654,11 @@ function renderTaskDetail() {
   elements.taskBaseCommit.textContent = detail.task.baseCommitSha;
   elements.taskSessionStatus.textContent = latestSession ? `${latestSession.sessionType} · ${latestSession.status}` : "None";
   elements.taskMessageCount.textContent = String(detail.messages?.length ?? 0);
+  elements.taskPlanVersion.textContent = String(detail.task.planVersion ?? 0);
+  elements.taskPlanSnapshotCount.textContent = String(detail.planSnapshots?.length ?? 0);
 
   renderTaskAttachments(detail.attachments ?? []);
+  renderPlanDraft(detail);
   renderTranscript(detail.messages ?? []);
 
   const canStartClarification = detail.task.status === "DRAFT";
@@ -671,6 +681,68 @@ function renderTaskAttachments(attachments) {
       <span class="attachment-list__meta">${escapeHtml(buildAttachmentCaption(attachment))}</span>
     `;
     elements.taskAttachmentsList.append(item);
+  }
+}
+
+function renderPlanDraft(detail) {
+  elements.taskPlanList.replaceChildren();
+  clearFeedback(elements.taskPlanFeedback);
+
+  const parsedPlan = parseCurrentPlanJson(detail.task.currentPlanJson);
+  const failedAttempts = countPlanValidationFailures(detail.messages ?? []);
+  const hasPlanningState = detail.task.status === "PLANNING"
+    || detail.task.status === "PLAN_REVIEW"
+    || parsedPlan
+    || (detail.task.planVersion ?? 0) > 0;
+
+  elements.taskPlanEmpty.hidden = hasPlanningState;
+
+  if (!hasPlanningState) {
+    elements.taskPlanDetail.hidden = true;
+    return;
+  }
+
+  if (detail.task.status === "PLAN_REVIEW" && parsedPlan) {
+    showFeedback(
+      elements.taskPlanFeedback,
+      "success",
+      `Plan draft ready for review. Version ${detail.task.planVersion} is saved and available for the next phase.`,
+    );
+  } else if (failedAttempts > 0) {
+    showFeedback(
+      elements.taskPlanFeedback,
+      "error",
+      `Planning is retrying after ${failedAttempts} validation failure${failedAttempts === 1 ? "" : "s"}.`,
+    );
+  } else if (detail.task.status === "PLANNING") {
+    showFeedback(
+      elements.taskPlanFeedback,
+      "success",
+      "Planning is in progress. Waiting for a valid JSON draft from the lead agent.",
+    );
+  }
+
+  elements.taskPlanDetail.hidden = false;
+  elements.taskPlanSummary.textContent = buildPlanSummary(detail, failedAttempts, parsedPlan);
+
+  if (!parsedPlan?.subtasks?.length) {
+    return;
+  }
+
+  for (const [index, subtask] of parsedPlan.subtasks.entries()) {
+    const article = document.createElement("article");
+    article.className = "plan-card";
+    article.innerHTML = `
+      <div class="plan-card__header">
+        <div>
+          <p class="plan-card__title">${escapeHtml(`${index + 1}. ${subtask.title}`)}</p>
+          <p class="plan-card__meta">${escapeHtml(`Agent: ${subtask.recommended_agent}`)}</p>
+        </div>
+        <span class="badge badge--outline">${escapeHtml(subtask.branch_suffix)}</span>
+      </div>
+      <p class="plan-card__description">${escapeHtml(subtask.description)}</p>
+    `;
+    elements.taskPlanList.append(article);
   }
 }
 
@@ -717,6 +789,7 @@ function clearTaskDetail() {
   elements.taskDetailEmpty.hidden = false;
   elements.taskTranscript.replaceChildren();
   elements.taskAttachmentsList.replaceChildren();
+  elements.taskPlanList.replaceChildren();
 }
 
 function syncBranchChoices() {
@@ -767,10 +840,23 @@ function connectTaskStream(taskId) {
 
     if (state.taskDetail?.task?.id === payload.taskId) {
       state.taskDetail.task.status = payload.status;
+      if (payload.reason) {
+        state.taskDetail.task.lastError = payload.reason;
+      }
       renderTaskDetail();
+    }
+
+    const task = state.tasks.find((entry) => entry.id === payload.taskId);
+
+    if (task) {
+      task.status = payload.status;
+      renderTaskList();
     }
   });
   stream.addEventListener("task:lead-message", () => {
+    void loadTaskDetail(taskId, { preserveStream: true });
+  });
+  stream.addEventListener("task:plan-generated", () => {
     void loadTaskDetail(taskId, { preserveStream: true });
   });
   stream.addEventListener("session:started", () => {
@@ -919,4 +1005,41 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function parseCurrentPlanJson(currentPlanJson) {
+  if (typeof currentPlanJson !== "string" || currentPlanJson.trim().length === 0) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(currentPlanJson);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function countPlanValidationFailures(messages) {
+  return messages.filter((message) => (
+    message.role === "SYSTEM" && message.content.startsWith("Plan validation failed:")
+  )).length;
+}
+
+function buildPlanSummary(detail, failedAttempts, parsedPlan) {
+  const snapshotCount = detail.planSnapshots?.length ?? 0;
+  const summaryParts = [
+    `Version ${detail.task.planVersion ?? 0}`,
+    `${snapshotCount} snapshot${snapshotCount === 1 ? "" : "s"}`,
+  ];
+
+  if (failedAttempts > 0) {
+    summaryParts.push(`${failedAttempts} regeneration${failedAttempts === 1 ? "" : "s"}`);
+  }
+
+  if (parsedPlan?.notes) {
+    summaryParts.push(`Notes: ${parsedPlan.notes}`);
+  }
+
+  return summaryParts.join(" · ");
 }
