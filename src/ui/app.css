@@ -482,6 +482,51 @@ textarea {
   justify-content: flex-end;
 }
 
+.plan-history {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.48);
+  border: 1px solid rgba(71, 48, 24, 0.12);
+}
+
+.plan-history[hidden] {
+  display: none;
+}
+
+.plan-history__title {
+  margin: 0;
+  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+}
+
+.plan-history__list {
+  display: grid;
+  gap: 10px;
+}
+
+.plan-history__item {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(71, 48, 24, 0.12);
+}
+
+.plan-history__meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.plan-history__caption {
+  margin: 0;
+  color: var(--text-muted);
+}
+
 .plan-detail__summary {
   margin: 0;
 }

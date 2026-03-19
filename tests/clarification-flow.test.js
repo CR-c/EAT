@@ -337,6 +337,100 @@ test("revalidates edited drafts on save and blocks approval when the stored plan
   }
 });
 
+test("restores a historical plan snapshot into the current draft and appends restore audit history", async () => {
+  const fixture = await makeTempDir("eat-plan-restore-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const server = await startServer({
+      agentService: createClarificationAgentService(),
+      databasePath,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "plan-restore-repo", { defaultBranch: "main" });
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Need restore-from-history before approval.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Plan snapshot restore",
+        },
+        method: "POST",
+      });
+
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+        { method: "POST" },
+      );
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/confirm-requirements`,
+        { method: "POST" },
+      );
+
+      const detailBeforeEdit = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+      );
+      const originalSnapshotId = detailBeforeEdit.body.planSnapshots[0].id;
+
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/current-plan`,
+        {
+          body: {
+            subtasks: [
+              {
+                title: "User edited draft",
+                description: "This should be replaced by the restored payload.",
+                recommended_agent: "healthy-lead",
+                branch_suffix: "user-edited-draft",
+              },
+            ],
+          },
+          method: "PUT",
+        },
+      );
+
+      const restoreResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/restore-plan-snapshot`,
+        {
+          body: { snapshotId: originalSnapshotId },
+          method: "POST",
+        },
+      );
+      assert.equal(restoreResponse.status, 200);
+      assert.equal(
+        JSON.parse(restoreResponse.body.task.currentPlanJson).subtasks[0].branch_suffix,
+        "backend-slice",
+      );
+
+      const detailAfterRestore = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+      );
+      assert.equal(detailAfterRestore.body.planSnapshots.length, 2);
+      assert.equal(detailAfterRestore.body.planSnapshots[0].source, "RESTORED_FROM_HISTORY");
+      assert.equal(
+        JSON.parse(detailAfterRestore.body.task.currentPlanJson).subtasks[0].branch_suffix,
+        "backend-slice",
+      );
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 function createClarificationAgentService() {
   const registry = new AgentRegistry();
 

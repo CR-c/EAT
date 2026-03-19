@@ -39,6 +39,8 @@ export function buildTaskErrorMessage(error) {
       return "This action is only available while the task is clarifying.";
     case "TASK_NOT_PLAN_REVIEW":
       return "This action is only available during plan review.";
+    case "PLAN_SNAPSHOT_NOT_FOUND":
+      return "The selected plan snapshot no longer exists.";
     case "ATTACHMENT_TYPE_UNSUPPORTED":
       return "One or more attachments use an unsupported type.";
     case "ATTACHMENT_SIZE_EXCEEDED":

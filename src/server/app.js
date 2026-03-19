@@ -204,6 +204,20 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const taskRestorePlanSnapshotMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/restore-plan-snapshot$/);
+
+  if (request.method === "POST" && taskRestorePlanSnapshotMatch) {
+    const taskId = decodeURIComponent(taskRestorePlanSnapshotMatch[1]);
+    const body = await readJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.restorePlanSnapshot(taskId, body.value?.snapshotId);
+    return respondServiceResult(response, result);
+  }
+
   return respondJson(response, 404, {
     error: {
       code: "NOT_FOUND",
@@ -315,6 +329,7 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.ATTACHMENT_PATH_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND:
+    case TASK_SERVICE_ERROR_CODES.PLAN_SNAPSHOT_NOT_FOUND:
       return 404;
     default:
       return 400;

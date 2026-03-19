@@ -96,6 +96,9 @@ const elements = {
   taskMessageInput: document.querySelector("#task-message-input"),
   taskPlanDetail: document.querySelector("#task-plan-detail"),
   taskPlanEditor: document.querySelector("#task-plan-editor"),
+  taskPlanHistory: document.querySelector("#task-plan-history"),
+  taskPlanHistoryEmpty: document.querySelector("#task-plan-history-empty"),
+  taskPlanHistoryList: document.querySelector("#task-plan-history-list"),
   taskPlanApproveButton: document.querySelector("#task-plan-approve-button"),
   taskPlanEmpty: document.querySelector("#task-plan-empty"),
   taskPlanFeedback: document.querySelector("#task-plan-feedback"),
@@ -740,6 +743,7 @@ function renderPlanDraft(detail) {
   elements.taskPlanDetail.hidden = false;
   elements.taskPlanEditor.hidden = detail.task.status !== "PLAN_REVIEW" || !editableDraft;
   elements.taskPlanSummary.textContent = buildPlanSummary(detail, failedAttempts, editableDraft ?? parsedPlan);
+  renderPlanHistory(detail);
 
   if (editableDraft) {
     elements.taskPlanNotesInput.value = editableDraft.notes ?? "";
@@ -775,6 +779,38 @@ function renderPlanDraft(detail) {
       <p class="plan-card__description">${escapeHtml(subtask.description)}</p>
     `;
     elements.taskPlanList.append(article);
+  }
+}
+
+function renderPlanHistory(detail) {
+  const snapshots = detail.planSnapshots ?? [];
+  const showHistory = detail.task.status === "PLAN_REVIEW" || snapshots.length > 0;
+
+  elements.taskPlanHistoryList.replaceChildren();
+  elements.taskPlanHistory.hidden = !showHistory;
+  elements.taskPlanHistoryEmpty.hidden = snapshots.length > 0;
+
+  if (!showHistory || snapshots.length === 0) {
+    return;
+  }
+
+  for (const snapshot of snapshots) {
+    const article = document.createElement("article");
+    article.className = "plan-history__item";
+    article.innerHTML = `
+      <div class="plan-history__meta">
+        <div>
+          <p class="plan-history__caption">${escapeHtml(buildPlanSnapshotLabel(snapshot))}</p>
+          <p class="plan-history__caption">${escapeHtml(new Date(snapshot.createdAt).toLocaleString())}</p>
+        </div>
+        <button class="button button--secondary" type="button" data-restore-snapshot-id="${snapshot.id}">
+          Restore snapshot
+        </button>
+      </div>
+    `;
+
+    article.querySelector("[data-restore-snapshot-id]")?.addEventListener("click", onRestorePlanSnapshot);
+    elements.taskPlanHistoryList.append(article);
   }
 }
 
@@ -867,6 +903,7 @@ function clearTaskDetail() {
   elements.taskDetailEmpty.hidden = false;
   elements.taskTranscript.replaceChildren();
   elements.taskAttachmentsList.replaceChildren();
+  elements.taskPlanHistoryList.replaceChildren();
   elements.taskPlanList.replaceChildren();
 }
 
@@ -1136,6 +1173,39 @@ async function onApprovePlanDraft() {
   }
 }
 
+async function onRestorePlanSnapshot(event) {
+  if (!state.taskDetail?.task?.id) {
+    return;
+  }
+
+  const button = event.currentTarget;
+  const snapshotId = button.dataset.restoreSnapshotId;
+
+  if (!snapshotId) {
+    return;
+  }
+
+  clearFeedback(elements.taskPlanFeedback);
+  setButtonBusy(button, true, "Restoring...");
+
+  try {
+    const response = await fetchJson(
+      `/api/tasks/${encodeURIComponent(state.taskDetail.task.id)}/restore-plan-snapshot`,
+      {
+        body: { snapshotId },
+        method: "POST",
+      },
+    );
+
+    state.taskDetail.task = response.task;
+    await loadTaskDetail(state.taskDetail.task.id, { preserveStream: true });
+    showFeedback(elements.taskPlanFeedback, "success", "Snapshot restored into the current draft.");
+  } catch (error) {
+    showFeedback(elements.taskPlanFeedback, "error", buildTaskErrorMessage(error));
+    setButtonBusy(button, false, "Restore snapshot");
+  }
+}
+
 async function readDraftAttachments() {
   const attachments = [];
 
@@ -1389,4 +1459,14 @@ function isEditablePlanDirty(detail) {
   }
 
   return JSON.stringify(state.taskPlanDraft) !== detail.task.currentPlanJson;
+}
+
+function buildPlanSnapshotLabel(snapshot) {
+  const sourceLabel = snapshot.source === "RESTORED_FROM_HISTORY"
+    ? "Restored"
+    : snapshot.source === "APPROVED"
+      ? "Approved"
+      : "Lead generated";
+
+  return `Version ${snapshot.version} · ${sourceLabel}`;
 }

@@ -65,6 +65,7 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   LEAD_AGENT_UNHEALTHY: "LEAD_AGENT_UNHEALTHY",
   LEAD_AGENT_REQUIRED: "LEAD_AGENT_REQUIRED",
   INVALID_PLAN: "INVALID_PLAN",
+  PLAN_SNAPSHOT_NOT_FOUND: "PLAN_SNAPSHOT_NOT_FOUND",
   REQUIREMENTS_ALREADY_CONFIRMED: "REQUIREMENTS_ALREADY_CONFIRMED",
   SESSION_NOT_RUNNING: "SESSION_NOT_RUNNING",
   TASK_MESSAGE_REQUIRED: "TASK_MESSAGE_REQUIRED",
@@ -503,6 +504,51 @@ export class TaskService {
       approvalReady: true,
       currentPlan: validation.plan,
       task,
+    };
+  }
+
+  async restorePlanSnapshot(taskId, snapshotId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (task.status !== TASK_STATUS.PLAN_REVIEW) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_NOT_PLAN_REVIEW,
+        "Plan restore is only available during PLAN_REVIEW.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const snapshot = await this.taskRepository.findPlanSnapshotById(snapshotId);
+
+    if (!snapshot || snapshot.taskId !== taskId) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.PLAN_SNAPSHOT_NOT_FOUND,
+        "Plan snapshot not found.",
+        { snapshotId, taskId },
+      );
+    }
+
+    const nextTask = await this.taskRepository.updateTask(taskId, {
+      currentPlanJson: snapshot.payload,
+      lastError: null,
+    });
+
+    await this.taskRepository.createPlanSnapshot({
+      payload: snapshot.payload,
+      source: PLAN_SNAPSHOT_SOURCE.RESTORED_FROM_HISTORY,
+      taskId,
+      version: nextTask.planVersion,
+    });
+
+    return {
+      ok: true,
+      currentPlan: parseCurrentPlanJson(snapshot.payload),
+      snapshotId,
+      task: nextTask,
     };
   }
 

@@ -41,6 +41,7 @@ test("serves the Phase 05 planning UI shell and static assets", async () => {
     assert.match(rootResponse.body, /Approve draft/i);
     assert.match(rootResponse.body, /Reset local edits/i);
     assert.match(rootResponse.body, /Planning notes/i);
+    assert.match(rootResponse.body, /Plan snapshots/i);
 
     assert.equal(cssResponse.status, 200);
     assert.match(cssResponse.headers.get("content-type"), /^text\/css/);
@@ -98,6 +99,12 @@ test("formats project, task, agent health, and attachment UI messages", () => {
       code: "TASK_NOT_PLAN_REVIEW",
     }),
     "This action is only available during plan review.",
+  );
+  assert.equal(
+    buildTaskErrorMessage({
+      code: "PLAN_SNAPSHOT_NOT_FOUND",
+    }),
+    "The selected plan snapshot no longer exists.",
   );
   assert.equal(
     buildAttachmentCaption({
