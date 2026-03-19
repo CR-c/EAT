@@ -547,6 +547,11 @@ test("approves the validated plan by freezing approvedPlanJson and appending an 
         assert.equal(detailResponse.body.subTasks.length, 1);
         assert.equal(detailResponse.body.planSnapshots[0].source, "APPROVED");
         assert.equal(detailResponse.body.planSnapshots[1].source, "LEAD_GENERATED");
+
+        await nextEvent(
+          events,
+          (entry) => entry.eventName === "session:ended" && entry.data.subtaskId === approvalResponse.body.subTasks[0].id,
+        );
       } finally {
         unsubscribe();
       }
@@ -632,7 +637,7 @@ function createClarificationAgentService() {
       canExecute: true,
       canOrchestrate: true,
       description: "Lead clarification test adapter",
-      supportedSandboxTypes: [SESSION_SANDBOX_TYPES.HOST],
+      supportedSandboxTypes: [SESSION_SANDBOX_TYPES.HOST, SESSION_SANDBOX_TYPES.DOCKER],
       supportsInteractiveInput: true,
       supportsVision: true,
     },
@@ -643,7 +648,38 @@ function createClarificationAgentService() {
       };
     },
     name: "healthy-lead",
-    async spawnSession() {
+    async spawnSession(config) {
+      if (config?.sandbox?.type === SESSION_SANDBOX_TYPES.DOCKER) {
+        const outputListeners = new Set();
+        const exitListeners = new Set();
+
+        setTimeout(() => {
+          for (const listener of outputListeners) {
+            listener("Worker completed.\n");
+          }
+        }, 0);
+        setTimeout(() => {
+          for (const listener of exitListeners) {
+            listener(0);
+          }
+        }, 10);
+
+        return {
+          containerId: "worker-container-1",
+          pid: 5432,
+          sessionId: "worker-runtime-1",
+          async kill() {},
+          onExit(callback) {
+            exitListeners.add(callback);
+          },
+          onOutput(callback) {
+            outputListeners.add(callback);
+          },
+          async sendInput() {},
+          async stop() {},
+        };
+      }
+
       const outputListeners = new Set();
       const exitListeners = new Set();
 
