@@ -93,6 +93,7 @@ test("persists task plan fields, messages, attachments, sessions, subtasks, and 
       agentType: "claude-cli",
       autoAssigned: false,
       branchSuffix: "lead-session-chat-flow",
+      dependencyBranchSuffixes: ["setup-contract"],
       description: "Implement the approved work item.",
       status: SUBTASK_STATUS.PENDING,
       taskId: task.id,
@@ -120,6 +121,7 @@ test("persists task plan fields, messages, attachments, sessions, subtasks, and 
     assert.equal(attachment.taskId, task.id);
     assert.equal(session.sessionType, SESSION_TYPE.LEAD);
     assert.equal(subTask.autoAssigned, false);
+    assert.deepEqual(subTask.dependencyBranchSuffixes, ["setup-contract"]);
     assert.deepEqual(
       normalizeRecord(await taskRepository.findSubTaskById(subTask.id)),
       subTask,

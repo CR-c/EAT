@@ -89,6 +89,7 @@ This product choice is intentional. It keeps failures inspectable and reduces th
 - Generate a structured plan containing independently executable subtasks
 - Let the user edit and approve the plan before execution
 - Materialize approved subtasks into isolated branches and worktrees
+- Respect optional subtask dependencies and launch downstream work only after prerequisites complete
 - Run multiple worker agents concurrently in Docker sandboxes on separate branches
 - Stream terminal output per running session
 - Allow cancel, retry, rework, agent switching, and message injection during execution
@@ -100,7 +101,7 @@ This product choice is intentional. It keeps failures inspectable and reduces th
 
 ### 4.2 MVP Out of Scope
 
-- DAG scheduling and general dependency graphs between subtasks
+- Cross-task orchestration across multiple tasks or projects
 - Automatic conflict resolution by an agent
 - Automatic visual captioning through external services
 - Cross-project task orchestration
@@ -112,8 +113,8 @@ This product choice is intentional. It keeps failures inspectable and reduces th
 
 To keep v0.1 buildable, the following restrictions apply:
 
-- All subtasks in one approved plan must be independently executable
-- Subtasks may run in parallel only; ordered execution is not supported in MVP
+- Subtasks may mix parallel and dependency-constrained execution in MVP
+- Dependencies must be expressed explicitly in the approved plan and must form an acyclic graph
 - Images are passed only to vision-capable agents in MVP
 - If a selected worker agent cannot consume an attachment type, that attachment is omitted and the omission is surfaced in the UI and task log
 - Worker sessions must run in a sandbox that does not expose the host home directory by default
@@ -156,11 +157,14 @@ MVP uses supervised execution with explicit checkpoints:
 
 ### 6.2 Dependency Model
 
-MVP does not support subtask dependencies. Therefore:
+MVP supports lightweight subtask dependencies inside one approved plan.
 
-- `order` is removed from the plan payload and data model
-- The lead agent must generate only independent subtasks
-- If the work is not decomposable into independent subtasks, the lead agent must output a single subtask
+- Each subtask may declare optional `depends_on`
+- `depends_on` is an array of earlier subtask `branch_suffix` values
+- Dependencies must form an acyclic graph
+- Root subtasks may run in parallel
+- Downstream subtasks remain blocked until all prerequisite subtasks complete execution successfully
+- If a prerequisite fails or requires rework, blocked downstream subtasks do not auto-start
 
 ### 6.3 Attachment Model
 
@@ -889,7 +893,7 @@ The lead agent must return valid JSON matching this structure:
 
 Rules:
 
-- `subtasks` must contain only independently executable items
+- `subtasks` may contain dependency-constrained items via `depends_on`
 - `branch_suffix` must be slug-safe
 - No `order` field is allowed in MVP
 - If only one worker is appropriate, the lead agent may return a single subtask
@@ -929,7 +933,7 @@ On validation failure:
   - add a new subtask
   - remove a subtask
   - restore a previous lead-generated `PlanSnapshot` into `currentPlanJson`
-- User cannot define dependencies between subtasks in MVP
+- User may define dependencies between subtasks in MVP through `depends_on`
 - User edits do not increment `planVersion`
 - User edits update `currentPlanJson` in place
 - If a historical snapshot is restored, the system may write a new `PlanSnapshot` with `source = RESTORED_FROM_HISTORY` for auditability

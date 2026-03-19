@@ -7,6 +7,7 @@ export const PLAN_DRAFT_PARSE_ERROR_CODES = Object.freeze({
 export const PLAN_VALIDATION_ERROR_CODES = Object.freeze({
   BRANCH_SUFFIX_DUPLICATE: "BRANCH_SUFFIX_DUPLICATE",
   BRANCH_SUFFIX_INVALID: "BRANCH_SUFFIX_INVALID",
+  DEPENDS_ON_INVALID: "DEPENDS_ON_INVALID",
   PLAN_NOT_OBJECT: "PLAN_NOT_OBJECT",
   RECOMMENDED_AGENT_UNHEALTHY: "RECOMMENDED_AGENT_UNHEALTHY",
   SUBTASK_DESCRIPTION_REQUIRED: "SUBTASK_DESCRIPTION_REQUIRED",
@@ -21,6 +22,7 @@ export function buildPlanningPrompt(task) {
     "Requirements are confirmed. Generate the execution plan as JSON only.",
     "Return an object with a non-empty `subtasks` array.",
     "Each subtask must include `title`, `description`, `recommended_agent`, and `branch_suffix`.",
+    "Optional per-subtask field: `depends_on`, an array of earlier subtask `branch_suffix` values.",
     "Optional top-level field: `notes`.",
     "Do not wrap the response in prose outside the JSON payload.",
     `Task title: ${task.title}`,
@@ -131,9 +133,46 @@ export function validatePlanDraft(payload, options = {}) {
       duplicates.add(branchSuffix);
     }
 
+    const dependencyBranchSuffixes = normalizeDependsOn(subtask?.depends_on);
+
+    if (!dependencyBranchSuffixes.ok) {
+      return validationFailure(
+        PLAN_VALIDATION_ERROR_CODES.DEPENDS_ON_INVALID,
+        `Subtask ${index + 1} must use a string array for depends_on.`,
+        { index },
+      );
+    }
+
+    for (const dependencyBranchSuffix of dependencyBranchSuffixes.value) {
+      if (dependencyBranchSuffix === branchSuffix) {
+        return validationFailure(
+          PLAN_VALIDATION_ERROR_CODES.DEPENDS_ON_INVALID,
+          `Subtask ${index + 1} cannot depend on itself.`,
+          {
+            branchSuffix,
+            dependencyBranchSuffix,
+            index,
+          },
+        );
+      }
+
+      if (!seenBranchSuffixes.has(dependencyBranchSuffix)) {
+        return validationFailure(
+          PLAN_VALIDATION_ERROR_CODES.DEPENDS_ON_INVALID,
+          `Subtask ${index + 1} depends_on must reference an earlier branch_suffix.`,
+          {
+            branchSuffix,
+            dependencyBranchSuffix,
+            index,
+          },
+        );
+      }
+    }
+
     seenBranchSuffixes.add(branchSuffix);
     subtasks.push({
       branch_suffix: branchSuffix,
+      ...(dependencyBranchSuffixes.value.length > 0 ? { depends_on: dependencyBranchSuffixes.value } : {}),
       description,
       recommended_agent: recommendedAgent,
       title,
@@ -231,4 +270,36 @@ function normalizeRequiredString(value) {
 
 function normalizeOptionalString(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeDependsOn(value) {
+  if (value === undefined || value === null) {
+    return {
+      ok: true,
+      value: [],
+    };
+  }
+
+  if (!Array.isArray(value)) {
+    return {
+      ok: false,
+      value: [],
+    };
+  }
+
+  const normalizedValues = [...new Set(value
+    .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim()))];
+
+  if (normalizedValues.length !== value.length && value.some((entry) => typeof entry !== "string" || entry.trim().length === 0)) {
+    return {
+      ok: false,
+      value: [],
+    };
+  }
+
+  return {
+    ok: true,
+    value: normalizedValues,
+  };
 }

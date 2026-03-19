@@ -233,6 +233,23 @@ This document maps schema work to delivery phases. It is intentionally conservat
 - `logPath`, `outputBuffer`, and `outputBufferMaxBytes` should already exist by now.
 - Avoid adding per-chunk log tables unless absolutely necessary; the PRD prefers filesystem logs plus tail buffer.
 
+## Phase 15
+
+### New Or Changed Models
+
+- `SubTask`
+
+### Fields
+
+#### `SubTask`
+
+- `dependencyBranchSuffixesJson @default('[]')`
+
+### Notes
+
+- Keep dependency metadata additive and append-only friendly.
+- For MVP, storing dependency branch suffixes as JSON is sufficient; a normalized edge table can wait until later if needed.
+
 ## Phase 10
 
 ### New Or Changed Models

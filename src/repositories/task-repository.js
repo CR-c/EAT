@@ -62,6 +62,7 @@ export const MERGE_STATUS = Object.freeze({
 
 export const SUBTASK_STATUS = Object.freeze({
   ACCEPTED: "ACCEPTED",
+  BLOCKED: "BLOCKED",
   CANCELLED: "CANCELLED",
   DISCARDED: "DISCARDED",
   DISCARD_PENDING: "DISCARD_PENDING",
@@ -631,6 +632,7 @@ export class SqliteTaskRepository {
       branchName: input.branchName ?? null,
       branchSuffix: input.branchSuffix,
       createdAt: timestamp,
+      dependencyBranchSuffixes: normalizeStringArray(input.dependencyBranchSuffixes),
       description: input.description,
       id: input.id ?? randomUUID(),
       lastError: input.lastError ?? null,
@@ -653,6 +655,7 @@ export class SqliteTaskRepository {
           title,
           description,
           branch_suffix,
+          dependency_branch_suffixes_json,
           branch_name,
           worktree_path,
           agent_type,
@@ -665,7 +668,7 @@ export class SqliteTaskRepository {
           latest_review_summary,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         subTask.id,
@@ -673,6 +676,7 @@ export class SqliteTaskRepository {
         subTask.title,
         subTask.description,
         subTask.branchSuffix,
+        JSON.stringify(subTask.dependencyBranchSuffixes),
         subTask.branchName,
         subTask.worktreePath,
         subTask.agentType,
@@ -699,6 +703,7 @@ export class SqliteTaskRepository {
           title,
           description,
           branch_suffix AS branchSuffix,
+          dependency_branch_suffixes_json AS dependencyBranchSuffixesJson,
           branch_name AS branchName,
           worktree_path AS worktreePath,
           agent_type AS agentType,
@@ -720,9 +725,12 @@ export class SqliteTaskRepository {
       return null;
     }
 
+    const { dependencyBranchSuffixesJson, ...rest } = subTask;
+
     return {
-      ...subTask,
+      ...rest,
       autoAssigned: Boolean(subTask.autoAssigned),
+      dependencyBranchSuffixes: parseJsonStringArray(dependencyBranchSuffixesJson),
     };
   }
 
@@ -746,6 +754,7 @@ export class SqliteTaskRepository {
           title = ?,
           description = ?,
           branch_suffix = ?,
+          dependency_branch_suffixes_json = ?,
           branch_name = ?,
           worktree_path = ?,
           agent_type = ?,
@@ -763,6 +772,7 @@ export class SqliteTaskRepository {
         nextSubTask.title,
         nextSubTask.description,
         nextSubTask.branchSuffix,
+        JSON.stringify(normalizeStringArray(nextSubTask.dependencyBranchSuffixes)),
         nextSubTask.branchName,
         nextSubTask.worktreePath,
         nextSubTask.agentType,
@@ -789,6 +799,7 @@ export class SqliteTaskRepository {
           title,
           description,
           branch_suffix AS branchSuffix,
+          dependency_branch_suffixes_json AS dependencyBranchSuffixesJson,
           branch_name AS branchName,
           worktree_path AS worktreePath,
           agent_type AS agentType,
@@ -807,8 +818,9 @@ export class SqliteTaskRepository {
       `)
       .all(taskId)
       .map((subTask) => ({
-        ...subTask,
+        ...omitDependencyBranchSuffixesJson(subTask),
         autoAssigned: Boolean(subTask.autoAssigned),
+        dependencyBranchSuffixes: parseJsonStringArray(subTask.dependencyBranchSuffixesJson),
       }));
   }
 
@@ -1043,6 +1055,7 @@ export class SqliteTaskRepository {
           title,
           description,
           branch_suffix AS branchSuffix,
+          dependency_branch_suffixes_json AS dependencyBranchSuffixesJson,
           branch_name AS branchName,
           worktree_path AS worktreePath,
           agent_type AS agentType,
@@ -1060,8 +1073,9 @@ export class SqliteTaskRepository {
       `)
       .all()
       .map((subTask) => ({
-        ...subTask,
+        ...omitDependencyBranchSuffixesJson(subTask),
         autoAssigned: Boolean(subTask.autoAssigned),
+        dependencyBranchSuffixes: parseJsonStringArray(subTask.dependencyBranchSuffixesJson),
       }));
   }
 
@@ -1173,4 +1187,32 @@ export class SqliteTaskRepository {
 
     return Number(row?.maxAttemptNumber ?? 0) + 1;
   }
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value
+    .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim()))];
+}
+
+function parseJsonStringArray(value) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return normalizeStringArray(parsed);
+  } catch {
+    return [];
+  }
+}
+
+function omitDependencyBranchSuffixesJson(record) {
+  const { dependencyBranchSuffixesJson, ...rest } = record;
+  return rest;
 }

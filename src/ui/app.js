@@ -976,6 +976,9 @@ function renderPlanDraft(detail) {
         <div>
           <p class="plan-card__title">${escapeHtml(`${index + 1}. ${subtask.title}`)}</p>
           <p class="plan-card__meta">${escapeHtml(`Agent: ${subtask.recommended_agent}`)}</p>
+          ${Array.isArray(subtask.depends_on) && subtask.depends_on.length > 0
+            ? `<p class="plan-card__meta">${escapeHtml(`Depends on: ${subtask.depends_on.join(", ")}`)}</p>`
+            : ""}
         </div>
         <span class="badge badge--outline">${escapeHtml(subtask.branch_suffix)}</span>
       </div>
@@ -1049,6 +1052,16 @@ function renderEditablePlanSubtask(index, subtask) {
           <input type="text" value="${escapeHtmlAttribute(subtask.branch_suffix ?? "")}" data-plan-field="branch_suffix" data-subtask-index="${index}">
           <span class="badge badge--outline">${escapeHtml(subtask.branch_suffix ?? "missing-suffix")}</span>
         </div>
+      </label>
+      <label class="field">
+        <span class="field__label">Depends on</span>
+        <input
+          type="text"
+          value="${escapeHtmlAttribute(Array.isArray(subtask.depends_on) ? subtask.depends_on.join(", ") : "")}"
+          placeholder="backend-contract, auth-api"
+          data-plan-field="depends_on"
+          data-subtask-index="${index}"
+        >
       </label>
     </div>
   `;
@@ -1325,7 +1338,15 @@ function onPlanSubtaskInput(event) {
     ...state.taskPlanDraft,
     subtasks: state.taskPlanDraft.subtasks.map((subtask, subtaskIndex) => (
       subtaskIndex === index
-        ? { ...subtask, [field]: event.target.value }
+        ? {
+            ...subtask,
+            [field]: field === "depends_on"
+              ? event.target.value
+                .split(",")
+                .map((value) => value.trim())
+                .filter(Boolean)
+              : event.target.value,
+          }
         : subtask
     )),
   };
@@ -1888,6 +1909,7 @@ function buildWorkerAgentOptions(selectedAgentName) {
 function createDefaultPlanSubtask(index) {
   return {
     branch_suffix: `draft-subtask-${index + 1}`,
+    depends_on: [],
     description: "",
     recommended_agent: state.workerCandidates.find((candidate) => candidate.selectable)?.agentName
       ?? state.taskDetail?.task?.leadAgentType

@@ -54,6 +54,11 @@ const COMPLETED_SUBTASK_STATUSES = new Set([
   SUBTASK_STATUS.DISCARDED,
   SUBTASK_STATUS.MERGED,
 ]);
+const DEPENDENCY_SATISFIED_SUBTASK_STATUSES = new Set([
+  SUBTASK_STATUS.ACCEPTED,
+  SUBTASK_STATUS.MERGED,
+  SUBTASK_STATUS.REVIEW_PENDING,
+]);
 const TERMINAL_TASK_STATUSES = new Set([
   TASK_STATUS.CANCELLED,
   TASK_STATUS.COMPLETED,
@@ -645,14 +650,16 @@ export class TaskService {
       const subTaskSeedTime = Date.now();
 
       for (const [index, subtask] of validation.plan.subtasks.entries()) {
+        const dependencyBranchSuffixes = subtask.depends_on ?? [];
         subTasks.push(await repository.createSubTask({
           agentType: subtask.recommended_agent,
           autoAssigned: true,
           branchName: null,
           branchSuffix: subtask.branch_suffix,
           createdAt: new Date(subTaskSeedTime + index).toISOString(),
+          dependencyBranchSuffixes,
           description: subtask.description,
-          status: SUBTASK_STATUS.PENDING,
+          status: dependencyBranchSuffixes.length > 0 ? SUBTASK_STATUS.BLOCKED : SUBTASK_STATUS.PENDING,
           taskId,
           title: subtask.title,
           updatedAt: new Date(subTaskSeedTime + index).toISOString(),
@@ -680,15 +687,11 @@ export class TaskService {
       });
 
       for (const subTask of approvalResult.subTasks) {
-        this.#publish(taskId, "subtask:status", {
-          status: subTask.status,
-          subtaskId: subTask.id,
-          taskId,
-        });
+        this.#publishSubTaskStatus(taskId, subTask);
       }
 
       queueMicrotask(() => {
-        void this.#launchApprovedSubTasks(taskId);
+        void this.#progressDependencySchedule(taskId);
       });
     }
 
@@ -784,12 +787,26 @@ export class TaskService {
     }
 
     const nextDescription = normalizeRequiredString(input.description) ?? subTask.description;
+    const resumedTask = task.status === TASK_STATUS.ACTION_REQUIRED
+      ? await this.#updateTaskStatus(task.id, TASK_STATUS.EXECUTING, {
+          currentTask: task,
+          lastError: null,
+          publish: false,
+        })
+      : task;
     const pendingSubTask = await this.taskRepository.updateSubTask(subTaskId, {
       description: nextDescription,
       lastError: null,
       retryCount: (subTask.retryCount ?? 0) + 1,
       status: SUBTASK_STATUS.PENDING,
     });
+
+    if (resumedTask.status !== task.status) {
+      this.#publish(task.id, "task:status", {
+        taskId: task.id,
+        status: resumedTask.status,
+      });
+    }
 
     this.#publish(task.id, "subtask:retry", {
       description: nextDescription,
@@ -808,7 +825,7 @@ export class TaskService {
       ok: true,
       session: this.#decorateSession(launchResult.session),
       subTask: this.#decorateSubTask(launchResult.subTask),
-      task: launchResult.task,
+      task: launchResult.task ?? resumedTask,
     };
   }
 
@@ -1561,7 +1578,52 @@ export class TaskService {
     }
 
     const subTasks = await this.taskRepository.listSubTasksByTaskId(taskId);
-    await Promise.allSettled(subTasks.map((subTask) => this.#launchSubTask(taskId, subTask.id)));
+    const launchableSubTasks = subTasks.filter((subTask) => (
+      subTask.status === SUBTASK_STATUS.PENDING
+      && areSubTaskDependenciesSatisfied(subTask, subTasks)
+    ));
+
+    await Promise.allSettled(launchableSubTasks.map((subTask) => this.#launchSubTask(taskId, subTask.id)));
+  }
+
+  async #progressDependencySchedule(taskId) {
+    if (this.closed) {
+      return;
+    }
+
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task || ![TASK_STATUS.EXECUTING, TASK_STATUS.ACTION_REQUIRED].includes(task.status)) {
+      return;
+    }
+
+    let subTasks = await this.taskRepository.listSubTasksByTaskId(taskId);
+    let releasedAny = false;
+
+    for (const subTask of subTasks) {
+      if (subTask.status !== SUBTASK_STATUS.BLOCKED) {
+        continue;
+      }
+
+      if (!areSubTaskDependenciesSatisfied(subTask, subTasks)) {
+        continue;
+      }
+
+      const releasedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
+        lastError: null,
+        status: SUBTASK_STATUS.PENDING,
+      });
+      this.#publishSubTaskStatus(taskId, releasedSubTask);
+      releasedAny = true;
+    }
+
+    if (releasedAny) {
+      subTasks = await this.taskRepository.listSubTasksByTaskId(taskId);
+    }
+
+    if (task.status === TASK_STATUS.EXECUTING) {
+      await this.#launchApprovedSubTasks(taskId);
+    }
   }
 
   async #launchSubTask(taskId, subTaskId) {
@@ -1969,6 +2031,7 @@ export class TaskService {
       await this.#runIncrementalReview(taskId, subTaskId, sessionId);
     }
 
+    await this.#progressDependencySchedule(taskId);
     await this.#maybeStartFinalReview(taskId);
   }
 
@@ -2086,6 +2149,13 @@ export class TaskService {
     if (hasLiveWorkerSession || subTasks.some((subTask) => (
       [SUBTASK_STATUS.PENDING, SUBTASK_STATUS.READY, SUBTASK_STATUS.RUNNING].includes(subTask.status)
     ))) {
+      return;
+    }
+
+    const blockedSubTasks = subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.BLOCKED);
+
+    if (blockedSubTasks.length > 0) {
+      await this.#setTaskActionRequired(taskId, buildBlockedDependencyReason(blockedSubTasks, subTasks));
       return;
     }
 
@@ -2305,6 +2375,7 @@ export class TaskService {
       SUBTASK_STATUS.DISCARDED,
     ]);
     const actionRequiredStatuses = new Set([
+      SUBTASK_STATUS.BLOCKED,
       SUBTASK_STATUS.CANCELLED,
       SUBTASK_STATUS.DISCARD_PENDING,
       SUBTASK_STATUS.FAILED,
@@ -3224,6 +3295,45 @@ function isMergeResumeEligible(subTasks) {
       SUBTASK_STATUS.MERGED,
     ].includes(subTask.status)
   ));
+}
+
+function areSubTaskDependenciesSatisfied(subTask, subTasks) {
+  const dependencyBranchSuffixes = normalizeDependencyBranchSuffixes(subTask?.dependencyBranchSuffixes);
+
+  if (dependencyBranchSuffixes.length === 0) {
+    return true;
+  }
+
+  const subTaskByBranchSuffix = new Map((subTasks ?? []).map((entry) => [entry.branchSuffix, entry]));
+
+  return dependencyBranchSuffixes.every((branchSuffix) => (
+    DEPENDENCY_SATISFIED_SUBTASK_STATUSES.has(subTaskByBranchSuffix.get(branchSuffix)?.status)
+  ));
+}
+
+function buildBlockedDependencyReason(blockedSubTasks, allSubTasks) {
+  const subTaskByBranchSuffix = new Map((allSubTasks ?? []).map((subTask) => [subTask.branchSuffix, subTask]));
+  const summaries = blockedSubTasks.map((subTask) => {
+    const blockers = normalizeDependencyBranchSuffixes(subTask.dependencyBranchSuffixes)
+      .map((branchSuffix) => {
+        const dependencySubTask = subTaskByBranchSuffix.get(branchSuffix);
+        return dependencySubTask
+          ? `${branchSuffix} (${dependencySubTask.status})`
+          : `${branchSuffix} (missing)`;
+      });
+
+    return `${subTask.title} is blocked by ${blockers.join(", ")}.`;
+  });
+
+  return summaries.join(" ");
+}
+
+function normalizeDependencyBranchSuffixes(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((entry) => typeof entry === "string" && entry.trim().length > 0).map((entry) => entry.trim());
 }
 
 function groupRecordsBySubTaskId(records) {

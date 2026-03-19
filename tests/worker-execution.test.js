@@ -215,6 +215,139 @@ test("launches concurrent worker sessions and exposes attachment filtering metad
   }
 });
 
+test("keeps dependent subtasks blocked until prerequisites finish and auto-launches them afterward", async () => {
+  const fixture = await makeTempDir("eat-worker-dependencies-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const startedBranches = [];
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Backend contract",
+            description: "Design and implement the shared backend contract first.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "backend-contract",
+          },
+          {
+            title: "React frontend",
+            description: "Build the frontend after the backend contract is ready.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "react-frontend",
+            depends_on: ["backend-contract"],
+          },
+        ],
+      },
+      prepareWorkerSession: async (config) => {
+        startedBranches.push(config.branchName);
+      },
+      workerBehavior: (config) => config.branchName.endsWith("backend-contract")
+        ? {
+            delayMs: 80,
+            exitCode: 0,
+            output: "backend complete\n",
+          }
+        : {
+            delayMs: 20,
+            exitCode: 0,
+            output: "frontend complete\n",
+          },
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "dependency-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Run backend first, then the frontend.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Dependent execution",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        await nextEvent(events, (event) => (
+          event.eventName === "subtask:status"
+          && event.data.status === "BLOCKED"
+          && Array.isArray(event.data.dependencyBranchSuffixes)
+          && event.data.dependencyBranchSuffixes.includes("backend-contract")
+        ));
+
+        const firstStartedEvent = await nextEvent(
+          events,
+          (event) => event.eventName === "session:started" && event.data.subtaskId,
+        );
+        const firstStartedDetail = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const backendSubTask = firstStartedDetail.body.subTasks.find((subTask) => subTask.branchSuffix === "backend-contract");
+        const frontendSubTask = firstStartedDetail.body.subTasks.find((subTask) => subTask.branchSuffix === "react-frontend");
+
+        assert.equal(backendSubTask.status, "RUNNING");
+        assert.equal(frontendSubTask.status, "BLOCKED");
+        assert.deepEqual(frontendSubTask.dependencyBranchSuffixes, ["backend-contract"]);
+        assert.equal(startedBranches.length, 1);
+
+        await nextEvent(
+          events,
+          (event) => event.eventName === "session:ended" && event.data.subtaskId === firstStartedEvent.data.subtaskId,
+        );
+        await nextEvent(
+          events,
+          (event) => event.eventName === "subtask:status" && event.data.status === "PENDING" && event.data.branchSuffix === "react-frontend",
+        );
+        const secondStartedEvent = await nextEvent(
+          events,
+          (event) => (
+            event.eventName === "session:started"
+            && event.data.subtaskId
+            && event.data.subtaskId !== firstStartedEvent.data.subtaskId
+          ),
+        );
+
+        assert.equal(startedBranches.length, 2);
+        assert.match(startedBranches[0], /backend-contract$/);
+        assert.match(startedBranches[1], /react-frontend$/);
+
+        await nextEvent(
+          events,
+          (event) => event.eventName === "session:ended" && event.data.subtaskId === secondStartedEvent.data.subtaskId,
+        );
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "MERGING");
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.ok(detailResponse.body.subTasks.every((subTask) => ["ACCEPTED", "MERGED"].includes(subTask.status)));
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("persists full worker logs to logPath while keeping a bounded output buffer", async () => {
   const fixture = await makeTempDir("eat-worker-logs-");
 

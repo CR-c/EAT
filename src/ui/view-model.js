@@ -191,6 +191,8 @@ export function buildSubTaskStatusLabel(status) {
   switch (status) {
     case "PENDING":
       return "Pending";
+    case "BLOCKED":
+      return "Blocked";
     case "READY":
       return "Ready";
     case "RUNNING":

@@ -103,6 +103,7 @@ test("formats project, task, agent health, and attachment UI messages", () => {
   assert.equal(buildTaskStatusLabel("EXECUTING"), "Executing");
   assert.equal(buildTaskStatusLabel("REVIEWING"), "Reviewing");
   assert.equal(buildTaskStatusLabel("MERGING"), "Merging");
+  assert.equal(buildSubTaskStatusLabel("BLOCKED"), "Blocked");
   assert.equal(buildSubTaskStatusLabel("REVIEW_PENDING"), "Review pending");
   assert.equal(
     buildTaskErrorMessage({

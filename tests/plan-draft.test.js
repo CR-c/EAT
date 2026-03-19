@@ -19,6 +19,7 @@ test("buildPlanningPrompt requests JSON-only plan output", () => {
   assert.match(prompt, /JSON only/i);
   assert.match(prompt, /subtasks/i);
   assert.match(prompt, /branch_suffix/i);
+  assert.match(prompt, /depends_on/i);
 });
 
 test("parsePlanDraftText extracts markdown-wrapped JSON payloads", () => {
@@ -70,6 +71,13 @@ test("validatePlanDraft normalizes a valid plan and rejects duplicate or unhealt
           recommended_agent: "codex-cli",
           branch_suffix: "backend-api",
         },
+        {
+          title: " Frontend ",
+          description: " Build the UI ",
+          recommended_agent: "codex-cli",
+          branch_suffix: "frontend-ui",
+          depends_on: ["backend-api"],
+        },
       ],
     },
     {
@@ -88,6 +96,13 @@ test("validatePlanDraft normalizes a valid plan and rejects duplicate or unhealt
         description: "Implement the API",
         recommended_agent: "codex-cli",
         title: "Backend",
+      },
+      {
+        branch_suffix: "frontend-ui",
+        depends_on: ["backend-api"],
+        description: "Build the UI",
+        recommended_agent: "codex-cli",
+        title: "Frontend",
       },
     ],
   });
@@ -137,4 +152,31 @@ test("validatePlanDraft normalizes a valid plan and rejects duplicate or unhealt
   );
   assert.equal(unhealthyAgent.ok, false);
   assert.equal(unhealthyAgent.error.code, PLAN_VALIDATION_ERROR_CODES.RECOMMENDED_AGENT_UNHEALTHY);
+
+  const invalidDependsOn = validatePlanDraft(
+    {
+      subtasks: [
+        {
+          title: "Frontend",
+          description: "Build the UI",
+          recommended_agent: "codex-cli",
+          branch_suffix: "frontend-ui",
+          depends_on: ["backend-api"],
+        },
+        {
+          title: "Backend",
+          description: "Build the API",
+          recommended_agent: "codex-cli",
+          branch_suffix: "backend-api",
+        },
+      ],
+    },
+    {
+      agentHealth: {
+        "codex-cli": { available: true },
+      },
+    },
+  );
+  assert.equal(invalidDependsOn.ok, false);
+  assert.equal(invalidDependsOn.error.code, PLAN_VALIDATION_ERROR_CODES.DEPENDS_ON_INVALID);
 });

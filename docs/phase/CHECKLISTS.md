@@ -199,3 +199,16 @@ This document turns the 14 phase plans into execution checklists. Each phase sho
 - [ ] Validate merge-conflict and rebase-retry counters
 - [ ] Validate cleanup warning and sandbox failure counters
 - [ ] Verify metrics on seeded histories with retries, reworks, and conflicts
+
+## Phase 15 Checklist
+
+- [ ] Extend plan payload with optional `depends_on`
+- [ ] Validate `depends_on` references and reject cycles or forward references
+- [ ] Persist subtask dependency metadata
+- [ ] Add `BLOCKED` subtask status
+- [ ] Materialize dependent subtasks as `BLOCKED`
+- [ ] Auto-release blocked subtasks when prerequisites complete
+- [ ] Auto-launch newly released subtasks without re-approving the task
+- [ ] Route unresolved blocked subtasks to `ACTION_REQUIRED`
+- [ ] Expose dependency metadata in task APIs and UI
+- [ ] Verify ordered execution on a seeded dependency chain

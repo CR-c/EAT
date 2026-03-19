@@ -197,6 +197,13 @@ Content-Type: application/json
           "description": "Implement project CRUD and repo validation.",
           "recommended_agent": "codex-cli",
           "branch_suffix": "project-registration"
+        },
+        {
+          "title": "Add task UI",
+          "description": "Build the UI after the API contract exists.",
+          "recommended_agent": "codex-cli",
+          "branch_suffix": "task-ui",
+          "depends_on": ["project-registration"]
         }
       ],
       "notes": "Parallelize only independent backend and UI slices."
@@ -292,6 +299,19 @@ Content-Type: application/json
   "data": {
     "subtaskId": "sub_001",
     "status": "PENDING"
+  }
+}
+```
+
+### Blocked Subtask Status Event
+
+```json
+{
+  "event": "subtask:status",
+  "data": {
+    "subtaskId": "sub_002",
+    "status": "BLOCKED",
+    "dependencyBranchSuffixes": ["project-registration"]
   }
 }
 ```
