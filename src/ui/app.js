@@ -125,8 +125,40 @@ const UI_MESSAGES = {
     mailboxEyebrow: "信箱",
     handoffNotesTitle: "交接说明",
     mailboxEmpty: "目前还没有发往这个子任务的信箱说明。",
-    sendLeadHandoffLabel: "向该子任务发送 lead 交接说明",
-    sendLeadHandoffPlaceholder: "补充约束、上游预期或集成细节。",
+    mailboxInboxTitle: "收件箱",
+    mailboxInboxEmpty: "当前节点还没有收到结构化交接。",
+    mailboxOutboxTitle: "发件箱",
+    mailboxOutboxEmpty: "当前节点还没有主动发出结构化交接。",
+    mailboxContractsTitle: "合同与接口",
+    mailboxContractsEmpty: "当前没有合同类 handoff。",
+    mailboxBlockersTitle: "阻塞与请求",
+    mailboxBlockersEmpty: "当前没有 blocker 或 review/test 请求。",
+    mailboxSenderLabel: "发送方",
+    mailboxTargetLabel: "接收方",
+    mailboxMessageTypeLabel: "消息类型",
+    mailboxBranchRefLabel: "分支引用",
+    mailboxArtifactRefsLabel: "Artifact 引用",
+    mailboxArtifactRefsPlaceholder: "例如 contract:auth-api, build:test-report",
+    mailboxFileRefsLabel: "文件引用",
+    mailboxFileRefsPlaceholder: "例如 src/api/auth.js, docs/contracts/auth.md",
+    mailboxSchemaJsonLabel: "结构化 Schema",
+    mailboxSchemaJsonPlaceholder: '例如 {"route":"POST /api/auth/login"}',
+    mailboxRequiresAckLabel: "需要确认",
+    sendStructuredHandoffLabel: "发送结构化交接说明",
+    sendStructuredHandoffPlaceholder: "补充合同摘要、阻塞原因、交付完成说明或请求事项。",
+    mailboxMessageTypeNote: "备注",
+    mailboxMessageTypeBlocker: "阻塞",
+    mailboxMessageTypeDeliverableReady: "交付完成",
+    mailboxMessageTypeApiContract: "API 合同",
+    mailboxMessageTypeDbContract: "数据库合同",
+    mailboxMessageTypeTestRequest: "测试请求",
+    mailboxMessageTypeReviewRequest: "审查请求",
+    mailboxArtifactRefChip: "Artifact",
+    mailboxFileRefChip: "文件",
+    mailboxBranchRefChip: "分支",
+    mailboxSchemaChip: "Schema",
+    mailboxAckRequiredChip: "需确认",
+    mailboxToLeadOption: "Lead",
     sendHandoffNoteButton: "发送交接说明",
     executionFocusEmpty: "选择一个子任务摘要，即可查看最新 worker 会话，而不必同时挂载所有终端。",
     planDraftEyebrow: "计划草稿",
@@ -283,6 +315,7 @@ const UI_MESSAGES = {
     rebaseRetryConflict: "Rebase 重试后仍有冲突，请查看更新后的冲突摘要。",
     mergeResumed: "合并流程已恢复。",
     leadHandoffSent: "已发送 lead 交接说明。",
+    structuredHandoffSent: "已发送结构化交接说明。",
     readFileError: "无法读取 {name}。",
     noBranchesAvailable: "没有可用分支",
     workerCurrentlyAssigned: "{name}（当前已分配）",
@@ -434,8 +467,40 @@ const UI_MESSAGES = {
     mailboxEyebrow: "Mailbox",
     handoffNotesTitle: "Handoff notes",
     mailboxEmpty: "No mailbox notes are targeting this subtask yet.",
-    sendLeadHandoffLabel: "Send a lead handoff note to this subtask",
-    sendLeadHandoffPlaceholder: "Share constraints, upstream expectations, or integration details.",
+    mailboxInboxTitle: "Inbox",
+    mailboxInboxEmpty: "No structured handoff has reached this node yet.",
+    mailboxOutboxTitle: "Outbox",
+    mailboxOutboxEmpty: "This node has not sent any structured handoff yet.",
+    mailboxContractsTitle: "Contracts",
+    mailboxContractsEmpty: "No contract handoffs are recorded yet.",
+    mailboxBlockersTitle: "Blockers and requests",
+    mailboxBlockersEmpty: "No blockers, review requests, or test requests are recorded yet.",
+    mailboxSenderLabel: "Sender",
+    mailboxTargetLabel: "Target",
+    mailboxMessageTypeLabel: "Message type",
+    mailboxBranchRefLabel: "Branch ref",
+    mailboxArtifactRefsLabel: "Artifact refs",
+    mailboxArtifactRefsPlaceholder: "For example contract:auth-api, build:test-report",
+    mailboxFileRefsLabel: "File refs",
+    mailboxFileRefsPlaceholder: "For example src/api/auth.js, docs/contracts/auth.md",
+    mailboxSchemaJsonLabel: "Structured schema",
+    mailboxSchemaJsonPlaceholder: 'For example {"route":"POST /api/auth/login"}',
+    mailboxRequiresAckLabel: "Requires acknowledgement",
+    sendStructuredHandoffLabel: "Send a structured handoff",
+    sendStructuredHandoffPlaceholder: "Summarize the contract, blocker, deliverable, or request.",
+    mailboxMessageTypeNote: "Note",
+    mailboxMessageTypeBlocker: "Blocker",
+    mailboxMessageTypeDeliverableReady: "Deliverable ready",
+    mailboxMessageTypeApiContract: "API contract",
+    mailboxMessageTypeDbContract: "DB contract",
+    mailboxMessageTypeTestRequest: "Test request",
+    mailboxMessageTypeReviewRequest: "Review request",
+    mailboxArtifactRefChip: "Artifact",
+    mailboxFileRefChip: "File",
+    mailboxBranchRefChip: "Branch",
+    mailboxSchemaChip: "Schema",
+    mailboxAckRequiredChip: "Ack required",
+    mailboxToLeadOption: "Lead",
     sendHandoffNoteButton: "Send handoff note",
     executionFocusEmpty: "Pick a subtask summary to inspect the latest worker session without mounting every terminal at once.",
     planDraftEyebrow: "Plan draft",
@@ -592,6 +657,7 @@ const UI_MESSAGES = {
     rebaseRetryConflict: "Rebase retry still conflicted. Review the updated conflict summary.",
     mergeResumed: "Merge flow resumed.",
     leadHandoffSent: "Lead handoff note sent.",
+    structuredHandoffSent: "Structured handoff sent.",
     readFileError: "Unable to read {name}.",
     noBranchesAvailable: "No branches available",
     workerCurrentlyAssigned: "{name} (currently assigned)",
@@ -677,6 +743,18 @@ const PLAN_TEMPLATE_COPY = {
     },
   },
 };
+
+const MAILBOX_MESSAGE_TYPE_OPTIONS = [
+  "NOTE",
+  "BLOCKER",
+  "DELIVERABLE_READY",
+  "API_CONTRACT",
+  "DB_CONTRACT",
+  "TEST_REQUEST",
+  "REVIEW_REQUEST",
+];
+const MAILBOX_CONTRACT_MESSAGE_TYPES = new Set(["API_CONTRACT", "DB_CONTRACT"]);
+const MAILBOX_BLOCKER_MESSAGE_TYPES = new Set(["BLOCKER", "TEST_REQUEST", "REVIEW_REQUEST"]);
 
 const state = {
   agentHealth: {},
@@ -789,13 +867,28 @@ const elements = {
   taskExecutionMergeHistoryEmpty: document.querySelector("#task-execution-merge-history-empty"),
   taskExecutionMergeHistoryList: document.querySelector("#task-execution-merge-history-list"),
   taskExecutionMailbox: document.querySelector("#task-execution-mailbox"),
+  taskExecutionMailboxArtifactRefsInput: document.querySelector("#task-execution-mailbox-artifact-refs-input"),
+  taskExecutionMailboxBlockersEmpty: document.querySelector("#task-execution-mailbox-blockers-empty"),
+  taskExecutionMailboxBlockersList: document.querySelector("#task-execution-mailbox-blockers-list"),
+  taskExecutionMailboxBranchRefInput: document.querySelector("#task-execution-mailbox-branch-ref-input"),
   taskExecutionMailboxCount: document.querySelector("#task-execution-mailbox-count"),
+  taskExecutionMailboxContractsEmpty: document.querySelector("#task-execution-mailbox-contracts-empty"),
+  taskExecutionMailboxContractsList: document.querySelector("#task-execution-mailbox-contracts-list"),
   taskExecutionMailboxEmpty: document.querySelector("#task-execution-mailbox-empty"),
   taskExecutionMailboxFeedback: document.querySelector("#task-execution-mailbox-feedback"),
+  taskExecutionMailboxFileRefsInput: document.querySelector("#task-execution-mailbox-file-refs-input"),
   taskExecutionMailboxForm: document.querySelector("#task-execution-mailbox-form"),
+  taskExecutionMailboxInboxEmpty: document.querySelector("#task-execution-mailbox-inbox-empty"),
+  taskExecutionMailboxInboxList: document.querySelector("#task-execution-mailbox-inbox-list"),
   taskExecutionMailboxInput: document.querySelector("#task-execution-mailbox-input"),
-  taskExecutionMailboxList: document.querySelector("#task-execution-mailbox-list"),
+  taskExecutionMailboxMessageTypeSelect: document.querySelector("#task-execution-mailbox-message-type-select"),
+  taskExecutionMailboxOutboxEmpty: document.querySelector("#task-execution-mailbox-outbox-empty"),
+  taskExecutionMailboxOutboxList: document.querySelector("#task-execution-mailbox-outbox-list"),
+  taskExecutionMailboxRequiresAckInput: document.querySelector("#task-execution-mailbox-requires-ack-input"),
+  taskExecutionMailboxSchemaInput: document.querySelector("#task-execution-mailbox-schema-input"),
   taskExecutionMailboxSendButton: document.querySelector("#task-execution-mailbox-send-button"),
+  taskExecutionMailboxSenderSelect: document.querySelector("#task-execution-mailbox-sender-select"),
+  taskExecutionMailboxTargetSelect: document.querySelector("#task-execution-mailbox-target-select"),
   taskExecutionReviewActions: document.querySelector("#task-execution-review-actions"),
   taskExecutionReview: document.querySelector("#task-execution-review"),
   taskExecutionReviewDecision: document.querySelector("#task-execution-review-decision"),
@@ -904,6 +997,11 @@ elements.taskExecutionReworkButton.addEventListener("click", onReworkSubTask);
 elements.taskExecutionResumeMergeButton.addEventListener("click", onResumeTaskMerge);
 elements.taskExecutionReworkDescription.addEventListener("input", onExecutionDraftDescriptionInput);
 elements.taskExecutionMailboxForm.addEventListener("submit", onSendMailboxMessage);
+elements.taskExecutionMailboxSenderSelect.addEventListener("change", () => {
+  if (state.taskDetail && getSelectedExecutionSubTask()) {
+    renderTaskDetail();
+  }
+});
 
 renderLocale();
 void Promise.all([loadProjects({ preserveSelection: true }), loadAgents(), loadTaskTemplates()]);
@@ -2053,8 +2151,19 @@ function clearTaskDetail() {
   elements.taskExecutionAgentField.hidden = true;
   elements.taskExecutionReviewActions.hidden = true;
   elements.taskExecutionReworkField.hidden = true;
-  elements.taskExecutionMailboxList.replaceChildren();
+  elements.taskExecutionMailboxInboxList.replaceChildren();
+  elements.taskExecutionMailboxOutboxList.replaceChildren();
+  elements.taskExecutionMailboxContractsList.replaceChildren();
+  elements.taskExecutionMailboxBlockersList.replaceChildren();
   elements.taskExecutionMailboxInput.value = "";
+  elements.taskExecutionMailboxArtifactRefsInput.value = "";
+  elements.taskExecutionMailboxBranchRefInput.value = "";
+  elements.taskExecutionMailboxFileRefsInput.value = "";
+  elements.taskExecutionMailboxSchemaInput.value = "";
+  elements.taskExecutionMailboxRequiresAckInput.checked = false;
+  elements.taskExecutionMailboxSenderSelect.replaceChildren();
+  elements.taskExecutionMailboxTargetSelect.replaceChildren();
+  elements.taskExecutionMailboxMessageTypeSelect.replaceChildren();
   elements.taskExecutionSessionList.replaceChildren();
   elements.taskPlanHistoryList.replaceChildren();
   elements.taskPlanGraph.replaceChildren();
@@ -2754,10 +2863,21 @@ async function onSendMailboxMessage(event) {
   setButtonBusy(elements.taskExecutionMailboxSendButton, true, t("sending"));
 
   try {
+    const sender = parseMailboxParticipantKey(elements.taskExecutionMailboxSenderSelect.value);
+    const target = parseMailboxParticipantKey(elements.taskExecutionMailboxTargetSelect.value);
+    const schemaJson = parseMailboxSchemaInput(elements.taskExecutionMailboxSchemaInput.value);
     const response = await fetchJson(`/api/tasks/${encodeURIComponent(state.selectedTaskId)}/mailbox`, {
       body: {
+        artifactRefs: splitMailboxRefs(elements.taskExecutionMailboxArtifactRefsInput.value),
+        branchRef: normalizeOptionalText(elements.taskExecutionMailboxBranchRefInput.value),
         content: elements.taskExecutionMailboxInput.value.trim(),
-        targetSubTaskId: selectedSubTask.id,
+        fileRefs: splitMailboxRefs(elements.taskExecutionMailboxFileRefsInput.value),
+        messageType: elements.taskExecutionMailboxMessageTypeSelect.value || "NOTE",
+        requiresAck: elements.taskExecutionMailboxRequiresAckInput.checked,
+        schemaJson,
+        senderSubTaskId: sender.subTaskId,
+        targetSubTaskId: target.subTaskId,
+        targetType: target.type,
       },
       method: "POST",
     });
@@ -2767,8 +2887,16 @@ async function onSendMailboxMessage(event) {
     }
 
     elements.taskExecutionMailboxInput.value = "";
+    elements.taskExecutionMailboxArtifactRefsInput.value = "";
+    elements.taskExecutionMailboxBranchRefInput.value = "";
+    elements.taskExecutionMailboxFileRefsInput.value = "";
+    elements.taskExecutionMailboxSchemaInput.value = "";
+    elements.taskExecutionMailboxRequiresAckInput.checked = false;
+    elements.taskExecutionMailboxSenderSelect.value = "LEAD";
+    elements.taskExecutionMailboxTargetSelect.value = `SUBTASK:${selectedSubTask.id}`;
+    elements.taskExecutionMailboxMessageTypeSelect.value = "NOTE";
     renderTaskDetail();
-    showFeedback(elements.taskExecutionMailboxFeedback, "success", t("leadHandoffSent"));
+    showFeedback(elements.taskExecutionMailboxFeedback, "success", t("structuredHandoffSent"));
   } catch (error) {
     showFeedback(elements.taskExecutionMailboxFeedback, "error", buildTaskErrorMessage(error));
   } finally {
@@ -3722,31 +3850,227 @@ function renderMergeHistory(subTask) {
 }
 
 function renderMailbox(detail, subTask) {
+  const draft = readMailboxDraft(subTask);
   const mailboxMessages = (detail.mailboxMessages ?? []).filter((message) => (
-    message.targetSubTaskId === subTask.id || message.senderSubTaskId === subTask.id
+    message.targetSubTaskId === subTask.id
+    || message.senderSubTaskId === subTask.id
   ));
+  const inboxMessages = mailboxMessages.filter((message) => message.targetSubTaskId === subTask.id);
+  const outboxMessages = mailboxMessages.filter((message) => message.senderSubTaskId === subTask.id);
+  const contractMessages = mailboxMessages.filter((message) => MAILBOX_CONTRACT_MESSAGE_TYPES.has(message.messageType));
+  const blockerMessages = mailboxMessages.filter((message) => MAILBOX_BLOCKER_MESSAGE_TYPES.has(message.messageType));
   const canSendMailbox = ["ACTION_REQUIRED", "EXECUTING", "MERGING", "REVIEWING"].includes(detail.task?.status);
 
   elements.taskExecutionMailbox.hidden = !subTask;
   elements.taskExecutionMailboxForm.hidden = !canSendMailbox;
   elements.taskExecutionMailboxCount.textContent = countLabel(mailboxMessages.length, "noteCountOne", "noteCountOther");
   elements.taskExecutionMailboxEmpty.hidden = mailboxMessages.length > 0;
-  elements.taskExecutionMailboxList.replaceChildren();
+  renderMailboxStream(detail, elements.taskExecutionMailboxInboxList, elements.taskExecutionMailboxInboxEmpty, inboxMessages);
+  renderMailboxStream(detail, elements.taskExecutionMailboxOutboxList, elements.taskExecutionMailboxOutboxEmpty, outboxMessages);
+  renderMailboxStream(detail, elements.taskExecutionMailboxContractsList, elements.taskExecutionMailboxContractsEmpty, contractMessages);
+  renderMailboxStream(detail, elements.taskExecutionMailboxBlockersList, elements.taskExecutionMailboxBlockersEmpty, blockerMessages);
 
-  for (const mailboxMessage of [...mailboxMessages].reverse()) {
-    const item = document.createElement("article");
-    item.className = "mailbox-item";
-    item.innerHTML = `
-      <div class="mailbox-item__header">
-        <div>
-          <p class="mailbox-item__title">${escapeHtml(buildMailboxDirectionLabel(detail, mailboxMessage))}</p>
-          <p class="mailbox-item__meta">${escapeHtml(formatTimestamp(mailboxMessage.createdAt))}</p>
-        </div>
-        <span class="badge badge--outline">${escapeHtml(buildMailboxSenderTypeLabel(mailboxMessage.senderType))}</span>
+  renderMailboxComposer(detail, subTask, draft);
+}
+
+function readMailboxDraft(subTask) {
+  return {
+    artifactRefs: elements.taskExecutionMailboxArtifactRefsInput.value,
+    branchRef: elements.taskExecutionMailboxBranchRefInput.value,
+    content: elements.taskExecutionMailboxInput.value,
+    fileRefs: elements.taskExecutionMailboxFileRefsInput.value,
+    messageType: elements.taskExecutionMailboxMessageTypeSelect.value || "NOTE",
+    requiresAck: elements.taskExecutionMailboxRequiresAckInput.checked,
+    schemaText: elements.taskExecutionMailboxSchemaInput.value,
+    senderKey: elements.taskExecutionMailboxSenderSelect.value || "LEAD",
+    targetKey: elements.taskExecutionMailboxTargetSelect.value || `SUBTASK:${subTask.id}`,
+  };
+}
+
+function renderMailboxComposer(detail, subTask, draft) {
+  const senderOptions = [
+    { value: "LEAD", label: buildMailboxParticipantOptionLabel(detail, null, true) },
+    ...(detail.subTasks ?? []).map((member) => ({
+      value: `SUBTASK:${member.id}`,
+      label: buildMailboxParticipantOptionLabel(detail, member.id, false),
+    })),
+  ];
+  const senderValues = new Set(senderOptions.map((option) => option.value));
+  const senderKey = senderValues.has(draft.senderKey) ? draft.senderKey : "LEAD";
+  const targetOptions = buildMailboxTargetOptions(detail, senderKey, subTask.id);
+  const targetValues = new Set(targetOptions.map((option) => option.value));
+  const defaultTargetKey = buildDefaultMailboxTargetKey(senderKey, subTask.id);
+  const targetKey = targetValues.has(draft.targetKey)
+    ? draft.targetKey
+    : targetValues.has(defaultTargetKey)
+      ? defaultTargetKey
+      : targetOptions[0]?.value ?? "";
+
+  renderSelectOptions(elements.taskExecutionMailboxSenderSelect, senderOptions, senderKey);
+  renderSelectOptions(elements.taskExecutionMailboxTargetSelect, targetOptions, targetKey);
+  renderSelectOptions(
+    elements.taskExecutionMailboxMessageTypeSelect,
+    MAILBOX_MESSAGE_TYPE_OPTIONS.map((type) => ({
+      value: type,
+      label: buildMailboxMessageTypeLabel(type),
+    })),
+    MAILBOX_MESSAGE_TYPE_OPTIONS.includes(draft.messageType) ? draft.messageType : "NOTE",
+  );
+
+  elements.taskExecutionMailboxBranchRefInput.value = draft.branchRef ?? "";
+  elements.taskExecutionMailboxArtifactRefsInput.value = draft.artifactRefs ?? "";
+  elements.taskExecutionMailboxFileRefsInput.value = draft.fileRefs ?? "";
+  elements.taskExecutionMailboxSchemaInput.value = draft.schemaText ?? "";
+  elements.taskExecutionMailboxRequiresAckInput.checked = Boolean(draft.requiresAck);
+  elements.taskExecutionMailboxInput.value = draft.content ?? "";
+}
+
+function buildMailboxTargetOptions(detail, senderKey, selectedSubTaskId) {
+  const sender = parseMailboxParticipantKey(senderKey);
+
+  if (sender.type === "LEAD") {
+    return (detail.subTasks ?? []).map((member) => ({
+      value: `SUBTASK:${member.id}`,
+      label: buildMailboxParticipantOptionLabel(detail, member.id, false),
+    }));
+  }
+
+  return [
+    { value: "LEAD", label: t("mailboxToLeadOption") },
+    ...(detail.subTasks ?? [])
+      .filter((member) => member.id !== sender.subTaskId)
+      .map((member) => ({
+        value: `SUBTASK:${member.id}`,
+        label: buildMailboxParticipantOptionLabel(detail, member.id, false),
+      })),
+  ].sort((left, right) => {
+    if (left.value === `SUBTASK:${selectedSubTaskId}`) {
+      return -1;
+    }
+
+    if (right.value === `SUBTASK:${selectedSubTaskId}`) {
+      return 1;
+    }
+
+    return left.label.localeCompare(right.label);
+  });
+}
+
+function buildDefaultMailboxTargetKey(senderKey, selectedSubTaskId) {
+  const sender = parseMailboxParticipantKey(senderKey);
+  return sender.type === "LEAD" ? `SUBTASK:${selectedSubTaskId}` : "LEAD";
+}
+
+function renderSelectOptions(element, options, selectedValue) {
+  element.replaceChildren();
+
+  for (const optionData of options) {
+    const option = document.createElement("option");
+    option.value = optionData.value;
+    option.textContent = optionData.label;
+    option.selected = optionData.value === selectedValue;
+    element.append(option);
+  }
+}
+
+function renderMailboxStream(detail, listElement, emptyElement, messages) {
+  listElement.replaceChildren();
+  emptyElement.hidden = messages.length > 0;
+
+  for (const message of sortMailboxMessagesNewestFirst(messages)) {
+    listElement.append(buildMailboxItem(detail, message));
+  }
+}
+
+function sortMailboxMessagesNewestFirst(messages) {
+  return [...messages].sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
+}
+
+function buildMailboxItem(detail, mailboxMessage) {
+  const item = document.createElement("article");
+  item.className = "mailbox-item";
+  const chips = buildMailboxChips(mailboxMessage);
+  const schemaBlock = mailboxMessage.schemaJson
+    ? `<pre class="mailbox-item__schema">${escapeHtml(JSON.stringify(mailboxMessage.schemaJson, null, 2))}</pre>`
+    : "";
+
+  item.innerHTML = `
+    <div class="mailbox-item__header">
+      <div>
+        <p class="mailbox-item__title">${escapeHtml(buildMailboxDirectionLabel(detail, mailboxMessage))}</p>
+        <p class="mailbox-item__meta">${escapeHtml([
+          buildMailboxMessageTypeLabel(mailboxMessage.messageType),
+          formatTimestamp(mailboxMessage.createdAt),
+        ].join(" · "))}</p>
       </div>
+      <span class="badge ${buildMailboxMessageBadgeClass(mailboxMessage.messageType)}">${escapeHtml(buildMailboxSenderTypeLabel(mailboxMessage.senderType))}</span>
+    </div>
+    <div class="mailbox-item__body">
       <p class="mailbox-item__content">${escapeHtml(mailboxMessage.content ?? "")}</p>
-    `;
-    elements.taskExecutionMailboxList.append(item);
+      ${chips.length > 0 ? `<div class="mailbox-item__chips">${chips.map((chip) => `<span class="mailbox-item__chip">${escapeHtml(chip)}</span>`).join("")}</div>` : ""}
+      ${schemaBlock}
+    </div>
+  `;
+
+  return item;
+}
+
+function buildMailboxChips(mailboxMessage) {
+  return [
+    mailboxMessage.branchRef ? `${t("mailboxBranchRefChip")}: ${mailboxMessage.branchRef}` : null,
+    ...(mailboxMessage.artifactRefs ?? []).map((ref) => `${t("mailboxArtifactRefChip")}: ${ref}`),
+    ...(mailboxMessage.fileRefs ?? []).map((ref) => `${t("mailboxFileRefChip")}: ${ref}`),
+    mailboxMessage.schemaJson ? t("mailboxSchemaChip") : null,
+    mailboxMessage.requiresAck ? t("mailboxAckRequiredChip") : null,
+  ].filter(Boolean);
+}
+
+function buildMailboxMessageBadgeClass(messageType) {
+  if (MAILBOX_CONTRACT_MESSAGE_TYPES.has(messageType)) {
+    return "badge--clean";
+  }
+
+  if (MAILBOX_BLOCKER_MESSAGE_TYPES.has(messageType)) {
+    return "badge--dirty";
+  }
+
+  if (messageType === "DELIVERABLE_READY") {
+    return "badge--accent-soft";
+  }
+
+  return "badge--outline";
+}
+
+function buildMailboxParticipantOptionLabel(detail, subTaskId, isLead) {
+  if (isLead) {
+    return t("mailboxSenderLead");
+  }
+
+  const subTask = (detail.subTasks ?? []).find((entry) => entry.id === subTaskId);
+
+  if (!subTask) {
+    return t("mailboxSenderSubtask");
+  }
+
+  return [subTask.displayName ?? subTask.title, subTask.role ?? subTask.branchSuffix].filter(Boolean).join(" · ");
+}
+
+function buildMailboxMessageTypeLabel(messageType) {
+  switch (messageType) {
+    case "BLOCKER":
+      return t("mailboxMessageTypeBlocker");
+    case "DELIVERABLE_READY":
+      return t("mailboxMessageTypeDeliverableReady");
+    case "API_CONTRACT":
+      return t("mailboxMessageTypeApiContract");
+    case "DB_CONTRACT":
+      return t("mailboxMessageTypeDbContract");
+    case "TEST_REQUEST":
+      return t("mailboxMessageTypeTestRequest");
+    case "REVIEW_REQUEST":
+      return t("mailboxMessageTypeReviewRequest");
+    default:
+      return t("mailboxMessageTypeNote");
   }
 }
 
@@ -3920,6 +4244,47 @@ function stripAnsi(value) {
     /\u001B(?:\][^\u0007]*(?:\u0007|\u001B\\)|\[[0-?]*[ -/]*[@-~])/g,
     "",
   );
+}
+
+function parseMailboxParticipantKey(value) {
+  if (String(value ?? "").startsWith("SUBTASK:")) {
+    return {
+      subTaskId: String(value).slice("SUBTASK:".length) || null,
+      type: "SUBTASK",
+    };
+  }
+
+  return {
+    subTaskId: null,
+    type: "LEAD",
+  };
+}
+
+function splitMailboxRefs(value) {
+  return String(value ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parseMailboxSchemaInput(value) {
+  const normalizedValue = normalizeOptionalText(value);
+
+  if (!normalizedValue) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(normalizedValue);
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("schemaJson must be an object");
+    }
+
+    return parsed;
+  } catch {
+    throw { code: "MAILBOX_SCHEMA_INVALID" };
+  }
 }
 
 function normalizeOptionalText(value) {

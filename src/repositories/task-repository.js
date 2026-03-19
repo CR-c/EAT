@@ -33,6 +33,16 @@ export const MAILBOX_TARGET_TYPE = Object.freeze({
   SUBTASK: "SUBTASK",
 });
 
+export const MAILBOX_MESSAGE_TYPE = Object.freeze({
+  API_CONTRACT: "API_CONTRACT",
+  BLOCKER: "BLOCKER",
+  DB_CONTRACT: "DB_CONTRACT",
+  DELIVERABLE_READY: "DELIVERABLE_READY",
+  NOTE: "NOTE",
+  REVIEW_REQUEST: "REVIEW_REQUEST",
+  TEST_REQUEST: "TEST_REQUEST",
+});
+
 export const SESSION_STATUS = Object.freeze({
   CANCELLED: "CANCELLED",
   COMPLETED: "COMPLETED",
@@ -304,9 +314,15 @@ export class SqliteTaskRepository {
 
   async createMailboxMessage(input) {
     const mailboxMessage = {
+      artifactRefs: normalizeStringArray(input.artifactRefs),
+      branchRef: normalizeOptionalString(input.branchRef),
       content: input.content,
       createdAt: input.createdAt ?? new Date().toISOString(),
+      fileRefs: normalizeStringArray(input.fileRefs),
       id: input.id ?? randomUUID(),
+      messageType: normalizeMailboxMessageType(input.messageType),
+      requiresAck: Boolean(input.requiresAck),
+      schemaJson: normalizeOptionalJsonObject(input.schemaJson),
       senderSubTaskId: input.senderSubTaskId ?? null,
       senderType: input.senderType,
       targetSubTaskId: input.targetSubTaskId ?? null,
@@ -323,9 +339,15 @@ export class SqliteTaskRepository {
           sender_sub_task_id,
           target_type,
           target_sub_task_id,
+          message_type,
+          artifact_refs_json,
+          file_refs_json,
+          branch_ref,
+          schema_json,
+          requires_ack,
           content,
           created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         mailboxMessage.id,
@@ -334,6 +356,12 @@ export class SqliteTaskRepository {
         mailboxMessage.senderSubTaskId,
         mailboxMessage.targetType,
         mailboxMessage.targetSubTaskId,
+        mailboxMessage.messageType,
+        JSON.stringify(mailboxMessage.artifactRefs),
+        JSON.stringify(mailboxMessage.fileRefs),
+        mailboxMessage.branchRef,
+        mailboxMessage.schemaJson ? JSON.stringify(mailboxMessage.schemaJson) : null,
+        mailboxMessage.requiresAck ? 1 : 0,
         mailboxMessage.content,
         mailboxMessage.createdAt,
       );
@@ -351,13 +379,20 @@ export class SqliteTaskRepository {
           sender_sub_task_id AS senderSubTaskId,
           target_type AS targetType,
           target_sub_task_id AS targetSubTaskId,
+          message_type AS messageType,
+          artifact_refs_json AS artifactRefsJson,
+          file_refs_json AS fileRefsJson,
+          branch_ref AS branchRef,
+          schema_json AS schemaJsonRaw,
+          requires_ack AS requiresAck,
           content,
           created_at AS createdAt
         FROM mailbox_messages
         WHERE task_id = ?
         ORDER BY created_at ASC, id ASC
       `)
-      .all(taskId);
+      .all(taskId)
+      .map(normalizeMailboxMessageRecord);
   }
 
   async listMailboxMessagesByTargetSubTaskId(targetSubTaskId) {
@@ -370,13 +405,20 @@ export class SqliteTaskRepository {
           sender_sub_task_id AS senderSubTaskId,
           target_type AS targetType,
           target_sub_task_id AS targetSubTaskId,
+          message_type AS messageType,
+          artifact_refs_json AS artifactRefsJson,
+          file_refs_json AS fileRefsJson,
+          branch_ref AS branchRef,
+          schema_json AS schemaJsonRaw,
+          requires_ack AS requiresAck,
           content,
           created_at AS createdAt
         FROM mailbox_messages
         WHERE target_sub_task_id = ?
         ORDER BY created_at ASC, id ASC
       `)
-      .all(targetSubTaskId);
+      .all(targetSubTaskId)
+      .map(normalizeMailboxMessageRecord);
   }
 
   async createAttachment(input) {
@@ -1165,12 +1207,19 @@ export class SqliteTaskRepository {
           sender_sub_task_id AS senderSubTaskId,
           target_type AS targetType,
           target_sub_task_id AS targetSubTaskId,
+          message_type AS messageType,
+          artifact_refs_json AS artifactRefsJson,
+          file_refs_json AS fileRefsJson,
+          branch_ref AS branchRef,
+          schema_json AS schemaJsonRaw,
+          requires_ack AS requiresAck,
           content,
           created_at AS createdAt
         FROM mailbox_messages
         ORDER BY created_at ASC, id ASC
       `)
-      .all();
+      .all()
+      .map(normalizeMailboxMessageRecord);
   }
 
   async listSessions() {
@@ -1363,6 +1412,24 @@ function normalizeOptionalString(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizeOptionalJsonObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeMailboxMessageType(value) {
+  const normalizedValue = normalizeOptionalString(value);
+
+  if (!normalizedValue || !Object.values(MAILBOX_MESSAGE_TYPE).includes(normalizedValue)) {
+    return MAILBOX_MESSAGE_TYPE.NOTE;
+  }
+
+  return normalizedValue;
+}
+
 function normalizeOptionalInteger(value) {
   return Number.isInteger(value) ? value : null;
 }
@@ -1378,6 +1445,36 @@ function parseJsonStringArray(value) {
   } catch {
     return [];
   }
+}
+
+function parseJsonObject(value) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeMailboxMessageRecord(record) {
+  if (!record) {
+    return record;
+  }
+
+  const { artifactRefsJson, fileRefsJson, schemaJsonRaw, ...rest } = record;
+
+  return {
+    ...rest,
+    artifactRefs: parseJsonStringArray(artifactRefsJson),
+    fileRefs: parseJsonStringArray(fileRefsJson),
+    messageType: normalizeMailboxMessageType(record.messageType),
+    requiresAck: Boolean(record.requiresAck),
+    schemaJson: parseJsonObject(schemaJsonRaw),
+  };
 }
 
 function omitDependencyBranchSuffixesJson(record) {

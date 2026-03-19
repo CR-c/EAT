@@ -444,15 +444,101 @@
                     <div id="task-execution-mailbox-empty" class="empty-state" hidden data-i18n="mailboxEmpty">
                       目前还没有发往这个子任务的信箱说明。
                     </div>
-                    <div id="task-execution-mailbox-list" class="mailbox-list"></div>
+                    <div class="mailbox-grid">
+                      <section class="mailbox-stream">
+                        <div class="mailbox-stream__header">
+                          <h5 class="plan-history__title" data-i18n="mailboxInboxTitle">收件箱</h5>
+                        </div>
+                        <div id="task-execution-mailbox-inbox-empty" class="empty-state" hidden data-i18n="mailboxInboxEmpty">
+                          当前节点还没有收到结构化交接。
+                        </div>
+                        <div id="task-execution-mailbox-inbox-list" class="mailbox-list"></div>
+                      </section>
+                      <section class="mailbox-stream">
+                        <div class="mailbox-stream__header">
+                          <h5 class="plan-history__title" data-i18n="mailboxOutboxTitle">发件箱</h5>
+                        </div>
+                        <div id="task-execution-mailbox-outbox-empty" class="empty-state" hidden data-i18n="mailboxOutboxEmpty">
+                          当前节点还没有主动发出结构化交接。
+                        </div>
+                        <div id="task-execution-mailbox-outbox-list" class="mailbox-list"></div>
+                      </section>
+                      <section class="mailbox-stream">
+                        <div class="mailbox-stream__header">
+                          <h5 class="plan-history__title" data-i18n="mailboxContractsTitle">合同与接口</h5>
+                        </div>
+                        <div id="task-execution-mailbox-contracts-empty" class="empty-state" hidden data-i18n="mailboxContractsEmpty">
+                          当前没有合同类 handoff。
+                        </div>
+                        <div id="task-execution-mailbox-contracts-list" class="mailbox-list"></div>
+                      </section>
+                      <section class="mailbox-stream">
+                        <div class="mailbox-stream__header">
+                          <h5 class="plan-history__title" data-i18n="mailboxBlockersTitle">阻塞与请求</h5>
+                        </div>
+                        <div id="task-execution-mailbox-blockers-empty" class="empty-state" hidden data-i18n="mailboxBlockersEmpty">
+                          当前没有 blocker 或 review/test 请求。
+                        </div>
+                        <div id="task-execution-mailbox-blockers-list" class="mailbox-list"></div>
+                      </section>
+                    </div>
                     <form id="task-execution-mailbox-form" class="message-form">
+                      <div class="mailbox-form-grid">
+                        <label class="field" for="task-execution-mailbox-sender-select">
+                          <span class="field__label" data-i18n="mailboxSenderLabel">发送方</span>
+                          <select id="task-execution-mailbox-sender-select" class="field__control"></select>
+                        </label>
+                        <label class="field" for="task-execution-mailbox-target-select">
+                          <span class="field__label" data-i18n="mailboxTargetLabel">接收方</span>
+                          <select id="task-execution-mailbox-target-select" class="field__control"></select>
+                        </label>
+                        <label class="field" for="task-execution-mailbox-message-type-select">
+                          <span class="field__label" data-i18n="mailboxMessageTypeLabel">消息类型</span>
+                          <select id="task-execution-mailbox-message-type-select" class="field__control"></select>
+                        </label>
+                        <label class="field" for="task-execution-mailbox-branch-ref-input">
+                          <span class="field__label" data-i18n="mailboxBranchRefLabel">分支引用</span>
+                          <input id="task-execution-mailbox-branch-ref-input" type="text">
+                        </label>
+                        <label class="field" for="task-execution-mailbox-artifact-refs-input">
+                          <span class="field__label" data-i18n="mailboxArtifactRefsLabel">Artifact 引用</span>
+                          <input
+                            id="task-execution-mailbox-artifact-refs-input"
+                            type="text"
+                            placeholder="例如 contract:auth-api, build:test-report"
+                            data-i18n-placeholder="mailboxArtifactRefsPlaceholder"
+                          >
+                        </label>
+                        <label class="field" for="task-execution-mailbox-file-refs-input">
+                          <span class="field__label" data-i18n="mailboxFileRefsLabel">文件引用</span>
+                          <input
+                            id="task-execution-mailbox-file-refs-input"
+                            type="text"
+                            placeholder="例如 src/api/auth.js, docs/contracts/auth.md"
+                            data-i18n-placeholder="mailboxFileRefsPlaceholder"
+                          >
+                        </label>
+                        <label class="field" for="task-execution-mailbox-schema-input">
+                          <span class="field__label" data-i18n="mailboxSchemaJsonLabel">结构化 Schema</span>
+                          <textarea
+                            id="task-execution-mailbox-schema-input"
+                            rows="4"
+                            placeholder='例如 {"route":"POST /api/auth/login"}'
+                            data-i18n-placeholder="mailboxSchemaJsonPlaceholder"
+                          ></textarea>
+                        </label>
+                        <label class="checkbox-field" for="task-execution-mailbox-requires-ack-input">
+                          <input id="task-execution-mailbox-requires-ack-input" type="checkbox">
+                          <span data-i18n="mailboxRequiresAckLabel">需要确认</span>
+                        </label>
+                      </div>
                       <label class="field" for="task-execution-mailbox-input">
-                        <span class="field__label" data-i18n="sendLeadHandoffLabel">向该子任务发送 lead 交接说明</span>
+                        <span class="field__label" data-i18n="sendStructuredHandoffLabel">发送结构化交接说明</span>
                         <textarea
                           id="task-execution-mailbox-input"
                           rows="4"
-                          placeholder="补充约束、上游预期或集成细节。"
-                          data-i18n-placeholder="sendLeadHandoffPlaceholder"
+                          placeholder="补充合同摘要、阻塞原因、交付完成说明或请求事项。"
+                          data-i18n-placeholder="sendStructuredHandoffPlaceholder"
                         ></textarea>
                       </label>
                       <div id="task-execution-mailbox-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>

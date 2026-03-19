@@ -504,7 +504,16 @@ test("persists web-posted lead mailbox notes and exposes them in task detail", a
           `/api/tasks/${encodeURIComponent(taskId)}/mailbox`,
           {
             body: {
+              artifactRefs: ["contract:layout-shell"],
+              branchRef: `eat/${taskId}/lead`,
               content: "Keep the route layout aligned with the backend contract.",
+              fileRefs: ["src/ui/routes.jsx", "docs/contracts/ui-shell.md"],
+              messageType: "API_CONTRACT",
+              requiresAck: true,
+              schemaJson: {
+                pages: ["login", "dashboard"],
+              },
+              targetType: "SUBTASK",
               targetSubTaskId: targetSubTask.id,
             },
             method: "POST",
@@ -513,15 +522,240 @@ test("persists web-posted lead mailbox notes and exposes them in task detail", a
 
         assert.equal(mailboxResponse.status, 201);
         assert.equal(mailboxResponse.body.message.senderType, "LEAD");
+        assert.equal(mailboxResponse.body.message.messageType, "API_CONTRACT");
         assert.equal(mailboxResponse.body.message.targetSubTaskId, targetSubTask.id);
+        assert.equal(mailboxResponse.body.message.branchRef, `eat/${taskId}/lead`);
+        assert.deepEqual(mailboxResponse.body.message.artifactRefs, ["contract:layout-shell"]);
+        assert.deepEqual(mailboxResponse.body.message.fileRefs, ["src/ui/routes.jsx", "docs/contracts/ui-shell.md"]);
+        assert.equal(mailboxResponse.body.message.requiresAck, true);
 
         const mailboxEvent = await nextEvent(events, (event) => event.eventName === "mailbox:message");
         assert.equal(mailboxEvent.data.message.targetSubTaskId, targetSubTask.id);
+        assert.equal(mailboxEvent.data.message.messageType, "API_CONTRACT");
 
         const detailAfter = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailAfter.status, 200);
         assert.equal(detailAfter.body.mailboxMessages.length, 1);
         assert.equal(detailAfter.body.mailboxMessages[0].content, "Keep the route layout aligned with the backend contract.");
+        assert.equal(detailAfter.body.mailboxMessages[0].messageType, "API_CONTRACT");
+        assert.deepEqual(detailAfter.body.mailboxMessages[0].schemaJson, {
+          pages: ["login", "dashboard"],
+        });
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("supports subtask-to-lead mailbox blocker messages", async () => {
+  const fixture = await makeTempDir("eat-mailbox-subtask-lead-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Backend worker",
+            description: "Implement the backend slice.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "backend-worker",
+          },
+        ],
+      },
+      workerBehavior: () => ({
+        delayMs: 200,
+        exitCode: 0,
+        output: "backend worker active\n",
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "mailbox-subtask-lead-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Allow a subtask to proactively notify the lead about a blocker.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Subtask to lead mailbox",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId);
+
+        const detailBefore = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const senderSubTask = detailBefore.body.subTasks[0];
+
+        const mailboxResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/mailbox`,
+          {
+            body: {
+              content: "Need the lead to confirm whether auth refresh should stay cookie-based.",
+              messageType: "BLOCKER",
+              senderSubTaskId: senderSubTask.id,
+              targetType: "LEAD",
+            },
+            method: "POST",
+          },
+        );
+
+        assert.equal(mailboxResponse.status, 201);
+        assert.equal(mailboxResponse.body.message.senderType, "SUBTASK");
+        assert.equal(mailboxResponse.body.message.targetType, "LEAD");
+        assert.equal(mailboxResponse.body.message.targetSubTaskId, null);
+        assert.equal(mailboxResponse.body.message.messageType, "BLOCKER");
+
+        const mailboxEvent = await nextEvent(events, (event) => event.eventName === "mailbox:message");
+        assert.equal(mailboxEvent.data.message.targetType, "LEAD");
+        assert.equal(mailboxEvent.data.message.messageType, "BLOCKER");
+
+        const detailAfter = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailAfter.status, 200);
+        assert.equal(detailAfter.body.mailboxMessages.length, 1);
+        assert.equal(detailAfter.body.mailboxMessages[0].senderSubTaskId, senderSubTask.id);
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("supports subtask-to-subtask structured API contracts with refs and schema", async () => {
+  const fixture = await makeTempDir("eat-mailbox-subtask-contract-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Architect",
+            description: "Define the API contract.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "architect",
+          },
+          {
+            title: "Backend",
+            description: "Implement the backend API.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "backend",
+          },
+        ],
+      },
+      workerBehavior: () => ({
+        delayMs: 200,
+        exitCode: 0,
+        output: "worker running\n",
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "mailbox-subtask-contract-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Allow a subtask to deliver a structured API contract to another subtask.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Subtask contract mailbox",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId);
+        await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId);
+
+        const detailBefore = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        const [architect, backend] = detailBefore.body.subTasks;
+
+        const mailboxResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/mailbox`,
+          {
+            body: {
+              artifactRefs: ["contract:auth-api"],
+              branchRef: architect.branchName,
+              content: "Use POST /api/auth/login and preserve the JWT payload keys.",
+              fileRefs: ["docs/contracts/auth-api.md"],
+              messageType: "API_CONTRACT",
+              schemaJson: {
+                request: { body: { email: "string", password: "string" } },
+                response: { body: { token: "string", refreshToken: "string" } },
+              },
+              senderSubTaskId: architect.id,
+              targetSubTaskId: backend.id,
+              targetType: "SUBTASK",
+            },
+            method: "POST",
+          },
+        );
+
+        assert.equal(mailboxResponse.status, 201);
+        assert.equal(mailboxResponse.body.message.senderType, "SUBTASK");
+        assert.equal(mailboxResponse.body.message.targetSubTaskId, backend.id);
+        assert.equal(mailboxResponse.body.message.messageType, "API_CONTRACT");
+        assert.equal(mailboxResponse.body.message.branchRef, architect.branchName);
+        assert.deepEqual(mailboxResponse.body.message.artifactRefs, ["contract:auth-api"]);
+
+        const mailboxEvent = await nextEvent(events, (event) => event.eventName === "mailbox:message");
+        assert.equal(mailboxEvent.data.message.messageType, "API_CONTRACT");
+        assert.equal(mailboxEvent.data.message.targetSubTaskId, backend.id);
+
+        const detailAfter = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailAfter.status, 200);
+        assert.equal(detailAfter.body.mailboxMessages.length, 1);
+        assert.deepEqual(detailAfter.body.mailboxMessages[0].schemaJson, {
+          request: { body: { email: "string", password: "string" } },
+          response: { body: { token: "string", refreshToken: "string" } },
+        });
       } finally {
         unsubscribe();
       }
@@ -741,11 +975,14 @@ test("auto-generates dependency handoff notes and injects them into downstream w
           && event.data.message.senderType === "SUBTASK"
         ));
         assert.ok(mailboxEvent.data.message.content.includes("Upstream subtask \"Backend contract\" finished successfully."));
+        assert.equal(mailboxEvent.data.message.messageType, "DELIVERABLE_READY");
 
         await waitFor(() => workerPrompts.some((entry) => entry.branchName.endsWith("react-frontend")));
         const frontendPrompt = workerPrompts.find((entry) => entry.branchName.endsWith("react-frontend"))?.prompt ?? "";
 
-        assert.match(frontendPrompt, /Mailbox handoff notes targeted to this subtask:/);
+        assert.match(frontendPrompt, /Structured mailbox handoff context:/);
+        assert.match(frontendPrompt, /Actionable blockers and handoffs:/);
+        assert.match(frontendPrompt, /type DELIVERABLE_READY/);
         assert.match(frontendPrompt, /Upstream subtask "Backend contract" finished successfully\./);
         assert.match(frontendPrompt, /Latest incremental review: ACCEPTED - Backend contract accepted for downstream work\./);
         assert.match(frontendPrompt, /backend routes ready/);
@@ -754,6 +991,7 @@ test("auto-generates dependency handoff notes and injects them into downstream w
         assert.equal(detailResponse.status, 200);
         assert.equal(detailResponse.body.mailboxMessages.length, 1);
         assert.equal(detailResponse.body.mailboxMessages[0].senderType, "SUBTASK");
+        assert.equal(detailResponse.body.mailboxMessages[0].messageType, "DELIVERABLE_READY");
       } finally {
         unsubscribe();
       }

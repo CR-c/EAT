@@ -52,6 +52,14 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /摘要优先的 worker 看板/);
     assert.match(rootResponse.body, /聚焦会话/);
     assert.match(rootResponse.body, /交接说明/);
+    assert.match(rootResponse.body, /收件箱/);
+    assert.match(rootResponse.body, /发件箱/);
+    assert.match(rootResponse.body, /合同与接口/);
+    assert.match(rootResponse.body, /阻塞与请求/);
+    assert.match(rootResponse.body, /发送方/);
+    assert.match(rootResponse.body, /接收方/);
+    assert.match(rootResponse.body, /消息类型/);
+    assert.match(rootResponse.body, /发送结构化交接说明/);
     assert.match(rootResponse.body, /发送交接说明/);
     assert.match(rootResponse.body, /确认丢弃/);
     assert.match(rootResponse.body, /Rebase 并重试/);

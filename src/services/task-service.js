@@ -32,6 +32,7 @@ import {
 } from "./plan-draft.js";
 import { buildPlanSeedFromTemplate, listPlanTemplates } from "./task-templates.js";
 import {
+  MAILBOX_MESSAGE_TYPE,
   MAILBOX_PARTICIPANT_TYPE,
   MAILBOX_TARGET_TYPE,
   MERGE_OPERATION,
@@ -118,8 +119,10 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   LEAD_AGENT_UNHEALTHY: "LEAD_AGENT_UNHEALTHY",
   LEAD_AGENT_REQUIRED: "LEAD_AGENT_REQUIRED",
   INVALID_PLAN: "INVALID_PLAN",
+  MAILBOX_MESSAGE_TYPE_INVALID: "MAILBOX_MESSAGE_TYPE_INVALID",
   MAILBOX_MESSAGE_REQUIRED: "MAILBOX_MESSAGE_REQUIRED",
   MAILBOX_NOT_AVAILABLE: "MAILBOX_NOT_AVAILABLE",
+  MAILBOX_SCHEMA_INVALID: "MAILBOX_SCHEMA_INVALID",
   MAILBOX_TARGET_REQUIRED: "MAILBOX_TARGET_REQUIRED",
   PLAN_TEMPLATE_NOT_FOUND: "PLAN_TEMPLATE_NOT_FOUND",
   PLAN_SNAPSHOT_NOT_FOUND: "PLAN_SNAPSHOT_NOT_FOUND",
@@ -151,6 +154,19 @@ const WORKER_LIVE_STATUSES = new Set([
   SESSION_STATUS.STARTING,
   SESSION_STATUS.STOPPING,
 ]);
+const MAILBOX_CONTRACT_TYPES = new Set([
+  MAILBOX_MESSAGE_TYPE.API_CONTRACT,
+  MAILBOX_MESSAGE_TYPE.DB_CONTRACT,
+]);
+const MAILBOX_PRIORITY_TYPES = [
+  MAILBOX_MESSAGE_TYPE.API_CONTRACT,
+  MAILBOX_MESSAGE_TYPE.DB_CONTRACT,
+  MAILBOX_MESSAGE_TYPE.BLOCKER,
+  MAILBOX_MESSAGE_TYPE.DELIVERABLE_READY,
+  MAILBOX_MESSAGE_TYPE.TEST_REQUEST,
+  MAILBOX_MESSAGE_TYPE.REVIEW_REQUEST,
+  MAILBOX_MESSAGE_TYPE.NOTE,
+];
 
 export class TaskService {
   constructor(options) {
@@ -672,8 +688,25 @@ export class TaskService {
     }
 
     const content = normalizeRequiredString(input?.content);
-    const targetSubTaskId = normalizeRequiredString(input?.targetSubTaskId);
     const senderSubTaskId = normalizeRequiredString(input?.senderSubTaskId);
+    const targetSubTaskId = normalizeRequiredString(input?.targetSubTaskId);
+    const targetTypeInput = normalizeOptionalString(input?.targetType);
+    const messageTypeInput = normalizeOptionalString(input?.messageType);
+    const targetType = targetTypeInput
+      ? normalizeMailboxTargetType(targetTypeInput)
+      : targetSubTaskId
+        ? MAILBOX_TARGET_TYPE.SUBTASK
+        : senderSubTaskId
+          ? MAILBOX_TARGET_TYPE.LEAD
+          : null;
+    const messageType = messageTypeInput
+      ? normalizeMailboxMessageType(messageTypeInput)
+      : MAILBOX_MESSAGE_TYPE.NOTE;
+    const artifactRefs = normalizeStringArray(input?.artifactRefs);
+    const fileRefs = normalizeStringArray(input?.fileRefs);
+    const branchRef = normalizeOptionalString(input?.branchRef);
+    const schemaJson = normalizeOptionalJsonObject(input?.schemaJson);
+    const requiresAck = Boolean(input?.requiresAck);
 
     if (!content) {
       return failure(
@@ -683,21 +716,49 @@ export class TaskService {
       );
     }
 
-    if (!targetSubTaskId) {
+    if (!messageType) {
       return failure(
-        TASK_SERVICE_ERROR_CODES.MAILBOX_TARGET_REQUIRED,
-        "Mailbox messages must target a subtask in this phase.",
+        TASK_SERVICE_ERROR_CODES.MAILBOX_MESSAGE_TYPE_INVALID,
+        "Mailbox messageType is invalid.",
         { taskId },
       );
     }
 
-    const targetSubTask = await this.taskRepository.findSubTaskById(targetSubTaskId);
+    if (input?.schemaJson !== undefined && schemaJson === null) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.MAILBOX_SCHEMA_INVALID,
+        "schemaJson must be a JSON object when supplied.",
+        { taskId },
+      );
+    }
 
-    if (!targetSubTask || targetSubTask.taskId !== taskId) {
-      return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", {
-        subTaskId: targetSubTaskId,
-        taskId,
-      });
+    if (!targetType) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.MAILBOX_TARGET_REQUIRED,
+        "Mailbox messages must target either the lead or a subtask.",
+        { taskId },
+      );
+    }
+
+    let targetSubTask = null;
+
+    if (targetType === MAILBOX_TARGET_TYPE.SUBTASK) {
+      if (!targetSubTaskId) {
+        return failure(
+          TASK_SERVICE_ERROR_CODES.MAILBOX_TARGET_REQUIRED,
+          "Mailbox messages targeting a subtask must include targetSubTaskId.",
+          { taskId },
+        );
+      }
+
+      targetSubTask = await this.taskRepository.findSubTaskById(targetSubTaskId);
+
+      if (!targetSubTask || targetSubTask.taskId !== taskId) {
+        return failure(TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND, "Subtask not found.", {
+          subTaskId: targetSubTaskId,
+          taskId,
+        });
+      }
     }
 
     let senderType = MAILBOX_PARTICIPANT_TYPE.LEAD;
@@ -716,12 +777,42 @@ export class TaskService {
       senderType = MAILBOX_PARTICIPANT_TYPE.SUBTASK;
     }
 
+    if (senderType === MAILBOX_PARTICIPANT_TYPE.LEAD && targetType === MAILBOX_TARGET_TYPE.LEAD) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.MAILBOX_TARGET_REQUIRED,
+        "Mailbox messages must target another participant.",
+        { taskId },
+      );
+    }
+
+    if (
+      senderType === MAILBOX_PARTICIPANT_TYPE.SUBTASK
+      && targetType === MAILBOX_TARGET_TYPE.SUBTASK
+      && senderSubTask?.id
+      && senderSubTask.id === targetSubTask?.id
+    ) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.MAILBOX_TARGET_REQUIRED,
+        "Subtasks cannot send mailbox messages to themselves.",
+        {
+          subTaskId: senderSubTask.id,
+          taskId,
+        },
+      );
+    }
+
     const message = await this.#createMailboxMessage({
+      artifactRefs,
+      branchRef,
       content,
+      fileRefs,
+      messageType,
+      requiresAck,
+      schemaJson,
       senderSubTaskId: senderSubTask?.id ?? null,
       senderType,
-      targetSubTaskId: targetSubTask.id,
-      targetType: MAILBOX_TARGET_TYPE.SUBTASK,
+      targetSubTaskId: targetSubTask?.id ?? null,
+      targetType,
       taskId,
     });
 
@@ -2843,11 +2934,17 @@ export class TaskService {
       return;
     }
 
-    const content = buildAutomaticHandoffMessage(upstreamSubTask, session);
+    const automaticHandoff = buildAutomaticHandoffMessage(upstreamSubTask, session);
 
     await Promise.all(downstreamSubTasks.map((downstreamSubTask) => (
       this.#createMailboxMessage({
-        content,
+        artifactRefs: automaticHandoff.artifactRefs,
+        branchRef: automaticHandoff.branchRef,
+        content: automaticHandoff.content,
+        fileRefs: automaticHandoff.fileRefs,
+        messageType: automaticHandoff.messageType,
+        requiresAck: false,
+        schemaJson: automaticHandoff.schemaJson,
         senderSubTaskId: upstreamSubTask.id,
         senderType: MAILBOX_PARTICIPANT_TYPE.SUBTASK,
         targetSubTaskId: downstreamSubTask.id,
@@ -3420,6 +3517,42 @@ function normalizeRequiredString(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizeOptionalString(value) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value
+    .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim()))];
+}
+
+function normalizeOptionalJsonObject(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeMailboxTargetType(value) {
+  const normalizedValue = normalizeOptionalString(value) ?? MAILBOX_TARGET_TYPE.SUBTASK;
+  return Object.values(MAILBOX_TARGET_TYPE).includes(normalizedValue) ? normalizedValue : null;
+}
+
+function normalizeMailboxMessageType(value) {
+  const normalizedValue = normalizeOptionalString(value) ?? MAILBOX_MESSAGE_TYPE.NOTE;
+  return Object.values(MAILBOX_MESSAGE_TYPE).includes(normalizedValue) ? normalizedValue : null;
+}
+
 function failure(code, message, details) {
   return {
     ok: false,
@@ -3443,6 +3576,8 @@ function buildPlanRegenerationPrompt(reason, details) {
 }
 
 function buildWorkerPrompt(task, subTask, context = {}) {
+  const mailboxSummary = formatWorkerPromptMailboxNotes(context.mailboxMessages, context.subTasks);
+
   return [
     "You are the worker agent for one approved EAT subtask.",
     `Task title: ${task.title}`,
@@ -3453,23 +3588,48 @@ function buildWorkerPrompt(task, subTask, context = {}) {
     subTask.dependencyBranchSuffixes.length > 0
       ? `Depends on: ${subTask.dependencyBranchSuffixes.join(", ")}`
       : "Depends on: none",
-    "Mailbox handoff notes targeted to this subtask:",
-    formatWorkerPromptMailboxNotes(context.mailboxMessages, context.subTasks),
+    "Structured mailbox handoff context:",
+    mailboxSummary,
     "Work only inside the provided worktree and use the supplied attachments when relevant.",
   ].join("\n");
 }
 
 function formatWorkerPromptMailboxNotes(mailboxMessages = [], subTasks = []) {
   if (!Array.isArray(mailboxMessages) || mailboxMessages.length === 0) {
-    return "(no mailbox handoff notes were recorded for this subtask)";
+    return "(no structured mailbox handoff messages were recorded for this subtask)";
   }
 
   const subTaskMap = new Map(subTasks.map((subTask) => [subTask.id, subTask]));
+  const prioritizedMessages = prioritizeMailboxMessagesForPrompt(mailboxMessages);
+  const contractMessages = prioritizedMessages.filter((message) => MAILBOX_CONTRACT_TYPES.has(message.messageType));
+  const actionableMessages = prioritizedMessages.filter((message) => (
+    [MAILBOX_MESSAGE_TYPE.BLOCKER, MAILBOX_MESSAGE_TYPE.DELIVERABLE_READY, MAILBOX_MESSAGE_TYPE.TEST_REQUEST, MAILBOX_MESSAGE_TYPE.REVIEW_REQUEST].includes(message.messageType)
+  ));
+  const noteMessages = prioritizedMessages.filter((message) => message.messageType === MAILBOX_MESSAGE_TYPE.NOTE).slice(0, 2);
+  const sections = [];
 
-  return mailboxMessages.map((message, index) => [
-    `${index + 1}. From ${buildMailboxSenderLabel(message, subTaskMap)} at ${message.createdAt}:`,
-    tailUtf8(stripAnsiControlCodes(message.content ?? ""), MAX_MAILBOX_PROMPT_MESSAGE_BYTES),
-  ].join("\n")).join("\n\n");
+  if (contractMessages.length > 0) {
+    sections.push([
+      "Latest contracts:",
+      ...contractMessages.map((message, index) => formatMailboxPromptEntry(message, subTaskMap, index + 1)),
+    ].join("\n"));
+  }
+
+  if (actionableMessages.length > 0) {
+    sections.push([
+      "Actionable blockers and handoffs:",
+      ...actionableMessages.map((message, index) => formatMailboxPromptEntry(message, subTaskMap, index + 1)),
+    ].join("\n"));
+  }
+
+  if (noteMessages.length > 0) {
+    sections.push([
+      "Recent notes:",
+      ...noteMessages.map((message, index) => formatMailboxPromptEntry(message, subTaskMap, index + 1)),
+    ].join("\n"));
+  }
+
+  return sections.join("\n\n");
 }
 
 function buildMailboxSenderLabel(message, subTaskMap) {
@@ -3490,6 +3650,58 @@ function buildMailboxSenderLabel(message, subTaskMap) {
   return "lead";
 }
 
+function prioritizeMailboxMessagesForPrompt(mailboxMessages) {
+  const latestByType = new Map();
+  const notes = [];
+
+  for (const message of mailboxMessages) {
+    if (message.messageType === MAILBOX_MESSAGE_TYPE.NOTE) {
+      notes.push(message);
+      continue;
+    }
+
+    latestByType.set(`${message.messageType}:${message.senderSubTaskId ?? "lead"}:${message.targetSubTaskId ?? message.targetType}`, message);
+  }
+
+  const priorityRank = new Map(MAILBOX_PRIORITY_TYPES.map((type, index) => [type, index]));
+  const prioritizedNonNotes = [...latestByType.values()].sort((left, right) => {
+    const rankDifference = (priorityRank.get(left.messageType) ?? 999) - (priorityRank.get(right.messageType) ?? 999);
+
+    if (rankDifference !== 0) {
+      return rankDifference;
+    }
+
+    return String(right.createdAt).localeCompare(String(left.createdAt));
+  });
+
+  return [
+    ...prioritizedNonNotes,
+    ...notes.sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))),
+  ];
+}
+
+function formatMailboxPromptEntry(message, subTaskMap, index) {
+  const metadata = [
+    `from ${buildMailboxSenderLabel(message, subTaskMap)}`,
+    `type ${message.messageType ?? MAILBOX_MESSAGE_TYPE.NOTE}`,
+    message.branchRef ? `branch ${message.branchRef}` : null,
+    Array.isArray(message.fileRefs) && message.fileRefs.length > 0 ? `files ${message.fileRefs.join(", ")}` : null,
+    Array.isArray(message.artifactRefs) && message.artifactRefs.length > 0 ? `artifacts ${message.artifactRefs.join(", ")}` : null,
+    message.requiresAck ? "ack required" : null,
+    message.createdAt ? `at ${message.createdAt}` : null,
+  ].filter(Boolean).join(" · ");
+
+  const schemaSummary = message.schemaJson
+    ? `Schema: ${tailUtf8(stripAnsiControlCodes(JSON.stringify(message.schemaJson)), MAX_MAILBOX_PROMPT_MESSAGE_BYTES)}`
+    : null;
+
+  return [
+    `${index}. ${metadata}`,
+    tailUtf8(stripAnsiControlCodes(message.content ?? ""), MAX_MAILBOX_PROMPT_MESSAGE_BYTES),
+    schemaSummary,
+  ].filter(Boolean).join("\n");
+}
+
 function buildAutomaticHandoffMessage(subTask, session) {
   const reviewLine = subTask.latestReviewDecision
     ? `Latest incremental review: ${subTask.latestReviewDecision}${subTask.latestReviewSummary ? ` - ${subTask.latestReviewSummary}` : ""}`
@@ -3499,13 +3711,28 @@ function buildAutomaticHandoffMessage(subTask, session) {
     MAX_MAILBOX_PROMPT_MESSAGE_BYTES,
   ) || "(no worker output captured)";
 
-  return [
-    `Upstream subtask "${subTask.title}" finished successfully.`,
-    `Branch: ${subTask.branchName ?? subTask.branchSuffix}`,
-    reviewLine,
-    "Worker output excerpt:",
-    outputExcerpt,
-  ].join("\n");
+  return {
+    artifactRefs: [
+      `session:${session.id}`,
+      `subtask:${subTask.id}`,
+    ],
+    branchRef: subTask.branchName ?? subTask.branchSuffix,
+    content: [
+      `Upstream subtask "${subTask.title}" finished successfully.`,
+      `Branch: ${subTask.branchName ?? subTask.branchSuffix}`,
+      reviewLine,
+      "Worker output excerpt:",
+      outputExcerpt,
+    ].join("\n"),
+    fileRefs: [],
+    messageType: MAILBOX_MESSAGE_TYPE.DELIVERABLE_READY,
+    schemaJson: {
+      latestReviewDecision: subTask.latestReviewDecision ?? null,
+      latestReviewSummary: subTask.latestReviewSummary ?? null,
+      sourceSessionId: session.id,
+      upstreamBranchSuffix: subTask.branchSuffix,
+    },
+  };
 }
 
 async function buildIncrementalReviewPrompt(task, subTask, session) {

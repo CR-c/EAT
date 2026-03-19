@@ -5,6 +5,9 @@ import path from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 
 import {
+  MAILBOX_MESSAGE_TYPE,
+  MAILBOX_PARTICIPANT_TYPE,
+  MAILBOX_TARGET_TYPE,
   MERGE_OPERATION,
   MERGE_STATUS,
   PLAN_SNAPSHOT_SOURCE,
@@ -228,6 +231,87 @@ test("persists task plan fields, messages, attachments, sessions, subtasks, and 
     assert.deepEqual(
       (await taskRepository.listMergeRecordsByTaskId(task.id)).map(normalizeRecord),
       [mergeAttempt, rebaseAttempt],
+    );
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("persists structured mailbox contracts with refs, branch, schema, and acknowledgement state", async () => {
+  const fixture = await makeTempDir("eat-task-repo-mailbox-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const projectRepository = new SqliteProjectRepository({ databasePath });
+    const taskRepository = new SqliteTaskRepository({ databasePath });
+
+    const project = await projectRepository.createProject({
+      defaultBranch: "main",
+      name: "EAT",
+      path: "/home/code/EAT",
+    });
+    const task = await taskRepository.createTask({
+      baseBranch: "main",
+      baseCommitSha: "abc123def456",
+      description: "Persist structured mailbox contracts.",
+      leadAgentType: "codex-cli",
+      projectId: project.id,
+      title: "Structured mailbox",
+    });
+    const architect = await taskRepository.createSubTask({
+      agentType: "codex-cli",
+      branchName: `eat/${task.id}/architect`,
+      branchSuffix: "architect",
+      description: "Define API contracts.",
+      status: SUBTASK_STATUS.ACCEPTED,
+      taskId: task.id,
+      title: "Architect",
+    });
+    const backend = await taskRepository.createSubTask({
+      agentType: "codex-cli",
+      branchName: `eat/${task.id}/backend`,
+      branchSuffix: "backend",
+      description: "Implement backend.",
+      status: SUBTASK_STATUS.BLOCKED,
+      taskId: task.id,
+      title: "Backend",
+    });
+
+    const mailboxMessage = await taskRepository.createMailboxMessage({
+      artifactRefs: ["contract:auth-api", "session:session_123"],
+      branchRef: architect.branchName,
+      content: "Keep the JWT payload stable and reuse POST /api/auth/login.",
+      fileRefs: ["docs/contracts/auth-api.md", "src/server/auth.js"],
+      messageType: MAILBOX_MESSAGE_TYPE.API_CONTRACT,
+      requiresAck: true,
+      schemaJson: {
+        request: { body: { email: "string", password: "string" } },
+        response: { body: { token: "string" } },
+      },
+      senderSubTaskId: architect.id,
+      senderType: MAILBOX_PARTICIPANT_TYPE.SUBTASK,
+      targetSubTaskId: backend.id,
+      targetType: MAILBOX_TARGET_TYPE.SUBTASK,
+      taskId: task.id,
+    });
+
+    assert.equal(mailboxMessage.messageType, MAILBOX_MESSAGE_TYPE.API_CONTRACT);
+    assert.deepEqual(mailboxMessage.artifactRefs, ["contract:auth-api", "session:session_123"]);
+    assert.deepEqual(mailboxMessage.fileRefs, ["docs/contracts/auth-api.md", "src/server/auth.js"]);
+    assert.equal(mailboxMessage.branchRef, architect.branchName);
+    assert.equal(mailboxMessage.requiresAck, true);
+    assert.deepEqual(mailboxMessage.schemaJson, {
+      request: { body: { email: "string", password: "string" } },
+      response: { body: { token: "string" } },
+    });
+
+    assert.deepEqual(
+      (await taskRepository.listMailboxMessagesByTaskId(task.id)).map(normalizeRecord),
+      [mailboxMessage],
+    );
+    assert.deepEqual(
+      (await taskRepository.listMailboxMessagesByTargetSubTaskId(backend.id)).map(normalizeRecord),
+      [mailboxMessage],
     );
   } finally {
     await fixture.dispose();

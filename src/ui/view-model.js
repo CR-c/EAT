@@ -36,7 +36,9 @@ const MESSAGES = {
     taskMessageRequired: "发送给 lead 之前请先填写消息。",
     invalidPlanFallback: "生成的计划无效，需要重新生成。",
     mailboxMessageRequired: "发送交接说明前请先填写内容。",
+    mailboxMessageTypeInvalid: "请选择有效的交接消息类型。",
     mailboxNotAvailable: "只有计划批准后且任务仍处于活动状态时，才能使用信箱说明。",
+    mailboxSchemaInvalid: "结构化 schema 必须是合法的 JSON 对象。",
     mailboxTargetRequired: "发送交接说明前请先选择目标子任务。",
     planTemplateRequired: "请先选择一个计划模板。",
     planTemplateNotFound: "所选计划模板已不存在。",
@@ -121,7 +123,9 @@ const MESSAGES = {
     taskMessageRequired: "Write a message before sending it to the lead agent.",
     invalidPlanFallback: "The generated plan is invalid and needs regeneration.",
     mailboxMessageRequired: "Write a handoff note before sending it.",
+    mailboxMessageTypeInvalid: "Select a valid handoff message type.",
     mailboxNotAvailable: "Mailbox notes are only available after plan approval while the task is active.",
+    mailboxSchemaInvalid: "Structured schema must be a valid JSON object.",
     mailboxTargetRequired: "Select a subtask target before sending a handoff note.",
     planTemplateRequired: "Select a plan template before seeding.",
     planTemplateNotFound: "The selected plan template no longer exists.",
@@ -295,8 +299,12 @@ export function buildTaskErrorMessage(error) {
       return error.message ?? translate("invalidPlanFallback");
     case "MAILBOX_MESSAGE_REQUIRED":
       return translate("mailboxMessageRequired");
+    case "MAILBOX_MESSAGE_TYPE_INVALID":
+      return translate("mailboxMessageTypeInvalid");
     case "MAILBOX_NOT_AVAILABLE":
       return translate("mailboxNotAvailable");
+    case "MAILBOX_SCHEMA_INVALID":
+      return translate("mailboxSchemaInvalid");
     case "MAILBOX_TARGET_REQUIRED":
       return translate("mailboxTargetRequired");
     case "PLAN_TEMPLATE_REQUIRED":

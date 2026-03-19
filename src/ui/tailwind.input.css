@@ -573,6 +573,43 @@
     @apply border-emerald-100 bg-emerald-50/55;
   }
 
+  .mailbox-grid,
+  .mailbox-form-grid {
+    @apply grid gap-3;
+  }
+
+  .mailbox-stream {
+    @apply rounded-[1.25rem] border border-white/45 bg-white/65 p-4 shadow-soft backdrop-blur-xl;
+  }
+
+  .mailbox-stream__header {
+    @apply mb-3 flex items-center justify-between gap-2;
+  }
+
+  .checkbox-field {
+    @apply flex min-h-[52px] items-center gap-3 rounded-2xl border border-white/50 bg-white/70 px-4 py-3 text-sm font-semibold text-slate-700 shadow-soft backdrop-blur-xl;
+  }
+
+  .checkbox-field input {
+    @apply h-4 w-4 rounded border-slate-300 text-sky-600;
+  }
+
+  .mailbox-item__body {
+    @apply grid gap-3;
+  }
+
+  .mailbox-item__chips {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .mailbox-item__chip {
+    @apply inline-flex items-center rounded-full border border-white/45 bg-white/70 px-3 py-1 text-xs font-medium text-slate-700;
+  }
+
+  .mailbox-item__schema {
+    @apply m-0 overflow-auto rounded-[1.1rem] border border-slate-800/70 bg-slate-950/95 p-3 font-mono text-xs leading-6 text-slate-100;
+  }
+
   .execution-card__preview,
   .execution-console {
     @apply m-0 max-h-80 min-h-[120px] overflow-auto rounded-[1.25rem] border border-slate-800/70 bg-slate-950/95 p-4 font-mono text-xs leading-6 text-slate-100;
@@ -604,6 +641,14 @@
     .team-shell {
       grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.25fr);
       align-items: start;
+    }
+
+    .mailbox-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .mailbox-form-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .execution-card__facts,

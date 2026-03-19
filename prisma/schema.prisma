@@ -54,6 +54,27 @@ enum MergeOperation {
   REBASE
 }
 
+enum MailboxParticipantType {
+  LEAD
+  SUBTASK
+  SYSTEM
+}
+
+enum MailboxTargetType {
+  LEAD
+  SUBTASK
+}
+
+enum MailboxMessageType {
+  NOTE
+  BLOCKER
+  DELIVERABLE_READY
+  API_CONTRACT
+  DB_CONTRACT
+  TEST_REQUEST
+  REVIEW_REQUEST
+}
+
 model Project {
   id            String   @id
   name          String
@@ -82,6 +103,7 @@ model Task {
   createdAt        DateTime       @map("created_at")
   updatedAt        DateTime       @map("updated_at")
   project          Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mailboxMessages  MailboxMessage[]
   planSnapshots    PlanSnapshot[]
   subTasks         SubTask[]
 
@@ -127,6 +149,8 @@ model SubTask {
   createdAt            DateTime      @map("created_at")
   updatedAt            DateTime      @map("updated_at")
   mergeRecords         MergeRecord[]
+  sentMailboxMessages  MailboxMessage[] @relation("MailboxSenderSubTask")
+  targetMailboxMessages MailboxMessage[] @relation("MailboxTargetSubTask")
   task                 Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId, createdAt, id], map: "idx_sub_tasks_task_id_created_at")
@@ -150,4 +174,28 @@ model MergeRecord {
 
   @@index([subTaskId, createdAt, id], map: "idx_merge_records_sub_task_id_created_at")
   @@map("merge_records")
+}
+
+model MailboxMessage {
+  id              String                 @id
+  taskId          String                 @map("task_id")
+  senderType      MailboxParticipantType @map("sender_type")
+  senderSubTaskId String?                @map("sender_sub_task_id")
+  targetType      MailboxTargetType      @map("target_type")
+  targetSubTaskId String?                @map("target_sub_task_id")
+  messageType     MailboxMessageType     @default(NOTE) @map("message_type")
+  artifactRefsJson String                @default("[]") @map("artifact_refs_json")
+  fileRefsJson    String                 @default("[]") @map("file_refs_json")
+  branchRef       String?                @map("branch_ref")
+  schemaJson      String?                @map("schema_json")
+  requiresAck     Boolean                @default(false) @map("requires_ack")
+  content         String
+  createdAt       DateTime               @map("created_at")
+  senderSubTask   SubTask?               @relation("MailboxSenderSubTask", fields: [senderSubTaskId], references: [id], onDelete: Cascade)
+  targetSubTask   SubTask?               @relation("MailboxTargetSubTask", fields: [targetSubTaskId], references: [id], onDelete: Cascade)
+  task            Task                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt, id], map: "idx_mailbox_messages_task_id_created_at")
+  @@index([targetSubTaskId, createdAt, id], map: "idx_mailbox_messages_target_sub_task_id_created_at")
+  @@map("mailbox_messages")
 }
