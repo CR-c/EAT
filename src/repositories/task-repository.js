@@ -43,6 +43,11 @@ export const PLAN_SNAPSHOT_SOURCE = Object.freeze({
   RESTORED_FROM_HISTORY: "RESTORED_FROM_HISTORY",
 });
 
+export const REVIEW_PHASE = Object.freeze({
+  FINAL: "FINAL",
+  INCREMENTAL: "INCREMENTAL",
+});
+
 export const SUBTASK_STATUS = Object.freeze({
   ACCEPTED: "ACCEPTED",
   CANCELLED: "CANCELLED",
@@ -593,6 +598,9 @@ export class SqliteTaskRepository {
       description: input.description,
       id: input.id ?? randomUUID(),
       lastError: input.lastError ?? null,
+      latestReviewDecision: input.latestReviewDecision ?? null,
+      latestReviewPhase: input.latestReviewPhase ?? null,
+      latestReviewSummary: input.latestReviewSummary ?? null,
       retryCount: input.retryCount ?? 0,
       status: input.status ?? SUBTASK_STATUS.PENDING,
       taskId: input.taskId,
@@ -616,9 +624,12 @@ export class SqliteTaskRepository {
           auto_assigned,
           retry_count,
           last_error,
+          latest_review_decision,
+          latest_review_phase,
+          latest_review_summary,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         subTask.id,
@@ -633,6 +644,9 @@ export class SqliteTaskRepository {
         subTask.autoAssigned ? 1 : 0,
         subTask.retryCount,
         subTask.lastError,
+        subTask.latestReviewDecision,
+        subTask.latestReviewPhase,
+        subTask.latestReviewSummary,
         subTask.createdAt,
         subTask.updatedAt,
       );
@@ -656,6 +670,9 @@ export class SqliteTaskRepository {
           auto_assigned AS autoAssigned,
           retry_count AS retryCount,
           last_error AS lastError,
+          latest_review_decision AS latestReviewDecision,
+          latest_review_phase AS latestReviewPhase,
+          latest_review_summary AS latestReviewSummary,
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM sub_tasks
@@ -700,6 +717,9 @@ export class SqliteTaskRepository {
           auto_assigned = ?,
           retry_count = ?,
           last_error = ?,
+          latest_review_decision = ?,
+          latest_review_phase = ?,
+          latest_review_summary = ?,
           updated_at = ?
         WHERE id = ?
       `)
@@ -714,6 +734,9 @@ export class SqliteTaskRepository {
         nextSubTask.autoAssigned ? 1 : 0,
         nextSubTask.retryCount,
         nextSubTask.lastError,
+        nextSubTask.latestReviewDecision,
+        nextSubTask.latestReviewPhase,
+        nextSubTask.latestReviewSummary,
         nextSubTask.updatedAt,
         subTaskId,
       );
@@ -737,6 +760,9 @@ export class SqliteTaskRepository {
           auto_assigned AS autoAssigned,
           retry_count AS retryCount,
           last_error AS lastError,
+          latest_review_decision AS latestReviewDecision,
+          latest_review_phase AS latestReviewPhase,
+          latest_review_summary AS latestReviewSummary,
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM sub_tasks
@@ -748,6 +774,60 @@ export class SqliteTaskRepository {
         ...subTask,
         autoAssigned: Boolean(subTask.autoAssigned),
       }));
+  }
+
+  async createReviewRecord(input) {
+    const reviewRecord = {
+      createdAt: input.createdAt ?? new Date().toISOString(),
+      decision: input.decision,
+      id: input.id ?? randomUUID(),
+      phase: input.phase,
+      sessionId: input.sessionId ?? null,
+      subTaskId: input.subTaskId,
+      summary: input.summary,
+    };
+
+    this.#getDatabase()
+      .prepare(`
+        INSERT INTO review_records (
+          id,
+          sub_task_id,
+          session_id,
+          phase,
+          decision,
+          summary,
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        reviewRecord.id,
+        reviewRecord.subTaskId,
+        reviewRecord.sessionId,
+        reviewRecord.phase,
+        reviewRecord.decision,
+        reviewRecord.summary,
+        reviewRecord.createdAt,
+      );
+
+    return reviewRecord;
+  }
+
+  async listReviewRecordsBySubTaskId(subTaskId) {
+    return this.#getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          sub_task_id AS subTaskId,
+          session_id AS sessionId,
+          phase,
+          decision,
+          summary,
+          created_at AS createdAt
+        FROM review_records
+        WHERE sub_task_id = ?
+        ORDER BY created_at ASC, id ASC
+      `)
+      .all(subTaskId);
   }
 
   async listSessionsBySubTaskId(subTaskId) {

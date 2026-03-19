@@ -7,6 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import {
   PLAN_SNAPSHOT_SOURCE,
   MESSAGE_ROLE,
+  REVIEW_PHASE,
   SESSION_STATUS,
   SESSION_TYPE,
   SqliteTaskRepository,
@@ -169,6 +170,18 @@ test("persists task plan fields, messages, attachments, sessions, subtasks, and 
       subTaskId: subTask.id,
       taskId: task.id,
     });
+    const incrementalReview = await taskRepository.createReviewRecord({
+      decision: "REWORK",
+      phase: REVIEW_PHASE.INCREMENTAL,
+      sessionId: workerSession.id,
+      subTaskId: subTask.id,
+      summary: "Retry with clearer validation handling.",
+    });
+    const reviewedSubTask = await taskRepository.updateSubTask(subTask.id, {
+      latestReviewDecision: incrementalReview.decision,
+      latestReviewPhase: incrementalReview.phase,
+      latestReviewSummary: incrementalReview.summary,
+    });
 
     assert.equal(updatedSubTask.branchName, "eat/task-1/lead-session-chat-flow");
     assert.equal(updatedSubTask.retryCount, 1);
@@ -176,6 +189,13 @@ test("persists task plan fields, messages, attachments, sessions, subtasks, and 
     assert.equal(
       (await taskRepository.listSessionsBySubTaskId(subTask.id)).map((entry) => entry.id)[0],
       workerSession.id,
+    );
+    assert.equal(reviewedSubTask.latestReviewDecision, "REWORK");
+    assert.equal(reviewedSubTask.latestReviewPhase, REVIEW_PHASE.INCREMENTAL);
+    assert.equal(reviewedSubTask.latestReviewSummary, "Retry with clearer validation handling.");
+    assert.deepEqual(
+      (await taskRepository.listReviewRecordsBySubTaskId(subTask.id)).map(normalizeRecord),
+      [incrementalReview],
     );
   } finally {
     await fixture.dispose();

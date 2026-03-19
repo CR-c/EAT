@@ -12,17 +12,48 @@ export function createDatabaseConnection(databasePath = DEFAULT_DATABASE_PATH) {
 
   const database = new DatabaseSync(databasePath);
   database.exec("PRAGMA foreign_keys = ON");
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      name TEXT PRIMARY KEY NOT NULL,
+      applied_at TEXT NOT NULL
+    )
+  `);
 
-  for (const migrationFilePath of listMigrationFilePaths()) {
-    database.exec(readFileSync(migrationFilePath, "utf8"));
+  const appliedMigrationNames = new Set(
+    database.prepare("SELECT name FROM schema_migrations ORDER BY name ASC").all().map((row) => row.name),
+  );
+  const insertAppliedMigration = database.prepare(`
+    INSERT INTO schema_migrations (name, applied_at)
+    VALUES (?, ?)
+  `);
+
+  for (const migration of listMigrationFiles()) {
+    if (appliedMigrationNames.has(migration.name)) {
+      continue;
+    }
+
+    database.exec("BEGIN IMMEDIATE TRANSACTION");
+
+    try {
+      database.exec(readFileSync(migration.filePath, "utf8"));
+      insertAppliedMigration.run(migration.name, new Date().toISOString());
+      database.exec("COMMIT");
+      appliedMigrationNames.add(migration.name);
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   return database;
 }
 
-function listMigrationFilePaths() {
+function listMigrationFiles() {
   return readdirSync(migrationsDirectoryPath, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(migrationsDirectoryPath, entry.name, "migration.sql"))
-    .sort((left, right) => left.localeCompare(right));
+    .map((entry) => ({
+      name: entry.name,
+      filePath: path.join(migrationsDirectoryPath, entry.name, "migration.sql"),
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
