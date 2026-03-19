@@ -107,6 +107,7 @@ export class TaskService {
     this.pendingPlanDrafts = new Map();
     this.pendingWorkerLaunches = new Set();
     this.runningWorkerSessions = new Map();
+    this.sessionLogPaths = new Map();
     this.workerLaunchMetadata = new Map();
     this.workerSessionMetadata = new Map();
   }
@@ -290,7 +291,7 @@ export class TaskService {
       );
     }
 
-    const session = await this.taskRepository.createSession({
+    const session = await this.#createTrackedSession({
       agentType: task.leadAgentType,
       sandboxType: selectLeadSandboxType(agentFactory.capabilities.supportedSandboxTypes),
       sessionType: SESSION_TYPE.LEAD,
@@ -840,7 +841,7 @@ export class TaskService {
         });
       }
 
-      const session = await this.taskRepository.createSession({
+      const session = await this.#createTrackedSession({
         agentType: preparedSubTask.agentType,
         sandboxType,
         sessionType: SESSION_TYPE.WORKER,
@@ -1051,12 +1052,20 @@ export class TaskService {
       return;
     }
 
-    await this.taskRepository.appendSessionOutput(sessionId, normalizedChunk);
-    const message = await this.taskRepository.createMessage({
+    const outputPersistPromise = this.#appendSessionOutput(sessionId, normalizedChunk);
+    const messagePromise = this.taskRepository.createMessage({
       content: normalizedChunk.trim(),
       role: MESSAGE_ROLE.LEAD_AGENT,
       taskId,
     });
+
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (task?.status === TASK_STATUS.PLANNING) {
+      this.#capturePlanDraftChunk(taskId, normalizedChunk);
+    }
+
+    const [, message] = await Promise.all([outputPersistPromise, messagePromise]);
 
     this.#publish(taskId, "session:output", {
       chunk: normalizedChunk,
@@ -1068,12 +1077,6 @@ export class TaskService {
       messageId: message.id,
       taskId,
     });
-
-    const task = await this.taskRepository.findTaskById(taskId);
-
-    if (task?.status === TASK_STATUS.PLANNING) {
-      this.#capturePlanDraftChunk(taskId, normalizedChunk);
-    }
   }
 
   async #handleLeadExit(taskId, sessionId, exitCode) {
@@ -1116,7 +1119,7 @@ export class TaskService {
       return;
     }
 
-    await this.taskRepository.appendSessionOutput(sessionId, normalizedChunk);
+    void this.#appendSessionOutput(sessionId, normalizedChunk);
     this.#publish(taskId, "session:output", {
       chunk: normalizedChunk,
       sessionId,
@@ -1188,6 +1191,61 @@ export class TaskService {
 
   #publish(taskId, eventName, data) {
     this.eventBus?.publish(taskId, eventName, data);
+  }
+
+  async #createTrackedSession(input) {
+    const sessionId = input.id ?? randomUUID();
+    const logPath = this.#buildSessionLogPath({
+      sessionId,
+      sessionType: input.sessionType,
+      subTaskId: input.subTaskId ?? null,
+      taskId: input.taskId,
+    });
+
+    await mkdir(path.dirname(logPath), { recursive: true });
+    await writeFile(logPath, "", "utf8");
+
+    const session = await this.taskRepository.createSession({
+      ...input,
+      id: sessionId,
+      logPath,
+    });
+
+    this.sessionLogPaths.set(session.id, logPath);
+    return session;
+  }
+
+  async #appendSessionOutput(sessionId, chunk) {
+    const knownLogPath = this.sessionLogPaths.get(sessionId);
+    let logPath = knownLogPath ?? null;
+
+    if (!logPath) {
+      const session = await this.taskRepository.findSessionById(sessionId);
+      logPath = session?.logPath ?? null;
+
+      if (logPath) {
+        this.sessionLogPaths.set(sessionId, logPath);
+      }
+    }
+
+    if (logPath) {
+      await mkdir(path.dirname(logPath), { recursive: true });
+      await writeFile(logPath, chunk, {
+        encoding: "utf8",
+        flag: "a",
+      });
+    }
+
+    await this.taskRepository.appendSessionOutput(sessionId, chunk);
+  }
+
+  #buildSessionLogPath({ taskId, sessionId, sessionType, subTaskId }) {
+    const baseDirectoryPath = path.join(this.uploadRootPath, taskId, "sessions");
+    const fileNamePrefix = sessionType === SESSION_TYPE.WORKER
+      ? `worker-${subTaskId ?? "unknown"}`
+      : "lead";
+
+    return path.join(baseDirectoryPath, `${fileNamePrefix}-${sessionId}.log`);
   }
 
   #capturePlanDraftChunk(taskId, chunk) {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -199,6 +199,92 @@ test("launches concurrent worker sessions and exposes attachment filtering metad
         assert.equal(detailResponse.body.subTasks[0].launchMetadata.included[0].fileName, "requirements.md");
         assert.equal(detailResponse.body.subTasks[0].launchMetadata.excluded[0].fileName, "flow.png");
         assert.equal(detailResponse.body.subTasks[1].status, "REVIEW_PENDING");
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("persists full worker logs to logPath while keeping a bounded output buffer", async () => {
+  const fixture = await makeTempDir("eat-worker-logs-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const uploadRootPath = path.join(fixture.path, "uploads");
+    const eventBus = new TaskEventBus();
+    const fullOutput = `${"0123456789abcdef".repeat(5000)}\n`;
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Verbose worker",
+            description: "Emit a large amount of output.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "verbose-worker",
+          },
+        ],
+      },
+      workerBehavior: () => ({
+        delayMs: 20,
+        exitCode: 0,
+        output: fullOutput,
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+      uploadRootPath,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "log-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Persist worker session logs.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Worker logs",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        await nextEvent(events, (event) => event.eventName === "session:started" && event.data.subtaskId);
+        await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+
+        const workerSession = detailResponse.body.sessions.find((session) => session.sessionType === "WORKER");
+        assert.ok(workerSession);
+        assert.ok(workerSession.logPath);
+        assert.match(workerSession.logPath, new RegExp(`^${escapeRegExp(uploadRootPath)}`));
+
+        await access(workerSession.logPath);
+
+        const persistedLog = await readFile(workerSession.logPath, "utf8");
+        assert.equal(persistedLog, fullOutput);
+        assert.ok(workerSession.outputBuffer.length < fullOutput.length);
+        assert.equal(workerSession.outputBuffer, tailUtf8(fullOutput, workerSession.outputBufferMaxBytes));
       } finally {
         unsubscribe();
       }
@@ -589,6 +675,7 @@ async function startServer(options = {}) {
     repositoryOptions: {
       databasePath: options.databasePath,
     },
+    uploadRootPath: options.uploadRootPath,
   });
 
   await new Promise((resolve) => {
@@ -678,4 +765,12 @@ async function makeTempDir(prefix) {
       await rm(tempDir, { force: true, recursive: true });
     },
   };
+}
+
+function tailUtf8(value, maxBytes) {
+  return Buffer.from(value, "utf8").subarray(-maxBytes).toString("utf8");
+}
+
+function escapeRegExp(value) {
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
