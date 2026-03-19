@@ -1,6 +1,8 @@
 import path from "node:path";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 import { ATTACHMENT_TYPES, SESSION_SANDBOX_TYPES } from "../agents/agent-contract.js";
 import {
@@ -28,7 +30,10 @@ import {
 } from "../repositories/task-repository.js";
 
 const DEFAULT_UPLOAD_ROOT = path.resolve(process.cwd(), "uploads");
+const execFileAsync = promisify(execFile);
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_FINAL_REVIEW_DIFF_BYTES = 32_768;
+const MAX_FINAL_REVIEW_LOG_BYTES = 32_768;
 const MAX_INCREMENTAL_REVIEW_LOG_BYTES = 32_768;
 const INCREMENTAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
 
@@ -117,6 +122,7 @@ export class TaskService {
     this.sessionOutputAppends = new Map();
     this.workerLaunchMetadata = new Map();
     this.workerSessionMetadata = new Map();
+    this.pendingFinalReviews = new Set();
   }
 
   async createTask(input) {
@@ -1169,6 +1175,8 @@ export class TaskService {
       });
     }
 
+    void this.#maybeStartFinalReview(task.id);
+
     return failure(TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING, message, {
       subTaskId: subTask.id,
       taskId: task.id,
@@ -1317,6 +1325,8 @@ export class TaskService {
     if (exitCode === 0) {
       await this.#runIncrementalReview(taskId, subTaskId, sessionId);
     }
+
+    await this.#maybeStartFinalReview(taskId);
   }
 
   async #runIncrementalReview(taskId, subTaskId, sessionId) {
@@ -1396,6 +1406,161 @@ export class TaskService {
       subtaskId: reviewedSubTask.id,
       taskId,
     });
+  }
+
+  async #maybeStartFinalReview(taskId) {
+    if (this.pendingFinalReviews.has(taskId)) {
+      return;
+    }
+
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task || ![TASK_STATUS.ACTION_REQUIRED, TASK_STATUS.EXECUTING].includes(task.status)) {
+      return;
+    }
+
+    const [sessions, subTasks] = await Promise.all([
+      this.taskRepository.listSessionsByTaskId(taskId),
+      this.taskRepository.listSubTasksByTaskId(taskId),
+    ]);
+
+    const hasLiveWorkerSession = sessions.some((session) => (
+      session.sessionType === SESSION_TYPE.WORKER && WORKER_LIVE_STATUSES.has(session.status)
+    ));
+
+    if (hasLiveWorkerSession || subTasks.some((subTask) => (
+      [SUBTASK_STATUS.PENDING, SUBTASK_STATUS.READY, SUBTASK_STATUS.RUNNING].includes(subTask.status)
+    ))) {
+      return;
+    }
+
+    const reviewPendingSubTasks = subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.REVIEW_PENDING);
+
+    if (reviewPendingSubTasks.length === 0) {
+      return;
+    }
+
+    if (reviewPendingSubTasks.some((subTask) => isEarlyReworkEligible(subTask))) {
+      return;
+    }
+
+    this.pendingFinalReviews.add(taskId);
+
+    try {
+      const reviewingTask = await this.taskRepository.updateTask(taskId, {
+        lastError: null,
+        status: TASK_STATUS.REVIEWING,
+      });
+
+      this.#publish(taskId, "task:status", {
+        taskId,
+        status: reviewingTask.status,
+      });
+
+      queueMicrotask(() => {
+        void this.#runFinalReview(taskId);
+      });
+    } catch (error) {
+      this.pendingFinalReviews.delete(taskId);
+      throw error;
+    }
+  }
+
+  async #runFinalReview(taskId) {
+    try {
+      const finalReviewInput = await this.#buildFinalReviewInput(taskId);
+
+      if (!finalReviewInput.ok) {
+        return;
+      }
+
+      await collectAgentResponse(await finalReviewInput.agentFactory.spawnSession({
+        attachments: [],
+        branchName: finalReviewInput.task.baseBranch,
+        prompt: buildFinalReviewPrompt(finalReviewInput.review),
+        sandbox: {
+          type: selectLeadSandboxType(finalReviewInput.agentFactory.capabilities.supportedSandboxTypes),
+        },
+        sessionType: SESSION_TYPE.LEAD,
+        workDir: finalReviewInput.project.path,
+      }));
+    } finally {
+      this.pendingFinalReviews.delete(taskId);
+    }
+  }
+
+  async #buildFinalReviewInput(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task || task.status !== TASK_STATUS.REVIEWING) {
+      return { ok: false };
+    }
+
+    const [project, subTasks, sessions] = await Promise.all([
+      this.projectRepository.findProjectById(task.projectId),
+      this.taskRepository.listSubTasksByTaskId(taskId),
+      this.taskRepository.listSessionsByTaskId(taskId),
+    ]);
+
+    if (!project) {
+      return { ok: false };
+    }
+
+    const agentFactory = this.agentService.agentRegistry.get(task.leadAgentType);
+
+    if (!agentFactory?.capabilities?.canOrchestrate) {
+      return { ok: false };
+    }
+
+    const reviewableSubTasks = subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.REVIEW_PENDING);
+
+    if (reviewableSubTasks.length === 0) {
+      return { ok: false };
+    }
+
+    const approvedPlan = parseCurrentPlanJson(task.approvedPlanJson);
+    const subTaskReviews = await Promise.all(reviewableSubTasks.map(async (subTask) => {
+      const incrementalHistory = (await this.taskRepository.listReviewRecordsBySubTaskId(subTask.id))
+        .filter((record) => record.phase === REVIEW_PHASE.INCREMENTAL);
+      const latestSuccessfulSession = resolveLatestSuccessfulWorkerSession(sessions, subTask.id);
+
+      return {
+        branchName: subTask.branchName ?? null,
+        description: subTask.description,
+        diffSummary: await buildSubTaskDiffSummary(task, project, subTask),
+        id: subTask.id,
+        incrementalHistory,
+        latestSuccessfulSession: latestSuccessfulSession
+          ? {
+              agentType: latestSuccessfulSession.agentType,
+              endedAt: latestSuccessfulSession.endedAt ?? null,
+              id: latestSuccessfulSession.id,
+              logExcerpt: await readSessionLogExcerpt(latestSuccessfulSession, MAX_FINAL_REVIEW_LOG_BYTES),
+              logPath: latestSuccessfulSession.logPath ?? null,
+              outputBuffer: latestSuccessfulSession.outputBuffer ?? "",
+            }
+          : null,
+        retryCount: subTask.retryCount ?? 0,
+        title: subTask.title,
+      };
+    }));
+
+    return {
+      ok: true,
+      agentFactory,
+      project,
+      review: {
+        approvedPlan,
+        baseBranch: task.baseBranch,
+        baseCommitSha: task.baseCommitSha,
+        leadAgentType: task.leadAgentType,
+        subTasks: subTaskReviews,
+        taskDescription: task.description,
+        taskId: task.id,
+        taskTitle: task.title,
+      },
+      task,
+    };
   }
 
   #decorateSession(session) {
@@ -1901,6 +2066,45 @@ async function buildIncrementalReviewPrompt(task, subTask, session) {
   ].join("\n");
 }
 
+function buildFinalReviewPrompt(review) {
+  return [
+    "You are the lead reviewer for an authoritative final review across completed EAT subtasks.",
+    "This is the authoritative final review. Return final decisions for each listed subtask.",
+    "Return JSON only with this exact shape:",
+    '{"reviews":[{"subtask_id":"string","decision":"ACCEPTED|REWORK|REJECTED","summary":"one concise actionable paragraph"}]}',
+    "Use ACCEPTED for merge-ready work, REWORK for issues that should be rerun, and REJECTED for work that should be discarded instead of merged.",
+    `Task id: ${review.taskId}`,
+    `Task title: ${review.taskTitle}`,
+    `Task description: ${review.taskDescription}`,
+    `Base branch: ${review.baseBranch}`,
+    `Base commit: ${review.baseCommitSha}`,
+    `Lead agent: ${review.leadAgentType}`,
+    "Approved plan snapshot:",
+    JSON.stringify(review.approvedPlan ?? {}, null, 2),
+    "Review the following subtasks in order:",
+    JSON.stringify(review.subTasks.map((subTask) => ({
+      branch_name: subTask.branchName,
+      description: subTask.description,
+      diff_summary: subTask.diffSummary,
+      incremental_history: subTask.incrementalHistory.map((record) => ({
+        created_at: record.createdAt,
+        decision: record.decision,
+        summary: record.summary,
+      })),
+      latest_successful_session: subTask.latestSuccessfulSession
+        ? {
+            agent_type: subTask.latestSuccessfulSession.agentType,
+            ended_at: subTask.latestSuccessfulSession.endedAt,
+            log_excerpt: subTask.latestSuccessfulSession.logExcerpt,
+          }
+        : null,
+      retry_count: subTask.retryCount,
+      subtask_id: subTask.id,
+      title: subTask.title,
+    })), null, 2),
+  ].join("\n");
+}
+
 function parseIncrementalReviewResponse(response) {
   const rawResponse = typeof response === "string" ? response.trim() : "";
 
@@ -1944,6 +2148,60 @@ function extractJsonObject(value) {
   }
 
   return value.slice(startIndex, endIndex + 1);
+}
+
+function resolveLatestSuccessfulWorkerSession(sessions, subTaskId) {
+  return sessions
+    .filter((session) => session.subTaskId === subTaskId && session.sessionType === SESSION_TYPE.WORKER)
+    .filter((session) => session.status === SESSION_STATUS.COMPLETED && session.exitCode === 0)
+    .at(-1) ?? null;
+}
+
+async function readSessionLogExcerpt(session, maxBytes) {
+  if (!session) {
+    return null;
+  }
+
+  const persistedLog = session.logPath
+    ? await readFile(session.logPath, "utf8").catch(() => null)
+    : null;
+
+  return tailUtf8(
+    persistedLog ?? session.outputBuffer ?? "",
+    maxBytes,
+  );
+}
+
+async function buildSubTaskDiffSummary(task, project, subTask) {
+  if (!subTask.worktreePath && !subTask.branchName) {
+    return "(branch not ready)";
+  }
+
+  try {
+    const worktreeOrRepoPath = subTask.worktreePath ?? project.path;
+    const diffBase = subTask.worktreePath
+      ? task.baseCommitSha
+      : `${task.baseCommitSha}..${subTask.branchName}`;
+    const { stdout } = await execFileAsync("git", [
+      "-C",
+      worktreeOrRepoPath,
+      "diff",
+      "--stat",
+      "--patch",
+      "--unified=0",
+      diffBase,
+    ], {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+    });
+
+    const trimmed = stdout.trim();
+    return trimmed.length > 0
+      ? tailUtf8(trimmed, MAX_FINAL_REVIEW_DIFF_BYTES)
+      : "(no diff detected)";
+  } catch (error) {
+    return `Diff unavailable: ${error?.message ?? "git diff failed."}`;
+  }
 }
 
 async function collectAgentResponse(runtime) {

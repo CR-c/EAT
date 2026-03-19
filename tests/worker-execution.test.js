@@ -479,7 +479,7 @@ test("reworks a reviewed subtask on the same branch and worktree while keeping t
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailResponse.status, 200);
-        assert.equal(detailResponse.body.task.status, "EXECUTING");
+        assert.equal(detailResponse.body.task.status, "REVIEWING");
         assert.equal(detailResponse.body.subTasks[0].status, "REVIEW_PENDING");
         assert.equal(detailResponse.body.subTasks[0].retryCount, 1);
         assert.equal(
@@ -626,7 +626,7 @@ test("changes agent before relaunch, revalidates attachments, and keeps the task
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailResponse.status, 200);
-        assert.equal(detailResponse.body.task.status, "EXECUTING");
+        assert.equal(detailResponse.body.task.status, "REVIEWING");
         assert.equal(detailResponse.body.subTasks[0].status, "REVIEW_PENDING");
         assert.equal(detailResponse.body.subTasks[0].agentType, "vision-worker");
         assert.equal(detailResponse.body.subTasks[0].retryCount, 1);
@@ -1072,6 +1072,108 @@ test("moves the task to ACTION_REQUIRED when the assigned worker lacks DOCKER sa
   }
 });
 
+test("enters REVIEWING and assembles final review inputs after all worker runs finish", async () => {
+  const fixture = await makeTempDir("eat-worker-final-review-inputs-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const finalReviewPrompts = [];
+    const phase08 = createPhase08AgentService({
+      finalReviewBehavior: (config) => {
+        finalReviewPrompts.push(config.prompt);
+        return {
+          reviews: [],
+        };
+      },
+      plan: {
+        subtasks: [
+          {
+            title: "Reviewable worker",
+            description: "Produce a final-reviewable change.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "reviewable-worker",
+          },
+        ],
+      },
+      prepareWorkerSession: async (config) => {
+        await writeFile(path.join(config.workDir, "README.md"), "seed\nphase11 change\n", "utf8");
+      },
+      reviewBehavior: () => ({
+        decision: "ACCEPTED",
+        summary: "Incremental review accepted the generated change for final review.",
+      }),
+      workerBehavior: () => ({
+        delayMs: 20,
+        exitCode: 0,
+        output: "worker completed final-reviewable change\n",
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "final-review-inputs-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Collect final review inputs after worker completion.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Final review inputs",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+        await nextEvent(events, (event) => (
+          event.eventName === "subtask:review"
+          && event.data.phase === "INCREMENTAL"
+          && event.data.decision === "ACCEPTED"
+        ));
+        const reviewingEvent = await nextEvent(
+          events,
+          (event) => event.eventName === "task:status" && event.data.status === "REVIEWING",
+        );
+
+        assert.equal(reviewingEvent.data.status, "REVIEWING");
+
+        await waitFor(() => finalReviewPrompts.length === 1);
+        assert.match(finalReviewPrompts[0], /authoritative final review/i);
+        assert.match(finalReviewPrompts[0], /Approved plan snapshot:/);
+        assert.match(finalReviewPrompts[0], /Incremental review accepted the generated change/i);
+        assert.match(finalReviewPrompts[0], /retry_count/);
+        assert.match(finalReviewPrompts[0], /README\.md/);
+
+        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "REVIEWING");
+        assert.equal(detailResponse.body.subTasks[0].status, "REVIEW_PENDING");
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 function createPhase08AgentService(options) {
   const registry = new AgentRegistry();
   const plan = options.plan;
@@ -1119,6 +1221,21 @@ function createPhase08AgentService(options) {
             listener(review.exitCode ?? 0);
           }
         }, (review.delayMs ?? 0) + 5);
+      } else if (typeof config?.prompt === "string" && config.prompt.includes("authoritative final review")) {
+        const finalReview = options.finalReviewBehavior?.(config) ?? {
+          reviews: [],
+        };
+
+        setTimeout(() => {
+          for (const listener of outputListeners) {
+            listener(JSON.stringify(finalReview));
+          }
+        }, finalReview.delayMs ?? 0);
+        setTimeout(() => {
+          for (const listener of exitListeners) {
+            listener(finalReview.exitCode ?? 0);
+          }
+        }, (finalReview.delayMs ?? 0) + 5);
       } else {
         setTimeout(() => {
           for (const listener of outputListeners) {
@@ -1182,6 +1299,7 @@ function createPhase08AgentService(options) {
     async spawnSession(config) {
       const outputListeners = new Set();
       const exitListeners = new Set();
+      await options.prepareWorkerSession?.(config);
       const behavior = options.workerBehavior?.(config) ?? {
         delayMs: 20,
         exitCode: 0,
@@ -1250,6 +1368,7 @@ function createPhase08AgentService(options) {
     async spawnSession(config) {
       const outputListeners = new Set();
       const exitListeners = new Set();
+      await options.prepareWorkerSession?.(config);
       const behavior = options.workerBehavior?.(config) ?? {
         delayMs: 20,
         exitCode: 0,
@@ -1434,6 +1553,20 @@ async function nextEvent(events, predicate, attempts = 200) {
   }
 
   throw new Error("Timed out waiting for worker execution event.");
+}
+
+async function waitFor(predicate, attempts = 200) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+  }
+
+  throw new Error("Timed out waiting for worker execution condition.");
 }
 
 async function makeTempDir(prefix) {
