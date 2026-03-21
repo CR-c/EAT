@@ -188,8 +188,8 @@ const UI_MESSAGES = {
     attachmentsHint: "支持图片、PDF/Markdown/文本文件，以及基于文本的代码文件。不支持或超限文件会在任务创建完成前被拒绝。",
     createTaskButton: "创建任务",
     createGuidedTaskButton: "创建引导任务",
-    tasksEyebrow: "任务",
-    taskListTitle: "项目任务",
+    tasksEyebrow: "工作区",
+    taskListTitle: "工作区",
     taskListSummary: "先选任务，再与 lead 对话确认需求；确认后去计划审阅，再进入执行。",
     showArchivedTasksButton: "显示归档",
     hideArchivedTasksButton: "隐藏归档",
@@ -214,7 +214,7 @@ const UI_MESSAGES = {
     refreshTasksButton: "刷新任务",
     taskListEmpty: "当前所选项目还没有任务。",
     clarificationEyebrow: "澄清",
-    clarificationTitle: "Lead 会话转录",
+    clarificationTitle: "Leader 对话",
     leaderConversationEyebrow: "Leader 对话",
     leaderConversationTitle: "Leader 实时会话",
     leaderConversationDraftSummary: "你只和 Leader 对话。先发送第一条任务说明，真实 Leader 会话才会启动。",
@@ -224,7 +224,7 @@ const UI_MESSAGES = {
     leaderConversationExecutionSummary: "需求和分配已确认。后续由 Leader 继续编排执行，操作员不直接和子 agent 对话。",
     leaderConversationEmptyOutput: "这里会显示 Leader 的实时输出。",
     leaderPlanEyebrow: "Leader 规划",
-    leaderPlanTitle: "Leader 分配预览",
+    leaderPlanTitle: "分配预览",
     leaderPlanEmpty: "还没有可展示的分配方案。",
     leaderPlanSummaryDraft: "确认需求后，Leader 会在这里给出任务拆分、依赖关系和推荐执行成员。",
     leaderPlanSummaryReady: "以下是 Leader 当前给出的任务拆分预览。你只需要和 Leader 确认，不直接和子 agent 对话。",
@@ -267,7 +267,7 @@ const UI_MESSAGES = {
     taskListHintCompleted: "已完成",
     taskListHintFailed: "需要排查",
     refreshTaskButton: "刷新任务",
-    taskDetailEmpty: "选择一个任务以查看附件、实时转录与澄清状态。",
+    taskDetailEmpty: "选择一个任务进入工作区，与 Leader 对话并确认后续分配。",
     selectedTaskEyebrow: "当前任务",
     cleanupWarningsEyebrow: "清理警告",
     cleanupWarningsTitle: "可能仍需手动清理",
@@ -278,7 +278,7 @@ const UI_MESSAGES = {
     planVersionStat: "计划版本",
     snapshotsStat: "快照数",
     leaderOrchestrationEyebrow: "Leader 编排",
-    teamLifecycleTitle: "Lead 与团队生命周期",
+    teamLifecycleTitle: "Leader 编排",
     teamLifecycleSummary: "先查看 lead 协调者和所有具名 worker，再进入聚焦执行与恢复操作。",
     teamEmpty: "计划批准并物化为可执行子任务后，团队成员会显示在这里。",
     leadEyebrow: "Lead",
@@ -663,6 +663,7 @@ const UI_MESSAGES = {
     navDashboard: "控制台",
     navTaskCreate: "任务创建",
     navTasks: "任务列表",
+    navWorkspace: "工作区",
     navPlan: "计划审阅",
     navOps: "运行看板",
     navMetrics: "指标",
@@ -836,8 +837,8 @@ const UI_MESSAGES = {
     attachmentsHint: "Supported types: images, PDF/Markdown/text documents, and text-based code files. Unsupported or oversized files are rejected before task creation finishes.",
     createTaskButton: "Create task",
     createGuidedTaskButton: "Create guided task",
-    tasksEyebrow: "Tasks",
-    taskListTitle: "Project tasks",
+    tasksEyebrow: "Workspace",
+    taskListTitle: "Workspace",
     taskListSummary: "Pick a task first, confirm requirements with the lead, then move into plan review before execution.",
     showArchivedTasksButton: "Show archived",
     hideArchivedTasksButton: "Hide archived",
@@ -862,7 +863,7 @@ const UI_MESSAGES = {
     refreshTasksButton: "Refresh tasks",
     taskListEmpty: "No tasks exist for the selected project yet.",
     clarificationEyebrow: "Clarification",
-    clarificationTitle: "Lead session transcript",
+    clarificationTitle: "Leader conversation",
     leaderConversationEyebrow: "Leader conversation",
     leaderConversationTitle: "Leader live session",
     leaderConversationDraftSummary: "You only talk to the leader. A real leader session starts only after you send the first task brief.",
@@ -872,7 +873,7 @@ const UI_MESSAGES = {
     leaderConversationExecutionSummary: "Requirements and allocation are already confirmed. The leader continues orchestrating execution; the operator does not chat with sub-agents directly.",
     leaderConversationEmptyOutput: "The leader's live output will appear here.",
     leaderPlanEyebrow: "Leader planning",
-    leaderPlanTitle: "Leader allocation preview",
+    leaderPlanTitle: "Allocation preview",
     leaderPlanEmpty: "No assignment preview is available yet.",
     leaderPlanSummaryDraft: "After requirements are confirmed, the leader will show task splits, dependencies, and recommended executors here.",
     leaderPlanSummaryReady: "This is the current allocation preview from the leader. You confirm with the leader only; you do not talk to sub-agents directly.",
@@ -915,7 +916,7 @@ const UI_MESSAGES = {
     taskListHintCompleted: "Completed",
     taskListHintFailed: "Needs diagnosis",
     refreshTaskButton: "Refresh task",
-    taskDetailEmpty: "Select a task to inspect attachments, live transcript, and clarification state.",
+    taskDetailEmpty: "Select a task to enter the workspace and continue the leader conversation.",
     selectedTaskEyebrow: "Selected task",
     cleanupWarningsEyebrow: "Cleanup warnings",
     cleanupWarningsTitle: "Manual cleanup may still be required",
@@ -926,7 +927,7 @@ const UI_MESSAGES = {
     planVersionStat: "Plan version",
     snapshotsStat: "Snapshots",
     leaderOrchestrationEyebrow: "Leader orchestration",
-    teamLifecycleTitle: "Lead and team lifecycle",
+    teamLifecycleTitle: "Leader orchestration",
     teamLifecycleSummary: "See the lead coordinator and every named worker before drilling into focused execution and recovery actions.",
     teamEmpty: "Team members will appear here after plan approval materializes executable subtasks.",
     leadEyebrow: "Lead",
@@ -1310,7 +1311,8 @@ const UI_MESSAGES = {
     snapshotVersionLabel: "Version {version} · {source}",
     navDashboard: "Dashboard",
     navTaskCreate: "Create Task",
-    navTasks: "Tasks",
+    navTasks: "Task List",
+    navWorkspace: "Workspace",
     navPlan: "Plan Review",
     navOps: "Operations",
     navMetrics: "Metrics",
@@ -1411,7 +1413,7 @@ const MAILBOX_MESSAGE_TYPE_OPTIONS = [
 const MAILBOX_CONTRACT_MESSAGE_TYPES = new Set(["API_CONTRACT", "DB_CONTRACT"]);
 const MAILBOX_BLOCKER_MESSAGE_TYPES = new Set(["BLOCKER", "TEST_REQUEST", "REVIEW_REQUEST"]);
 
-const VIEW_IDS = ["dashboard", "task-create", "tasks", "plan", "ops", "metrics"];
+const VIEW_IDS = ["dashboard", "task-create", "tasks", "workspace", "plan", "ops", "metrics"];
 
 const state = {
   agentHealth: {},
@@ -1422,6 +1424,8 @@ const state = {
   leadCandidates: [],
   locale: normalizeLocale(readStorage(STORAGE_KEYS.locale)),
   liveSessionOutputs: new Map(),
+  expandedTaskCards: new Set(),
+  leaderPlanDetailState: null,
   planTemplates: [],
   projectDetail: null,
   projectPathBrowserCurrent: null,
@@ -1448,6 +1452,7 @@ const state = {
   showArchivedTasks: false,
   systemDockerHealth: null,
   taskActionDialogState: null,
+  taskListSearch: "",
   systemSandboxPolicy: null,
   taskDetail: null,
   taskPlanDraft: null,
@@ -1529,6 +1534,7 @@ const elements = {
   refreshProjectDetailButton: document.querySelector("#refresh-project-detail-button"),
   refreshProjectsButton: document.querySelector("#refresh-projects-button"),
   refreshTaskDetailButton: document.querySelector("#refresh-task-detail-button"),
+  refreshTaskPageButton: document.querySelector("#refresh-task-page-button"),
   refreshTasksButton: document.querySelector("#refresh-tasks-button"),
   registerProjectButton: document.querySelector("#register-project-button"),
   registeredName: document.querySelector("#registered-name"),
@@ -1642,10 +1648,20 @@ const elements = {
   taskCreateJourneySteps: document.querySelector("#task-create-journey-steps"),
   taskCreateRouteBadge: document.querySelector("#task-create-route-badge"),
   taskCreateRouteSummary: document.querySelector("#task-create-route-summary"),
+  taskPageArchivedToggle: document.querySelector("#task-page-archived-toggle"),
+  taskPageEmpty: document.querySelector("#task-page-empty"),
+  taskPageFeedback: document.querySelector("#task-page-feedback"),
+  taskPageList: document.querySelector("#task-page-list"),
+  taskPageSearchInput: document.querySelector("#task-page-search-input"),
   taskLeaderPlanBadge: document.querySelector("#task-leader-plan-badge"),
   taskLeaderPlanEmpty: document.querySelector("#task-leader-plan-empty"),
   taskLeaderPlanList: document.querySelector("#task-leader-plan-list"),
   taskLeaderPlanSummary: document.querySelector("#task-leader-plan-summary"),
+  leaderPlanDetailCloseButton: document.querySelector("#leader-plan-detail-close-button"),
+  leaderPlanDetailDialog: document.querySelector("#leader-plan-detail-dialog"),
+  leaderPlanDetailFacts: document.querySelector("#leader-plan-detail-facts"),
+  leaderPlanDetailSummary: document.querySelector("#leader-plan-detail-summary"),
+  leaderPlanDetailTitle: document.querySelector("#leader-plan-detail-title"),
   taskTeamEmpty: document.querySelector("#task-team-empty"),
   taskTeamLeadMeta: document.querySelector("#task-team-lead-meta"),
   taskTeamLeadStatus: document.querySelector("#task-team-lead-status"),
@@ -1660,6 +1676,12 @@ const elements = {
   taskList: document.querySelector("#task-list"),
   taskListEmpty: document.querySelector("#task-list-empty"),
   taskListFeedback: document.querySelector("#task-list-feedback"),
+  workspacePickerCloseButton: document.querySelector("#workspace-picker-close-button"),
+  workspacePickerCount: document.querySelector("#workspace-picker-count"),
+  workspacePickerCurrent: document.querySelector("#workspace-picker-current"),
+  workspacePickerDialog: document.querySelector("#workspace-picker-dialog"),
+  workspacePickerOpenButton: document.querySelector("#workspace-picker-open-button"),
+  workspacePickerSearchInput: document.querySelector("#workspace-picker-search-input"),
   taskActionDialog: document.querySelector("#task-action-dialog"),
   taskActionDialogBranchSummary: document.querySelector("#task-action-dialog-branch-summary"),
   taskActionDialogCancelButton: document.querySelector("#task-action-dialog-cancel-button"),
@@ -1784,13 +1806,48 @@ elements.refreshTasksButton.addEventListener("click", () => {
     void loadProjectTasks(state.selectedProjectId, { preserveSelection: true });
   }
 });
-elements.taskListArchivedToggle?.addEventListener("click", () => {
+elements.refreshTaskPageButton?.addEventListener("click", () => {
+  if (state.selectedProjectId) {
+    void loadProjectTasks(state.selectedProjectId, { preserveSelection: true });
+  }
+});
+function toggleArchivedTaskVisibility() {
   state.showArchivedTasks = !state.showArchivedTasks;
 
   if (state.selectedProjectId) {
     void loadProjectTasks(state.selectedProjectId, { preserveSelection: true });
   } else {
-    renderTaskList();
+    renderTaskCollections();
+  }
+}
+elements.taskListArchivedToggle?.addEventListener("click", () => {
+  toggleArchivedTaskVisibility();
+});
+elements.taskPageArchivedToggle?.addEventListener("click", () => {
+  toggleArchivedTaskVisibility();
+});
+elements.taskPageSearchInput?.addEventListener("input", (event) => {
+  state.taskListSearch = event.target.value ?? "";
+  renderTaskCollections();
+});
+elements.workspacePickerSearchInput?.addEventListener("input", (event) => {
+  state.taskListSearch = event.target.value ?? "";
+  renderTaskCollections();
+});
+elements.workspacePickerOpenButton?.addEventListener("click", () => {
+  openDialog(elements.workspacePickerDialog);
+  elements.workspacePickerSearchInput?.focus();
+});
+elements.workspacePickerCloseButton?.addEventListener("click", closeWorkspacePickerDialog);
+elements.workspacePickerDialog?.addEventListener("click", (event) => {
+  if (event.target === elements.workspacePickerDialog) {
+    closeWorkspacePickerDialog();
+  }
+});
+elements.leaderPlanDetailCloseButton?.addEventListener("click", closeLeaderPlanDetailDialog);
+elements.leaderPlanDetailDialog?.addEventListener("click", (event) => {
+  if (event.target === elements.leaderPlanDetailDialog) {
+    closeLeaderPlanDetailDialog();
   }
 });
 elements.refreshTaskDetailButton.addEventListener("click", () => {
@@ -2206,6 +2263,44 @@ function openDialog(dialog) {
   }
 
   dialog.setAttribute("open", "");
+}
+
+function closeWorkspacePickerDialog() {
+  const dialog = elements.workspacePickerDialog;
+
+  if (!dialog?.open) {
+    return;
+  }
+
+  if (typeof dialog.close === "function") {
+    dialog.close();
+  } else {
+    dialog.removeAttribute("open");
+  }
+}
+
+function openLeaderPlanDetailDialog(index, node) {
+  if (!elements.leaderPlanDetailDialog || !node) {
+    return;
+  }
+
+  state.leaderPlanDetailState = { index, node };
+  renderLeaderPlanDetailDialog();
+  openDialog(elements.leaderPlanDetailDialog);
+}
+
+function closeLeaderPlanDetailDialog() {
+  const dialog = elements.leaderPlanDetailDialog;
+
+  if (dialog?.open) {
+    if (typeof dialog.close === "function") {
+      dialog.close();
+    } else {
+      dialog.removeAttribute("open");
+    }
+  }
+
+  state.leaderPlanDetailState = null;
 }
 
 function openTaskActionDialog(action, task) {
@@ -2706,7 +2801,9 @@ async function loadProjectDetail(projectId) {
 
 async function loadProjectTasks(projectId, options = {}) {
   clearFeedback(elements.taskListFeedback);
+  clearFeedback(elements.taskPageFeedback);
   setButtonBusy(elements.refreshTasksButton, true, t("refreshing"));
+  setButtonBusy(elements.refreshTaskPageButton, true, t("refreshing"));
 
   try {
     const params = new URLSearchParams();
@@ -2723,7 +2820,7 @@ async function loadProjectTasks(projectId, options = {}) {
       ?? pickDefaultTaskId(state.tasks)
       ?? null;
 
-    renderTaskList();
+    renderTaskCollections();
 
     if (nextTaskId) {
       await loadTaskDetail(nextTaskId);
@@ -2732,11 +2829,13 @@ async function loadProjectTasks(projectId, options = {}) {
     }
   } catch (error) {
     state.tasks = [];
-    renderTaskList();
+    renderTaskCollections();
     clearTaskDetail();
     showFeedback(elements.taskListFeedback, "error", buildTaskErrorMessage(error));
+    showFeedback(elements.taskPageFeedback, "error", buildTaskErrorMessage(error));
   } finally {
     setButtonBusy(elements.refreshTasksButton, false, t("refreshTasksButton"));
+    setButtonBusy(elements.refreshTaskPageButton, false, t("refreshTasksButton"));
   }
 }
 
@@ -2751,6 +2850,7 @@ async function loadTaskDetail(taskId, options = {}) {
 
   try {
     const response = await fetchJson(`/api/tasks/${encodeURIComponent(taskId)}`);
+    closeLeaderPlanDetailDialog();
     state.selectedTaskId = taskId;
     state.taskDetail = response;
     hydrateExecutionState(response);
@@ -3096,15 +3196,24 @@ function renderGuidedTaskComposer() {
 }
 
 function renderTaskList() {
-  elements.taskList.replaceChildren();
-  const activeTasks = state.tasks.filter((task) => !task.archivedAt);
-  const archivedTasks = state.tasks.filter((task) => Boolean(task.archivedAt));
-  const visibleTaskCount = state.showArchivedTasks ? state.tasks.length : activeTasks.length;
+  renderTaskCollections();
+}
 
-  elements.taskListEmpty.hidden = visibleTaskCount > 0;
-  elements.taskListEmpty.textContent = state.showArchivedTasks
-    ? t("taskListEmptyArchived")
-    : t("taskListEmptyActiveOnly");
+function renderTaskCollections() {
+  syncTaskSearchInputs();
+  renderWorkspacePickerTrigger();
+  renderWorkspacePickerList();
+  renderTaskPageList();
+}
+
+function syncTaskSearchInputs() {
+  if (elements.taskPageSearchInput && elements.taskPageSearchInput.value !== state.taskListSearch) {
+    elements.taskPageSearchInput.value = state.taskListSearch;
+  }
+
+  if (elements.workspacePickerSearchInput && elements.workspacePickerSearchInput.value !== state.taskListSearch) {
+    elements.workspacePickerSearchInput.value = state.taskListSearch;
+  }
 
   if (elements.taskListArchivedToggle) {
     elements.taskListArchivedToggle.textContent = state.showArchivedTasks
@@ -3112,18 +3221,72 @@ function renderTaskList() {
       : t("showArchivedTasksButton");
   }
 
-  renderTaskListSection(activeTasks);
+  if (elements.taskPageArchivedToggle) {
+    elements.taskPageArchivedToggle.textContent = state.showArchivedTasks
+      ? t("hideArchivedTasksButton")
+      : t("showArchivedTasksButton");
+  }
+}
+
+function renderWorkspacePickerTrigger() {
+  const selectedTask = resolveTaskFromState(state.selectedTaskId);
+
+  if (elements.workspacePickerCurrent) {
+    elements.workspacePickerCurrent.textContent = selectedTask?.title ?? "选择任务";
+  }
+
+  if (elements.workspacePickerCount) {
+    elements.workspacePickerCount.textContent = `${state.tasks.length} 个任务`;
+  }
+}
+
+function buildVisibleTaskGroups() {
+  const normalizedQuery = state.taskListSearch.trim().toLowerCase();
+  const matches = (task) => {
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    return [task.title, task.description, task.baseBranch, task.leadAgentType]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(normalizedQuery));
+  };
+
+  const activeTasks = state.tasks.filter((task) => !task.archivedAt && matches(task));
+  const archivedTasks = state.tasks.filter((task) => Boolean(task.archivedAt) && matches(task));
+
+  return {
+    activeTasks,
+    archivedTasks,
+    visibleTaskCount: state.showArchivedTasks ? activeTasks.length + archivedTasks.length : activeTasks.length,
+  };
+}
+
+function renderWorkspacePickerList() {
+  if (!elements.taskList || !elements.taskListEmpty) {
+    return;
+  }
+
+  elements.taskList.replaceChildren();
+  const { activeTasks, archivedTasks, visibleTaskCount } = buildVisibleTaskGroups();
+
+  elements.taskListEmpty.hidden = visibleTaskCount > 0;
+  elements.taskListEmpty.textContent = state.showArchivedTasks
+    ? t("taskListEmptyArchived")
+    : t("taskListEmptyActiveOnly");
+
+  renderWorkspacePickerListSection(activeTasks);
 
   if (state.showArchivedTasks && archivedTasks.length > 0) {
     const heading = document.createElement("p");
     heading.className = "task-list__section-title";
     heading.textContent = `${t("taskListArchivedTitle")} · ${archivedTasks.length}`;
     elements.taskList.append(heading);
-    renderTaskListSection(archivedTasks, { archived: true });
+    renderWorkspacePickerListSection(archivedTasks, { archived: true });
   }
 }
 
-function renderTaskListSection(tasks, options = {}) {
+function renderWorkspacePickerListSection(tasks, options = {}) {
   for (const task of tasks) {
     const stageMeta = task.archivedAt
       ? { listHint: t("taskArchivedHint") }
@@ -3142,7 +3305,6 @@ function renderTaskListSection(tasks, options = {}) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "task-list__item";
-
     button.innerHTML = `
       <div class="task-list__topline">
         <p class="task-list__title">${escapeHtml(task.title)}</p>
@@ -3157,47 +3319,147 @@ function renderTaskListSection(tasks, options = {}) {
       </div>
     `;
     button.addEventListener("click", () => {
+      closeWorkspacePickerDialog();
+      switchView("workspace");
       void loadTaskDetail(task.id);
     });
 
-    const actions = document.createElement("div");
-    actions.className = "task-list__item-actions";
-
-    if (task.archivedAt) {
-      const restoreButton = document.createElement("button");
-      restoreButton.type = "button";
-      restoreButton.className = "button button--secondary task-list__action";
-      restoreButton.textContent = t("taskUnarchiveButton");
-      restoreButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        void onUnarchiveTask(task.id);
-      });
-      actions.append(restoreButton);
-    } else {
-      const archiveButton = document.createElement("button");
-      archiveButton.type = "button";
-      archiveButton.className = "button button--secondary task-list__action";
-      archiveButton.textContent = t("taskArchiveButton");
-      archiveButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        openTaskActionDialog("archive", task);
-      });
-      actions.append(archiveButton);
-    }
-
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "button task-list__action task-list__action--danger";
-    deleteButton.textContent = t("taskDeleteButton");
-    deleteButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openTaskActionDialog("delete", task);
-    });
-    actions.append(deleteButton);
-
+    const actions = buildTaskActionRow(task);
     entry.append(button, actions);
     elements.taskList.append(entry);
   }
+}
+
+function renderTaskPageList() {
+  if (!elements.taskPageList || !elements.taskPageEmpty) {
+    return;
+  }
+
+  elements.taskPageList.replaceChildren();
+  const { activeTasks, archivedTasks, visibleTaskCount } = buildVisibleTaskGroups();
+
+  elements.taskPageEmpty.hidden = visibleTaskCount > 0;
+  elements.taskPageEmpty.textContent = state.showArchivedTasks
+    ? t("taskListEmptyArchived")
+    : t("taskListEmptyActiveOnly");
+
+  renderTaskPageListSection(activeTasks);
+
+  if (state.showArchivedTasks && archivedTasks.length > 0) {
+    const heading = document.createElement("p");
+    heading.className = "task-list__section-title";
+    heading.textContent = `${t("taskListArchivedTitle")} · ${archivedTasks.length}`;
+    elements.taskPageList.append(heading);
+    renderTaskPageListSection(archivedTasks, { archived: true });
+  }
+}
+
+function renderTaskPageListSection(tasks, options = {}) {
+  for (const task of tasks) {
+    const stageMeta = task.archivedAt
+      ? { listHint: t("taskArchivedHint") }
+      : buildTaskStageMeta(task);
+    const expanded = state.expandedTaskCards.has(task.id);
+    const article = document.createElement("article");
+    article.className = `task-page-card${expanded ? " is-expanded" : ""}${task.id === state.selectedTaskId ? " is-selected" : ""}${options.archived ? " is-archived" : ""}`;
+    article.setAttribute("role", "listitem");
+
+    const header = document.createElement("div");
+    header.className = "task-page-card__header";
+    header.innerHTML = `
+      <button class="task-page-card__entry" type="button">
+        <div class="task-page-card__topline">
+          <h3 class="task-page-card__title">${escapeHtml(task.title)}</h3>
+          <div class="task-page-card__badges">
+            ${task.archivedAt ? `<span class="badge badge--outline">${escapeHtml(t("taskListArchivedBadge"))}</span>` : ""}
+            <span class="badge ${buildTaskStatusBadgeClass(task.status)}">${escapeHtml(buildTaskStatusLabel(task.status))}</span>
+          </div>
+        </div>
+        <p class="task-page-card__meta">${escapeHtml(task.baseBranch)}</p>
+      </button>
+      <div class="task-page-card__header-actions">
+        <button class="button button--ghost task-page-card__expand" type="button" data-task-page-expand="${escapeHtmlAttribute(task.id)}">
+          ${expanded ? "收起" : "展开"}
+        </button>
+      </div>
+    `;
+    header.querySelector(".task-page-card__entry")?.addEventListener("click", () => {
+      switchView("workspace");
+      void loadTaskDetail(task.id);
+    });
+
+    header.querySelector("[data-task-page-expand]")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleTaskPageCardExpanded(task.id);
+    });
+
+    article.append(header);
+
+    if (expanded) {
+      const detail = document.createElement("div");
+      detail.className = "task-page-card__detail";
+      detail.innerHTML = `
+        <p class="task-page-card__description">${escapeHtml(task.description ?? "")}</p>
+        <div class="task-page-card__facts">
+          <span>${escapeHtml(`${t("leadAgentStat")}: ${task.leadAgentType ?? t("unknownAgent")}`)}</span>
+          <span>${escapeHtml(stageMeta.listHint)}</span>
+        </div>
+      `;
+      detail.append(buildTaskActionRow(task));
+      article.append(detail);
+    }
+
+    elements.taskPageList.append(article);
+  }
+}
+
+function buildTaskActionRow(task) {
+  const actions = document.createElement("div");
+  actions.className = "task-list__item-actions";
+
+  if (task.archivedAt) {
+    const restoreButton = document.createElement("button");
+    restoreButton.type = "button";
+    restoreButton.className = "button button--secondary task-list__action";
+    restoreButton.textContent = t("taskUnarchiveButton");
+    restoreButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void onUnarchiveTask(task.id);
+    });
+    actions.append(restoreButton);
+  } else {
+    const archiveButton = document.createElement("button");
+    archiveButton.type = "button";
+    archiveButton.className = "button button--secondary task-list__action";
+    archiveButton.textContent = t("taskArchiveButton");
+    archiveButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openTaskActionDialog("archive", task);
+    });
+    actions.append(archiveButton);
+  }
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "button task-list__action task-list__action--danger";
+  deleteButton.textContent = t("taskDeleteButton");
+  deleteButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openTaskActionDialog("delete", task);
+  });
+  actions.append(deleteButton);
+
+  return actions;
+}
+
+function toggleTaskPageCardExpanded(taskId) {
+  if (state.expandedTaskCards.has(taskId)) {
+    state.expandedTaskCards.delete(taskId);
+  } else {
+    state.expandedTaskCards.add(taskId);
+  }
+
+  renderTaskPageList();
 }
 
 async function onUnarchiveTask(taskId) {
@@ -3211,6 +3473,7 @@ async function onUnarchiveTask(taskId) {
     }
   } catch (error) {
     showFeedback(elements.taskListFeedback, "error", buildTaskErrorMessage(error));
+    showFeedback(elements.taskPageFeedback, "error", buildTaskErrorMessage(error));
   }
 }
 
@@ -3308,7 +3571,7 @@ function renderLeaderConversation(detail) {
   }
 
   if (elements.taskLeadSessionOutput) {
-    elements.taskLeadSessionOutput.textContent = liveOutput || t("leaderConversationEmptyOutput");
+    renderLeaderConversationHistory(detail.messages ?? [], liveOutput, leadSession);
   }
 }
 
@@ -3317,16 +3580,7 @@ function renderLeaderPlanPreview(detail) {
     return;
   }
 
-  const parsedPlan = parseCurrentPlanJson(detail.task.currentPlanJson);
-  const planNodes = getPlanNodes(parsedPlan);
-  const materializedNodes = (detail.subTasks ?? []).map((subTask) => ({
-    branch_suffix: subTask.branchSuffix ?? subTask.branchName ?? "",
-    depends_on: subTask.dependencyBranchSuffixes ?? [],
-    recommended_agent: subTask.agentType ?? "",
-    role: subTask.role ?? "",
-    title: subTask.title ?? "",
-  }));
-  const nodes = planNodes.length > 0 ? planNodes : materializedNodes;
+  const nodes = buildLeaderPlanNodes(detail);
 
   elements.taskLeaderPlanList.replaceChildren();
   elements.taskLeaderPlanEmpty.hidden = nodes.length > 0;
@@ -3337,40 +3591,113 @@ function renderLeaderPlanPreview(detail) {
   elements.taskLeaderPlanBadge.className = `badge ${nodes.length > 0 ? "badge--clean" : "badge--outline"}`;
 
   for (const [index, node] of nodes.entries()) {
-    const item = document.createElement("article");
+    const item = document.createElement("button");
+    item.type = "button";
     item.className = "leader-plan-card";
     const dependencies = Array.isArray(node.depends_on) && node.depends_on.length > 0
       ? node.depends_on.join(", ")
       : t("leaderPlanDependsNone");
     item.innerHTML = `
-      <div class="leader-plan-card__header">
-        <div>
-          <p class="leader-plan-card__eyebrow">${escapeHtml(t("leaderPlanTaskLabel", { index: index + 1 }))}</p>
-          <h4 class="leader-plan-card__title">${escapeHtml(node.title || `${t("leaderPlanTaskLabel", { index: index + 1 })}`)}</h4>
-        </div>
+      <div class="leader-plan-card__topline">
+        <span class="leader-plan-card__eyebrow">${escapeHtml(`T${index + 1}`)}</span>
         <span class="badge badge--outline">${escapeHtml(node.recommended_agent || node.role || t("unknownAgent"))}</span>
       </div>
-      <dl class="leader-plan-card__facts">
-        <div>
-          <dt>${escapeHtml(t("leaderPlanAgentLabel"))}</dt>
-          <dd>${escapeHtml(node.recommended_agent || t("unknownAgent"))}</dd>
-        </div>
-        <div>
-          <dt>${escapeHtml(t("leaderPlanRoleLabel"))}</dt>
-          <dd>${escapeHtml(node.role || t("unknown"))}</dd>
-        </div>
-        <div>
-          <dt>${escapeHtml(t("leaderPlanBranchLabel"))}</dt>
-          <dd>${escapeHtml(node.branch_suffix || t("leadSessionPending"))}</dd>
-        </div>
-        <div>
-          <dt>${escapeHtml(t("leaderPlanDependsLabel"))}</dt>
-          <dd>${escapeHtml(dependencies)}</dd>
-        </div>
-      </dl>
+      <h4 class="leader-plan-card__title">${escapeHtml(node.title || `${t("leaderPlanTaskLabel", { index: index + 1 })}`)}</h4>
+      <p class="leader-plan-card__summary">${escapeHtml(node.branch_suffix || t("leadSessionPending"))}</p>
+      <p class="leader-plan-card__meta">${escapeHtml(`${t("leaderPlanDependsLabel")} · ${dependencies}`)}</p>
     `;
+    item.addEventListener("click", () => {
+      openLeaderPlanDetailDialog(index, node);
+    });
     elements.taskLeaderPlanList.append(item);
   }
+}
+
+function buildLeaderPlanNodes(detail) {
+  const parsedPlan = parseCurrentPlanJson(detail.task.currentPlanJson);
+  const planNodes = getPlanNodes(parsedPlan);
+  const materializedNodes = (detail.subTasks ?? []).map((subTask) => ({
+    branch_suffix: subTask.branchSuffix ?? subTask.branchName ?? "",
+    depends_on: subTask.dependencyBranchSuffixes ?? [],
+    description: subTask.description ?? "",
+    recommended_agent: subTask.agentType ?? "",
+    role: subTask.role ?? "",
+    title: subTask.title ?? "",
+  }));
+
+  return planNodes.length > 0 ? planNodes : materializedNodes;
+}
+
+function renderLeaderPlanDetailDialog() {
+  const detailState = state.leaderPlanDetailState;
+
+  if (!detailState || !elements.leaderPlanDetailFacts || !elements.leaderPlanDetailTitle || !elements.leaderPlanDetailSummary) {
+    return;
+  }
+
+  const { index, node } = detailState;
+  const dependencies = Array.isArray(node.depends_on) && node.depends_on.length > 0
+    ? node.depends_on.join(", ")
+    : t("leaderPlanDependsNone");
+  elements.leaderPlanDetailTitle.textContent = node.title || t("leaderPlanTaskLabel", { index: index + 1 });
+  elements.leaderPlanDetailSummary.textContent = node.description || "这里展示当前任务拆分的关键分配信息。";
+  elements.leaderPlanDetailFacts.innerHTML = `
+    <div>
+      <dt>${escapeHtml(t("leaderPlanAgentLabel"))}</dt>
+      <dd>${escapeHtml(node.recommended_agent || t("unknownAgent"))}</dd>
+    </div>
+    <div>
+      <dt>${escapeHtml(t("leaderPlanRoleLabel"))}</dt>
+      <dd>${escapeHtml(node.role || t("unknown"))}</dd>
+    </div>
+    <div>
+      <dt>${escapeHtml(t("leaderPlanBranchLabel"))}</dt>
+      <dd>${escapeHtml(node.branch_suffix || t("leadSessionPending"))}</dd>
+    </div>
+    <div>
+      <dt>${escapeHtml(t("leaderPlanDependsLabel"))}</dt>
+      <dd>${escapeHtml(dependencies)}</dd>
+    </div>
+  `;
+}
+
+function renderLeaderConversationHistory(messages, liveOutput, leadSession) {
+  elements.taskLeadSessionOutput.replaceChildren();
+
+  const lastAssistantMessage = [...messages].reverse().find((message) => message.role === "ASSISTANT")?.content?.trim();
+  const shouldRenderLiveOutput = liveOutput.trim().length > 0 && liveOutput.trim() !== lastAssistantMessage;
+
+  if (messages.length === 0 && !shouldRenderLiveOutput) {
+    const empty = document.createElement("div");
+    empty.className = "workspace-chat__empty";
+    empty.textContent = t("leaderConversationEmptyOutput");
+    elements.taskLeadSessionOutput.append(empty);
+    return;
+  }
+
+  for (const message of messages) {
+    elements.taskLeadSessionOutput.append(buildConversationMessage(message.role, message.content, message.createdAt));
+  }
+
+  if (shouldRenderLiveOutput) {
+    elements.taskLeadSessionOutput.append(buildConversationMessage("ASSISTANT", liveOutput, leadSession?.updatedAt ?? new Date().toISOString(), { live: true }));
+  }
+}
+
+function buildConversationMessage(role, content, createdAt, options = {}) {
+  const article = document.createElement("article");
+  const roleKey = role === "USER" ? "operator" : role === "ASSISTANT" ? "leader" : "system";
+  article.className = `workspace-chat__message workspace-chat__message--${roleKey}${options.live ? " is-live" : ""}`;
+  article.innerHTML = `
+    <div class="workspace-chat__bubble">
+      <div class="workspace-chat__prompt">${escapeHtml(role === "USER" ? "$" : role === "ASSISTANT" ? "lead>" : "#")}</div>
+      <div class="workspace-chat__body">
+        <p class="workspace-chat__text">${escapeHtml(content).replaceAll("\n", "<br>")}</p>
+        <span class="workspace-chat__time">${escapeHtml(new Date(createdAt).toLocaleTimeString(state.locale, { hour: "2-digit", minute: "2-digit" }))}${options.live ? " · 输出中" : ""}</span>
+      </div>
+    </div>
+  `;
+  return article;
 }
 
 function renderTaskMessageComposer(detail) {
@@ -3504,7 +3831,7 @@ function renderDashboardTeamOverview(detail = state.taskDetail) {
     `;
 
     card.querySelector("[data-dashboard-open-task]")?.addEventListener("click", () => {
-      switchView("tasks");
+      switchView("workspace");
     });
 
     elements.dashboardTeamList.append(card);
@@ -5136,7 +5463,7 @@ function clearTaskList() {
   state.tasks = [];
   state.selectedTaskId = null;
   writeStorage(STORAGE_KEYS.selectedTaskId, "");
-  renderTaskList();
+  renderTaskCollections();
 }
 
 function clearTaskDetail() {
@@ -5150,6 +5477,7 @@ function clearTaskDetail() {
   state.taskPlanNotice = null;
   state.selectedTaskId = null;
   writeStorage(STORAGE_KEYS.selectedTaskId, "");
+  closeLeaderPlanDetailDialog();
   disconnectTaskStream();
   elements.taskDetail.hidden = true;
   elements.taskDetailEmpty.hidden = false;
@@ -5241,6 +5569,7 @@ function clearTaskDetail() {
   if (elements.taskTeamProjectBranch) {
     elements.taskTeamProjectBranch.textContent = t("currentBranchStat");
   }
+  renderTaskCollections();
   elements.taskTeamMemberList.replaceChildren();
   elements.taskTeamShell.hidden = true;
   elements.taskExecutionFocus.hidden = true;

@@ -882,6 +882,272 @@
     border: 1px solid rgba(14, 165, 233, 0.07);
   }
 
+  .panel--task-page,
+  .panel--workspace {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(249, 250, 255, 0.74)),
+      linear-gradient(135deg, rgba(0, 91, 193, 0.05), rgba(142, 47, 189, 0.03));
+    border: 1px solid rgba(0, 91, 193, 0.08);
+  }
+
+  .task-page__toolbar,
+  .workspace-toolbar,
+  .workspace-toolbar__actions,
+  .workspace-flow__header,
+  .workspace-chat__header,
+  .workspace-chat__title-row,
+  .workspace-chat__actions,
+  .workspace-hero,
+  .workspace-hero__meta,
+  .task-page-card__topline,
+  .task-page-card__badges,
+  .task-page-card__facts,
+  .task-page-card__header,
+  .task-page-card__header-actions {
+    @apply flex flex-wrap items-start gap-2;
+  }
+
+  .task-page__toolbar,
+  .workspace-toolbar,
+  .workspace-flow__header,
+  .workspace-chat__header,
+  .workspace-hero,
+  .task-page-card__header {
+    @apply justify-between;
+  }
+
+  .task-page__search {
+    @apply min-w-[220px] flex-1;
+  }
+
+  .task-page-list {
+    @apply grid gap-3;
+  }
+
+  .task-page-card {
+    @apply rounded-[1.45rem] border border-primary/10 bg-white/80 p-3.5 shadow-soft transition duration-200 ease-out;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 255, 0.76)),
+      linear-gradient(135deg, rgba(0, 91, 193, 0.04), rgba(142, 47, 189, 0.02));
+  }
+
+  .task-page-card.is-selected {
+    @apply ring-2 ring-primary/20;
+  }
+
+  .task-page-card.is-archived {
+    border-color: rgba(172, 178, 191, 0.38);
+  }
+
+  .task-page-card__entry {
+    @apply min-w-0 flex-1 rounded-[1rem] bg-transparent p-0 text-left;
+    border: none;
+  }
+
+  .task-page-card__entry:hover {
+    @apply -translate-y-0.5;
+  }
+
+  .task-page-card__title {
+    @apply m-0 text-base font-semibold text-on-surface;
+  }
+
+  .task-page-card__meta,
+  .task-page-card__description,
+  .task-page-card__facts,
+  .leader-plan-card__summary,
+  .leader-plan-card__meta,
+  .workspace-preview__summary,
+  .workspace-orchestration__summary,
+  .workspace-drawer__summary,
+  .workspace-picker-trigger__meta,
+  .workspace-picker-trigger__eyebrow,
+  .workspace-chat__summary {
+    @apply text-sm leading-6 text-on-surface-variant;
+  }
+
+  .task-page-card__detail {
+    @apply mt-3 grid gap-3 border-t border-white/60 pt-3;
+  }
+
+  .task-page-card__facts {
+    @apply text-xs font-medium;
+  }
+
+  .workspace-toolbar {
+    @apply mb-4;
+  }
+
+  .workspace-picker-trigger {
+    @apply grid min-w-[260px] gap-0.5 rounded-[1.2rem] border border-primary/10 bg-white/80 px-4 py-3 text-left shadow-soft transition duration-200 ease-out hover:-translate-y-0.5;
+  }
+
+  .workspace-picker-trigger__title {
+    @apply text-base font-semibold text-on-surface;
+  }
+
+  .workspace-detail {
+    @apply grid gap-4;
+  }
+
+  .workspace-flow {
+    @apply grid gap-3 rounded-[1.45rem] border border-primary/10 bg-white/70 p-4 shadow-soft;
+  }
+
+  .workspace-flow__action {
+    @apply min-h-[38px];
+  }
+
+  .workspace-next-step {
+    @apply flex flex-wrap items-start gap-3 rounded-[1.15rem] bg-surface-container-low px-3.5 py-3;
+  }
+
+  .workspace-next-step__copy {
+    @apply grid gap-1;
+  }
+
+  .workspace-main {
+    @apply grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)];
+  }
+
+  .workspace-sidebar {
+    @apply grid gap-4;
+  }
+
+  .workspace-chat {
+    @apply grid min-h-[640px] gap-4 rounded-[1.65rem] border border-slate-900/90 bg-slate-950 p-4 shadow-glass;
+    background:
+      radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 36%),
+      linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.96));
+  }
+
+  .workspace-chat h3,
+  .workspace-chat .panel__eyebrow {
+    color: #e2e8f0;
+  }
+
+  .workspace-chat__history {
+    @apply grid content-start gap-3 overflow-auto rounded-[1.25rem] border border-white/10 bg-black/20 p-3;
+    min-height: 420px;
+    max-height: 62vh;
+  }
+
+  .workspace-chat__empty {
+    @apply rounded-[1rem] border border-white/10 px-4 py-3 text-sm text-slate-400;
+    background: rgba(15, 23, 42, 0.52);
+  }
+
+  .workspace-chat__composer {
+    @apply mt-auto grid gap-3 rounded-[1.2rem] border border-white/10 bg-white/5 p-3;
+  }
+
+  .workspace-chat__input-field {
+    @apply gap-0;
+  }
+
+  .workspace-chat__input-field textarea {
+    @apply min-h-[104px] rounded-[1rem] bg-black/30 px-4 py-3 text-slate-100;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .workspace-chat__message {
+    @apply flex;
+  }
+
+  .workspace-chat__message--operator {
+    @apply justify-end;
+  }
+
+  .workspace-chat__message--system {
+    @apply justify-center;
+  }
+
+  .workspace-chat__bubble {
+    @apply flex max-w-[90%] gap-3 rounded-[1rem] px-3 py-2.5;
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .workspace-chat__message--operator .workspace-chat__bubble {
+    background: rgba(0, 91, 193, 0.2);
+    border-color: rgba(96, 165, 250, 0.22);
+  }
+
+  .workspace-chat__message--system .workspace-chat__bubble {
+    background: rgba(148, 163, 184, 0.14);
+    border-color: rgba(148, 163, 184, 0.2);
+  }
+
+  .workspace-chat__prompt,
+  .workspace-chat__time {
+    @apply font-mono text-[11px];
+  }
+
+  .workspace-chat__prompt {
+    @apply pt-0.5 text-cyan-300;
+  }
+
+  .workspace-chat__body {
+    @apply grid gap-1;
+  }
+
+  .workspace-chat__text {
+    @apply m-0 whitespace-pre-wrap break-words text-sm leading-6 text-slate-100;
+  }
+
+  .workspace-chat__time {
+    @apply text-slate-400;
+  }
+
+  .workspace-chat__message.is-live .workspace-chat__prompt {
+    @apply text-emerald-300;
+  }
+
+  .workspace-preview,
+  .workspace-orchestration {
+    @apply grid gap-3 rounded-[1.45rem] border border-primary/10 bg-white/75 p-4 shadow-soft;
+  }
+
+  .workspace-picker,
+  .workspace-drawer {
+    @apply mr-0 ml-auto h-full max-h-none w-full border-0 bg-transparent p-0 md:max-w-[34rem];
+  }
+
+  .workspace-picker::backdrop,
+  .workspace-drawer::backdrop {
+    background: rgba(15, 23, 42, 0.2);
+    backdrop-filter: blur(10px);
+  }
+
+  .workspace-picker__shell,
+  .workspace-drawer__shell {
+    @apply grid h-full gap-3 overflow-auto rounded-none rounded-l-[1.8rem] border-l border-white/50 p-4 shadow-glass;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 249, 255, 0.86)),
+      linear-gradient(135deg, rgba(0, 91, 193, 0.05), rgba(142, 47, 189, 0.03));
+  }
+
+  .workspace-picker__header,
+  .workspace-drawer__header {
+    @apply flex items-start justify-between gap-3;
+  }
+
+  .workspace-drawer__facts {
+    @apply grid gap-3;
+  }
+
+  .workspace-drawer__facts div {
+    @apply rounded-[1rem] bg-surface-container-low px-3.5 py-3;
+  }
+
+  .workspace-drawer__facts dt {
+    @apply text-xs font-semibold uppercase tracking-[0.18em] text-on-surface-variant;
+  }
+
+  .workspace-drawer__facts dd {
+    @apply mt-1 text-sm font-medium leading-6 text-on-surface;
+  }
+
   .task-list__guide {
     @apply mb-3 flex flex-wrap gap-2;
   }
@@ -1654,33 +1920,21 @@
   }
 
   .leader-plan-card {
-    @apply rounded-[1.35rem] bg-white/85 p-4 shadow-soft;
+    @apply grid gap-2 rounded-[1.2rem] bg-white/85 p-3.5 text-left shadow-soft transition duration-200 ease-out hover:-translate-y-0.5;
     border: 1px solid rgba(16, 185, 129, 0.08);
+    width: 100%;
   }
 
-  .leader-plan-card__header {
-    @apply mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between;
+  .leader-plan-card__topline {
+    @apply flex items-center justify-between gap-2;
   }
 
-  .leader-plan-card__eyebrow,
-  .leader-plan-card__facts dt {
+  .leader-plan-card__eyebrow {
     @apply text-[11px] font-semibold uppercase tracking-[0.2em] text-on-surface-variant;
   }
 
   .leader-plan-card__title {
     @apply m-0 text-base font-semibold text-on-surface;
-  }
-
-  .leader-plan-card__facts {
-    @apply grid gap-2 sm:grid-cols-2;
-  }
-
-  .leader-plan-card__facts div {
-    @apply grid gap-1 rounded-2xl bg-surface-container-low px-3 py-2.5;
-  }
-
-  .leader-plan-card__facts dd {
-    @apply m-0 break-words text-sm font-medium text-on-surface;
   }
 
   .task-detail__team {
