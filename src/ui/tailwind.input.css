@@ -1031,7 +1031,7 @@
   }
 
   .workspace-chat {
-    @apply flex min-h-[560px] flex-col gap-2.5 overflow-hidden rounded-[1.5rem] border border-slate-900/90 bg-slate-950 p-3 shadow-glass;
+    @apply flex h-[clamp(36rem,72vh,46rem)] flex-col gap-2.5 overflow-hidden rounded-[1.5rem] border border-slate-900/90 bg-slate-950 p-3 shadow-glass;
     background:
       radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 36%),
       linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.96));
@@ -1049,6 +1049,8 @@
 
   .workspace-chat__history {
     @apply grid min-h-0 flex-1 content-start gap-2.5 overflow-y-auto rounded-[1.05rem] border border-white/10 bg-black/20 px-3 py-2.5;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
   }
 
   .workspace-chat__empty {
@@ -1057,7 +1059,7 @@
   }
 
   .workspace-chat__composer {
-    @apply sticky bottom-0 z-10 mt-auto grid gap-2 rounded-[1.05rem] border border-white/10 bg-slate-950/90 p-2.5;
+    @apply z-10 mt-auto grid flex-shrink-0 gap-2 rounded-[1.05rem] border border-white/10 bg-slate-950/90 p-2.5;
     backdrop-filter: blur(14px);
     box-shadow: 0 -16px 32px rgba(2, 6, 23, 0.24);
   }
@@ -1102,7 +1104,7 @@
   }
 
   .workspace-chat__queue-list {
-    @apply grid gap-2;
+    @apply grid max-h-24 flex-shrink-0 gap-2 overflow-y-auto;
   }
 
   .workspace-chat__queue-item {

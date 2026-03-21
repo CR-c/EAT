@@ -2582,7 +2582,7 @@ textarea {
 
 .workspace-chat {
   display: flex;
-  min-height: 560px;
+  height: clamp(36rem,72vh,46rem);
   flex-direction: column;
   gap: 0.625rem;
   overflow: hidden;
@@ -2631,6 +2631,8 @@ textarea {
   padding-right: 0.75rem;
   padding-top: 0.625rem;
   padding-bottom: 0.625rem;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .workspace-chat__empty {
@@ -2649,11 +2651,10 @@ textarea {
 }
 
 .workspace-chat__composer {
-  position: sticky;
-  bottom: 0px;
   z-index: 10;
   margin-top: auto;
   display: grid;
+  flex-shrink: 0;
   gap: 0.5rem;
   border-radius: 1.05rem;
   border-width: 1px;
@@ -2741,7 +2742,10 @@ textarea {
 
 .workspace-chat__queue-list {
   display: grid;
+  max-height: 6rem;
+  flex-shrink: 0;
   gap: 0.5rem;
+  overflow-y: auto;
 }
 
 .workspace-chat__queue-item {
