@@ -66,6 +66,9 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /task-message-branch-hint/);
     assert.match(rootResponse.body, /task-message-queue-status/);
     assert.match(rootResponse.body, /task-message-stop-button/);
+    assert.match(rootResponse.body, /task-workspace-pause-button/);
+    assert.match(rootResponse.body, /task-workspace-delete-button/);
+    assert.match(rootResponse.body, /task-action-dialog-delete-branches-field/);
     assert.match(rootResponse.body, /Alt\+Enter/);
     assert.match(rootResponse.body, /当前阶段与下一步/);
     assert.match(rootResponse.body, /task-next-action-button/);
@@ -129,6 +132,8 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(cssResponse.body, /task-stage-board/);
     assert.match(cssResponse.body, /workspace-chat__queue-list/);
     assert.match(cssResponse.body, /workspace-chat__status-strip/);
+    assert.match(cssResponse.body, /workspace-hero__actions/);
+    assert.match(cssResponse.body, /badge--paused/);
 
     assert.equal(jsResponse.status, 200);
     assert.match(jsResponse.headers.get("content-type"), /^text\/javascript/);
@@ -221,6 +226,18 @@ test("formats project, task, agent health, and attachment UI messages", () => {
       code: "SUBTASK_REASSIGN_NOT_ALLOWED",
     }),
     "当前成员状态不允许重派发成员。",
+  );
+  assert.equal(
+    buildTaskErrorMessage({
+      code: "TASK_DELETE_REQUIRES_PAUSE",
+    }),
+    "任务需要先暂停，确认已停止后才能删除。",
+  );
+  assert.equal(
+    buildTaskErrorMessage({
+      code: "TASK_PAUSE_NOT_ALLOWED",
+    }),
+    "当前任务状态不允许暂停。",
   );
   assert.equal(
     buildTaskErrorMessage({

@@ -364,6 +364,14 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const taskPauseMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/pause$/);
+
+  if (request.method === "POST" && taskPauseMatch) {
+    const taskId = decodeURIComponent(taskPauseMatch[1]);
+    const result = await taskService.pauseTask(taskId);
+    return respondServiceResult(response, result);
+  }
+
   if (request.method === "DELETE" && taskMatch) {
     const taskId = decodeURIComponent(taskMatch[1]);
     const body = await readOptionalJsonBody(request);
@@ -695,8 +703,10 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.PLAN_TEMPLATE_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.REQUIREMENTS_ALREADY_CONFIRMED:
     case TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING:
+    case TASK_SERVICE_ERROR_CODES.TASK_DELETE_REQUIRES_PAUSE:
     case TASK_SERVICE_ERROR_CODES.TASK_BRANCH_CLEANUP_FAILED:
     case TASK_SERVICE_ERROR_CODES.TASK_MESSAGE_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.TASK_PAUSE_NOT_ALLOWED:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_CLARIFYING:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_DRAFT:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_PLAN_REVIEW:

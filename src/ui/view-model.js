@@ -31,6 +31,8 @@ const MESSAGES = {
     subtaskReassignNotAllowed: "当前成员状态不允许重派发成员。",
     subtaskRebaseRetryNotAllowed: "只有最近一次合并尝试发生冲突后，才能执行 Rebase & Retry。",
     subtaskReworkNotAllowed: "只有存在可操作的增量审查意见时，才能立即返工。",
+    taskDeleteRequiresPause: "任务需要先暂停，确认已停止后才能删除。",
+    taskPauseNotAllowed: "当前任务状态不允许暂停。",
     taskResumeNotAllowed: "只有解决合并阻塞项后，才能恢复合并。",
     attachmentTypeUnsupported: "一个或多个附件类型不受支持。",
     attachmentSizeExceeded: "一个或多个附件超过当前大小限制。",
@@ -135,6 +137,8 @@ const MESSAGES = {
     subtaskReassignNotAllowed: "Reassign member is not available for the current member state.",
     subtaskRebaseRetryNotAllowed: "Rebase & Retry is only available after the latest merge attempt conflicts.",
     subtaskReworkNotAllowed: "Rework Now is only available for subtasks with an actionable incremental review.",
+    taskDeleteRequiresPause: "Pause the task and wait for it to stop before deleting it.",
+    taskPauseNotAllowed: "The current task state cannot be paused.",
     taskResumeNotAllowed: "Resume merge is only available after merge blockers have been resolved.",
     attachmentTypeUnsupported: "One or more attachments use an unsupported type.",
     attachmentSizeExceeded: "One or more attachments exceed the current size limit.",
@@ -325,6 +329,10 @@ export function buildTaskErrorMessage(error) {
       return translate("subtaskRebaseRetryNotAllowed");
     case "SUBTASK_REWORK_NOT_ALLOWED":
       return translate("subtaskReworkNotAllowed");
+    case "TASK_DELETE_REQUIRES_PAUSE":
+      return translate("taskDeleteRequiresPause");
+    case "TASK_PAUSE_NOT_ALLOWED":
+      return translate("taskPauseNotAllowed");
     case "TASK_RESUME_NOT_ALLOWED":
       return translate("taskResumeNotAllowed");
     case "ATTACHMENT_TYPE_UNSUPPORTED":

@@ -597,6 +597,14 @@
                 <div class="workspace-hero__meta">
                   <span id="task-status-badge" class="badge"></span>
                   <span id="task-base-branch-badge" class="badge badge--outline"></span>
+                  <div id="task-workspace-actions" class="workspace-hero__actions" hidden>
+                    <button id="task-workspace-pause-button" class="button button--secondary workspace-hero__action" type="button">
+                      暂停任务
+                    </button>
+                    <button id="task-workspace-delete-button" class="button task-list__action task-list__action--danger workspace-hero__action" type="button">
+                      删除任务
+                    </button>
+                  </div>
                 </div>
               </section>
 
@@ -1273,7 +1281,7 @@
             </p>
           </div>
         </div>
-        <label class="checkbox-field task-action-dialog__checkbox" for="task-action-delete-branches-input">
+        <label id="task-action-dialog-delete-branches-field" class="checkbox-field task-action-dialog__checkbox" for="task-action-delete-branches-input">
           <input id="task-action-delete-branches-input" type="checkbox">
           <span data-i18n="taskActionDeleteBranchesLabel">同时删除任务相关分支和 worktree</span>
         </label>

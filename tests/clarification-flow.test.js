@@ -325,6 +325,148 @@ test("stops an active lead turn and resumes clarification with a fresh lead sess
   }
 });
 
+test("allows sending plan feedback during plan review and moves the task back into planning", async () => {
+  const fixture = await makeTempDir("eat-plan-review-feedback-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const server = await startServer({
+      agentService: createClarificationAgentService(),
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "plan-review-feedback-repo", { defaultBranch: "main" });
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Need another planning round after reviewing the split.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Revise the generated plan",
+        },
+        method: "POST",
+      });
+
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+        {
+          body: { content: "Start clarification before the first plan." },
+          method: "POST",
+        },
+      );
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/confirm-requirements`,
+        { method: "POST" },
+      );
+
+      await waitFor(async () => {
+        const detailResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+        );
+        assert.equal(detailResponse.body.task.status, "PLAN_REVIEW");
+      });
+
+      const feedbackResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/messages`,
+        {
+          body: { content: "请把认证与前端拆成两个独立子任务，并补充依赖关系。" },
+          method: "POST",
+        },
+      );
+      assert.equal(feedbackResponse.status, 201);
+      assert.equal(feedbackResponse.body.task.status, "PLANNING");
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("allows sending leader messages while execution is active", async () => {
+  const fixture = await makeTempDir("eat-execution-leader-message-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const taskRepository = new SqliteTaskRepository({ databasePath });
+    const server = await startServer({
+      agentService: createClarificationAgentService(),
+      databasePath,
+      taskRepository,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "execution-message-repo", { defaultBranch: "main" });
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Need to keep talking to the leader after execution has started.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Execution-time leader note",
+        },
+        method: "POST",
+      });
+
+      await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+        {
+          body: { content: "Start the lead session before execution-time note coverage." },
+          method: "POST",
+        },
+      );
+
+      await taskRepository.updateTask(taskResponse.body.task.id, {
+        status: "EXECUTING",
+      });
+
+      const messageResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/messages`,
+        {
+          body: { content: "执行中补充：需要并排总览面板，并支持时间树。" },
+          method: "POST",
+        },
+      );
+      assert.equal(messageResponse.status, 201);
+      assert.equal(messageResponse.body.task.status, "EXECUTING");
+
+      await waitFor(async () => {
+        const detailResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+        );
+        assert.ok(
+          detailResponse.body.messages.some(
+            (message) => message.role === "USER" && message.content.includes("并排总览面板"),
+          ),
+        );
+      });
+    } finally {
+      await stopServer(server);
+      taskRepository.close();
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("regenerates after an invalid syntactically valid plan and only snapshots the valid retry", async () => {
   const fixture = await makeTempDir("eat-plan-regeneration-");
 
@@ -1428,6 +1570,24 @@ async function nextEvent(events, predicate, attempts = 100) {
   }
 
   throw new Error("Timed out waiting for clarification event.");
+}
+
+async function waitFor(callback, attempts = 100) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await callback();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
+    }
+  }
+
+  throw lastError ?? new Error("Timed out waiting for condition.");
 }
 
 async function makeTempDir(prefix) {

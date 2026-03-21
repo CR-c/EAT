@@ -344,6 +344,101 @@ test("archives, restores, and deletes tasks while optionally cleaning the task m
   }
 });
 
+test("requires pausing an active task before deletion", async () => {
+  const fixture = await makeTempDir("eat-task-api-pause-before-delete-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const uploadRootPath = path.join(fixture.path, "uploads");
+    const repo = await createRepository(fixture.path, "pause-before-delete-repo", { defaultBranch: "main" });
+
+    const server = await startServer({
+      agentService: createInteractiveLeadAgentService(),
+      databasePath,
+      uploadRootPath,
+    });
+
+    try {
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const createResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Deleting an active task should require an explicit pause first.",
+          leadAgentType: "interactive-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Pause before delete",
+        },
+        method: "POST",
+      });
+      const taskId = createResponse.body.task.id;
+
+      const startResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskId)}/start-clarification`,
+        {
+          body: { content: "Start a live clarification session." },
+          method: "POST",
+        },
+      );
+      assert.equal(startResponse.status, 200);
+      assert.equal(startResponse.body.task.status, "CLARIFYING");
+
+      const blockedDeleteResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskId)}`,
+        {
+          body: { deleteBranches: false },
+          method: "DELETE",
+        },
+      );
+      assert.equal(blockedDeleteResponse.status, 400);
+      assert.equal(blockedDeleteResponse.body.error.code, "TASK_DELETE_REQUIRES_PAUSE");
+
+      const pauseResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskId)}/pause`,
+        { method: "POST" },
+      );
+      assert.equal(pauseResponse.status, 200);
+      assert.equal(pauseResponse.body.task.status, "ACTION_REQUIRED");
+      assert.match(pauseResponse.body.task.lastError, /^Paused by operator from CLARIFYING\./);
+
+      const detailResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskId)}`,
+      );
+      assert.equal(detailResponse.status, 200);
+      assert.equal(detailResponse.body.task.status, "ACTION_REQUIRED");
+      assert.match(detailResponse.body.task.lastError, /^Paused by operator from CLARIFYING\./);
+      assert.equal(detailResponse.body.sessions.at(-1)?.status, "CANCELLED");
+
+      const deleteResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskId)}`,
+        {
+          body: { deleteBranches: false },
+          method: "DELETE",
+        },
+      );
+      assert.equal(deleteResponse.status, 200);
+
+      const afterDeleteResponse = await requestJson(
+        server,
+        `/api/projects/${encodeURIComponent(registerResponse.body.project.id)}/tasks?includeArchived=1`,
+      );
+      assert.equal(afterDeleteResponse.status, 200);
+      assert.deepEqual(afterDeleteResponse.body.tasks, []);
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("creates a guided task in PLAN_REVIEW from a built-in golden-path template", async () => {
   const fixture = await makeTempDir("eat-guided-task-api-");
 
@@ -439,6 +534,63 @@ function createLeadAgentService(options = {}) {
     name: "healthy-lead",
     async spawnSession() {
       throw new Error("not used in CRC-35 tests");
+    },
+  });
+
+  return new AgentService({ agentRegistry: registry });
+}
+
+function createInteractiveLeadAgentService() {
+  const registry = new AgentRegistry();
+
+  registry.register({
+    capabilities: {
+      canExecute: true,
+      canOrchestrate: true,
+      description: "Interactive lead test adapter",
+      supportedSandboxTypes: [SESSION_SANDBOX_TYPES.HOST],
+      supportsInteractiveInput: true,
+      supportsVision: true,
+    },
+    async healthCheck() {
+      return {
+        available: true,
+        version: "1.0.0-test",
+      };
+    },
+    name: "interactive-lead",
+    async spawnSession() {
+      const outputListeners = new Set();
+      const exitListeners = new Set();
+      let killed = false;
+
+      return {
+        onExit(listener) {
+          exitListeners.add(listener);
+        },
+        onOutput(listener) {
+          outputListeners.add(listener);
+        },
+        async sendInput(input) {
+          if (killed) {
+            throw new Error("Session already stopped.");
+          }
+
+          for (const listener of outputListeners) {
+            listener(`Lead received: ${input}\n`);
+          }
+        },
+        async kill() {
+          if (killed) {
+            return;
+          }
+
+          killed = true;
+          for (const listener of exitListeners) {
+            listener(0);
+          }
+        },
+      };
     },
   });
 

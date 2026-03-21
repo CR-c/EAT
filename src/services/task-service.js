@@ -97,6 +97,7 @@ const ARCHIVE_CANCELLABLE_SUBTASK_STATUSES = new Set([
 const CLEANUP_WARNING_MESSAGE_PREFIX = "Cleanup warning: ";
 const LAUNCH_FAILURE_MESSAGE_PREFIX = "Launch failure: ";
 const DEFAULT_INTEGRATION_GATE_TYPES = ["TEST"];
+const TASK_PAUSED_REASON_PREFIX = "Paused by operator from ";
 
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
 const DOCUMENT_EXTENSIONS = new Set([".md", ".pdf", ".txt"]);
@@ -154,8 +155,10 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   PLAN_TEMPLATE_REQUIRED: "PLAN_TEMPLATE_REQUIRED",
   REQUIREMENTS_ALREADY_CONFIRMED: "REQUIREMENTS_ALREADY_CONFIRMED",
   SESSION_NOT_RUNNING: "SESSION_NOT_RUNNING",
+  TASK_DELETE_REQUIRES_PAUSE: "TASK_DELETE_REQUIRES_PAUSE",
   TASK_BRANCH_CLEANUP_FAILED: "TASK_BRANCH_CLEANUP_FAILED",
   TASK_MESSAGE_REQUIRED: "TASK_MESSAGE_REQUIRED",
+  TASK_PAUSE_NOT_ALLOWED: "TASK_PAUSE_NOT_ALLOWED",
   TASK_NOT_CLARIFYING: "TASK_NOT_CLARIFYING",
   TASK_NOT_DRAFT: "TASK_NOT_DRAFT",
   TASK_NOT_PLAN_REVIEW: "TASK_NOT_PLAN_REVIEW",
@@ -412,13 +415,19 @@ export class TaskService {
       return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
     }
 
+    if (!isTaskDeleteAllowed(task)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_DELETE_REQUIRES_PAUSE,
+        "Pause the task before deleting it.",
+        { status: task.status, taskId },
+      );
+    }
+
     const deleteBranches = input?.deleteBranches === true;
     const [subTasks, sessions] = await Promise.all([
       this.taskRepository.listSubTasksByTaskId(task.id),
       this.taskRepository.listSessionsByTaskId(task.id),
     ]);
-
-    await this.#stopTaskSessions(task, subTasks, { persistCancellation: false });
 
     const branchCleanup = deleteBranches
       ? await this.#cleanupTaskBranches(task, subTasks)
@@ -436,6 +445,40 @@ export class TaskService {
       ok: true,
       branchCleanup,
       task: deletedTask,
+    };
+  }
+
+  async pauseTask(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    if (!isTaskPauseAllowed(task)) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_PAUSE_NOT_ALLOWED,
+        "Task pause is only available while work is actively in progress.",
+        { status: task.status, taskId },
+      );
+    }
+
+    const subTasks = await this.taskRepository.listSubTasksByTaskId(task.id);
+    await this.#stopTaskSessions(task, subTasks, { persistCancellation: true });
+
+    const pausedTask = await this.#updateTaskStatus(task.id, TASK_STATUS.ACTION_REQUIRED, {
+      currentTask: task,
+      lastError: buildPausedTaskReason(task.status),
+    });
+    await this.taskRepository.createMessage({
+      content: `Operator paused the task while it was in ${task.status}.`,
+      role: MESSAGE_ROLE.SYSTEM,
+      taskId: task.id,
+    });
+
+    return {
+      ok: true,
+      task: pausedTask,
     };
   }
 
@@ -963,10 +1006,18 @@ export class TaskService {
       return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
     }
 
-    if (task.status !== TASK_STATUS.CLARIFYING) {
+    if (![
+      TASK_STATUS.ACTION_REQUIRED,
+      TASK_STATUS.CLARIFYING,
+      TASK_STATUS.EXECUTING,
+      TASK_STATUS.MERGING,
+      TASK_STATUS.PLANNING,
+      TASK_STATUS.PLAN_REVIEW,
+      TASK_STATUS.REVIEWING,
+    ].includes(task.status)) {
       return failure(
         TASK_SERVICE_ERROR_CODES.TASK_NOT_CLARIFYING,
-        "Messages can only be sent while the task is clarifying.",
+        "Messages can only be sent while the leader conversation is active.",
         { status: task.status, taskId },
       );
     }
@@ -1009,6 +1060,14 @@ export class TaskService {
       }
     }
 
+    const nextTask = task.status === TASK_STATUS.PLAN_REVIEW
+      ? await this.#updateTaskStatus(taskId, TASK_STATUS.PLANNING, {
+          currentTask: task,
+          lastError: null,
+          publish: false,
+        })
+      : task;
+
     const message = await this.taskRepository.createMessage({
       content,
       role: MESSAGE_ROLE.USER,
@@ -1040,9 +1099,17 @@ export class TaskService {
       );
     }
 
+    if (nextTask.status !== task.status) {
+      this.#publish(taskId, "task:status", {
+        taskId,
+        status: nextTask.status,
+      });
+    }
+
     return {
       ok: true,
       message,
+      task: nextTask,
     };
   }
 
@@ -6517,6 +6584,36 @@ function deriveLeadLifecycleStatus(taskStatus) {
   }
 
   return SESSION_STATUS.PENDING;
+}
+
+function buildPausedTaskReason(status) {
+  return `${TASK_PAUSED_REASON_PREFIX}${status}.`;
+}
+
+function isPausedTask(task) {
+  return task?.status === TASK_STATUS.ACTION_REQUIRED
+    && typeof task?.lastError === "string"
+    && task.lastError.startsWith(TASK_PAUSED_REASON_PREFIX);
+}
+
+function isTaskPauseAllowed(task) {
+  return [
+    TASK_STATUS.CLARIFYING,
+    TASK_STATUS.EXECUTING,
+    TASK_STATUS.MERGING,
+    TASK_STATUS.PLANNING,
+    TASK_STATUS.PLAN_REVIEW,
+    TASK_STATUS.REVIEWING,
+  ].includes(task?.status);
+}
+
+function isTaskDeleteAllowed(task) {
+  return [
+    TASK_STATUS.CANCELLED,
+    TASK_STATUS.COMPLETED,
+    TASK_STATUS.DRAFT,
+    TASK_STATUS.FAILED,
+  ].includes(task?.status) || isPausedTask(task);
 }
 
 function buildDerivedRunSummary(subTask) {

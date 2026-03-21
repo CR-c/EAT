@@ -25,6 +25,17 @@ const STORAGE_KEYS = {
 };
 const DEFAULT_OUTPUT_BUFFER_MAX_BYTES = 65_536;
 const LIVE_STATUS_REFRESH_INTERVAL_MS = 30_000;
+const TASK_PAUSED_REASON_PREFIX = "Paused by operator from ";
+const LEADER_CHAT_SENDABLE_STATUSES = new Set([
+  "ACTION_REQUIRED",
+  "CLARIFYING",
+  "DRAFT",
+  "EXECUTING",
+  "MERGING",
+  "PLANNING",
+  "PLAN_REVIEW",
+  "REVIEWING",
+]);
 const UI_MESSAGES = {
   "zh-CN": {
     heroEyebrow: "EAT 控制台",
@@ -199,18 +210,25 @@ const UI_MESSAGES = {
     taskListEmptyActiveOnly: "当前没有未归档任务。打开“显示归档”可以查看历史任务。",
     taskArchiveButton: "归档",
     taskUnarchiveButton: "恢复",
+    taskPauseButton: "暂停",
     taskDeleteButton: "删除",
     taskActionDialogEyebrow: "任务操作",
     taskActionArchiveTitle: "归档任务",
+    taskActionPauseTitle: "暂停任务",
     taskActionDeleteTitle: "删除任务",
     taskActionArchiveSummary: "已归档任务会从默认列表隐藏，但仍保留记录，之后可以恢复。",
-    taskActionDeleteSummary: "删除任务会移除本地任务记录；如果任务仍在运行，会先停止对应会话。",
+    taskActionPauseSummary: "暂停会停止当前任务的实时会话，并将任务切换到可安全检查或删除的状态。",
+    taskActionDeleteSummary: "删除任务会移除本地任务记录。若任务仍在推进，必须先暂停并确认会话已停止。",
     taskActionDeleteBranchesLabel: "同时删除任务相关分支和 worktree",
     taskActionDeleteBranchesHint: "默认不勾选。仅会清理任务主线分支和子任务分支，不会删除项目原始主分支。",
-    taskActionDeleteBranchesActiveHint: "如果任务仍在进行中，勾选后会先停止对应会话，再清理任务分支和 worktree。",
+    taskActionDeleteBranchesActiveHint: "进行中的任务需要先暂停；暂停后删除时，才会按勾选结果清理任务分支和 worktree。",
     taskActionArchiveConfirmButton: "确认归档",
+    taskActionPauseConfirmButton: "确认暂停",
     taskActionDeleteConfirmButton: "确认删除",
     taskArchivedHint: "已归档，可恢复或删除。",
+    taskPausedStatusLabel: "已暂停",
+    taskPausedHint: "已暂停，可删除或保留等待后续处理。",
+    taskDeleteRequiresPauseHint: "进行中的任务需要先暂停，确认停止后才能删除。",
     refreshTasksButton: "刷新任务",
     taskListEmpty: "当前所选项目还没有任务。",
     clarificationEyebrow: "澄清",
@@ -221,6 +239,7 @@ const UI_MESSAGES = {
     leaderConversationClarifyingSummary: "当前正在和 Leader 澄清需求。继续补充约束、边界和验收标准，确认无误后再点“已确认需求”。",
     leaderConversationPlanningSummary: "Leader 已收到确认，正在根据对话结果生成任务拆分与依赖关系。",
     leaderConversationPlanReadySummary: "Leader 已给出任务拆分方案。先检查下面的分配预览，再决定是否进入计划审阅。",
+    leaderConversationPausedSummary: "任务已被暂停，实时会话已停止。确认无误后才能删除，或保留当前任务稍后处理。",
     leaderConversationExecutionSummary: "需求和分配已确认。后续由 Leader 继续编排执行，操作员不直接和子 agent 对话。",
     leaderConversationEmptyOutput: "这里会显示 Leader 的实时输出。",
     taskMessageBranchHint: "当前分支 · {branch}",
@@ -236,6 +255,18 @@ const UI_MESSAGES = {
     taskMessageStopping: "正在中止...",
     sendMessageHotkey: "Alt+Enter",
     sendMessageQueuedButton: "加入排队",
+    sendPlanFeedbackLabel: "继续和 Leader 调整分配",
+    sendPlanFeedbackPlaceholder: "指出需要调整的任务拆分、依赖关系、分支策略或验收方式。",
+    sendPlanningMessageLabel: "补充新的计划约束",
+    sendPlanningMessagePlaceholder: "继续补充会影响任务拆分或计划生成的条件。",
+    sendExecutionMessageLabel: "向 Leader 发送执行调整",
+    sendExecutionMessagePlaceholder: "补充执行中的变更、优先级调整、风险说明或临时决策。",
+    sendReadonlyMessageLabel: "Leader 对话只读",
+    sendReadonlyMessagePlaceholder: "当前任务已结束，Leader 对话已切换为只读。",
+    leaderPlanArtifactTitle: "Leader 输出了计划草稿",
+    leaderPlanArtifactHint: "点击展开查看原始内容",
+    leaderLongOutputTitle: "Leader 长输出",
+    leaderLongOutputHint: "展开查看完整内容",
     leaderPlanEyebrow: "Leader 规划",
     leaderPlanTitle: "分配预览",
     leaderPlanEmpty: "还没有可展示的分配方案。",
@@ -260,6 +291,8 @@ const UI_MESSAGES = {
     taskNextPlanningSummary: "系统正在生成并校验计划。生成完成后，这个任务会自动进入计划审阅。",
     taskNextPlanReviewTitle: "去计划审阅检查分工与依赖",
     taskNextPlanReviewSummary: "计划草稿已经准备好。先检查分支、依赖和验收标准，再批准进入执行。",
+    taskNextPausedTitle: "任务已暂停，可删除或保留",
+    taskNextPausedSummary: "所有实时会话都已停止。确认不再需要后再删除；若要继续推进，需要后续恢复方案。",
     taskNextExecutingTitle: "去运行看板跟进执行状态",
     taskNextExecutingSummary: "当前任务已经进入执行或审查阶段。下一步应在运行看板里查看团队状态和阻塞。",
     taskNextActionRequiredTitle: "先处理阻塞，再恢复推进",
@@ -275,6 +308,7 @@ const UI_MESSAGES = {
     taskListHintClarifying: "下一步：继续与 Lead 对话",
     taskListHintPlanning: "下一步：等待计划生成",
     taskListHintPlanReview: "下一步：去计划审阅",
+    taskListHintPaused: "已暂停，可删除",
     taskListHintExecuting: "下一步：去运行看板",
     taskListHintActionRequired: "下一步：处理阻塞",
     taskListHintCompleted: "已完成",
@@ -510,12 +544,15 @@ const UI_MESSAGES = {
     refreshing: "刷新中...",
     checking: "检查中...",
     saving: "保存中...",
+    archiving: "归档中...",
+    deleting: "删除中...",
     restoring: "恢复中...",
     relaunching: "重新启动中...",
     switching: "切换中...",
     reassigning: "重新派发中...",
     cancelling: "取消中...",
     rebasing: "Rebase 中...",
+    pausing: "暂停中...",
     resuming: "恢复中...",
     applying: "应用中...",
     notConfigured: "未配置",
@@ -861,18 +898,25 @@ const UI_MESSAGES = {
     taskListEmptyActiveOnly: "There are no active tasks right now. Turn on archived tasks to review history.",
     taskArchiveButton: "Archive",
     taskUnarchiveButton: "Restore",
+    taskPauseButton: "Pause",
     taskDeleteButton: "Delete",
     taskActionDialogEyebrow: "Task action",
     taskActionArchiveTitle: "Archive task",
+    taskActionPauseTitle: "Pause task",
     taskActionDeleteTitle: "Delete task",
     taskActionArchiveSummary: "Archived tasks are hidden from the default list but stay restorable later.",
-    taskActionDeleteSummary: "Deleting a task removes its local record. Any live task sessions will be stopped first.",
+    taskActionPauseSummary: "Pausing stops the live task sessions and moves the task into a safe, operator-held state.",
+    taskActionDeleteSummary: "Deleting a task removes its local record. Active tasks must be paused first and confirmed stopped.",
     taskActionDeleteBranchesLabel: "Also delete task branches and worktrees",
     taskActionDeleteBranchesHint: "Unchecked by default. This only removes the task mainline and subtask branches, not the project's original base branch.",
-    taskActionDeleteBranchesActiveHint: "If the task is still active, checking this will stop its live sessions before cleanup starts.",
+    taskActionDeleteBranchesActiveHint: "Active tasks must be paused first. Cleanup only runs after the task is already stopped.",
     taskActionArchiveConfirmButton: "Archive task",
+    taskActionPauseConfirmButton: "Pause task",
     taskActionDeleteConfirmButton: "Delete task",
     taskArchivedHint: "Archived. Restore or delete when you no longer need it.",
+    taskPausedStatusLabel: "Paused",
+    taskPausedHint: "Paused. Delete it now or keep it for later inspection.",
+    taskDeleteRequiresPauseHint: "Active tasks must be paused before they can be deleted.",
     refreshTasksButton: "Refresh tasks",
     taskListEmpty: "No tasks exist for the selected project yet.",
     clarificationEyebrow: "Clarification",
@@ -883,6 +927,7 @@ const UI_MESSAGES = {
     leaderConversationClarifyingSummary: "You are actively clarifying with the leader. Keep adding constraints, boundaries, and acceptance criteria, then confirm when ready.",
     leaderConversationPlanningSummary: "The leader has your confirmed brief and is generating task splits and dependencies from the conversation.",
     leaderConversationPlanReadySummary: "The leader has produced an assignment draft. Review the split preview below before moving into plan review.",
+    leaderConversationPausedSummary: "The task is paused and live sessions have stopped. Delete it only after you confirm the current state is safe.",
     leaderConversationExecutionSummary: "Requirements and allocation are already confirmed. The leader continues orchestrating execution; the operator does not chat with sub-agents directly.",
     leaderConversationEmptyOutput: "The leader's live output will appear here.",
     taskMessageBranchHint: "Current branch · {branch}",
@@ -898,6 +943,18 @@ const UI_MESSAGES = {
     taskMessageStopping: "Stopping...",
     sendMessageHotkey: "Alt+Enter",
     sendMessageQueuedButton: "Queue",
+    sendPlanFeedbackLabel: "Adjust with the leader",
+    sendPlanFeedbackPlaceholder: "Describe the task split, dependencies, branch strategy, or acceptance changes you want.",
+    sendPlanningMessageLabel: "Add planning constraints",
+    sendPlanningMessagePlaceholder: "Add any new constraints that should affect the plan.",
+    sendExecutionMessageLabel: "Send execution updates to the leader",
+    sendExecutionMessagePlaceholder: "Add scope changes, priority updates, risks, or execution-time decisions.",
+    sendReadonlyMessageLabel: "Leader conversation is read-only",
+    sendReadonlyMessagePlaceholder: "This task is finished, so the leader conversation is now read-only.",
+    leaderPlanArtifactTitle: "Leader emitted a plan draft",
+    leaderPlanArtifactHint: "Expand to inspect the raw content",
+    leaderLongOutputTitle: "Leader long output",
+    leaderLongOutputHint: "Expand to inspect the full content",
     leaderPlanEyebrow: "Leader planning",
     leaderPlanTitle: "Allocation preview",
     leaderPlanEmpty: "No assignment preview is available yet.",
@@ -922,6 +979,8 @@ const UI_MESSAGES = {
     taskNextPlanningSummary: "The system is generating and validating the plan. Once ready, the task moves into plan review.",
     taskNextPlanReviewTitle: "Open plan review and inspect the split",
     taskNextPlanReviewSummary: "A draft is ready. Check branches, dependencies, and acceptance criteria before approval.",
+    taskNextPausedTitle: "Task paused. Delete it or keep it",
+    taskNextPausedSummary: "All live sessions are stopped. Delete only when you are sure the task is no longer needed.",
     taskNextExecutingTitle: "Open operations and track execution",
     taskNextExecutingSummary: "The task is now executing or under review. The next step is to inspect team state and blockers in operations.",
     taskNextActionRequiredTitle: "Handle blockers before resuming",
@@ -937,6 +996,7 @@ const UI_MESSAGES = {
     taskListHintClarifying: "Next: keep talking to the lead",
     taskListHintPlanning: "Next: wait for plan generation",
     taskListHintPlanReview: "Next: open plan review",
+    taskListHintPaused: "Paused. Ready to delete",
     taskListHintExecuting: "Next: open operations",
     taskListHintActionRequired: "Next: handle blockers",
     taskListHintCompleted: "Completed",
@@ -1172,12 +1232,15 @@ const UI_MESSAGES = {
     refreshing: "Refreshing...",
     checking: "Checking...",
     saving: "Saving...",
+    archiving: "Archiving...",
+    deleting: "Deleting...",
     restoring: "Restoring...",
     relaunching: "Relaunching...",
     switching: "Switching...",
     reassigning: "Reassigning...",
     cancelling: "Cancelling...",
     rebasing: "Rebasing...",
+    pausing: "Pausing...",
     resuming: "Resuming...",
     applying: "Applying...",
     notConfigured: "Not configured",
@@ -1717,6 +1780,7 @@ const elements = {
   taskActionDialogCancelButton: document.querySelector("#task-action-dialog-cancel-button"),
   taskActionDialogCloseButton: document.querySelector("#task-action-dialog-close-button"),
   taskActionDialogConfirmButton: document.querySelector("#task-action-dialog-confirm-button"),
+  taskActionDialogDeleteBranchesField: document.querySelector("#task-action-dialog-delete-branches-field"),
   taskActionDialogDeleteBranchesInput: document.querySelector("#task-action-delete-branches-input"),
   taskActionDialogEyebrow: document.querySelector("#task-action-dialog-eyebrow"),
   taskActionDialogFeedback: document.querySelector("#task-action-dialog-feedback"),
@@ -1729,6 +1793,9 @@ const elements = {
   taskMessageQueueList: document.querySelector("#task-message-queue-list"),
   taskMessageQueueStatus: document.querySelector("#task-message-queue-status"),
   taskMessageStopButton: document.querySelector("#task-message-stop-button"),
+  taskWorkspaceActions: document.querySelector("#task-workspace-actions"),
+  taskWorkspaceDeleteButton: document.querySelector("#task-workspace-delete-button"),
+  taskWorkspacePauseButton: document.querySelector("#task-workspace-pause-button"),
   taskPlanDetail: document.querySelector("#task-plan-detail"),
   taskPlanEditor: document.querySelector("#task-plan-editor"),
   taskPlanGraph: document.querySelector("#task-plan-graph"),
@@ -1900,6 +1967,20 @@ elements.taskActionDialog?.addEventListener("close", () => {
 elements.taskActionDialog?.addEventListener("click", (event) => {
   if (event.target === elements.taskActionDialog) {
     closeTaskActionDialog();
+  }
+});
+elements.taskWorkspacePauseButton?.addEventListener("click", () => {
+  const task = resolveTaskFromState(state.selectedTaskId);
+
+  if (task) {
+    openTaskActionDialog("pause", task);
+  }
+});
+elements.taskWorkspaceDeleteButton?.addEventListener("click", () => {
+  const task = resolveTaskFromState(state.selectedTaskId);
+
+  if (task) {
+    openTaskActionDialog("delete", task);
   }
 });
 elements.taskNextActionButton?.addEventListener("click", onTaskNextAction);
@@ -2393,9 +2474,14 @@ function renderTaskActionDialog() {
     return;
   }
 
+  const isPause = dialogState.action === "pause";
   const isDelete = dialogState.action === "delete";
-  const summary = isDelete ? t("taskActionDeleteSummary") : t("taskActionArchiveSummary");
-  const branchHint = isTaskLifecycleActive(task.status)
+  const summary = isPause
+    ? t("taskActionPauseSummary")
+    : isDelete
+      ? t("taskActionDeleteSummary")
+      : t("taskActionArchiveSummary");
+  const branchHint = isTaskLifecycleActive(task.status) && !isPausedTask(task)
     ? `${t("taskActionDeleteBranchesHint")} ${t("taskActionDeleteBranchesActiveHint")}`
     : t("taskActionDeleteBranchesHint");
 
@@ -2404,23 +2490,32 @@ function renderTaskActionDialog() {
   }
 
   if (elements.taskActionDialogTitle) {
-    elements.taskActionDialogTitle.textContent = isDelete
-      ? `${t("taskActionDeleteTitle")} · ${task.title}`
-      : `${t("taskActionArchiveTitle")} · ${task.title}`;
+    elements.taskActionDialogTitle.textContent = isPause
+      ? `${t("taskActionPauseTitle")} · ${task.title}`
+      : isDelete
+        ? `${t("taskActionDeleteTitle")} · ${task.title}`
+        : `${t("taskActionArchiveTitle")} · ${task.title}`;
   }
 
   if (elements.taskActionDialogSummary) {
     elements.taskActionDialogSummary.textContent = summary;
   }
 
+  if (elements.taskActionDialogDeleteBranchesField) {
+    elements.taskActionDialogDeleteBranchesField.hidden = !isDelete;
+  }
+
   if (elements.taskActionDialogBranchSummary) {
+    elements.taskActionDialogBranchSummary.hidden = !isDelete;
     elements.taskActionDialogBranchSummary.textContent = branchHint;
   }
 
   if (elements.taskActionDialogConfirmButton) {
-    elements.taskActionDialogConfirmButton.textContent = isDelete
-      ? t("taskActionDeleteConfirmButton")
-      : t("taskActionArchiveConfirmButton");
+    elements.taskActionDialogConfirmButton.textContent = isPause
+      ? t("taskActionPauseConfirmButton")
+      : isDelete
+        ? t("taskActionDeleteConfirmButton")
+        : t("taskActionArchiveConfirmButton");
     elements.taskActionDialogConfirmButton.className = isDelete
       ? "button task-list__action task-list__action--danger"
       : "button button--primary";
@@ -2437,26 +2532,35 @@ async function onConfirmTaskAction() {
   }
 
   const deleteBranches = elements.taskActionDialogDeleteBranchesInput?.checked === true;
+  const isPause = dialogState.action === "pause";
   const isDelete = dialogState.action === "delete";
   const method = isDelete ? "DELETE" : "POST";
-  const url = isDelete
+  const url = isPause
+    ? `/api/tasks/${encodeURIComponent(task.id)}/pause`
+    : isDelete
     ? `/api/tasks/${encodeURIComponent(task.id)}`
     : `/api/tasks/${encodeURIComponent(task.id)}/archive`;
+  const idleLabel = isPause
+    ? t("taskActionPauseConfirmButton")
+    : isDelete
+      ? t("taskActionDeleteConfirmButton")
+      : t("taskActionArchiveConfirmButton");
+  const busyLabel = isPause ? t("pausing") : isDelete ? t("deleting") : t("archiving");
 
   clearFeedback(elements.taskActionDialogFeedback);
   setButtonBusy(
     elements.taskActionDialogConfirmButton,
     true,
-    isDelete ? t("taskActionDeleteConfirmButton") : t("taskActionArchiveConfirmButton"),
+    busyLabel,
   );
 
   try {
     await fetchJson(url, {
-      body: { deleteBranches },
+      body: isDelete ? { deleteBranches } : undefined,
       method,
     });
 
-    if (state.selectedTaskId === task.id && (isDelete || !state.showArchivedTasks)) {
+    if (state.selectedTaskId === task.id && (isDelete || (!isPause && !state.showArchivedTasks))) {
       state.selectedTaskId = null;
       state.taskDetail = null;
       writeStorage(STORAGE_KEYS.selectedTaskId, "");
@@ -2465,7 +2569,10 @@ async function onConfirmTaskAction() {
     closeTaskActionDialog();
 
     if (state.selectedProjectId) {
-      await loadProjectTasks(state.selectedProjectId, { preserveSelection: true });
+      await loadProjectTasks(state.selectedProjectId, {
+        preserveSelection: true,
+        ...(isPause ? { selectedTaskId: task.id } : {}),
+      });
     } else {
       renderTaskList();
     }
@@ -2475,7 +2582,7 @@ async function onConfirmTaskAction() {
     setButtonBusy(
       elements.taskActionDialogConfirmButton,
       false,
-      isDelete ? t("taskActionDeleteConfirmButton") : t("taskActionArchiveConfirmButton"),
+      idleLabel,
     );
   }
 }
@@ -3515,7 +3622,7 @@ function renderWorkspacePickerListSection(tasks, options = {}) {
         <p class="task-list__title">${escapeHtml(task.title)}</p>
         <div class="task-list__badges">
           ${task.archivedAt ? `<span class="badge badge--outline">${escapeHtml(t("taskListArchivedBadge"))}</span>` : ""}
-          <span class="badge ${buildTaskStatusBadgeClass(task.status)}">${escapeHtml(buildTaskStatusLabel(task.status))}</span>
+          <span class="badge ${buildTaskStatusBadgeClass(task)}">${escapeHtml(buildTaskDisplayStatusLabel(task))}</span>
         </div>
       </div>
       <div class="task-list__content">
@@ -3577,7 +3684,7 @@ function renderTaskPageListSection(tasks, options = {}) {
           <h3 class="task-page-card__title">${escapeHtml(task.title)}</h3>
           <div class="task-page-card__badges">
             ${task.archivedAt ? `<span class="badge badge--outline">${escapeHtml(t("taskListArchivedBadge"))}</span>` : ""}
-            <span class="badge ${buildTaskStatusBadgeClass(task.status)}">${escapeHtml(buildTaskStatusLabel(task.status))}</span>
+            <span class="badge ${buildTaskStatusBadgeClass(task)}">${escapeHtml(buildTaskDisplayStatusLabel(task))}</span>
           </div>
         </div>
         <p class="task-page-card__meta">${escapeHtml(task.baseBranch)}</p>
@@ -3621,6 +3728,8 @@ function renderTaskPageListSection(tasks, options = {}) {
 function buildTaskActionRow(task) {
   const actions = document.createElement("div");
   actions.className = "task-list__item-actions";
+  const paused = isPausedTask(task);
+  const deleteAllowed = canDeleteTask(task);
 
   if (task.archivedAt) {
     const restoreButton = document.createElement("button");
@@ -3633,6 +3742,18 @@ function buildTaskActionRow(task) {
     });
     actions.append(restoreButton);
   } else {
+    if (canPauseTask(task)) {
+      const pauseButton = document.createElement("button");
+      pauseButton.type = "button";
+      pauseButton.className = "button button--secondary task-list__action";
+      pauseButton.textContent = t("taskPauseButton");
+      pauseButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openTaskActionDialog("pause", task);
+      });
+      actions.append(pauseButton);
+    }
+
     const archiveButton = document.createElement("button");
     archiveButton.type = "button";
     archiveButton.className = "button button--secondary task-list__action";
@@ -3648,11 +3769,19 @@ function buildTaskActionRow(task) {
   deleteButton.type = "button";
   deleteButton.className = "button task-list__action task-list__action--danger";
   deleteButton.textContent = t("taskDeleteButton");
+  deleteButton.disabled = !deleteAllowed;
+  deleteButton.title = !deleteAllowed ? t("taskDeleteRequiresPauseHint") : "";
   deleteButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    openTaskActionDialog("delete", task);
+    if (deleteAllowed) {
+      openTaskActionDialog("delete", task);
+    }
   });
   actions.append(deleteButton);
+
+  if (paused) {
+    actions.dataset.state = "paused";
+  }
 
   return actions;
 }
@@ -3712,8 +3841,8 @@ function renderTaskDetail() {
   elements.taskDetailEmpty.hidden = true;
   elements.taskDetailTitle.textContent = detail.task.title;
   elements.taskDetailDescription.textContent = detail.task.description;
-  elements.taskStatusBadge.textContent = buildTaskStatusLabel(detail.task.status);
-  elements.taskStatusBadge.className = `badge ${buildTaskStatusBadgeClass(detail.task.status)}`;
+  elements.taskStatusBadge.textContent = buildTaskDisplayStatusLabel(detail.task);
+  elements.taskStatusBadge.className = `badge ${buildTaskStatusBadgeClass(detail.task)}`;
   elements.taskBaseBranchBadge.textContent = detail.task.baseBranch;
   elements.taskLeadAgent.textContent = detail.task.leadAgentType;
   elements.taskBaseCommit.textContent = detail.task.baseCommitSha;
@@ -3738,6 +3867,7 @@ function renderTaskDetail() {
   renderTranscript(detail.messages ?? []);
 
   renderTaskMessageComposer(detail);
+  renderWorkspaceTaskActions(detail.task);
   const canConfirmRequirements = detail.task.status === "CLARIFYING";
 
   elements.startClarificationButton.hidden = true;
@@ -3746,7 +3876,24 @@ function renderTaskDetail() {
   if (elements.taskActions) {
     elements.taskActions.hidden = true;
   }
-  elements.taskMessageForm.hidden = !(detail.task.status === "DRAFT" || canConfirmRequirements);
+  elements.taskMessageForm.hidden = false;
+}
+
+function renderWorkspaceTaskActions(task) {
+  if (!elements.taskWorkspaceActions || !elements.taskWorkspacePauseButton || !elements.taskWorkspaceDeleteButton) {
+    return;
+  }
+
+  const showActions = Boolean(task) && !task.archivedAt;
+  const deleteAllowed = canDeleteTask(task);
+
+  elements.taskWorkspaceActions.hidden = !showActions;
+  elements.taskWorkspacePauseButton.hidden = !canPauseTask(task);
+  elements.taskWorkspacePauseButton.disabled = !canPauseTask(task);
+  elements.taskWorkspacePauseButton.textContent = t("taskPauseButton");
+  elements.taskWorkspaceDeleteButton.disabled = !deleteAllowed;
+  elements.taskWorkspaceDeleteButton.title = !deleteAllowed ? t("taskDeleteRequiresPauseHint") : "";
+  elements.taskWorkspaceDeleteButton.textContent = t("taskDeleteButton");
 }
 
 function renderLeaderConversation(detail) {
@@ -3755,7 +3902,9 @@ function renderLeaderConversation(detail) {
   const liveOutput = leadSession
     ? stripAnsi(state.liveSessionOutputs.get(leadSession.id) ?? leadSession.outputBuffer ?? "")
     : "";
-  const summaryKey = taskStatus === "DRAFT"
+  const summaryKey = isPausedTask(detail.task)
+    ? "leaderConversationPausedSummary"
+    : taskStatus === "DRAFT"
     ? "leaderConversationDraftSummary"
     : taskStatus === "CLARIFYING"
       ? "leaderConversationClarifyingSummary"
@@ -3952,11 +4101,12 @@ function buildConversationMessage(role, content, createdAt, options = {}) {
           ? t("taskMessageRunningLabel")
           : "";
   article.className = `workspace-chat__message workspace-chat__message--${roleKey}${options.live ? " is-live" : ""}${localState ? ` is-${localState}` : ""}`;
+  const artifactMarkup = buildConversationArtifactMarkup(role, content);
   article.innerHTML = `
     <div class="workspace-chat__bubble">
       <div class="workspace-chat__prompt">${escapeHtml(role === "USER" ? "YOU" : (role === "ASSISTANT" || role === "LEAD_AGENT") ? "LEAD" : "SYS")}</div>
       <div class="workspace-chat__body">
-        <p class="workspace-chat__text">${escapeHtml(content).replaceAll("\n", "<br>")}</p>
+        ${artifactMarkup ?? `<p class="workspace-chat__text">${escapeHtml(content).replaceAll("\n", "<br>")}</p>`}
         <div class="workspace-chat__meta">
           ${statusLabel ? `<span class="workspace-chat__state">${escapeHtml(statusLabel)}</span>` : "<span></span>"}
           <span class="workspace-chat__time">${escapeHtml(new Date(createdAt).toLocaleTimeString(state.locale, { hour: "2-digit", minute: "2-digit" }))}</span>
@@ -3965,6 +4115,33 @@ function buildConversationMessage(role, content, createdAt, options = {}) {
     </div>
   `;
   return article;
+}
+
+function buildConversationArtifactMarkup(role, content) {
+  if (role === "USER" || typeof content !== "string") {
+    return null;
+  }
+
+  const normalized = content.trim();
+  const looksLikePlan = normalized.length > 400 && /subtasks|branch_suffix|recommended_agent|```json/i.test(normalized);
+  const looksLikeLongOutput = normalized.length > 1200;
+
+  if (!looksLikePlan && !looksLikeLongOutput) {
+    return null;
+  }
+
+  const title = looksLikePlan ? t("leaderPlanArtifactTitle") : t("leaderLongOutputTitle");
+  const hint = looksLikePlan ? t("leaderPlanArtifactHint") : t("leaderLongOutputHint");
+
+  return `
+    <details class="workspace-chat__artifact">
+      <summary class="workspace-chat__artifact-summary">
+        <span class="workspace-chat__artifact-title">${escapeHtml(title)}</span>
+        <span class="workspace-chat__artifact-hint">${escapeHtml(hint)}</span>
+      </summary>
+      <pre class="workspace-chat__artifact-body">${escapeHtml(content)}</pre>
+    </details>
+  `;
 }
 
 function renderTaskMessageQueueList() {
@@ -3995,12 +4172,14 @@ function renderTaskMessageQueueList() {
 
 function renderTaskMessageComposer(detail) {
   const taskStatus = detail?.task?.status ?? null;
+  const paused = isPausedTask(detail?.task);
 
   if (!elements.taskMessageInput || !elements.taskMessageLabel || !elements.sendTaskMessageButton) {
     return;
   }
 
   const hasDraftMessage = elements.taskMessageInput.value.trim().length > 0;
+  const canSend = LEADER_CHAT_SENDABLE_STATUSES.has(taskStatus) && !paused;
   const isRunning = Boolean(state.taskMessageInFlight);
   const queuedCount = state.taskMessageQueue.filter((message) => message.taskId === state.selectedTaskId).length;
   const currentBranch = detail?.task?.taskBranchName ?? detail?.task?.baseBranch ?? state.projectDetail?.repoStatus?.currentBranch ?? "-";
@@ -4029,11 +4208,68 @@ function renderTaskMessageComposer(detail) {
       : t("taskMessageStopButton");
   }
 
+  elements.taskMessageInput.disabled = !canSend;
+
   if (taskStatus === "DRAFT") {
     elements.taskMessageLabel.textContent = t("startClarificationDraftLabel");
     elements.taskMessageInput.setAttribute("placeholder", t("startClarificationDraftPlaceholder"));
     elements.sendTaskMessageButton.innerHTML = `
       <span>${escapeHtml(isRunning ? t("sendMessageQueuedButton") : t("startClarificationDraftButton"))}</span>
+      <span class="workspace-chat__send-hint">${escapeHtml(t("sendMessageHotkey"))}</span>
+    `;
+    elements.sendTaskMessageButton.disabled = !hasDraftMessage;
+    return;
+  }
+
+  if (paused) {
+    elements.taskMessageLabel.textContent = t("sendReadonlyMessageLabel");
+    elements.taskMessageInput.setAttribute("placeholder", t("taskPausedHint"));
+    elements.sendTaskMessageButton.innerHTML = `
+      <span>${escapeHtml(t("taskPausedStatusLabel"))}</span>
+      <span class="workspace-chat__send-hint">${escapeHtml(t("sendMessageHotkey"))}</span>
+    `;
+    elements.sendTaskMessageButton.disabled = true;
+    return;
+  }
+
+  if (!canSend) {
+    elements.taskMessageLabel.textContent = t("sendReadonlyMessageLabel");
+    elements.taskMessageInput.setAttribute("placeholder", t("sendReadonlyMessagePlaceholder"));
+    elements.sendTaskMessageButton.innerHTML = `
+      <span>${escapeHtml(t("sendMessageButton"))}</span>
+      <span class="workspace-chat__send-hint">${escapeHtml(t("sendMessageHotkey"))}</span>
+    `;
+    elements.sendTaskMessageButton.disabled = true;
+    return;
+  }
+
+  if (taskStatus === "PLAN_REVIEW") {
+    elements.taskMessageLabel.textContent = t("sendPlanFeedbackLabel");
+    elements.taskMessageInput.setAttribute("placeholder", t("sendPlanFeedbackPlaceholder"));
+    elements.sendTaskMessageButton.innerHTML = `
+      <span>${escapeHtml(isRunning ? t("sendMessageQueuedButton") : t("sendMessageButton"))}</span>
+      <span class="workspace-chat__send-hint">${escapeHtml(t("sendMessageHotkey"))}</span>
+    `;
+    elements.sendTaskMessageButton.disabled = !hasDraftMessage;
+    return;
+  }
+
+  if (taskStatus === "PLANNING") {
+    elements.taskMessageLabel.textContent = t("sendPlanningMessageLabel");
+    elements.taskMessageInput.setAttribute("placeholder", t("sendPlanningMessagePlaceholder"));
+    elements.sendTaskMessageButton.innerHTML = `
+      <span>${escapeHtml(isRunning ? t("sendMessageQueuedButton") : t("sendMessageButton"))}</span>
+      <span class="workspace-chat__send-hint">${escapeHtml(t("sendMessageHotkey"))}</span>
+    `;
+    elements.sendTaskMessageButton.disabled = !hasDraftMessage;
+    return;
+  }
+
+  if (["ACTION_REQUIRED", "EXECUTING", "MERGING", "REVIEWING"].includes(taskStatus)) {
+    elements.taskMessageLabel.textContent = t("sendExecutionMessageLabel");
+    elements.taskMessageInput.setAttribute("placeholder", t("sendExecutionMessagePlaceholder"));
+    elements.sendTaskMessageButton.innerHTML = `
+      <span>${escapeHtml(isRunning ? t("sendMessageQueuedButton") : t("sendMessageButton"))}</span>
       <span class="workspace-chat__send-hint">${escapeHtml(t("sendMessageHotkey"))}</span>
     `;
     elements.sendTaskMessageButton.disabled = !hasDraftMessage;
@@ -5930,6 +6166,17 @@ function clearTaskDetail() {
   if (elements.taskMessageForm) {
     elements.taskMessageForm.hidden = true;
   }
+  if (elements.taskWorkspaceActions) {
+    elements.taskWorkspaceActions.hidden = true;
+  }
+  if (elements.taskWorkspacePauseButton) {
+    elements.taskWorkspacePauseButton.hidden = true;
+    elements.taskWorkspacePauseButton.disabled = true;
+  }
+  if (elements.taskWorkspaceDeleteButton) {
+    elements.taskWorkspaceDeleteButton.disabled = true;
+    elements.taskWorkspaceDeleteButton.title = "";
+  }
   elements.taskExecutionMailboxInboxList.replaceChildren();
   elements.taskExecutionMailboxOutboxList.replaceChildren();
   elements.taskExecutionMailboxContractsList.replaceChildren();
@@ -6121,6 +6368,36 @@ function resolveJourneyStateKey(stateKey) {
   }
 }
 
+function isPausedTask(task) {
+  return task?.status === "ACTION_REQUIRED"
+    && typeof task?.lastError === "string"
+    && task.lastError.startsWith(TASK_PAUSED_REASON_PREFIX);
+}
+
+function canPauseTask(task) {
+  return [
+    "CLARIFYING",
+    "EXECUTING",
+    "MERGING",
+    "PLANNING",
+    "PLAN_REVIEW",
+    "REVIEWING",
+  ].includes(task?.status);
+}
+
+function canDeleteTask(task) {
+  return [
+    "CANCELLED",
+    "COMPLETED",
+    "DRAFT",
+    "FAILED",
+  ].includes(task?.status) || isPausedTask(task);
+}
+
+function buildTaskDisplayStatusLabel(task) {
+  return isPausedTask(task) ? t("taskPausedStatusLabel") : buildTaskStatusLabel(task?.status);
+}
+
 function isTaskLifecycleActive(status) {
   return [
     "ACTION_REQUIRED",
@@ -6136,6 +6413,18 @@ function isTaskLifecycleActive(status) {
 
 function buildTaskStageMeta(task) {
   const status = task?.status ?? "DRAFT";
+
+  if (isPausedTask(task)) {
+    return {
+      badgeClass: "badge--paused",
+      buttonAction: "refresh",
+      buttonLabel: t("refreshTaskButton"),
+      currentStep: 3,
+      listHint: t("taskListHintPaused"),
+      summary: t("taskNextPausedSummary"),
+      title: t("taskNextPausedTitle"),
+    };
+  }
 
   switch (status) {
     case "CLARIFYING":
@@ -6225,7 +6514,14 @@ function buildTaskStageMeta(task) {
   }
 }
 
-function buildTaskStatusBadgeClass(status) {
+function buildTaskStatusBadgeClass(taskOrStatus) {
+  const task = typeof taskOrStatus === "string" ? { status: taskOrStatus } : taskOrStatus;
+  const status = typeof taskOrStatus === "string" ? taskOrStatus : taskOrStatus?.status;
+
+  if (isPausedTask(task)) {
+    return "badge--paused";
+  }
+
   switch (status) {
     case "CLARIFYING":
       return "badge--accent-soft";
@@ -6282,7 +6578,7 @@ function renderTaskStageBoard(detail) {
 
   elements.taskNextActionTitle.textContent = meta.title;
   elements.taskNextActionSummary.textContent = meta.summary;
-  elements.taskNextActionBadge.textContent = buildTaskStatusLabel(task.status);
+  elements.taskNextActionBadge.textContent = buildTaskDisplayStatusLabel(task);
   elements.taskNextActionBadge.className = `badge ${meta.badgeClass}`;
   elements.taskNextActionButton.textContent = meta.buttonLabel;
   elements.taskNextActionButton.dataset.action = meta.buttonAction;
@@ -6410,6 +6706,7 @@ function connectTaskStream(taskId) {
 
     if (task) {
       task.status = payload.status;
+      task.lastError = payload.reason ?? null;
       renderTaskList();
     }
   });
