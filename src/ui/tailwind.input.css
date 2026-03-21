@@ -974,6 +974,10 @@
     @apply text-xs font-medium;
   }
 
+  .workspace-chat__summary {
+    @apply m-0 text-xs leading-5 text-slate-300;
+  }
+
   .workspace-toolbar {
     @apply mb-4;
   }
@@ -1026,6 +1030,11 @@
     color: #e2e8f0;
   }
 
+  .workspace-chat__status-strip {
+    @apply rounded-[1rem] border border-cyan-400/15 px-3 py-2;
+    background: rgba(8, 47, 73, 0.34);
+  }
+
   .workspace-chat__history {
     @apply grid content-start gap-3 overflow-auto rounded-[1.25rem] border border-white/10 bg-black/20 p-3;
     min-height: 420px;
@@ -1050,8 +1059,63 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
+  .workspace-chat__composer-meta {
+    @apply flex flex-col gap-3 border-t border-white/10 pt-3 lg:flex-row lg:items-center lg:justify-between;
+  }
+
+  .workspace-chat__context {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .workspace-chat__context-chip {
+    @apply inline-flex min-h-[32px] items-center rounded-full px-3 text-xs font-semibold text-slate-200;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+  }
+
+  .workspace-chat__context-chip--muted {
+    color: #cbd5e1;
+  }
+
+  .workspace-chat__queue-list {
+    @apply grid gap-2;
+  }
+
+  .workspace-chat__queue-item {
+    @apply flex flex-col gap-2 rounded-[1rem] border border-amber-300/15 px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between;
+    background: rgba(71, 85, 105, 0.18);
+  }
+
+  .workspace-chat__queue-copy {
+    @apply grid gap-1;
+  }
+
+  .workspace-chat__queue-badge {
+    @apply text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-200;
+  }
+
+  .workspace-chat__queue-text {
+    @apply m-0 text-sm leading-6 text-slate-200;
+  }
+
+  .workspace-chat__queue-remove {
+    @apply min-h-[34px] self-start px-3 text-xs lg:self-center;
+  }
+
+  .workspace-chat__send {
+    @apply inline-flex min-h-[42px] items-center gap-2 px-4;
+  }
+
+  .workspace-chat__send-hint {
+    @apply rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-slate-200;
+  }
+
   .workspace-chat__message {
     @apply flex;
+  }
+
+  .workspace-chat__message--leader {
+    @apply justify-start;
   }
 
   .workspace-chat__message--operator {
@@ -1063,19 +1127,36 @@
   }
 
   .workspace-chat__bubble {
-    @apply flex max-w-[90%] gap-3 rounded-[1rem] px-3 py-2.5;
+    @apply grid max-w-[90%] gap-2 rounded-[1.1rem] px-3.5 py-3;
     background: rgba(15, 23, 42, 0.72);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
+  .workspace-chat__message--leader .workspace-chat__bubble {
+    background:
+      linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.88)),
+      rgba(15, 23, 42, 0.92);
+    border-color: rgba(45, 212, 191, 0.16);
+  }
+
   .workspace-chat__message--operator .workspace-chat__bubble {
-    background: rgba(0, 91, 193, 0.2);
-    border-color: rgba(96, 165, 250, 0.22);
+    background:
+      linear-gradient(180deg, rgba(14, 116, 144, 0.92), rgba(3, 105, 161, 0.88)),
+      rgba(14, 116, 144, 0.92);
+    border-color: rgba(125, 211, 252, 0.28);
   }
 
   .workspace-chat__message--system .workspace-chat__bubble {
     background: rgba(148, 163, 184, 0.14);
     border-color: rgba(148, 163, 184, 0.2);
+  }
+
+  .workspace-chat__message.is-queued .workspace-chat__bubble,
+  .workspace-chat__message.is-paused .workspace-chat__bubble {
+    border-style: dashed;
+    background:
+      linear-gradient(180deg, rgba(51, 65, 85, 0.76), rgba(30, 41, 59, 0.72)),
+      rgba(51, 65, 85, 0.72);
   }
 
   .workspace-chat__prompt,
@@ -1084,7 +1165,7 @@
   }
 
   .workspace-chat__prompt {
-    @apply pt-0.5 text-cyan-300;
+    @apply text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300;
   }
 
   .workspace-chat__body {
@@ -1097,6 +1178,14 @@
 
   .workspace-chat__time {
     @apply text-slate-400;
+  }
+
+  .workspace-chat__meta {
+    @apply flex items-center justify-between gap-3;
+  }
+
+  .workspace-chat__state {
+    @apply text-[11px] font-medium text-slate-300;
   }
 
   .workspace-chat__message.is-live .workspace-chat__prompt {

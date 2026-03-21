@@ -208,6 +208,7 @@ export class TaskService {
     this.sandboxManager = options.sandboxManager ?? null;
     this.uploadRootPath = options.uploadRootPath ?? DEFAULT_UPLOAD_ROOT;
     this.runningLeadSessions = new Map();
+    this.cancelledLeadSessionIds = new Set();
     this.pendingPlanDrafts = new Map();
     this.pendingWorkerLaunches = new Set();
     this.runningWorkerSessions = new Map();
@@ -880,29 +881,6 @@ export class TaskService {
       return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project not found.", { projectId: task.projectId });
     }
 
-    const agentFactory = this.agentService.agentRegistry.get(task.leadAgentType);
-    const health = await this.agentService.getHealth();
-    const agentHealth = health.agents?.[task.leadAgentType] ?? null;
-
-    if (!agentFactory?.capabilities?.canOrchestrate) {
-      return failure(
-        TASK_SERVICE_ERROR_CODES.LEAD_AGENT_INVALID,
-        "Lead agent must be a registered orchestrator.",
-        { leadAgentType: task.leadAgentType },
-      );
-    }
-
-    if (!agentHealth?.available) {
-      return failure(
-        TASK_SERVICE_ERROR_CODES.LEAD_AGENT_UNHEALTHY,
-        "Lead agent is unhealthy and cannot start clarification.",
-        {
-          failureReason: agentHealth?.failureReason ?? null,
-          leadAgentType: task.leadAgentType,
-        },
-      );
-    }
-
     const initialMessage = normalizeRequiredString(input?.content);
 
     if (!initialMessage) {
@@ -913,37 +891,8 @@ export class TaskService {
       );
     }
 
-    const session = await this.#createTrackedSession({
-      agentType: task.leadAgentType,
-      sandboxType: selectLeadSandboxType(agentFactory.capabilities.supportedSandboxTypes),
-      sessionType: SESSION_TYPE.LEAD,
-      status: SESSION_STATUS.STARTING,
-      taskId: task.id,
-    });
-
     try {
-      const runtime = await agentFactory.spawnSession({
-        attachments: (await this.taskRepository.listAttachmentsByTaskId(task.id)).map((attachment) => ({
-          fileName: attachment.fileName,
-          filePath: attachment.filePath,
-          fileType: attachment.fileType,
-        })),
-        branchName: task.baseBranch,
-        prompt: buildClarificationPrompt(task),
-        sandbox: {
-          type: session.sandboxType,
-        },
-        sessionType: SESSION_TYPE.LEAD,
-        workDir: project.path,
-      });
-
-      const startedAt = new Date().toISOString();
-      const runningSession = await this.taskRepository.updateSession(session.id, {
-        containerId: runtime.containerId ?? null,
-        pid: runtime.pid ?? null,
-        startedAt,
-        status: SESSION_STATUS.RUNNING,
-      });
+      const { runningSession, runtime } = await this.#spawnLeadSession(task, project);
       const clarifyingTask = await this.#updateTaskStatus(task.id, TASK_STATUS.CLARIFYING, {
         currentTask: task,
         lastError: null,
@@ -956,25 +905,12 @@ export class TaskService {
         taskId: task.id,
       });
 
-      this.runningLeadSessions.set(task.id, {
-        runtime,
-        sessionId: session.id,
-      });
-
-      runtime.onOutput((chunk) => {
-        void this.#handleLeadOutput(task.id, session.id, chunk);
-      });
-      runtime.onExit((exitCode) => {
-        void this.#handleLeadExit(task.id, session.id, exitCode);
-      });
-
       await runtime.sendInput(initialMessage);
 
       this.#publish(task.id, "task:status", {
         taskId: task.id,
         status: clarifyingTask.status,
       });
-      this.#publishSessionEvent(task.id, "session:started", runningSession);
 
       return {
         ok: true,
@@ -982,11 +918,29 @@ export class TaskService {
         task: clarifyingTask,
       };
     } catch (error) {
-      await this.taskRepository.updateSession(session.id, {
-        endedAt: new Date().toISOString(),
-        exitCode: null,
-        status: SESSION_STATUS.FAILED,
-      });
+      const latestSession = (await this.taskRepository.listSessionsByTaskId(task.id))
+        .filter((session) => session.sessionType === SESSION_TYPE.LEAD)
+        .at(-1) ?? null;
+      const wasCancelled = latestSession
+        ? this.cancelledLeadSessionIds.has(latestSession.id) || latestSession.status === SESSION_STATUS.CANCELLED
+        : false;
+
+      if (wasCancelled) {
+        return failure(
+          TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING,
+          "Lead session was stopped by the operator.",
+          { taskId },
+        );
+      }
+
+      if (latestSession && WORKER_LIVE_STATUSES.has(latestSession.status)) {
+        await this.taskRepository.updateSession(latestSession.id, {
+          endedAt: new Date().toISOString(),
+          exitCode: null,
+          status: SESSION_STATUS.FAILED,
+        });
+      }
+
       const failedTask = await this.taskRepository.updateTask(task.id, {
         lastError: error?.message ?? "Lead session failed to start.",
       });
@@ -1027,14 +981,32 @@ export class TaskService {
       );
     }
 
-    const activeSession = this.runningLeadSessions.get(taskId);
+    let activeSession = this.runningLeadSessions.get(taskId);
 
     if (!activeSession) {
-      return failure(
-        TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING,
-        "Lead session is not running.",
-        { taskId },
-      );
+      const project = await this.projectRepository.findProjectById(task.projectId);
+
+      if (!project) {
+        return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project not found.", { projectId: task.projectId });
+      }
+
+      try {
+        const resumedSession = await this.#spawnLeadSession(
+          task,
+          project,
+          await this.taskRepository.listMessagesByTaskId(task.id),
+        );
+        activeSession = {
+          runtime: resumedSession.runtime,
+          sessionId: resumedSession.runningSession.id,
+        };
+      } catch (error) {
+        return failure(
+          TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING,
+          error?.message ?? "Lead session is not running.",
+          { taskId },
+        );
+      }
     }
 
     const message = await this.taskRepository.createMessage({
@@ -1043,11 +1015,60 @@ export class TaskService {
       taskId,
     });
 
-    await activeSession.runtime.sendInput(content);
+    try {
+      await activeSession.runtime.sendInput(content);
+    } catch (error) {
+      const latestSession = activeSession?.sessionId
+        ? await this.taskRepository.findSessionById(activeSession.sessionId).catch(() => null)
+        : null;
+      const wasCancelled = activeSession?.sessionId
+        ? this.cancelledLeadSessionIds.has(activeSession.sessionId) || latestSession?.status === SESSION_STATUS.CANCELLED
+        : false;
+
+      if (wasCancelled) {
+        return failure(
+          TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING,
+          "Lead session was stopped by the operator.",
+          { taskId },
+        );
+      }
+
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING,
+        error?.message ?? "Lead session is not running.",
+        { taskId },
+      );
+    }
 
     return {
       ok: true,
       message,
+    };
+  }
+
+  async stopLeadSession(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    const activeSession = this.runningLeadSessions.get(taskId) ?? null;
+
+    if (!activeSession?.runtime || !activeSession.sessionId) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING,
+        "Lead session is not running.",
+        { taskId },
+      );
+    }
+
+    this.cancelledLeadSessionIds.add(activeSession.sessionId);
+    await activeSession.runtime.kill?.().catch(() => null);
+
+    return {
+      ok: true,
+      task,
     };
   }
 
@@ -1086,7 +1107,29 @@ export class TaskService {
     });
     const planningAgentContext = await this.#getPlanningAgentContext(confirmedTask.leadAgentType);
 
-    const activeSession = this.runningLeadSessions.get(taskId);
+    let activeSession = this.runningLeadSessions.get(taskId);
+
+    if (!activeSession) {
+      const project = await this.projectRepository.findProjectById(task.projectId);
+
+      if (!project) {
+        return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project not found.", { projectId: task.projectId });
+      }
+
+      try {
+        const resumedSession = await this.#spawnLeadSession(
+          confirmedTask,
+          project,
+          await this.taskRepository.listMessagesByTaskId(task.id),
+        );
+        activeSession = {
+          runtime: resumedSession.runtime,
+          sessionId: resumedSession.runningSession.id,
+        };
+      } catch {
+        activeSession = null;
+      }
+    }
 
     if (activeSession) {
       try {
@@ -3362,16 +3405,21 @@ export class TaskService {
     this.runningLeadSessions.delete(taskId);
     this.pendingPlanDrafts.delete(taskId);
 
-    const sessionStatus = exitCode === 0 ? SESSION_STATUS.COMPLETED : SESSION_STATUS.FAILED;
+    const wasCancelled = this.cancelledLeadSessionIds.delete(sessionId);
+    const sessionStatus = wasCancelled
+      ? SESSION_STATUS.CANCELLED
+      : exitCode === 0
+        ? SESSION_STATUS.COMPLETED
+        : SESSION_STATUS.FAILED;
     const nextSession = await this.taskRepository.updateSession(sessionId, {
       endedAt: new Date().toISOString(),
-      exitCode,
+      exitCode: wasCancelled ? null : exitCode,
       status: sessionStatus,
     });
 
     const task = await this.taskRepository.findTaskById(taskId);
 
-    if ([TASK_STATUS.CLARIFYING, TASK_STATUS.PLANNING].includes(task?.status) && exitCode !== 0) {
+    if (!wasCancelled && [TASK_STATUS.CLARIFYING, TASK_STATUS.PLANNING].includes(task?.status) && exitCode !== 0) {
       await this.#updateTaskStatus(taskId, TASK_STATUS.ACTION_REQUIRED, {
         currentTask: task,
         lastError: task.status === TASK_STATUS.PLANNING
@@ -3381,7 +3429,7 @@ export class TaskService {
     }
 
     this.#publishSessionEvent(taskId, "session:ended", nextSession ?? {
-      exitCode,
+      exitCode: wasCancelled ? null : exitCode,
       id: sessionId,
       status: sessionStatus,
       taskId,
@@ -4771,6 +4819,78 @@ export class TaskService {
     };
   }
 
+  async #spawnLeadSession(task, project, transcriptMessages = []) {
+    const agentFactory = this.agentService.agentRegistry.get(task.leadAgentType);
+    const health = await this.agentService.getHealth();
+    const agentHealth = health.agents?.[task.leadAgentType] ?? null;
+
+    if (!agentFactory?.capabilities?.canOrchestrate) {
+      throw failure(
+        TASK_SERVICE_ERROR_CODES.LEAD_AGENT_INVALID,
+        "Lead agent must be a registered orchestrator.",
+        { leadAgentType: task.leadAgentType },
+      ).error;
+    }
+
+    if (!agentHealth?.available) {
+      throw failure(
+        TASK_SERVICE_ERROR_CODES.LEAD_AGENT_UNHEALTHY,
+        "Lead agent is unhealthy and cannot start clarification.",
+        {
+          failureReason: agentHealth?.failureReason ?? null,
+          leadAgentType: task.leadAgentType,
+        },
+      ).error;
+    }
+
+    const session = await this.#createTrackedSession({
+      agentType: task.leadAgentType,
+      sandboxType: selectLeadSandboxType(agentFactory.capabilities.supportedSandboxTypes),
+      sessionType: SESSION_TYPE.LEAD,
+      status: SESSION_STATUS.STARTING,
+      taskId: task.id,
+    });
+    const runtime = await agentFactory.spawnSession({
+      attachments: (await this.taskRepository.listAttachmentsByTaskId(task.id)).map((attachment) => ({
+        fileName: attachment.fileName,
+        filePath: attachment.filePath,
+        fileType: attachment.fileType,
+      })),
+      branchName: task.baseBranch,
+      prompt: buildClarificationPrompt(task, transcriptMessages),
+      sandbox: {
+        type: session.sandboxType,
+      },
+      sessionType: SESSION_TYPE.LEAD,
+      workDir: project.path,
+    });
+    const runningSession = await this.taskRepository.updateSession(session.id, {
+      containerId: runtime.containerId ?? null,
+      pid: runtime.pid ?? null,
+      startedAt: new Date().toISOString(),
+      status: SESSION_STATUS.RUNNING,
+    });
+
+    this.runningLeadSessions.set(task.id, {
+      runtime,
+      sessionId: session.id,
+    });
+
+    runtime.onOutput((chunk) => {
+      void this.#handleLeadOutput(task.id, session.id, chunk);
+    });
+    runtime.onExit((exitCode) => {
+      void this.#handleLeadExit(task.id, session.id, exitCode);
+    });
+
+    this.#publishSessionEvent(task.id, "session:started", runningSession);
+
+    return {
+      runningSession,
+      runtime,
+    };
+  }
+
   async #stopTaskSessions(task, subTasks, options = {}) {
     const persistCancellation = options.persistCancellation === true;
     const cancelledAt = new Date().toISOString();
@@ -4778,6 +4898,7 @@ export class TaskService {
 
     const activeLeadSession = this.runningLeadSessions.get(task.id) ?? null;
     if (activeLeadSession) {
+      this.cancelledLeadSessionIds.add(activeLeadSession.sessionId);
       await activeLeadSession.runtime?.kill?.().catch(() => null);
       this.runningLeadSessions.delete(task.id);
     }
@@ -4900,6 +5021,7 @@ export class TaskService {
 
   #clearTaskRuntimeState(taskId, subTasks, sessions) {
     this.runningLeadSessions.delete(taskId);
+    this.cancelledLeadSessionIds.delete(taskId);
     this.pendingPlanDrafts.delete(taskId);
     this.pendingFinalReviews.delete(taskId);
     this.pendingMergeExecutions.delete(taskId);
@@ -4916,6 +5038,7 @@ export class TaskService {
     for (const session of sessions) {
       this.sessionLogPaths.delete(session.id);
       this.sessionOutputAppends.delete(session.id);
+      this.cancelledLeadSessionIds.delete(session.id);
       this.cancelledWorkerSessionIds.delete(session.id);
     }
   }
@@ -4938,6 +5061,7 @@ export class TaskService {
     this.pendingProjectGitLocks.clear();
     this.pendingWorkerLaunches.clear();
     this.runningLeadSessions.clear();
+    this.cancelledLeadSessionIds.clear();
     this.runningWorkerSessions.clear();
     this.cancelledWorkerSessionIds.clear();
   }
@@ -5118,13 +5242,29 @@ function cryptoRandomId() {
   return `att_${randomUUID()}`;
 }
 
-function buildClarificationPrompt(task) {
+function buildClarificationPrompt(task, transcriptMessages = []) {
+  const transcriptSection = transcriptMessages.length > 0
+    ? [
+        "Existing clarification transcript:",
+        ...transcriptMessages.map((message) => {
+          const role = message.role === MESSAGE_ROLE.USER
+            ? "Operator"
+            : message.role === MESSAGE_ROLE.LEAD_AGENT
+              ? "Leader"
+              : "System";
+
+          return `${role}: ${String(message.content ?? "").trim()}`;
+        }),
+        "Resume from this transcript. Do not repeat already-answered questions unless you are resolving ambiguity.",
+      ].join("\n")
+    : "The operator will send the first clarification message after the session starts.";
+
   return [
     "You are the lead agent for EAT clarification.",
     "You are speaking only with the human operator. Do not address sub-agents or pretend implementation has started.",
     `Task title: ${task.title}`,
     `Requirement description: ${task.description}`,
-    "The operator will send the first clarification message after the session starts.",
+    transcriptSection,
     "Your job is to gather the missing delivery contract before planning: target outcome, scope boundaries, affected repo areas, constraints, acceptance criteria, testing expectations, deployment expectations, and any branch or base-branch constraints.",
     "Ask concise follow-up questions, keep the conversation focused, and do not start planning until the operator explicitly confirms requirements are clear.",
     "When the request is clear enough, summarize the agreed requirements briefly and ask for explicit confirmation to begin planning.",

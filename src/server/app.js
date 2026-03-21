@@ -276,6 +276,14 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result, 201);
   }
 
+  const taskStopLeadSessionMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/stop-lead-session$/);
+
+  if (request.method === "POST" && taskStopLeadSessionMatch) {
+    const taskId = decodeURIComponent(taskStopLeadSessionMatch[1]);
+    const result = await taskService.stopLeadSession(taskId);
+    return respondServiceResult(response, result);
+  }
+
   const taskConfirmRequirementsMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/confirm-requirements$/);
 
   if (request.method === "POST" && taskConfirmRequirementsMatch) {

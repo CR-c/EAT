@@ -637,7 +637,9 @@
                     </div>
                     <span id="task-lead-session-badge" class="badge badge--outline">待启动</span>
                   </div>
-                  <p id="task-lead-session-summary" class="workspace-chat__summary"></p>
+                  <div class="workspace-chat__status-strip">
+                    <p id="task-lead-session-summary" class="workspace-chat__summary"></p>
+                  </div>
                   <div id="task-lead-session-output" class="workspace-chat__history" aria-live="polite">
                     这里会显示 Leader 的实时输出。
                   </div>
@@ -652,15 +654,26 @@
                         data-i18n-placeholder="sendClarificationReplyPlaceholder"
                       ></textarea>
                     </label>
-                    <div class="workspace-chat__actions">
-                      <button id="send-task-message-button" class="button button--primary" type="submit" data-i18n="sendMessageButton">
-                        发送消息
-                      </button>
-                      <button id="confirm-requirements-button" class="button button--secondary" type="button" data-i18n="confirmRequirementsButton">
-                        已确认需求
-                      </button>
+                    <div class="workspace-chat__composer-meta">
+                      <div class="workspace-chat__context">
+                        <span id="task-message-branch-hint" class="workspace-chat__context-chip">当前分支 · -</span>
+                        <span id="task-message-queue-status" class="workspace-chat__context-chip workspace-chat__context-chip--muted">当前空闲</span>
+                      </div>
+                      <div class="workspace-chat__actions">
+                        <button id="task-message-stop-button" class="button button--ghost" type="button" hidden>
+                          中止执行
+                        </button>
+                        <button id="confirm-requirements-button" class="button button--secondary" type="button" data-i18n="confirmRequirementsButton">
+                          已确认需求
+                        </button>
+                        <button id="send-task-message-button" class="button button--primary workspace-chat__send" type="submit" data-i18n="sendMessageButton">
+                          <span>发送</span>
+                          <span class="workspace-chat__send-hint">Alt+Enter</span>
+                        </button>
+                      </div>
                     </div>
                   </form>
+                  <div id="task-message-queue-list" class="workspace-chat__queue-list" hidden></div>
                 </section>
 
                 <aside class="workspace-sidebar">

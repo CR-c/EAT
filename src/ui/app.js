@@ -223,6 +223,19 @@ const UI_MESSAGES = {
     leaderConversationPlanReadySummary: "Leader 已给出任务拆分方案。先检查下面的分配预览，再决定是否进入计划审阅。",
     leaderConversationExecutionSummary: "需求和分配已确认。后续由 Leader 继续编排执行，操作员不直接和子 agent 对话。",
     leaderConversationEmptyOutput: "这里会显示 Leader 的实时输出。",
+    taskMessageBranchHint: "当前分支 · {branch}",
+    taskMessageQueueIdle: "当前空闲",
+    taskMessageQueueRunning: "Leader 正在处理当前消息",
+    taskMessageQueueQueued: "{count} 条消息排队中，空闲后自动发送",
+    taskMessageQueuePaused: "队列已暂停，确认后可重新发送",
+    taskMessageQueuedLabel: "排队中",
+    taskMessageRunningLabel: "执行中",
+    taskMessageStoppedLabel: "已中止",
+    taskMessageWithdrawButton: "撤回",
+    taskMessageStopButton: "中止执行",
+    taskMessageStopping: "正在中止...",
+    sendMessageHotkey: "Alt+Enter",
+    sendMessageQueuedButton: "加入排队",
     leaderPlanEyebrow: "Leader 规划",
     leaderPlanTitle: "分配预览",
     leaderPlanEmpty: "还没有可展示的分配方案。",
@@ -872,6 +885,19 @@ const UI_MESSAGES = {
     leaderConversationPlanReadySummary: "The leader has produced an assignment draft. Review the split preview below before moving into plan review.",
     leaderConversationExecutionSummary: "Requirements and allocation are already confirmed. The leader continues orchestrating execution; the operator does not chat with sub-agents directly.",
     leaderConversationEmptyOutput: "The leader's live output will appear here.",
+    taskMessageBranchHint: "Current branch · {branch}",
+    taskMessageQueueIdle: "Idle",
+    taskMessageQueueRunning: "The leader is processing the current message",
+    taskMessageQueueQueued: "{count} queued and will send automatically when idle",
+    taskMessageQueuePaused: "Queue paused. Review and send again when ready.",
+    taskMessageQueuedLabel: "Queued",
+    taskMessageRunningLabel: "Running",
+    taskMessageStoppedLabel: "Stopped",
+    taskMessageWithdrawButton: "Withdraw",
+    taskMessageStopButton: "Stop",
+    taskMessageStopping: "Stopping...",
+    sendMessageHotkey: "Alt+Enter",
+    sendMessageQueuedButton: "Queue",
     leaderPlanEyebrow: "Leader planning",
     leaderPlanTitle: "Allocation preview",
     leaderPlanEmpty: "No assignment preview is available yet.",
@@ -1426,6 +1452,9 @@ const state = {
   liveSessionOutputs: new Map(),
   expandedTaskCards: new Set(),
   leaderPlanDetailState: null,
+  taskMessageInFlight: null,
+  taskMessageQueue: [],
+  taskMessageQueuePaused: false,
   planTemplates: [],
   projectDetail: null,
   projectPathBrowserCurrent: null,
@@ -1643,6 +1672,7 @@ const elements = {
   taskLeadSessionBadge: document.querySelector("#task-lead-session-badge"),
   taskLeadSessionOutput: document.querySelector("#task-lead-session-output"),
   taskLeadSessionSummary: document.querySelector("#task-lead-session-summary"),
+  taskMessageBranchHint: document.querySelector("#task-message-branch-hint"),
   taskCreateBranchSummary: document.querySelector("#task-create-branch-summary"),
   taskCreateFlowSummary: document.querySelector("#task-create-flow-summary"),
   taskCreateJourneySteps: document.querySelector("#task-create-journey-steps"),
@@ -1696,6 +1726,9 @@ const elements = {
   taskMessageForm: document.querySelector("#task-message-form"),
   taskMessageInput: document.querySelector("#task-message-input"),
   taskMessageLabel: document.querySelector("#task-message-label"),
+  taskMessageQueueList: document.querySelector("#task-message-queue-list"),
+  taskMessageQueueStatus: document.querySelector("#task-message-queue-status"),
+  taskMessageStopButton: document.querySelector("#task-message-stop-button"),
   taskPlanDetail: document.querySelector("#task-plan-detail"),
   taskPlanEditor: document.querySelector("#task-plan-editor"),
   taskPlanGraph: document.querySelector("#task-plan-graph"),
@@ -1877,6 +1910,18 @@ elements.taskMessageInput.addEventListener("input", () => {
   if (state.taskDetail) {
     renderTaskMessageComposer(state.taskDetail);
   }
+});
+elements.taskMessageInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && event.altKey) {
+    event.preventDefault();
+
+    void onSendTaskMessage({
+      preventDefault() {},
+    });
+  }
+});
+elements.taskMessageStopButton?.addEventListener("click", () => {
+  void onStopActiveTaskMessage();
 });
 elements.taskPlanAddSubtaskButton.addEventListener("click", onAddPlanSubtask);
 elements.taskPlanApplyTemplateButton.addEventListener("click", onApplyPlanTemplate);
@@ -2673,6 +2718,129 @@ async function onStartClarification(initialContent = null) {
   }
 }
 
+function createLocalTaskMessage(content, status = "queued") {
+  return {
+    content,
+    createdAt: new Date().toISOString(),
+    id: `local-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    status,
+    taskId: state.selectedTaskId,
+  };
+}
+
+function resetTaskMessageQueueState(options = {}) {
+  state.taskMessageQueue = [];
+  state.taskMessageQueuePaused = false;
+
+  const activeMessage = state.taskMessageInFlight;
+  state.taskMessageInFlight = null;
+  activeMessage?.controller?.abort?.();
+
+  if (options.clearInput && elements.taskMessageInput) {
+    elements.taskMessageInput.value = "";
+  }
+}
+
+function removeQueuedTaskMessage(messageId) {
+  state.taskMessageQueue = state.taskMessageQueue.filter((message) => message.id !== messageId);
+  if (state.taskDetail?.task) {
+    renderTaskMessageComposer(state.taskDetail);
+    renderLeaderConversation(state.taskDetail);
+  }
+}
+
+async function processNextQueuedTaskMessage() {
+  if (state.taskMessageInFlight || state.taskMessageQueuePaused || state.taskMessageQueue.length === 0) {
+    if (state.taskDetail?.task) {
+      renderTaskMessageComposer(state.taskDetail);
+      renderLeaderConversation(state.taskDetail);
+    }
+    return;
+  }
+
+  const [nextMessage, ...remaining] = state.taskMessageQueue;
+  state.taskMessageQueue = remaining;
+  await submitTaskMessageNow(nextMessage);
+}
+
+async function submitTaskMessageNow(message) {
+  if (!state.selectedTaskId) {
+    return;
+  }
+
+  const taskId = state.selectedTaskId;
+  const taskStatus = state.taskDetail?.task?.status ?? null;
+  const controller = new AbortController();
+  const inFlightMessage = {
+    ...message,
+    controller,
+    status: "running",
+    stopRequested: false,
+    taskId,
+  };
+
+  state.taskMessageInFlight = inFlightMessage;
+  renderTaskMessageComposer(state.taskDetail);
+  renderLeaderConversation(state.taskDetail);
+
+  try {
+    if (taskStatus === "DRAFT") {
+      connectTaskStream(taskId);
+      const response = await fetchJson(`/api/tasks/${encodeURIComponent(taskId)}/start-clarification`, {
+        body: { content: message.content },
+        method: "POST",
+        signal: controller.signal,
+      });
+
+      if (state.selectedTaskId === taskId) {
+        state.taskDetail = {
+          ...state.taskDetail,
+          sessions: [response.session],
+          task: response.task,
+        };
+      }
+    } else {
+      await fetchJson(`/api/tasks/${encodeURIComponent(taskId)}/messages`, {
+        body: { content: message.content },
+        method: "POST",
+        signal: controller.signal,
+      });
+    }
+
+    if (state.taskMessageInFlight?.id === inFlightMessage.id) {
+      state.taskMessageInFlight = null;
+    }
+
+    if (state.selectedTaskId === taskId) {
+      await loadTaskDetail(taskId, { preserveStream: true });
+    }
+  } catch (error) {
+    const aborted = controller.signal.aborted || error?.name === "AbortError";
+
+    if (!aborted) {
+      state.taskMessageQueuePaused = true;
+      showFeedback(elements.taskDetailFeedback, "error", buildTaskErrorMessage(error));
+
+      if (elements.taskMessageInput && state.selectedTaskId === taskId) {
+        elements.taskMessageInput.value = message.content;
+      }
+    }
+  } finally {
+    if (state.taskMessageInFlight?.id === inFlightMessage.id) {
+      state.taskMessageInFlight = null;
+    }
+
+    if (state.selectedTaskId === taskId) {
+      renderTaskMessageComposer(state.taskDetail);
+      renderLeaderConversation(state.taskDetail);
+    }
+
+    if (!state.taskMessageQueuePaused) {
+      await processNextQueuedTaskMessage();
+    }
+  }
+}
+
 async function onSendTaskMessage(event) {
   event.preventDefault();
 
@@ -2681,32 +2849,65 @@ async function onSendTaskMessage(event) {
   }
 
   clearFeedback(elements.taskDetailFeedback);
-  setButtonBusy(elements.sendTaskMessageButton, true, t("sending"));
+  const content = elements.taskMessageInput.value.trim();
+
+  if (!content) {
+    renderTaskMessageComposer(state.taskDetail);
+    return;
+  }
+
+  const message = createLocalTaskMessage(content, state.taskMessageInFlight ? "queued" : "running");
+  elements.taskMessageInput.value = "";
+
+  if (state.taskMessageInFlight) {
+    state.taskMessageQueue.push(message);
+    renderTaskMessageComposer(state.taskDetail);
+    renderLeaderConversation(state.taskDetail);
+    return;
+  }
+
+  state.taskMessageQueuePaused = false;
+  await submitTaskMessageNow(message);
+}
+
+async function onStopActiveTaskMessage() {
+  const activeMessage = state.taskMessageInFlight;
+
+  if (!activeMessage || !state.selectedTaskId) {
+    return;
+  }
+
+  activeMessage.stopRequested = true;
+  state.taskMessageQueuePaused = true;
+  renderTaskMessageComposer(state.taskDetail);
 
   try {
-    const content = elements.taskMessageInput.value.trim();
-    const taskStatus = state.taskDetail?.task?.status ?? null;
-
-    if (taskStatus === "DRAFT") {
-      await onStartClarification(content);
-    } else {
-      await fetchJson(`/api/tasks/${encodeURIComponent(state.selectedTaskId)}/messages`, {
-        body: { content },
-        method: "POST",
-      });
-    }
-
-    elements.taskMessageInput.value = "";
-    await loadTaskDetail(state.selectedTaskId, { preserveStream: true });
+    await fetchJson(`/api/tasks/${encodeURIComponent(state.selectedTaskId)}/stop-lead-session`, {
+      method: "POST",
+    });
   } catch (error) {
-    showFeedback(elements.taskDetailFeedback, "error", buildTaskErrorMessage(error));
-  } finally {
-    setButtonBusy(
-      elements.sendTaskMessageButton,
-      false,
-      state.taskDetail?.task?.status === "DRAFT" ? t("startClarificationDraftButton") : t("sendMessageButton"),
+    if (error?.code !== "SESSION_NOT_RUNNING") {
+      showFeedback(elements.taskDetailFeedback, "error", buildTaskErrorMessage(error));
+      return;
+    }
+  }
+
+  activeMessage.controller?.abort?.();
+
+  await loadTaskDetail(state.selectedTaskId, { preserveStream: true }).catch(() => null);
+
+  if (elements.taskMessageInput) {
+    elements.taskMessageInput.value = activeMessage.content;
+    elements.taskMessageInput.focus();
+    elements.taskMessageInput.setSelectionRange(
+      elements.taskMessageInput.value.length,
+      elements.taskMessageInput.value.length,
     );
   }
+
+  state.taskMessageInFlight = null;
+  renderTaskMessageComposer(state.taskDetail);
+  renderLeaderConversation(state.taskDetail);
 }
 
 async function onConfirmRequirements() {
@@ -2843,6 +3044,10 @@ async function loadTaskDetail(taskId, options = {}) {
   if (!taskId) {
     clearTaskDetail();
     return;
+  }
+
+  if (state.selectedTaskId && state.selectedTaskId !== taskId) {
+    resetTaskMessageQueueState({ clearInput: true });
   }
 
   clearFeedback(elements.taskDetailFeedback);
@@ -3537,6 +3742,7 @@ function renderTaskDetail() {
 
   elements.startClarificationButton.hidden = true;
   elements.confirmRequirementsButton.hidden = !canConfirmRequirements;
+  elements.confirmRequirementsButton.disabled = Boolean(state.taskMessageInFlight || state.taskMessageQueue.length > 0);
   if (elements.taskActions) {
     elements.taskActions.hidden = true;
   }
@@ -3573,6 +3779,8 @@ function renderLeaderConversation(detail) {
   if (elements.taskLeadSessionOutput) {
     renderLeaderConversationHistory(detail.messages ?? [], liveOutput, leadSession);
   }
+
+  renderTaskMessageQueueList();
 }
 
 function renderLeaderPlanPreview(detail) {
@@ -3664,10 +3872,31 @@ function renderLeaderPlanDetailDialog() {
 function renderLeaderConversationHistory(messages, liveOutput, leadSession) {
   elements.taskLeadSessionOutput.replaceChildren();
 
-  const lastAssistantMessage = [...messages].reverse().find((message) => message.role === "ASSISTANT")?.content?.trim();
+  const lastAssistantMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "ASSISTANT" || message.role === "LEAD_AGENT")
+    ?.content
+    ?.trim();
   const shouldRenderLiveOutput = liveOutput.trim().length > 0 && liveOutput.trim() !== lastAssistantMessage;
+  const localMessages = [];
 
-  if (messages.length === 0 && !shouldRenderLiveOutput) {
+  if (state.taskMessageInFlight && state.taskMessageInFlight.taskId === state.selectedTaskId) {
+    localMessages.push({
+      ...state.taskMessageInFlight,
+      localState: "running",
+      role: "USER",
+    });
+  }
+
+  for (const queuedMessage of state.taskMessageQueue.filter((message) => message.taskId === state.selectedTaskId)) {
+    localMessages.push({
+      ...queuedMessage,
+      localState: state.taskMessageQueuePaused ? "paused" : "queued",
+      role: "USER",
+    });
+  }
+
+  if (messages.length === 0 && !shouldRenderLiveOutput && localMessages.length === 0) {
     const empty = document.createElement("div");
     empty.className = "workspace-chat__empty";
     empty.textContent = t("leaderConversationEmptyOutput");
@@ -3679,25 +3908,89 @@ function renderLeaderConversationHistory(messages, liveOutput, leadSession) {
     elements.taskLeadSessionOutput.append(buildConversationMessage(message.role, message.content, message.createdAt));
   }
 
-  if (shouldRenderLiveOutput) {
-    elements.taskLeadSessionOutput.append(buildConversationMessage("ASSISTANT", liveOutput, leadSession?.updatedAt ?? new Date().toISOString(), { live: true }));
+  if (state.taskMessageInFlight?.taskId === state.selectedTaskId) {
+    elements.taskLeadSessionOutput.append(buildConversationMessage(
+      "USER",
+      state.taskMessageInFlight.content,
+      state.taskMessageInFlight.createdAt,
+      { localState: "running" },
+    ));
   }
+
+  if (shouldRenderLiveOutput) {
+    elements.taskLeadSessionOutput.append(buildConversationMessage(
+      "ASSISTANT",
+      liveOutput,
+      leadSession?.updatedAt ?? new Date().toISOString(),
+      { live: true },
+    ));
+  }
+
+  for (const queuedMessage of state.taskMessageQueue.filter((message) => message.taskId === state.selectedTaskId)) {
+    elements.taskLeadSessionOutput.append(buildConversationMessage(
+      "USER",
+      queuedMessage.content,
+      queuedMessage.createdAt,
+      { localState: state.taskMessageQueuePaused ? "paused" : "queued" },
+    ));
+  }
+
+  elements.taskLeadSessionOutput.scrollTop = elements.taskLeadSessionOutput.scrollHeight;
 }
 
 function buildConversationMessage(role, content, createdAt, options = {}) {
   const article = document.createElement("article");
-  const roleKey = role === "USER" ? "operator" : role === "ASSISTANT" ? "leader" : "system";
-  article.className = `workspace-chat__message workspace-chat__message--${roleKey}${options.live ? " is-live" : ""}`;
+  const roleKey = role === "USER" ? "operator" : (role === "ASSISTANT" || role === "LEAD_AGENT") ? "leader" : "system";
+  const localState = options.localState ?? null;
+  const statusLabel = localState === "running"
+    ? t("taskMessageRunningLabel")
+    : localState === "queued"
+      ? t("taskMessageQueuedLabel")
+      : localState === "paused"
+        ? t("taskMessageStoppedLabel")
+        : options.live
+          ? t("taskMessageRunningLabel")
+          : "";
+  article.className = `workspace-chat__message workspace-chat__message--${roleKey}${options.live ? " is-live" : ""}${localState ? ` is-${localState}` : ""}`;
   article.innerHTML = `
     <div class="workspace-chat__bubble">
-      <div class="workspace-chat__prompt">${escapeHtml(role === "USER" ? "$" : role === "ASSISTANT" ? "lead>" : "#")}</div>
+      <div class="workspace-chat__prompt">${escapeHtml(role === "USER" ? "YOU" : (role === "ASSISTANT" || role === "LEAD_AGENT") ? "LEAD" : "SYS")}</div>
       <div class="workspace-chat__body">
         <p class="workspace-chat__text">${escapeHtml(content).replaceAll("\n", "<br>")}</p>
-        <span class="workspace-chat__time">${escapeHtml(new Date(createdAt).toLocaleTimeString(state.locale, { hour: "2-digit", minute: "2-digit" }))}${options.live ? " · 输出中" : ""}</span>
+        <div class="workspace-chat__meta">
+          ${statusLabel ? `<span class="workspace-chat__state">${escapeHtml(statusLabel)}</span>` : "<span></span>"}
+          <span class="workspace-chat__time">${escapeHtml(new Date(createdAt).toLocaleTimeString(state.locale, { hour: "2-digit", minute: "2-digit" }))}</span>
+        </div>
       </div>
     </div>
   `;
   return article;
+}
+
+function renderTaskMessageQueueList() {
+  if (!elements.taskMessageQueueList) {
+    return;
+  }
+
+  elements.taskMessageQueueList.replaceChildren();
+  const queuedMessages = state.taskMessageQueue.filter((message) => message.taskId === state.selectedTaskId);
+  elements.taskMessageQueueList.hidden = queuedMessages.length === 0;
+
+  for (const queuedMessage of queuedMessages) {
+    const row = document.createElement("div");
+    row.className = "workspace-chat__queue-item";
+    row.innerHTML = `
+      <div class="workspace-chat__queue-copy">
+        <span class="workspace-chat__queue-badge">${escapeHtml(state.taskMessageQueuePaused ? t("taskMessageStoppedLabel") : t("taskMessageQueuedLabel"))}</span>
+        <p class="workspace-chat__queue-text">${escapeHtml(queuedMessage.content)}</p>
+      </div>
+      <button class="button button--ghost workspace-chat__queue-remove" type="button">${escapeHtml(t("taskMessageWithdrawButton"))}</button>
+    `;
+    row.querySelector("button")?.addEventListener("click", () => {
+      removeQueuedTaskMessage(queuedMessage.id);
+    });
+    elements.taskMessageQueueList.append(row);
+  }
 }
 
 function renderTaskMessageComposer(detail) {
@@ -3708,18 +4001,51 @@ function renderTaskMessageComposer(detail) {
   }
 
   const hasDraftMessage = elements.taskMessageInput.value.trim().length > 0;
+  const isRunning = Boolean(state.taskMessageInFlight);
+  const queuedCount = state.taskMessageQueue.filter((message) => message.taskId === state.selectedTaskId).length;
+  const currentBranch = detail?.task?.taskBranchName ?? detail?.task?.baseBranch ?? state.projectDetail?.repoStatus?.currentBranch ?? "-";
+
+  if (elements.taskMessageBranchHint) {
+    elements.taskMessageBranchHint.textContent = t("taskMessageBranchHint", { branch: currentBranch });
+  }
+
+  if (elements.taskMessageQueueStatus) {
+    elements.taskMessageQueueStatus.textContent = state.taskMessageQueuePaused
+      ? t("taskMessageQueuePaused")
+      : isRunning
+        ? queuedCount > 0
+          ? t("taskMessageQueueQueued", { count: queuedCount })
+          : t("taskMessageQueueRunning")
+        : queuedCount > 0
+          ? t("taskMessageQueueQueued", { count: queuedCount })
+          : t("taskMessageQueueIdle");
+  }
+
+  if (elements.taskMessageStopButton) {
+    elements.taskMessageStopButton.hidden = !isRunning;
+    elements.taskMessageStopButton.disabled = !isRunning;
+    elements.taskMessageStopButton.textContent = state.taskMessageQueuePaused && isRunning
+      ? t("taskMessageStopping")
+      : t("taskMessageStopButton");
+  }
 
   if (taskStatus === "DRAFT") {
     elements.taskMessageLabel.textContent = t("startClarificationDraftLabel");
     elements.taskMessageInput.setAttribute("placeholder", t("startClarificationDraftPlaceholder"));
-    elements.sendTaskMessageButton.textContent = t("startClarificationDraftButton");
+    elements.sendTaskMessageButton.innerHTML = `
+      <span>${escapeHtml(isRunning ? t("sendMessageQueuedButton") : t("startClarificationDraftButton"))}</span>
+      <span class="workspace-chat__send-hint">${escapeHtml(t("sendMessageHotkey"))}</span>
+    `;
     elements.sendTaskMessageButton.disabled = !hasDraftMessage;
     return;
   }
 
   elements.taskMessageLabel.textContent = t("sendClarificationReplyLabel");
   elements.taskMessageInput.setAttribute("placeholder", t("sendClarificationReplyPlaceholder"));
-  elements.sendTaskMessageButton.textContent = t("sendMessageButton");
+  elements.sendTaskMessageButton.innerHTML = `
+    <span>${escapeHtml(isRunning ? t("sendMessageQueuedButton") : t("sendMessageButton"))}</span>
+    <span class="workspace-chat__send-hint">${escapeHtml(t("sendMessageHotkey"))}</span>
+  `;
   elements.sendTaskMessageButton.disabled = !hasDraftMessage;
 }
 
@@ -5467,6 +5793,7 @@ function clearTaskList() {
 }
 
 function clearTaskDetail() {
+  resetTaskMessageQueueState({ clearInput: true });
   state.executionDrafts = new Map();
   state.liveSessionOutputs = new Map();
   state.selectedExecutionSessionId = null;
@@ -5524,6 +5851,21 @@ function clearTaskDetail() {
   }
   if (elements.taskLeadSessionOutput) {
     elements.taskLeadSessionOutput.textContent = t("leaderConversationEmptyOutput");
+  }
+  if (elements.taskMessageBranchHint) {
+    elements.taskMessageBranchHint.textContent = t("taskMessageBranchHint", { branch: "-" });
+  }
+  if (elements.taskMessageQueueStatus) {
+    elements.taskMessageQueueStatus.textContent = t("taskMessageQueueIdle");
+  }
+  if (elements.taskMessageQueueList) {
+    elements.taskMessageQueueList.replaceChildren();
+    elements.taskMessageQueueList.hidden = true;
+  }
+  if (elements.taskMessageStopButton) {
+    elements.taskMessageStopButton.hidden = true;
+    elements.taskMessageStopButton.disabled = true;
+    elements.taskMessageStopButton.textContent = t("taskMessageStopButton");
   }
   if (elements.taskLeaderPlanBadge) {
     elements.taskLeaderPlanBadge.textContent = t("leaderPlanWaitingBadge");
@@ -6917,6 +7259,7 @@ async function fetchJson(url, options = {}) {
     body: options.body ? JSON.stringify(options.body) : undefined,
     headers: options.body ? { "content-type": "application/json" } : undefined,
     method: options.method ?? "GET",
+    signal: options.signal,
   });
   const payload = await response.json();
 

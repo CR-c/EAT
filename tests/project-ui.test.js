@@ -56,9 +56,21 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /直接输入路径/);
     assert.match(rootResponse.body, /浏览该路径/);
     assert.match(rootResponse.body, /使用当前目录/);
-    assert.match(rootResponse.body, /Lead 会话转录/);
+    assert.match(rootResponse.body, /任务列表/);
+    assert.match(rootResponse.body, /工作区/);
+    assert.match(rootResponse.body, /id="view-workspace"/);
+    assert.match(rootResponse.body, /id="workspace-picker-dialog"/);
+    assert.match(rootResponse.body, /id="workspace-picker-search-input"/);
+    assert.match(rootResponse.body, /id="task-page-list"/);
+    assert.match(rootResponse.body, /Leader 对话/);
+    assert.match(rootResponse.body, /task-message-branch-hint/);
+    assert.match(rootResponse.body, /task-message-queue-status/);
+    assert.match(rootResponse.body, /task-message-stop-button/);
+    assert.match(rootResponse.body, /Alt\+Enter/);
     assert.match(rootResponse.body, /当前阶段与下一步/);
     assert.match(rootResponse.body, /task-next-action-button/);
+    assert.match(rootResponse.body, /分配预览/);
+    assert.match(rootResponse.body, /leader-plan-detail-dialog/);
     assert.match(rootResponse.body, /当前计划草稿/);
     assert.match(rootResponse.body, /模板种子/);
     assert.match(rootResponse.body, /应用模板/);
@@ -90,7 +102,7 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /Rebase 并重试/);
     assert.match(rootResponse.body, /恢复合并/);
     assert.match(rootResponse.body, /清理警告/);
-    assert.match(rootResponse.body, /Lead 与团队生命周期/);
+    assert.match(rootResponse.body, /Leader 编排/);
     assert.match(rootResponse.body, /重新派发成员/);
     assert.match(rootResponse.body, /取消成员/);
     assert.match(rootResponse.body, /替换 worker/);
@@ -115,6 +127,8 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(cssResponse.body, /choice-pill/);
     assert.match(cssResponse.body, /task-journey-step/);
     assert.match(cssResponse.body, /task-stage-board/);
+    assert.match(cssResponse.body, /workspace-chat__queue-list/);
+    assert.match(cssResponse.body, /workspace-chat__status-strip/);
 
     assert.equal(jsResponse.status, 200);
     assert.match(jsResponse.headers.get("content-type"), /^text\/javascript/);

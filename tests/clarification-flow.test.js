@@ -211,6 +211,120 @@ test("persists the first lead reply even when it is emitted immediately after th
   }
 });
 
+test("stops an active lead turn and resumes clarification with a fresh lead session", async () => {
+  const fixture = await makeTempDir("eat-clarification-stop-resume-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const server = await startServer({
+      agentService: createInterruptibleClarificationAgentService(),
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "clarification-stop-repo", { defaultBranch: "main" });
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Need to stop the current lead turn and continue clarifying.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Stop and resume lead turn",
+        },
+        method: "POST",
+      });
+
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskResponse.body.task.id, (event) => {
+        events.push(event);
+      });
+
+      try {
+        const startResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+          {
+            body: { content: "Start the first clarification turn." },
+            method: "POST",
+          },
+        );
+        assert.equal(startResponse.status, 200);
+
+        await nextEvent(events, (entry) => entry.eventName === "task:lead-message");
+
+        const address = server.address();
+        const pendingMessagePromise = fetch(
+          new URL(`/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/messages`, `http://127.0.0.1:${address.port}`),
+          {
+            body: JSON.stringify({ content: "This turn should be interrupted by the operator." }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          },
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        const stopResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/stop-lead-session`,
+          { method: "POST" },
+        );
+        assert.equal(stopResponse.status, 200);
+
+        const sessionEndedEvent = await nextEvent(
+          events,
+          (entry) => entry.eventName === "session:ended" && entry.data.status === "CANCELLED",
+        );
+        assert.equal(sessionEndedEvent.data.status, "CANCELLED");
+
+        const interruptedMessageResponse = await pendingMessagePromise;
+        assert.ok(interruptedMessageResponse.status >= 400);
+
+        const resumedMessageResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/messages`,
+          {
+            body: { content: "Resume the conversation after the stop." },
+            method: "POST",
+          },
+        );
+        assert.equal(resumedMessageResponse.status, 201);
+
+        const resumedLeadMessage = await nextEvent(
+          events,
+          (entry) => entry.eventName === "task:lead-message" && /Resumed by runtime 2/i.test(entry.data.content),
+        );
+        assert.match(resumedLeadMessage.data.content, /Resumed by runtime 2/i);
+
+        const detailResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+        );
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.status, "CLARIFYING");
+        assert.equal(
+          detailResponse.body.sessions.filter((session) => session.sessionType === "LEAD").length,
+          2,
+        );
+        assert.equal(detailResponse.body.sessions[0].status, "CANCELLED");
+        assert.equal(detailResponse.body.sessions[1].status, "RUNNING");
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("regenerates after an invalid syntactically valid plan and only snapshots the valid retry", async () => {
   const fixture = await makeTempDir("eat-plan-regeneration-");
 
@@ -1023,6 +1137,80 @@ function createImmediateReplyClarificationAgentService() {
 
           for (const listener of outputListeners) {
             listener("Immediate reply captured before any later turn.\n");
+          }
+        },
+        async stop() {
+          for (const listener of exitListeners) {
+            listener(0);
+          }
+        },
+      };
+    },
+  });
+
+  return new AgentService({ agentRegistry: registry });
+}
+
+function createInterruptibleClarificationAgentService() {
+  const registry = new AgentRegistry();
+  let runtimeCounter = 0;
+
+  registry.register({
+    capabilities: {
+      canExecute: true,
+      canOrchestrate: true,
+      description: "Lead clarification adapter that can be interrupted and resumed",
+      supportedSandboxTypes: [SESSION_SANDBOX_TYPES.HOST],
+      supportsInteractiveInput: true,
+      supportsVision: true,
+    },
+    async healthCheck() {
+      return {
+        available: true,
+        version: "1.0.0-test",
+      };
+    },
+    name: "healthy-lead",
+    async spawnSession() {
+      runtimeCounter += 1;
+      const runtimeId = runtimeCounter;
+      const outputListeners = new Set();
+      const exitListeners = new Set();
+      let sendCount = 0;
+      let blockedReject = null;
+
+      return {
+        containerId: null,
+        pid: 4500 + runtimeId,
+        sessionId: `interruptible-lead-${runtimeId}`,
+        async kill() {
+          blockedReject?.(new Error("Lead session interrupted by operator."));
+          for (const listener of exitListeners) {
+            listener(1);
+          }
+        },
+        onExit(callback) {
+          exitListeners.add(callback);
+        },
+        onOutput(callback) {
+          outputListeners.add(callback);
+        },
+        async sendInput(message) {
+          if (message.includes("Generate the execution plan as JSON only")) {
+            return;
+          }
+
+          sendCount += 1;
+
+          if (runtimeId === 1 && sendCount === 2) {
+            await new Promise((_, reject) => {
+              blockedReject = reject;
+            });
+            return;
+          }
+
+          for (const listener of outputListeners) {
+            listener(`Resumed by runtime ${runtimeId}: ${message}\n`);
           }
         },
         async stop() {
