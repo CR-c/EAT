@@ -20,19 +20,106 @@ export const PLAN_VALIDATION_ERROR_CODES = Object.freeze({
 });
 
 const BRANCH_SUFFIX_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const GENERIC_AGENT_ALIASES = new Set([
+  "architect",
+  "backend",
+  "backend-specialist",
+  "codex",
+  "default",
+  "default-agent",
+  "default-lead",
+  "default-worker",
+  "frontend",
+  "frontend-specialist",
+  "fullstack-generalist",
+  "general-purpose",
+  "generalist",
+  "integration",
+  "leader",
+  "qa",
+  "qa-specialist",
+  "tester",
+  "worker",
+]);
 
-export function buildPlanningPrompt(task) {
+const AGENCY_INSPIRED_ROLE_GUIDES = Object.freeze([
+  {
+    role: "frontend-developer",
+    scope: "UI implementation, client state wiring, accessibility, responsive behavior, browser performance",
+  },
+  {
+    role: "backend-architect",
+    scope: "API contracts, auth, data access, schema changes, validation, security, server-side performance",
+  },
+  {
+    role: "ux-architect",
+    scope: "information architecture, interaction structure, CSS systems, design-system alignment, implementation constraints",
+  },
+  {
+    role: "devops-automator",
+    scope: "CI/CD, deployment automation, environment wiring, release gates, observability, rollback safety",
+  },
+  {
+    role: "rapid-prototyper",
+    scope: "MVP spikes, thin vertical slices, validation scaffolding, fast proof-of-concept work",
+  },
+  {
+    role: "code-reviewer",
+    scope: "correctness review, regression risk analysis, security/performance review, test-gap verification",
+  },
+  {
+    role: "senior-developer",
+    scope: "cross-cutting refactors, ambiguous implementation slices, legacy modernization, tricky integration work",
+  },
+  {
+    role: "reality-checker",
+    scope: "evidence-based release readiness, production gate checks, verification summaries, unresolved-risk surfacing",
+  },
+]);
+
+export function buildPlanningPrompt(task, options = {}) {
+  const availableAgentNames = normalizeAvailableAgentNames(options.availableAgentNames);
+  const fallbackAgentName = resolveFallbackAgentName({
+    availableAgentNames,
+    defaultAgentType: options.defaultAgentType,
+  });
+
   return [
+    "Planning mode is now active. Requirements are finalized.",
+    "Ignore earlier conversation instructions that said to keep clarifying or wait for more confirmation.",
+    "Your next response must be a single JSON object only. Do not output prose, bullet lists, commentary, or role explanations outside the JSON object.",
     "Requirements are confirmed. Generate the execution plan as JSON only.",
     "Return an object with a non-empty `nodes` array.",
     "Each node must include `title`, `description`, `role`, `recommended_agent`, `branch_suffix`, `deliverable`, `acceptance_criteria`, and `template_hint`.",
     "`acceptance_criteria` must be a non-empty string array.",
     "Optional per-node fields: `depends_on` (array of earlier `branch_suffix` values) and `estimated_scope`.",
     "Optional top-level field: `notes`.",
+    "For the `role` field, prefer concise kebab-case specialist roles instead of generic labels.",
+    "Choose roles so each node has one clear owner, one primary discipline, and one concrete deliverable.",
+    "Do not assign build work to review-only roles, and do not assign release or infra work to pure UI roles.",
+    buildAgencyInspiredRoleGuidance(),
+    availableAgentNames.length > 0
+      ? `Use only these exact agent names for every recommended_agent value: ${availableAgentNames.join(", ")}.`
+      : null,
+    fallbackAgentName
+      ? `If you are unsure which agent to use, set recommended_agent to ${fallbackAgentName}.`
+      : null,
     "Do not wrap the response in prose outside the JSON payload.",
     `Task title: ${task.title}`,
     `Requirement description: ${task.description}`,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
+}
+
+function buildAgencyInspiredRoleGuidance() {
+  const lines = [
+    "Agency-inspired role guidance:",
+  ];
+
+  for (const guide of AGENCY_INSPIRED_ROLE_GUIDES) {
+    lines.push(`- ${guide.role}: ${guide.scope}.`);
+  }
+
+  return lines.join("\n");
 }
 
 export function parsePlanDraftText(text) {
@@ -88,6 +175,13 @@ export function validatePlanDraft(payload, options = {}) {
   }
 
   const agentHealth = options.agentHealth ?? {};
+  const availableAgentNames = normalizeAvailableAgentNames(Object.entries(agentHealth)
+    .filter(([, snapshot]) => snapshot?.available === true)
+    .map(([name]) => name));
+  const defaultAgentType = resolveFallbackAgentName({
+    availableAgentNames,
+    defaultAgentType: options.defaultAgentType,
+  });
   const seenBranchSuffixes = new Set();
   const duplicates = new Set();
   const subtasks = [];
@@ -113,7 +207,12 @@ export function validatePlanDraft(payload, options = {}) {
       );
     }
 
-    const recommendedAgent = normalizeRequiredString(rawNode?.recommended_agent);
+    const requestedAgent = normalizeRequiredString(rawNode?.recommended_agent);
+    const recommendedAgent = resolveRecommendedAgent(requestedAgent, {
+      agentHealth,
+      availableAgentNames,
+      defaultAgentType,
+    });
     const snapshot = recommendedAgent ? agentHealth[recommendedAgent] ?? null : null;
 
     if (!recommendedAgent || snapshot?.available !== true) {
@@ -124,6 +223,7 @@ export function validatePlanDraft(payload, options = {}) {
           failureReason: snapshot?.failureReason ?? null,
           index,
           recommendedAgent,
+          requestedAgent,
         },
       );
     }
@@ -377,6 +477,16 @@ function normalizeOptionalString(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizeAvailableAgentNames(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value
+    .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim()))];
+}
+
 function normalizeDependsOn(value) {
   if (value === undefined || value === null) {
     return {
@@ -469,4 +579,47 @@ function normalizeRoleAwareString(value, requiredError, fallback) {
     ok: true,
     value: fallback,
   };
+}
+
+function resolveRecommendedAgent(requestedAgent, options) {
+  if (!requestedAgent) {
+    return null;
+  }
+
+  if (options.agentHealth?.[requestedAgent]?.available === true) {
+    return requestedAgent;
+  }
+
+  const caseInsensitiveMatch = options.availableAgentNames
+    .find((agentName) => agentName.toLowerCase() === requestedAgent.toLowerCase());
+
+  if (caseInsensitiveMatch) {
+    return caseInsensitiveMatch;
+  }
+
+  const fallbackAgentName = resolveFallbackAgentName(options);
+
+  if (!fallbackAgentName) {
+    return requestedAgent;
+  }
+
+  if (options.availableAgentNames.length === 1) {
+    return fallbackAgentName;
+  }
+
+  if (GENERIC_AGENT_ALIASES.has(requestedAgent.toLowerCase())) {
+    return fallbackAgentName;
+  }
+
+  return requestedAgent;
+}
+
+function resolveFallbackAgentName(options = {}) {
+  const explicitAgentName = normalizeRequiredString(options.defaultAgentType);
+
+  if (explicitAgentName && options.availableAgentNames?.includes(explicitAgentName)) {
+    return explicitAgentName;
+  }
+
+  return options.availableAgentNames?.[0] ?? null;
 }

@@ -14,7 +14,7 @@ import { SESSION_SANDBOX_TYPES } from "../src/agents/agent-contract.js";
 
 const execFileAsync = promisify(execFile);
 
-test("creates a task, snapshots the selected branch commit, and persists task-scoped attachments", async () => {
+test("creates a task from a fresh baseline branch, snapshots the derived commit, and persists task-scoped attachments", async () => {
   const fixture = await makeTempDir("eat-task-api-");
 
   try {
@@ -47,7 +47,9 @@ test("creates a task, snapshots the selected branch commit, and persists task-sc
               mimeType: "text/markdown",
             },
           ],
-          baseBranch: "main",
+          baseBranch: "task/main/lead-clarification",
+          baseBranchMode: "new",
+          baseBranchStartPoint: "main",
           description: "Clarify the implementation scope.",
           leadAgentType: "healthy-lead",
           projectId: registerResponse.body.project.id,
@@ -58,8 +60,13 @@ test("creates a task, snapshots the selected branch commit, and persists task-sc
 
       assert.equal(createResponse.status, 201);
       assert.equal(createResponse.body.task.status, "DRAFT");
+      assert.equal(createResponse.body.task.baseBranch, "task/main/lead-clarification");
       assert.equal(createResponse.body.task.baseCommitSha, expectedSha);
       assert.equal(createResponse.body.attachments.length, 1);
+      assert.equal(
+        await git(repo.repoPath, ["rev-parse", "task/main/lead-clarification^{commit}"]),
+        expectedSha,
+      );
 
       const detailResponse = await requestJson(
         server,
@@ -181,6 +188,53 @@ test("rejects task creation when the selected lead agent is unhealthy", async ()
 
       assert.equal(createResponse.status, 400);
       assert.equal(createResponse.body.error.code, "LEAD_AGENT_UNHEALTHY");
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("requires an explicit first operator message before starting clarification", async () => {
+  const fixture = await makeTempDir("eat-task-api-start-clarification-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const uploadRootPath = path.join(fixture.path, "uploads");
+    const repo = await createRepository(fixture.path, "clarification-start-repo", { defaultBranch: "main" });
+
+    const server = await startServer({
+      agentService: createLeadAgentService(),
+      databasePath,
+      uploadRootPath,
+    });
+
+    try {
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Need a real operator opening message.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Opening brief required",
+        },
+        method: "POST",
+      });
+
+      const startResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+        { method: "POST" },
+      );
+
+      assert.equal(startResponse.status, 400);
+      assert.equal(startResponse.body.error.code, "TASK_MESSAGE_REQUIRED");
     } finally {
       await stopServer(server);
     }

@@ -13,8 +13,8 @@ import { TaskService, TASK_SERVICE_ERROR_CODES } from "../services/task-service.
 import { TaskEventBus } from "../services/task-event-bus.js";
 
 const uiDirectoryPath = fileURLToPath(new URL("../ui/", import.meta.url));
+const STATIC_CACHE_CONTROL = "no-store";
 const STATIC_ROUTES = new Map([
-  ["/", { contentType: "text/html; charset=utf-8", filePath: path.join(uiDirectoryPath, "index.html") }],
   ["/app.css", { contentType: "text/css; charset=utf-8", filePath: path.join(uiDirectoryPath, "app.css") }],
   ["/app.js", { contentType: "text/javascript; charset=utf-8", filePath: path.join(uiDirectoryPath, "app.js") }],
   ["/view-model.js", { contentType: "text/javascript; charset=utf-8", filePath: path.join(uiDirectoryPath, "view-model.js") }],
@@ -36,6 +36,7 @@ export function createApp(options = {}) {
   const metricsService = options.metricsService ?? new MetricsService({
     taskRepository,
   });
+  const uiAssetVersion = options.uiAssetVersion ?? createUiAssetVersion();
   const taskService = options.taskService ?? new TaskService({
     agentService,
     eventBus,
@@ -55,6 +56,7 @@ export function createApp(options = {}) {
         projectService,
         systemService,
         taskService,
+        uiAssetVersion,
       });
     } catch (error) {
       respondJson(response, 500, {
@@ -74,13 +76,25 @@ export function createApp(options = {}) {
 }
 
 async function routeRequest(request, response, services) {
-  const { agentService, eventBus, metricsService, projectService, systemService, taskService } = services;
+  const {
+    agentService,
+    eventBus,
+    metricsService,
+    projectService,
+    systemService,
+    taskService,
+    uiAssetVersion,
+  } = services;
   const url = new URL(request.url, "http://127.0.0.1");
   const pathName = url.pathname;
   const staticRoute = STATIC_ROUTES.get(pathName);
 
+  if (request.method === "GET" && pathName === "/") {
+    return respondIndexHtml(response, uiAssetVersion);
+  }
+
   if (request.method === "GET" && staticRoute) {
-    return respondFile(response, staticRoute.filePath, staticRoute.contentType);
+    return respondStaticAsset(response, staticRoute.filePath, staticRoute.contentType, uiAssetVersion);
   }
 
   if (request.method === "POST" && pathName === "/api/projects") {
@@ -96,6 +110,14 @@ async function routeRequest(request, response, services) {
 
   if (request.method === "GET" && pathName === "/api/projects") {
     const result = await projectService.listProjects();
+    return respondServiceResult(response, result);
+  }
+
+  if (request.method === "GET" && pathName === "/api/projects/browse") {
+    const result = await projectService.browseDirectories({
+      includeHidden: url.searchParams.get("hidden") === "1",
+      path: url.searchParams.get("path"),
+    });
     return respondServiceResult(response, result);
   }
 
@@ -228,7 +250,13 @@ async function routeRequest(request, response, services) {
 
   if (request.method === "POST" && taskStartClarificationMatch) {
     const taskId = decodeURIComponent(taskStartClarificationMatch[1]);
-    const result = await taskService.startClarification(taskId);
+    const body = await readOptionalJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.startClarification(taskId, body.value);
     return respondServiceResult(response, result);
   }
 
@@ -529,6 +557,7 @@ async function respondFile(response, filePath, contentType) {
   try {
     const body = await readFile(filePath);
     response.writeHead(200, {
+      "cache-control": STATIC_CACHE_CONTROL,
       "content-type": contentType,
     });
     response.end(body);
@@ -540,6 +569,53 @@ async function respondFile(response, filePath, contentType) {
       },
     });
   }
+}
+
+async function respondStaticAsset(response, filePath, contentType, uiAssetVersion) {
+  try {
+    const body = await readFile(filePath, "utf8");
+    const output = filePath.endsWith("app.js")
+      ? body.replace('from "./view-model.js";', `from "./view-model.js?v=${uiAssetVersion}";`)
+      : body;
+    response.writeHead(200, {
+      "cache-control": STATIC_CACHE_CONTROL,
+      "content-type": contentType,
+    });
+    response.end(output);
+  } catch {
+    respondJson(response, 500, {
+      error: {
+        code: "STATIC_ASSET_READ_ERROR",
+        message: "Unable to load the requested UI asset.",
+      },
+    });
+  }
+}
+
+async function respondIndexHtml(response, uiAssetVersion) {
+  try {
+    const body = await readFile(path.join(uiDirectoryPath, "index.html"), "utf8");
+    const output = body
+      .replace('href="/app.css"', `href="/app.css?v=${uiAssetVersion}"`)
+      .replace('src="/app.js"', `src="/app.js?v=${uiAssetVersion}"`);
+
+    response.writeHead(200, {
+      "cache-control": STATIC_CACHE_CONTROL,
+      "content-type": "text/html; charset=utf-8",
+    });
+    response.end(output);
+  } catch {
+    respondJson(response, 500, {
+      error: {
+        code: "STATIC_ASSET_READ_ERROR",
+        message: "Unable to load the requested UI asset.",
+      },
+    });
+  }
+}
+
+function createUiAssetVersion() {
+  return Date.now().toString(36);
 }
 
 function stripOk(result) {
@@ -558,6 +634,7 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.ATTACHMENT_SIZE_EXCEEDED:
     case TASK_SERVICE_ERROR_CODES.ATTACHMENT_TYPE_UNSUPPORTED:
     case TASK_SERVICE_ERROR_CODES.AGENT_TYPE_REQUIRED:
+    case TASK_SERVICE_ERROR_CODES.BASE_BRANCH_CREATE_FAILED:
     case TASK_SERVICE_ERROR_CODES.BASE_BRANCH_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.BASE_BRANCH_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.DESCRIPTION_REQUIRED:
@@ -580,6 +657,8 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_PLAN_REVIEW:
     case TASK_SERVICE_ERROR_CODES.TITLE_REQUIRED:
       return 400;
+    case PROJECT_SERVICE_ERROR_CODES.PATH_ACCESS_DENIED:
+      return 403;
     case PROJECT_SERVICE_ERROR_CODES.PROJECT_ALREADY_REGISTERED:
       return 409;
     case PROJECT_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND:

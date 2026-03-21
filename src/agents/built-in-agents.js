@@ -205,13 +205,13 @@ function createStubCliAdapter({ capabilities, name, sandboxManager }) {
     capabilities,
     async healthCheck() {
       return {
-        available: true,
+        available: false,
         checks: [
           {
             details: null,
-            message: "This built-in adapter is still running in explicit stub mode.",
+            message: "This built-in adapter is still running in explicit stub mode and is not treated as a real CLI.",
             name: "runtime",
-            status: "WARN",
+            status: "FAIL",
           },
           {
             details: null,
@@ -220,6 +220,14 @@ function createStubCliAdapter({ capabilities, name, sandboxManager }) {
             status: "SKIP",
           },
         ],
+        reason: {
+          code: AGENT_HEALTH_FAILURE_CODES.HEALTH_CHECK_FAILED,
+          details: {
+            adapter: name,
+            runtimeMode: STUB_RUNTIME_MODE,
+          },
+          message: "Stub adapter is not treated as a real CLI runtime.",
+        },
         version: `${name}@stub`,
       };
     },
@@ -647,7 +655,8 @@ function buildCodexExecArgs({
   sandboxMode,
   workDir,
 }) {
-  const args = [
+  const globalArgs = [];
+  const execArgs = [
     "exec",
     "--skip-git-repo-check",
     "--ephemeral",
@@ -657,27 +666,27 @@ function buildCodexExecArgs({
   ];
 
   if (approvalPolicy) {
-    args.push("-a", approvalPolicy);
+    globalArgs.push("--ask-for-approval", approvalPolicy);
   }
 
   if (sandboxMode) {
-    args.push("-s", sandboxMode);
+    globalArgs.push("--sandbox", sandboxMode);
   }
 
   if (bypassApprovalsAndSandbox) {
-    args.push("--dangerously-bypass-approvals-and-sandbox");
+    globalArgs.push("--dangerously-bypass-approvals-and-sandbox");
   }
 
   if (workDir) {
-    args.push("-C", workDir);
+    globalArgs.push("--cd", workDir);
   }
 
   if (codexModel) {
-    args.push("-m", codexModel);
+    globalArgs.push("--model", codexModel);
   }
 
-  args.push(prompt ?? "");
-  return args;
+  execArgs.push(prompt ?? "");
+  return [...globalArgs, ...execArgs];
 }
 
 function buildCodexStandalonePrompt(config) {

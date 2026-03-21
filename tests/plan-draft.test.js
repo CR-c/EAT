@@ -1,272 +1,107 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  PLAN_DRAFT_PARSE_ERROR_CODES,
-  PLAN_VALIDATION_ERROR_CODES,
-  buildPlanningPrompt,
-  looksLikeCompletePlanText,
-  parsePlanDraftText,
-  validatePlanDraft,
-} from "../src/services/plan-draft.js";
+import { buildPlanningPrompt, validatePlanDraft } from "../src/services/plan-draft.js";
 
-test("buildPlanningPrompt requests JSON-only plan output", () => {
-  const prompt = buildPlanningPrompt({
-    description: "Build Phase 05 planning flow.",
-    title: "Plan generation",
-  });
-
-  assert.match(prompt, /JSON only/i);
-  assert.match(prompt, /nodes/i);
-  assert.match(prompt, /role/i);
-  assert.match(prompt, /deliverable/i);
-  assert.match(prompt, /acceptance_criteria/i);
-  assert.match(prompt, /template_hint/i);
-  assert.match(prompt, /branch_suffix/i);
-  assert.match(prompt, /depends_on/i);
-});
-
-test("parsePlanDraftText extracts markdown-wrapped JSON payloads", () => {
-  const result = parsePlanDraftText(`
-Planning draft:
-
-\`\`\`json
-{
-  "nodes": [
+test("buildPlanningPrompt constrains recommended_agent to real available agent names", () => {
+  const prompt = buildPlanningPrompt(
     {
-      "title": "Build API",
-      "description": "Implement task endpoints.",
-      "role": "backend",
-      "recommended_agent": "codex-cli",
-      "branch_suffix": "build-api",
-      "deliverable": "REST endpoints",
-      "acceptance_criteria": ["Routes are implemented"],
-      "template_hint": "service-implementation"
-    }
-  ]
-}
-\`\`\`
-`);
-
-  assert.equal(result.ok, true);
-  assert.equal(result.payload.nodes[0].branch_suffix, "build-api");
-});
-
-test("parsePlanDraftText rejects payloads without valid JSON", () => {
-  const missingJson = parsePlanDraftText("Plan draft is still thinking.");
-  assert.equal(missingJson.ok, false);
-  assert.equal(missingJson.error.code, PLAN_DRAFT_PARSE_ERROR_CODES.JSON_NOT_FOUND);
-
-  const invalidJson = parsePlanDraftText("```json\n{\"nodes\":[}\n```");
-  assert.equal(invalidJson.ok, false);
-  assert.equal(invalidJson.error.code, PLAN_DRAFT_PARSE_ERROR_CODES.INVALID_JSON);
-});
-
-test("looksLikeCompletePlanText waits for a complete fenced or raw JSON object", () => {
-  assert.equal(looksLikeCompletePlanText("```json\n{\"nodes\": []"), false);
-  assert.equal(looksLikeCompletePlanText("{\"nodes\": []}"), true);
-  assert.equal(looksLikeCompletePlanText("```json\n{\"nodes\": []}\n```"), true);
-});
-
-test("validatePlanDraft normalizes a role-aware DAG plan and still backfills legacy subtask payloads", () => {
-  const validPlan = validatePlanDraft(
-    {
-      notes: "Keep the work parallel-safe.",
-      nodes: [
-        {
-          title: " Backend ",
-          description: " Implement the API ",
-          role: " backend ",
-          recommended_agent: "codex-cli",
-          branch_suffix: "backend-api",
-          deliverable: " API service ",
-          acceptance_criteria: [" Auth routes documented ", " CRUD routes documented "],
-          template_hint: " service-implementation ",
-        },
-        {
-          title: " Frontend ",
-          description: " Build the UI ",
-          role: " frontend ",
-          recommended_agent: "codex-cli",
-          branch_suffix: "frontend-ui",
-          depends_on: ["backend-api"],
-          deliverable: " React app ",
-          acceptance_criteria: [" Build passes "],
-          template_hint: " react-feature ",
-        },
-      ],
+      description: "Implement a todo feature.",
+      title: "Todo feature",
     },
     {
-      agentHealth: {
-        "codex-cli": { available: true },
-      },
+      availableAgentNames: ["codex-cli"],
+      defaultAgentType: "codex-cli",
     },
   );
 
-  assert.equal(validPlan.ok, true);
-  assert.deepEqual(validPlan.plan, {
-    notes: "Keep the work parallel-safe.",
-    nodes: [
-      {
-        acceptance_criteria: ["Auth routes documented", "CRUD routes documented"],
-        branch_suffix: "backend-api",
-        deliverable: "API service",
-        description: "Implement the API",
-        recommended_agent: "codex-cli",
-        role: "backend",
-        template_hint: "service-implementation",
-        title: "Backend",
-      },
-      {
-        acceptance_criteria: ["Build passes"],
-        branch_suffix: "frontend-ui",
-        deliverable: "React app",
-        depends_on: ["backend-api"],
-        description: "Build the UI",
-        recommended_agent: "codex-cli",
-        role: "frontend",
-        template_hint: "react-feature",
-        title: "Frontend",
-      },
-    ],
-    subtasks: [
-      {
-        acceptance_criteria: ["Auth routes documented", "CRUD routes documented"],
-        branch_suffix: "backend-api",
-        deliverable: "API service",
-        description: "Implement the API",
-        recommended_agent: "codex-cli",
-        role: "backend",
-        template_hint: "service-implementation",
-        title: "Backend",
-      },
-      {
-        acceptance_criteria: ["Build passes"],
-        branch_suffix: "frontend-ui",
-        depends_on: ["backend-api"],
-        deliverable: "React app",
-        description: "Build the UI",
-        recommended_agent: "codex-cli",
-        role: "frontend",
-        template_hint: "react-feature",
-        title: "Frontend",
-      },
-    ],
-  });
+  assert.match(prompt, /Use only these exact agent names.*codex-cli/u);
+  assert.match(prompt, /If you are unsure.*codex-cli/u);
+});
 
-  const legacyPlan = validatePlanDraft(
+test("buildPlanningPrompt includes agency-inspired role guidance for planning quality", () => {
+  const prompt = buildPlanningPrompt(
+    {
+      description: "Ship a frontend-heavy feature with deployment and review steps.",
+      title: "Feature delivery",
+    },
+    {
+      availableAgentNames: ["codex-cli"],
+      defaultAgentType: "codex-cli",
+    },
+  );
+
+  assert.match(prompt, /Planning mode is now active\. Requirements are finalized\./u);
+  assert.match(prompt, /Your next response must be a single JSON object only\./u);
+  assert.match(prompt, /For the `role` field, prefer concise kebab-case specialist roles/u);
+  assert.match(prompt, /frontend-developer: UI implementation/u);
+  assert.match(prompt, /backend-architect: API contracts/u);
+  assert.match(prompt, /devops-automator: CI\/CD/u);
+  assert.match(prompt, /code-reviewer: correctness review/u);
+  assert.match(prompt, /reality-checker: evidence-based release readiness/u);
+});
+
+test("validatePlanDraft normalizes generic planner aliases to the only available agent", () => {
+  const validation = validatePlanDraft(
     {
       subtasks: [
         {
-          title: "Legacy backend",
-          description: "Keep older plan payloads compatible.",
-          recommended_agent: "codex-cli",
-          branch_suffix: "legacy-backend",
+          branch_suffix: "plan-discovery",
+          description: "Inspect the repository structure.",
+          recommended_agent: "default",
+          title: "Inspect the repository",
+        },
+        {
+          branch_suffix: "frontend-todo-overview",
+          depends_on: ["plan-discovery"],
+          description: "Build the overview panel.",
+          recommended_agent: "frontend-specialist",
+          title: "Build the overview panel",
         },
       ],
     },
     {
       agentHealth: {
-        "codex-cli": { available: true },
+        "codex-cli": {
+          available: true,
+        },
       },
     },
   );
-  assert.equal(legacyPlan.ok, true);
-  assert.equal(legacyPlan.plan.nodes[0].role, "legacy-backend");
-  assert.equal(legacyPlan.plan.nodes[0].deliverable, "Keep older plan payloads compatible.");
-  assert.deepEqual(legacyPlan.plan.nodes[0].acceptance_criteria, ["Keep older plan payloads compatible."]);
-  assert.equal(legacyPlan.plan.nodes[0].template_hint, "custom");
 
-  const duplicateBranchSuffix = validatePlanDraft(
-    {
-      nodes: [
-        {
-          title: "One",
-          description: "One",
-          role: "one",
-          recommended_agent: "codex-cli",
-          branch_suffix: "dup",
-          deliverable: "One",
-          acceptance_criteria: ["One"],
-          template_hint: "custom",
-        },
-        {
-          title: "Two",
-          description: "Two",
-          role: "two",
-          recommended_agent: "codex-cli",
-          branch_suffix: "dup",
-          deliverable: "Two",
-          acceptance_criteria: ["Two"],
-          template_hint: "custom",
-        },
-      ],
-    },
-    {
-      agentHealth: {
-        "codex-cli": { available: true },
-      },
-    },
+  assert.equal(validation.ok, true);
+  assert.deepEqual(
+    validation.plan.subtasks.map((subtask) => subtask.recommended_agent),
+    ["codex-cli", "codex-cli"],
   );
-  assert.equal(duplicateBranchSuffix.ok, false);
-  assert.equal(duplicateBranchSuffix.error.code, PLAN_VALIDATION_ERROR_CODES.BRANCH_SUFFIX_DUPLICATE);
+});
 
-  const unhealthyAgent = validatePlanDraft(
+test("validatePlanDraft still rejects unknown unavailable agents when multiple real agents exist", () => {
+  const validation = validatePlanDraft(
     {
-      nodes: [
+      subtasks: [
         {
-          title: "One",
-          description: "One",
-          role: "one",
-          recommended_agent: "broken-agent",
-          branch_suffix: "one",
-          deliverable: "One",
-          acceptance_criteria: ["One"],
-          template_hint: "custom",
+          branch_suffix: "backend-slice",
+          description: "Build the backend slice.",
+          recommended_agent: "mystery-agent",
+          title: "Backend slice",
         },
       ],
     },
     {
       agentHealth: {
-        "broken-agent": { available: false, failureReason: { message: "offline" } },
+        "codex-cli": {
+          available: true,
+        },
+        "claude-cli": {
+          available: true,
+        },
       },
+      defaultAgentType: "codex-cli",
     },
   );
-  assert.equal(unhealthyAgent.ok, false);
-  assert.equal(unhealthyAgent.error.code, PLAN_VALIDATION_ERROR_CODES.RECOMMENDED_AGENT_UNHEALTHY);
 
-  const invalidDependsOn = validatePlanDraft(
-    {
-      nodes: [
-        {
-          title: "Frontend",
-          description: "Build the UI",
-          role: "frontend",
-          recommended_agent: "codex-cli",
-          branch_suffix: "frontend-ui",
-          depends_on: ["backend-api"],
-          deliverable: "Frontend",
-          acceptance_criteria: ["Build passes"],
-          template_hint: "react-feature",
-        },
-        {
-          title: "Backend",
-          description: "Build the API",
-          role: "backend",
-          recommended_agent: "codex-cli",
-          branch_suffix: "backend-api",
-          deliverable: "Backend",
-          acceptance_criteria: ["API passes"],
-          template_hint: "service-implementation",
-        },
-      ],
-    },
-    {
-      agentHealth: {
-        "codex-cli": { available: true },
-      },
-    },
-  );
-  assert.equal(invalidDependsOn.ok, false);
-  assert.equal(invalidDependsOn.error.code, PLAN_VALIDATION_ERROR_CODES.DEPENDS_ON_INVALID);
+  assert.equal(validation.ok, false);
+  assert.equal(validation.error.code, "RECOMMENDED_AGENT_UNHEALTHY");
+  assert.equal(validation.error.details.recommendedAgent, "mystery-agent");
 });

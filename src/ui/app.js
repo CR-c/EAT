@@ -24,6 +24,7 @@ const STORAGE_KEYS = {
   selectedTaskId: "eat.phase04.selectedTaskId",
 };
 const DEFAULT_OUTPUT_BUFFER_MAX_BYTES = 65_536;
+const LIVE_STATUS_REFRESH_INTERVAL_MS = 30_000;
 const UI_MESSAGES = {
   "zh-CN": {
     heroEyebrow: "EAT 控制台",
@@ -35,6 +36,36 @@ const UI_MESSAGES = {
     heroCapabilityMailbox: "通过 Web 信箱完成 lead 与子任务交接",
     registerEyebrow: "注册",
     registerTitle: "添加本地仓库",
+    projectPickerEyebrow: "注册",
+    projectPickerTitle: "选择项目路径",
+    projectPickerSummary: "通过系统目录树浏览仓库位置，或直接输入绝对路径。最终仍会按 Git 仓库规则校验。",
+    projectPickerCancelButton: "取消",
+    projectPickerBrowserEyebrow: "浏览",
+    projectPickerBrowserTitle: "系统文件树",
+    projectPickerManualEyebrow: "输入",
+    projectPickerManualTitle: "直接输入路径",
+    projectPickerShortcutLabel: "快速跳转",
+    projectPickerFilterLabel: "筛选目录",
+    projectPickerFilterPlaceholder: "按目录名筛选",
+    projectPickerShowHiddenLabel: "显示隐藏目录",
+    projectPickerCurrentLabel: "当前目录",
+    projectPickerUseCurrentButton: "使用当前目录",
+    projectPickerParentButton: "返回上一级",
+    projectPickerDirectoryEmpty: "当前目录下没有可浏览的子目录。",
+    projectPickerLoading: "目录加载中...",
+    projectPickerNoMatch: "没有匹配当前筛选条件的目录。",
+    projectPickerBrowseInputButton: "浏览该路径",
+    projectPickerSelectedPathLabel: "准备注册",
+    projectPickerNoSelection: "尚未选择路径",
+    projectPickerRootRoot: "系统根目录",
+    projectPickerRootHome: "主目录",
+    projectPickerRootWorkspace: "当前工作区",
+    projectPickerEntryOpen: "进入",
+    projectPickerEntrySelect: "选择",
+    projectPickerEntryRepo: "Git 仓库",
+    projectPickerEntryFolder: "目录",
+    projectPickerEntrySymlink: "符号链接",
+    projectPickerPathPlaceholder: "/home/code/EAT",
     projectPathLabel: "仓库绝对路径",
     projectPathHint: "创建任务前请先注册本地 Git 仓库。允许脏工作区，但会在下方明确提示。",
     registerProjectButton: "注册项目",
@@ -68,9 +99,48 @@ const UI_MESSAGES = {
     dockerSandboxStat: "Docker 沙箱",
     dockerHealthReasonDefault: "Docker 沙箱健康状态会随 Agent 目录一并加载。",
     agentHealthEmpty: "没有找到已注册 Agent。",
+    dashboardTeamEyebrow: "团队",
+    dashboardTeamTitle: "Agent Teams",
+    dashboardTeamSummary: "按 Agent 团队查看当前任务里的工作区、子分支与运行节奏。",
+    dashboardTeamEmpty: "选择一个任务后，这里会按 Agent 团队展示工作区与子分支。",
+    dashboardTeamTaskBadge: "当前任务",
+    dashboardTeamTaskIdle: "暂无任务",
+    dashboardTeamRuntimeMode: "运行模式",
+    dashboardTeamMembers: "成员",
+    dashboardTeamWorkspaceCount: "工作区",
+    dashboardTeamBranchCount: "子分支",
+    dashboardTeamWorkingLine: "RUNNING ACTIVE WORKLOAD CLUSTER",
+    dashboardTeamStandbyLine: "WAITING FOR NEXT INSTRUCTION CLUSTER",
+    dashboardTeamRestingLine: "TEAM IN REST CYCLE",
+    dashboardTeamFaultLine: "OPERATOR REVIEW REQUIRED",
+    dashboardTeamOpenTask: "查看执行",
+    agentCompactActive: "Active Now",
+    agentCompactDegraded: "Need Attention",
+    agentCompactOffline: "Offline",
+    agentCompactStub: "Stub Blocked",
+    agentCompactReadySummary: "真实 CLI 已连接，可参与当前调度。",
+    agentCompactStubSummary: "未接入真实 CLI，已从可选运行时中排除。",
+    agentCompactOfflineSummary: "运行时不可用，当前不参与任务编排。",
+    agentCompactDegradedSummary: "运行时可见，但有检查项需要人工关注。",
     createEyebrow: "创建",
     taskFormTitle: "引导式任务创建",
     taskFormSummary: "选择黄金路径模板后，系统会直接生成一个可审阅的 DAG 草稿；不选模板则保留自定义草稿创建方式。",
+    taskCreateJourneyEyebrow: "执行主线",
+    taskCreateJourneyTitle: "创建后系统会怎么引导你",
+    taskCreateJourneyStandardBadge: "标准路径",
+    taskCreateJourneyGuidedBadge: "模板加速",
+    taskCreateJourneySummaryStandard: "创建后会先进入任务列表，与 lead 澄清需求，再进入计划审阅。",
+    taskCreateJourneySummaryGuided: "模板会先帮你搭好起点。创建后仍会进入任务列表；如果模板已生成草稿，界面会直接提示你去计划审阅。",
+    taskJourneyStepRegister: "注册项目",
+    taskJourneyStepTemplate: "选择模板",
+    taskJourneyStepCreate: "创建任务",
+    taskJourneyStepClarify: "与 Lead 对话",
+    taskJourneyStepPlanReview: "计划审阅",
+    taskJourneyStepExecute: "执行与集成",
+    taskJourneyStateDone: "已完成",
+    taskJourneyStateCurrent: "当前",
+    taskJourneyStateNext: "下一步",
+    taskJourneyStateLater: "后续",
     guidedFlowEyebrow: "黄金路径",
     guidedFlowTitle: "模板与引导步骤",
     guidedFlowEmpty: "模板列表暂时不可用，仍可继续创建自定义任务。",
@@ -83,8 +153,25 @@ const UI_MESSAGES = {
     guidedTemplateClearButton: "切换为自定义草稿",
     guidedDemoTitle: "Todo 演示建议",
     guidedDemoBody: "推荐先选择“全栈 Web 应用”，再使用类似“做一个全栈 Todo 应用，包含认证、数据库和 React 前端。”的标题和描述。",
-    guidedDemoHint: "引导任务会直接进入计划审阅，不会绕过后续的审批、执行监督和 integration gate。",
+    guidedDemoHint: "引导任务会更快到达计划审阅，但不会绕过后续的审批、执行监督和 integration gate。",
+    taskCreateBaselineEyebrow: "执行基线",
+    taskCreateBaselineTitle: "基线与 Lead",
+    taskCreateBriefEyebrow: "任务范围",
+    taskCreateBriefTitle: "任务说明与附件",
     baseBranchLabel: "基线分支",
+    baseBranchModeNewBadge: "新建基线",
+    baseBranchModeExistingBadge: "已有分支",
+    baseBranchModeNewLabel: "默认新建基线分支",
+    baseBranchModeExistingLabel: "直接使用已有分支",
+    baseBranchStartPointLabel: "起始分支",
+    baseBranchNewNameLabel: "新基线分支名",
+    baseBranchNewNamePlaceholder: "task/main/workspace",
+    baseBranchExistingLabel: "已有基线分支",
+    baseBranchSummaryPlaceholder: "将从当前分支派生新的任务基线。",
+    taskCreateFlowSummaryDraft: "创建后会先进入草稿任务，你可以先和 lead 澄清，再进入计划审阅。",
+    taskCreateFlowSummaryGuided: "创建后会先进入任务列表；如果模板已生成草稿，界面会直接提示你去计划审阅。",
+    taskCreateFlowSummaryExisting: "当前将直接使用已有分支 {branch} 作为任务基线。",
+    taskCreateFlowSummaryNew: "将从 {source} 派生新的任务基线 {branch}。",
     leadAgentLabel: "Lead Agent",
     taskTitleLabel: "任务标题",
     taskDescriptionLabel: "需求描述",
@@ -94,10 +181,62 @@ const UI_MESSAGES = {
     createGuidedTaskButton: "创建引导任务",
     tasksEyebrow: "任务",
     taskListTitle: "项目任务",
+    taskListSummary: "先选任务，再与 lead 对话确认需求；确认后去计划审阅，再进入执行。",
     refreshTasksButton: "刷新任务",
     taskListEmpty: "当前所选项目还没有任务。",
     clarificationEyebrow: "澄清",
     clarificationTitle: "Lead 会话转录",
+    leaderConversationEyebrow: "Leader 对话",
+    leaderConversationTitle: "Leader 实时会话",
+    leaderConversationDraftSummary: "你只和 Leader 对话。先发送第一条任务说明，真实 Leader 会话才会启动。",
+    leaderConversationClarifyingSummary: "当前正在和 Leader 澄清需求。继续补充约束、边界和验收标准，确认无误后再点“已确认需求”。",
+    leaderConversationPlanningSummary: "Leader 已收到确认，正在根据对话结果生成任务拆分与依赖关系。",
+    leaderConversationPlanReadySummary: "Leader 已给出任务拆分方案。先检查下面的分配预览，再决定是否进入计划审阅。",
+    leaderConversationExecutionSummary: "需求和分配已确认。后续由 Leader 继续编排执行，操作员不直接和子 agent 对话。",
+    leaderConversationEmptyOutput: "这里会显示 Leader 的实时输出。",
+    leaderPlanEyebrow: "Leader 规划",
+    leaderPlanTitle: "Leader 分配预览",
+    leaderPlanEmpty: "还没有可展示的分配方案。",
+    leaderPlanSummaryDraft: "确认需求后，Leader 会在这里给出任务拆分、依赖关系和推荐执行成员。",
+    leaderPlanSummaryReady: "以下是 Leader 当前给出的任务拆分预览。你只需要和 Leader 确认，不直接和子 agent 对话。",
+    leaderPlanWaitingBadge: "待生成",
+    leaderPlanReadyBadge: "已生成",
+    leaderPlanTaskLabel: "任务 {index}",
+    leaderPlanDependsLabel: "依赖",
+    leaderPlanDependsNone: "无依赖",
+    leaderPlanBranchLabel: "分支",
+    leaderPlanAgentLabel: "执行成员",
+    leaderPlanRoleLabel: "角色",
+    taskStageEyebrow: "主线",
+    taskStageTitle: "当前阶段与下一步",
+    taskNextActionEyebrow: "下一步",
+    taskNextDraftTitle: "先写给 Lead 的第一条消息",
+    taskNextDraftSummary: "任务还没有启动真实 Lead 会话。先在下方写清你要做什么、限制条件和期望结果，再开始澄清。",
+    taskNextClarifyingTitle: "继续和 Lead 对话，确认后进入计划审阅",
+    taskNextClarifyingSummary: "把需求、约束和验收标准聊清楚后，再点击“已确认需求”。",
+    taskNextPlanningTitle: "等待计划草稿生成完成",
+    taskNextPlanningSummary: "系统正在生成并校验计划。生成完成后，这个任务会自动进入计划审阅。",
+    taskNextPlanReviewTitle: "去计划审阅检查分工与依赖",
+    taskNextPlanReviewSummary: "计划草稿已经准备好。先检查分支、依赖和验收标准，再批准进入执行。",
+    taskNextExecutingTitle: "去运行看板跟进执行状态",
+    taskNextExecutingSummary: "当前任务已经进入执行或审查阶段。下一步应在运行看板里查看团队状态和阻塞。",
+    taskNextActionRequiredTitle: "先处理阻塞，再恢复推进",
+    taskNextActionRequiredSummary: "当前任务存在失败、冲突或人工决策项。先去运行看板处理，再继续推进。",
+    taskNextCompletedTitle: "任务已完成，可回看执行结果",
+    taskNextCompletedSummary: "主线已经走完。你可以去运行看板回看执行、审查和集成结果。",
+    taskNextFailedTitle: "任务已中断，需要先排查原因",
+    taskNextFailedSummary: "当前任务未能正常推进。先去运行看板查看失败原因和恢复入口。",
+    taskListHintDraft: "下一步：先写开场消息",
+    startClarificationDraftLabel: "发送给 Lead 的第一条消息",
+    startClarificationDraftPlaceholder: "先告诉 Lead 你要做什么、范围边界、约束条件和验收标准，再启动澄清。",
+    startClarificationDraftButton: "发送并开始澄清",
+    taskListHintClarifying: "下一步：继续与 Lead 对话",
+    taskListHintPlanning: "下一步：等待计划生成",
+    taskListHintPlanReview: "下一步：去计划审阅",
+    taskListHintExecuting: "下一步：去运行看板",
+    taskListHintActionRequired: "下一步：处理阻塞",
+    taskListHintCompleted: "已完成",
+    taskListHintFailed: "需要排查",
     refreshTaskButton: "刷新任务",
     taskDetailEmpty: "选择一个任务以查看附件、实时转录与澄清状态。",
     selectedTaskEyebrow: "当前任务",
@@ -348,6 +487,11 @@ const UI_MESSAGES = {
     capabilityOneShot: "单次执行",
     sandboxCapability: "{type} 沙箱",
     runtimeLabel: "运行时",
+    agentCheckAvailability: "可用性",
+    agentCheckAuth: "认证",
+    agentCheckBinary: "二进制",
+    agentCheckRuntime: "运行时模式",
+    agentCheckWorkerSandbox: "Worker 沙箱",
     capabilitiesLabel: "能力",
     failureReasonLabel: "失败原因",
     none: "无",
@@ -372,6 +516,16 @@ const UI_MESSAGES = {
     branchLabel: "分支",
     worktreeLabel: "Worktree",
     selectMemberHint: "选择该成员即可查看会话或在下方执行运维操作。",
+    teamStateWorking: "工作中",
+    teamStateStandby: "待命",
+    teamStateResting: "休息中",
+    teamStateFault: "故障",
+    teamBranchListLabel: "子分支",
+    teamWorkspaceListLabel: "工作区",
+    teamPilotDeckLabel: "团队成员",
+    teamRuntimeSummaryLabel: "真实状态",
+    teamBranchesSummary: "{count} 个分支",
+    teamWorkspacesSummary: "{count} 个工作区",
     cleanupWarningSummaryOne: "记录了 {count} 条 worktree 清理警告。任务虽已结束，但你可能仍需手动删除残留路径。",
     cleanupWarningSummaryOther: "记录了 {count} 条 worktree 清理警告。任务虽已结束，但你可能仍需手动删除残留路径。",
     unknownPath: "未知路径",
@@ -477,6 +631,19 @@ const UI_MESSAGES = {
     snapshotSourceApproved: "已批准",
     snapshotSourceLeadGenerated: "Lead 生成",
     snapshotVersionLabel: "版本 {version} · {source}",
+    navDashboard: "控制台",
+    navTaskCreate: "任务创建",
+    navTasks: "任务列表",
+    navPlan: "计划审阅",
+    navOps: "运行看板",
+    navMetrics: "指标",
+    sidebarTitle: "项目",
+    sidebarActiveAgents: "{count} Agent",
+    sidebarRegisterButton: "注册项目",
+    brandName: "EAT Agent Workbench",
+    navStatusIdle: "就绪",
+    metricsTitle: "指标概览",
+    metricsEmpty: "指标视图即将上线。任务执行统计、Agent 利用率和性能数据会在这里显示。",
   },
   en: {
     heroEyebrow: "EAT Console",
@@ -488,6 +655,36 @@ const UI_MESSAGES = {
     heroCapabilityMailbox: "Web mailbox handoff between lead and subtasks",
     registerEyebrow: "Register",
     registerTitle: "Add a local repository",
+    projectPickerEyebrow: "Register",
+    projectPickerTitle: "Choose a project path",
+    projectPickerSummary: "Browse the system directory tree or type an absolute path directly. The final selection is still validated as a Git repository.",
+    projectPickerCancelButton: "Cancel",
+    projectPickerBrowserEyebrow: "Browse",
+    projectPickerBrowserTitle: "System file tree",
+    projectPickerManualEyebrow: "Input",
+    projectPickerManualTitle: "Enter a path directly",
+    projectPickerShortcutLabel: "Shortcuts",
+    projectPickerFilterLabel: "Filter directories",
+    projectPickerFilterPlaceholder: "Filter by directory name",
+    projectPickerShowHiddenLabel: "Show hidden directories",
+    projectPickerCurrentLabel: "Current directory",
+    projectPickerUseCurrentButton: "Use current directory",
+    projectPickerParentButton: "Go to parent",
+    projectPickerDirectoryEmpty: "There are no child directories to browse here.",
+    projectPickerLoading: "Loading directories...",
+    projectPickerNoMatch: "No directories match the current filter.",
+    projectPickerBrowseInputButton: "Browse this path",
+    projectPickerSelectedPathLabel: "Ready to register",
+    projectPickerNoSelection: "No path selected yet",
+    projectPickerRootRoot: "System root",
+    projectPickerRootHome: "Home",
+    projectPickerRootWorkspace: "Current workspace",
+    projectPickerEntryOpen: "Open",
+    projectPickerEntrySelect: "Select",
+    projectPickerEntryRepo: "Git repository",
+    projectPickerEntryFolder: "Directory",
+    projectPickerEntrySymlink: "Symlink",
+    projectPickerPathPlaceholder: "/home/code/EAT",
     projectPathLabel: "Absolute repository path",
     projectPathHint: "Register a local git repository before creating a task. Dirty working trees are allowed, but clearly flagged below.",
     registerProjectButton: "Register project",
@@ -521,9 +718,48 @@ const UI_MESSAGES = {
     dockerSandboxStat: "Docker sandbox",
     dockerHealthReasonDefault: "Docker sandbox health is loaded with the agent directory.",
     agentHealthEmpty: "No registered agents were found.",
+    dashboardTeamEyebrow: "Teams",
+    dashboardTeamTitle: "Agent Teams",
+    dashboardTeamSummary: "View workspaces, sub-branches, and activity rhythm grouped by Agent team for the current task.",
+    dashboardTeamEmpty: "Pick a task to show grouped Agent teams, workspaces, and branches here.",
+    dashboardTeamTaskBadge: "Current task",
+    dashboardTeamTaskIdle: "No task selected",
+    dashboardTeamRuntimeMode: "Runtime",
+    dashboardTeamMembers: "Members",
+    dashboardTeamWorkspaceCount: "Workspaces",
+    dashboardTeamBranchCount: "Branches",
+    dashboardTeamWorkingLine: "RUNNING ACTIVE WORKLOAD CLUSTER",
+    dashboardTeamStandbyLine: "WAITING FOR NEXT INSTRUCTION CLUSTER",
+    dashboardTeamRestingLine: "TEAM IN REST CYCLE",
+    dashboardTeamFaultLine: "OPERATOR REVIEW REQUIRED",
+    dashboardTeamOpenTask: "Open execution",
+    agentCompactActive: "Active Now",
+    agentCompactDegraded: "Need Attention",
+    agentCompactOffline: "Offline",
+    agentCompactStub: "Stub Blocked",
+    agentCompactReadySummary: "Real CLI runtime is connected and can participate in orchestration.",
+    agentCompactStubSummary: "This runtime is still a stub and is excluded from selectable orchestration.",
+    agentCompactOfflineSummary: "Runtime is unavailable and not participating in task orchestration.",
+    agentCompactDegradedSummary: "Runtime is visible, but at least one check needs attention.",
     createEyebrow: "Create",
     taskFormTitle: "Guided task creation",
     taskFormSummary: "Choose a golden-path template to open directly in plan review with a seeded DAG draft, or leave templates unselected to create a custom draft.",
+    taskCreateJourneyEyebrow: "Flow",
+    taskCreateJourneyTitle: "What happens after you create the task",
+    taskCreateJourneyStandardBadge: "Standard path",
+    taskCreateJourneyGuidedBadge: "Template accelerated",
+    taskCreateJourneySummaryStandard: "After creation, you land in the task list, clarify with the lead, and then move into plan review.",
+    taskCreateJourneySummaryGuided: "Templates give you a stronger starting point. You still land in the task list first; if a draft already exists, the UI will point you straight to plan review.",
+    taskJourneyStepRegister: "Register project",
+    taskJourneyStepTemplate: "Choose template",
+    taskJourneyStepCreate: "Create task",
+    taskJourneyStepClarify: "Talk to lead",
+    taskJourneyStepPlanReview: "Plan review",
+    taskJourneyStepExecute: "Execute and integrate",
+    taskJourneyStateDone: "Done",
+    taskJourneyStateCurrent: "Current",
+    taskJourneyStateNext: "Next",
+    taskJourneyStateLater: "Later",
     guidedFlowEyebrow: "Golden path",
     guidedFlowTitle: "Templates and guided steps",
     guidedFlowEmpty: "Templates are temporarily unavailable. You can still create a custom task draft.",
@@ -536,8 +772,25 @@ const UI_MESSAGES = {
     guidedTemplateClearButton: "Switch to custom draft",
     guidedDemoTitle: "Todo demo suggestion",
     guidedDemoBody: "Start with “Full-stack web app” and use a title/description similar to “Build a full-stack Todo app with auth, database, and a React frontend.”",
-    guidedDemoHint: "Guided tasks jump straight to plan review, but they still keep approval, supervision, and integration gates intact.",
+    guidedDemoHint: "Guided tasks get to plan review faster, but they still keep approval, supervision, and integration gates intact.",
+    taskCreateBaselineEyebrow: "Execution baseline",
+    taskCreateBaselineTitle: "Baseline and lead",
+    taskCreateBriefEyebrow: "Task scope",
+    taskCreateBriefTitle: "Task brief and attachments",
     baseBranchLabel: "Base branch",
+    baseBranchModeNewBadge: "New baseline",
+    baseBranchModeExistingBadge: "Existing branch",
+    baseBranchModeNewLabel: "Create a fresh baseline branch",
+    baseBranchModeExistingLabel: "Use an existing branch directly",
+    baseBranchStartPointLabel: "Start from",
+    baseBranchNewNameLabel: "New baseline branch name",
+    baseBranchNewNamePlaceholder: "task/main/workspace",
+    baseBranchExistingLabel: "Existing baseline branch",
+    baseBranchSummaryPlaceholder: "A fresh task baseline branch will be created from the current branch.",
+    taskCreateFlowSummaryDraft: "After creation the task starts as a draft, then moves into clarification before plan review.",
+    taskCreateFlowSummaryGuided: "After creation you land in the task list first; if a draft already exists, the UI points you to plan review immediately.",
+    taskCreateFlowSummaryExisting: "The task will use the existing branch {branch} as its baseline.",
+    taskCreateFlowSummaryNew: "A new task baseline {branch} will be created from {source}.",
     leadAgentLabel: "Lead agent",
     taskTitleLabel: "Task title",
     taskDescriptionLabel: "Requirement description",
@@ -547,10 +800,62 @@ const UI_MESSAGES = {
     createGuidedTaskButton: "Create guided task",
     tasksEyebrow: "Tasks",
     taskListTitle: "Project tasks",
+    taskListSummary: "Pick a task first, confirm requirements with the lead, then move into plan review before execution.",
     refreshTasksButton: "Refresh tasks",
     taskListEmpty: "No tasks exist for the selected project yet.",
     clarificationEyebrow: "Clarification",
     clarificationTitle: "Lead session transcript",
+    leaderConversationEyebrow: "Leader conversation",
+    leaderConversationTitle: "Leader live session",
+    leaderConversationDraftSummary: "You only talk to the leader. A real leader session starts only after you send the first task brief.",
+    leaderConversationClarifyingSummary: "You are actively clarifying with the leader. Keep adding constraints, boundaries, and acceptance criteria, then confirm when ready.",
+    leaderConversationPlanningSummary: "The leader has your confirmed brief and is generating task splits and dependencies from the conversation.",
+    leaderConversationPlanReadySummary: "The leader has produced an assignment draft. Review the split preview below before moving into plan review.",
+    leaderConversationExecutionSummary: "Requirements and allocation are already confirmed. The leader continues orchestrating execution; the operator does not chat with sub-agents directly.",
+    leaderConversationEmptyOutput: "The leader's live output will appear here.",
+    leaderPlanEyebrow: "Leader planning",
+    leaderPlanTitle: "Leader allocation preview",
+    leaderPlanEmpty: "No assignment preview is available yet.",
+    leaderPlanSummaryDraft: "After requirements are confirmed, the leader will show task splits, dependencies, and recommended executors here.",
+    leaderPlanSummaryReady: "This is the current allocation preview from the leader. You confirm with the leader only; you do not talk to sub-agents directly.",
+    leaderPlanWaitingBadge: "Waiting",
+    leaderPlanReadyBadge: "Ready",
+    leaderPlanTaskLabel: "Task {index}",
+    leaderPlanDependsLabel: "Depends on",
+    leaderPlanDependsNone: "No dependencies",
+    leaderPlanBranchLabel: "Branch",
+    leaderPlanAgentLabel: "Executor",
+    leaderPlanRoleLabel: "Role",
+    taskStageEyebrow: "Flow",
+    taskStageTitle: "Current stage and next step",
+    taskNextActionEyebrow: "Next step",
+    taskNextDraftTitle: "Write the first message to the lead",
+    taskNextDraftSummary: "A real lead session has not started yet. First write what you want built, the constraints, and the expected outcome, then start clarification.",
+    taskNextClarifyingTitle: "Keep talking to the lead, then confirm requirements",
+    taskNextClarifyingSummary: "Only confirm once the scope, constraints, and acceptance criteria are clear.",
+    taskNextPlanningTitle: "Wait for the plan draft to finish",
+    taskNextPlanningSummary: "The system is generating and validating the plan. Once ready, the task moves into plan review.",
+    taskNextPlanReviewTitle: "Open plan review and inspect the split",
+    taskNextPlanReviewSummary: "A draft is ready. Check branches, dependencies, and acceptance criteria before approval.",
+    taskNextExecutingTitle: "Open operations and track execution",
+    taskNextExecutingSummary: "The task is now executing or under review. The next step is to inspect team state and blockers in operations.",
+    taskNextActionRequiredTitle: "Handle blockers before resuming",
+    taskNextActionRequiredSummary: "This task needs operator attention because something failed, conflicted, or needs a decision.",
+    taskNextCompletedTitle: "The task is complete",
+    taskNextCompletedSummary: "The main flow is finished. You can review execution, review, and integration history in operations.",
+    taskNextFailedTitle: "The task stopped and needs diagnosis",
+    taskNextFailedSummary: "The task did not progress cleanly. Open operations to inspect the failure and recovery controls.",
+    taskListHintDraft: "Next: write the opening message",
+    startClarificationDraftLabel: "First message to the lead",
+    startClarificationDraftPlaceholder: "Tell the lead what to build, the scope boundaries, constraints, and acceptance criteria before starting clarification.",
+    startClarificationDraftButton: "Send and start clarification",
+    taskListHintClarifying: "Next: keep talking to the lead",
+    taskListHintPlanning: "Next: wait for plan generation",
+    taskListHintPlanReview: "Next: open plan review",
+    taskListHintExecuting: "Next: open operations",
+    taskListHintActionRequired: "Next: handle blockers",
+    taskListHintCompleted: "Completed",
+    taskListHintFailed: "Needs diagnosis",
     refreshTaskButton: "Refresh task",
     taskDetailEmpty: "Select a task to inspect attachments, live transcript, and clarification state.",
     selectedTaskEyebrow: "Selected task",
@@ -801,6 +1106,11 @@ const UI_MESSAGES = {
     capabilityOneShot: "One-shot",
     sandboxCapability: "{type} sandbox",
     runtimeLabel: "Runtime",
+    agentCheckAvailability: "Availability",
+    agentCheckAuth: "Auth",
+    agentCheckBinary: "Binary",
+    agentCheckRuntime: "Runtime mode",
+    agentCheckWorkerSandbox: "Worker sandbox",
     capabilitiesLabel: "Capabilities",
     failureReasonLabel: "Failure reason",
     none: "None",
@@ -825,6 +1135,16 @@ const UI_MESSAGES = {
     branchLabel: "Branch",
     worktreeLabel: "Worktree",
     selectMemberHint: "Select this member to inspect sessions or run operator actions below.",
+    teamStateWorking: "Working",
+    teamStateStandby: "Standby",
+    teamStateResting: "Resting",
+    teamStateFault: "Fault",
+    teamBranchListLabel: "Branches",
+    teamWorkspaceListLabel: "Workspaces",
+    teamPilotDeckLabel: "Team members",
+    teamRuntimeSummaryLabel: "Live status",
+    teamBranchesSummary: "{count} branches",
+    teamWorkspacesSummary: "{count} workspaces",
     cleanupWarningSummaryOne: "{count} worktree cleanup warning was recorded. The task is terminal, but you may still need to remove stale paths manually.",
     cleanupWarningSummaryOther: "{count} worktree cleanup warnings were recorded. The task is terminal, but you may still need to remove stale paths manually.",
     unknownPath: "Unknown path",
@@ -930,6 +1250,19 @@ const UI_MESSAGES = {
     snapshotSourceApproved: "Approved",
     snapshotSourceLeadGenerated: "Lead generated",
     snapshotVersionLabel: "Version {version} · {source}",
+    navDashboard: "Dashboard",
+    navTaskCreate: "Create Task",
+    navTasks: "Tasks",
+    navPlan: "Plan Review",
+    navOps: "Operations",
+    navMetrics: "Metrics",
+    sidebarTitle: "Projects",
+    sidebarActiveAgents: "{count} Agents",
+    sidebarRegisterButton: "Register Project",
+    brandName: "EAT Agent Workbench",
+    navStatusIdle: "Ready",
+    metricsTitle: "Metrics Overview",
+    metricsEmpty: "Metrics view coming soon. Task execution stats, agent utilization, and performance data will appear here.",
   },
 };
 
@@ -1020,9 +1353,12 @@ const MAILBOX_MESSAGE_TYPE_OPTIONS = [
 const MAILBOX_CONTRACT_MESSAGE_TYPES = new Set(["API_CONTRACT", "DB_CONTRACT"]);
 const MAILBOX_BLOCKER_MESSAGE_TYPES = new Set(["BLOCKER", "TEST_REQUEST", "REVIEW_REQUEST"]);
 
+const VIEW_IDS = ["dashboard", "task-create", "tasks", "plan", "ops", "metrics"];
+
 const state = {
   agentHealth: {},
   agents: [],
+  currentView: "dashboard",
   executionDrafts: new Map(),
   healthCheckedAt: null,
   leadCandidates: [],
@@ -1030,7 +1366,20 @@ const state = {
   liveSessionOutputs: new Map(),
   planTemplates: [],
   projectDetail: null,
+  projectPathBrowserCurrent: null,
+  projectPathBrowserEntries: [],
+  projectPathBrowserFilter: "",
+  projectPathBrowserLoading: false,
+  projectPathBrowserParent: null,
+  projectPathBrowserRoots: [],
+  projectPathCurrentIsRepo: false,
+  projectPathIncludeHidden: false,
   projects: [],
+  baseBranchDraftManual: false,
+  baseBranchDraftName: "",
+  baseBranchMode: "new",
+  baseBranchStartPoint: null,
+  selectedExistingBaseBranch: null,
   selectedBaseBranch: null,
   selectedExecutionSessionId: null,
   selectedExecutionSubTaskId: null,
@@ -1058,9 +1407,22 @@ const elements = {
   agentHealthEmpty: document.querySelector("#agent-health-empty"),
   agentHealthFeedback: document.querySelector("#agent-health-feedback"),
   agentHealthList: document.querySelector("#agent-health-list"),
+  dashboardTeamBranchBadge: document.querySelector("#dashboard-team-branch-badge"),
+  dashboardTeamEmpty: document.querySelector("#dashboard-team-empty"),
+  dashboardTeamList: document.querySelector("#dashboard-team-list"),
+  dashboardTeamTaskBadge: document.querySelector("#dashboard-team-task-badge"),
   dockerHealthBadge: document.querySelector("#docker-health-badge"),
   dockerHealthReason: document.querySelector("#docker-health-reason"),
+  baseBranchExistingPanel: document.querySelector("#base-branch-existing-panel"),
+  baseBranchInput: document.querySelector("#base-branch-input"),
+  baseBranchModeBadge: document.querySelector("#task-create-branch-mode-badge"),
+  baseBranchModeExistingInput: document.querySelector("#base-branch-mode-existing"),
+  baseBranchModeExistingLabel: document.querySelector("#base-branch-mode-existing-label"),
+  baseBranchModeNewInput: document.querySelector("#base-branch-mode-new"),
+  baseBranchModeNewLabel: document.querySelector("#base-branch-mode-new-label"),
+  baseBranchNewPanel: document.querySelector("#base-branch-new-panel"),
   baseBranchSelect: document.querySelector("#base-branch-select"),
+  baseBranchStartPointSelect: document.querySelector("#base-branch-start-point-select"),
   cleanlinessBadge: document.querySelector("#cleanliness-badge"),
   confirmRequirementsButton: document.querySelector("#confirm-requirements-button"),
   createTaskButton: document.querySelector("#create-task-button"),
@@ -1084,13 +1446,30 @@ const elements = {
   projectDetail: document.querySelector("#project-detail"),
   projectDetailEmpty: document.querySelector("#project-detail-empty"),
   projectDetailFeedback: document.querySelector("#project-detail-feedback"),
+  projectCurrentBranchBadge: document.querySelector("#project-current-branch-badge"),
+  projectPathBreadcrumb: document.querySelector("#project-path-breadcrumb"),
+  projectPathBrowserFeedback: document.querySelector("#project-path-browser-feedback"),
+  projectPathBrowserFilter: document.querySelector("#project-path-browser-filter"),
+  projectPathBrowseInputButton: document.querySelector("#project-path-browse-input-button"),
+  projectPathCurrent: document.querySelector("#project-path-current"),
+  projectPathCurrentBadge: document.querySelector("#project-path-current-badge"),
+  projectPathDirectoryEmpty: document.querySelector("#project-path-directory-empty"),
+  projectPathDirectoryList: document.querySelector("#project-path-directory-list"),
+  projectPathHiddenToggle: document.querySelector("#project-path-hidden-toggle"),
   projectList: document.querySelector("#project-list"),
   projectListEmpty: document.querySelector("#project-list-empty"),
   projectListFeedback: document.querySelector("#project-list-feedback"),
   projectName: document.querySelector("#project-name"),
+  projectPathParentButton: document.querySelector("#project-path-parent-button"),
   projectPath: document.querySelector("#project-path"),
   projectRegistrationForm: document.querySelector("#project-registration-form"),
+  projectRegistrationDialog: document.querySelector("#project-registration-dialog"),
   projectPathInput: document.querySelector("#project-path-input"),
+  projectPathRootList: document.querySelector("#project-path-root-list"),
+  projectPathSelection: document.querySelector("#project-path-selection"),
+  projectPathSelectionBadge: document.querySelector("#project-path-selection-badge"),
+  projectPathUseCurrentButton: document.querySelector("#project-path-use-current-button"),
+  projectPickerCloseButton: document.querySelector("#project-picker-close-button"),
   recentBranches: document.querySelector("#recent-branches"),
   refreshAgentHealthButton: document.querySelector("#refresh-agent-health-button"),
   refreshProjectDetailButton: document.querySelector("#refresh-project-detail-button"),
@@ -1105,6 +1484,7 @@ const elements = {
   startClarificationButton: document.querySelector("#start-clarification-button"),
   taskAttachmentFeedback: document.querySelector("#task-attachment-feedback"),
   taskAttachmentList: document.querySelector("#task-attachment-list"),
+  taskActions: document.querySelector(".task-actions"),
   taskAttachmentsEmpty: document.querySelector("#task-attachments-empty"),
   taskAttachmentsList: document.querySelector("#task-attachments-list"),
   taskBaseBranchBadge: document.querySelector("#task-base-branch-badge"),
@@ -1200,12 +1580,25 @@ const elements = {
   taskExecutionSessionList: document.querySelector("#task-execution-session-list"),
   taskExecutionList: document.querySelector("#task-execution-list"),
   taskExecutionSummaryList: document.querySelector("#task-operations-summary-list"),
+  taskLeadSessionBadge: document.querySelector("#task-lead-session-badge"),
+  taskLeadSessionOutput: document.querySelector("#task-lead-session-output"),
+  taskLeadSessionSummary: document.querySelector("#task-lead-session-summary"),
+  taskCreateBranchSummary: document.querySelector("#task-create-branch-summary"),
+  taskCreateFlowSummary: document.querySelector("#task-create-flow-summary"),
+  taskCreateJourneySteps: document.querySelector("#task-create-journey-steps"),
+  taskCreateRouteBadge: document.querySelector("#task-create-route-badge"),
+  taskCreateRouteSummary: document.querySelector("#task-create-route-summary"),
+  taskLeaderPlanBadge: document.querySelector("#task-leader-plan-badge"),
+  taskLeaderPlanEmpty: document.querySelector("#task-leader-plan-empty"),
+  taskLeaderPlanList: document.querySelector("#task-leader-plan-list"),
+  taskLeaderPlanSummary: document.querySelector("#task-leader-plan-summary"),
   taskTeamEmpty: document.querySelector("#task-team-empty"),
   taskTeamLeadMeta: document.querySelector("#task-team-lead-meta"),
   taskTeamLeadStatus: document.querySelector("#task-team-lead-status"),
   taskTeamLeadSummary: document.querySelector("#task-team-lead-summary"),
   taskTeamMemberCount: document.querySelector("#task-team-member-count"),
   taskTeamMemberList: document.querySelector("#task-team-member-list"),
+  taskTeamProjectBranch: document.querySelector("#task-team-project-branch"),
   taskTeamShell: document.querySelector("#task-team-shell"),
   taskFormFeedback: document.querySelector("#task-form-feedback"),
   taskLeadAgent: document.querySelector("#task-lead-agent"),
@@ -1215,6 +1608,7 @@ const elements = {
   taskMessageCount: document.querySelector("#task-message-count"),
   taskMessageForm: document.querySelector("#task-message-form"),
   taskMessageInput: document.querySelector("#task-message-input"),
+  taskMessageLabel: document.querySelector("#task-message-label"),
   taskPlanDetail: document.querySelector("#task-plan-detail"),
   taskPlanEditor: document.querySelector("#task-plan-editor"),
   taskPlanGraph: document.querySelector("#task-plan-graph"),
@@ -1236,18 +1630,33 @@ const elements = {
   taskPlanSummary: document.querySelector("#task-plan-summary"),
   taskPlanTemplateSelect: document.querySelector("#task-plan-template-select"),
   taskPlanVersion: document.querySelector("#task-plan-version"),
+  taskNextActionBadge: document.querySelector("#task-next-action-badge"),
+  taskNextActionButton: document.querySelector("#task-next-action-button"),
+  taskNextActionSummary: document.querySelector("#task-next-action-summary"),
+  taskNextActionTitle: document.querySelector("#task-next-action-title"),
   taskSessionStatus: document.querySelector("#task-session-status"),
+  taskStageRail: document.querySelector("#task-stage-rail"),
   taskStatusBadge: document.querySelector("#task-status-badge"),
   taskTitleInput: document.querySelector("#task-title-input"),
   taskTranscript: document.querySelector("#task-transcript"),
   taskTranscriptEmpty: document.querySelector("#task-transcript-empty"),
   taskAttachmentsInput: document.querySelector("#task-attachments-input"),
+  // Sidebar elements
+  sidebarAgentCount: document.querySelector("#sidebar-agent-count"),
+  sidebarProjectList: document.querySelector("#sidebar-project-list"),
+  sidebarProjectEmpty: document.querySelector("#sidebar-project-empty"),
+  sidebarRegisterToggle: document.querySelector("#sidebar-register-toggle"),
+  // TopNav elements
+  topnavStatus: document.querySelector("#topnav-status"),
+  topnavTabs: document.querySelectorAll(".topnav__tab"),
+  // View containers
+  views: Object.fromEntries(VIEW_IDS.map((id) => [id, document.querySelector(`#view-${id}`)])),
 };
 
 setLocale(state.locale);
 
 elements.projectRegistrationForm.addEventListener("submit", onRegisterProject);
-elements.refreshProjectsButton.addEventListener("click", () => {
+elements.refreshProjectsButton?.addEventListener("click", () => {
   void loadProjects({ preserveSelection: true });
 });
 elements.refreshProjectDetailButton.addEventListener("click", () => {
@@ -1263,8 +1672,24 @@ elements.leadAgentSelect.addEventListener("change", (event) => {
   state.selectedLeadAgentName = event.target.value || null;
   renderLeadSelector();
 });
+elements.baseBranchModeNewInput?.addEventListener("change", onBaseBranchModeChange);
+elements.baseBranchModeExistingInput?.addEventListener("change", onBaseBranchModeChange);
 elements.baseBranchSelect.addEventListener("change", (event) => {
-  state.selectedBaseBranch = event.target.value || null;
+  state.selectedExistingBaseBranch = event.target.value || null;
+  syncBranchChoices();
+});
+elements.baseBranchStartPointSelect?.addEventListener("change", (event) => {
+  state.baseBranchStartPoint = event.target.value || null;
+  if (!state.baseBranchDraftManual) {
+    syncBranchChoices();
+    return;
+  }
+  renderBaseBranchComposer();
+});
+elements.baseBranchInput?.addEventListener("input", (event) => {
+  state.baseBranchDraftManual = true;
+  state.baseBranchDraftName = event.target.value;
+  renderBaseBranchComposer();
 });
 elements.taskAttachmentsInput.addEventListener("change", renderDraftAttachments);
 elements.taskCreationForm.addEventListener("submit", onCreateTask);
@@ -1279,9 +1704,15 @@ elements.refreshTaskDetailButton.addEventListener("click", () => {
     void loadTaskDetail(state.selectedTaskId);
   }
 });
+elements.taskNextActionButton?.addEventListener("click", onTaskNextAction);
 elements.startClarificationButton.addEventListener("click", onStartClarification);
 elements.confirmRequirementsButton.addEventListener("click", onConfirmRequirements);
 elements.taskMessageForm.addEventListener("submit", onSendTaskMessage);
+elements.taskMessageInput.addEventListener("input", () => {
+  if (state.taskDetail) {
+    renderTaskMessageComposer(state.taskDetail);
+  }
+});
 elements.taskPlanAddSubtaskButton.addEventListener("click", onAddPlanSubtask);
 elements.taskPlanApplyTemplateButton.addEventListener("click", onApplyPlanTemplate);
 elements.taskPlanApproveButton.addEventListener("click", onApprovePlanDraft);
@@ -1306,14 +1737,490 @@ elements.taskExecutionReworkButton.addEventListener("click", onReworkSubTask);
 elements.taskExecutionResumeMergeButton.addEventListener("click", onResumeTaskMerge);
 elements.taskExecutionReworkDescription.addEventListener("input", onExecutionDraftDescriptionInput);
 elements.taskExecutionMailboxForm.addEventListener("submit", onSendMailboxMessage);
+elements.taskTitleInput.addEventListener("input", onTaskTitleInput);
 elements.taskExecutionMailboxSenderSelect.addEventListener("change", () => {
   if (state.taskDetail && getSelectedExecutionSubTask()) {
     renderTaskDetail();
   }
 });
 
+// ── View routing ──
+function switchView(viewId) {
+  if (!VIEW_IDS.includes(viewId)) {
+    viewId = "dashboard";
+  }
+  state.currentView = viewId;
+  for (const id of VIEW_IDS) {
+    const el = elements.views[id];
+    if (el) {
+      el.hidden = id !== viewId;
+    }
+  }
+  for (const tab of elements.topnavTabs) {
+    tab.classList.toggle("is-active", tab.dataset.view === viewId);
+  }
+  window.location.hash = viewId;
+}
+
+for (const tab of elements.topnavTabs) {
+  tab.addEventListener("click", () => switchView(tab.dataset.view));
+}
+
+// Restore view from URL hash
+const initialHash = window.location.hash.replace("#", "");
+if (VIEW_IDS.includes(initialHash)) {
+  switchView(initialHash);
+}
+
+window.addEventListener("hashchange", () => {
+  const hash = window.location.hash.replace("#", "");
+  if (VIEW_IDS.includes(hash) && hash !== state.currentView) {
+    switchView(hash);
+  }
+});
+
+// ── Sidebar ──
+elements.sidebarRegisterToggle?.addEventListener("click", () => {
+  void openProjectRegistrationDialog();
+});
+elements.projectPickerCloseButton?.addEventListener("click", () => {
+  closeProjectRegistrationDialog();
+});
+elements.projectRegistrationDialog?.addEventListener("close", onProjectRegistrationDialogClosed);
+elements.projectRegistrationDialog?.addEventListener("click", (event) => {
+  if (event.target === elements.projectRegistrationDialog) {
+    closeProjectRegistrationDialog();
+  }
+});
+elements.projectPathUseCurrentButton?.addEventListener("click", () => {
+  if (state.projectPathBrowserCurrent) {
+    setProjectPathInput(state.projectPathBrowserCurrent);
+  }
+});
+elements.projectPathParentButton?.addEventListener("click", () => {
+  if (state.projectPathBrowserParent) {
+    void loadProjectDirectoryBrowser(state.projectPathBrowserParent);
+  }
+});
+elements.projectPathBrowseInputButton?.addEventListener("click", () => {
+  const requestedPath = elements.projectPathInput.value.trim();
+  if (requestedPath) {
+    void loadProjectDirectoryBrowser(requestedPath);
+  }
+});
+elements.projectPathBrowserFilter?.addEventListener("input", (event) => {
+  state.projectPathBrowserFilter = event.target.value;
+  renderProjectRegistrationDialog();
+});
+elements.projectPathHiddenToggle?.addEventListener("change", (event) => {
+  state.projectPathIncludeHidden = event.target.checked;
+  void loadProjectDirectoryBrowser(state.projectPathBrowserCurrent ?? getDefaultProjectBrowserPath());
+});
+elements.projectPathInput?.addEventListener("input", () => {
+  renderProjectRegistrationDialog();
+});
+
+async function openProjectRegistrationDialog() {
+  const dialog = elements.projectRegistrationDialog;
+
+  if (dialog?.open) {
+    elements.projectPathInput?.focus();
+    return;
+  }
+
+  clearFeedback(elements.projectPathBrowserFeedback);
+  clearFeedback(elements.registrationFeedback);
+  state.projectPathBrowserFilter = "";
+  state.projectPathIncludeHidden = false;
+  state.projectPathBrowserLoading = false;
+
+  if (elements.projectPathBrowserFilter) {
+    elements.projectPathBrowserFilter.value = "";
+  }
+
+  if (elements.projectPathHiddenToggle) {
+    elements.projectPathHiddenToggle.checked = false;
+  }
+
+  if (elements.projectPathInput) {
+    elements.projectPathInput.value = "";
+  }
+
+  openDialog(dialog);
+  renderProjectRegistrationDialog();
+  await loadProjectDirectoryBrowser(getDefaultProjectBrowserPath());
+  elements.projectPathInput?.focus();
+}
+
+function closeProjectRegistrationDialog() {
+  const dialog = elements.projectRegistrationDialog;
+
+  if (!dialog?.open) {
+    return;
+  }
+
+  if (typeof dialog.close === "function") {
+    dialog.close();
+    return;
+  }
+
+  dialog.removeAttribute("open");
+  onProjectRegistrationDialogClosed();
+}
+
+function onProjectRegistrationDialogClosed() {
+  clearFeedback(elements.projectPathBrowserFeedback);
+  clearFeedback(elements.registrationFeedback);
+}
+
+function getDefaultProjectBrowserPath() {
+  const selectedProjectPath = state.projectDetail?.project?.path
+    ?? state.projects.find((project) => project.id === state.selectedProjectId)?.path
+    ?? null;
+
+  if (selectedProjectPath) {
+    return selectedProjectPath;
+  }
+
+  return null;
+}
+
+async function loadProjectDirectoryBrowser(requestedPath) {
+  state.projectPathBrowserLoading = true;
+  clearFeedback(elements.projectPathBrowserFeedback);
+  renderProjectRegistrationDialog();
+
+  try {
+    const params = new URLSearchParams();
+
+    if (requestedPath) {
+      params.set("path", requestedPath);
+    }
+
+    if (state.projectPathIncludeHidden) {
+      params.set("hidden", "1");
+    }
+
+    const response = await fetchJson(`/api/projects/browse?${params.toString()}`);
+    state.projectPathBrowserCurrent = response.currentPath ?? null;
+    state.projectPathBrowserEntries = response.entries ?? [];
+    state.projectPathBrowserParent = response.parentPath ?? null;
+    state.projectPathBrowserRoots = response.roots ?? [];
+    state.projectPathCurrentIsRepo = response.isGitRepository === true;
+  } catch (error) {
+    showFeedback(elements.projectPathBrowserFeedback, "error", buildProjectErrorMessage(error));
+  } finally {
+    state.projectPathBrowserLoading = false;
+    renderProjectRegistrationDialog();
+  }
+}
+
+function renderProjectRegistrationDialog() {
+  renderProjectPathRoots();
+  renderProjectPathBreadcrumb();
+  renderProjectPathCurrent();
+  renderProjectPathDirectoryList();
+  renderProjectPathSelection();
+}
+
+function renderProjectPathRoots() {
+  const container = elements.projectPathRootList;
+
+  if (!container) {
+    return;
+  }
+
+  container.replaceChildren();
+
+  for (const root of state.projectPathBrowserRoots) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "project-picker__chip";
+    button.textContent = t(resolveProjectRootLabel(root.kind));
+    button.addEventListener("click", () => {
+      void loadProjectDirectoryBrowser(root.path);
+    });
+    container.append(button);
+  }
+}
+
+function renderProjectPathBreadcrumb() {
+  const container = elements.projectPathBreadcrumb;
+
+  if (!container) {
+    return;
+  }
+
+  container.replaceChildren();
+
+  for (const segment of buildPathSegments(state.projectPathBrowserCurrent)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "project-picker__chip";
+    button.textContent = segment.label;
+    button.addEventListener("click", () => {
+      void loadProjectDirectoryBrowser(segment.path);
+    });
+    container.append(button);
+  }
+}
+
+function renderProjectPathCurrent() {
+  if (elements.projectPathCurrent) {
+    elements.projectPathCurrent.textContent = state.projectPathBrowserCurrent ?? t("unknownPath");
+  }
+
+  if (elements.projectPathCurrentBadge) {
+    elements.projectPathCurrentBadge.textContent = state.projectPathCurrentIsRepo
+      ? t("projectPickerEntryRepo")
+      : t("projectPickerEntryFolder");
+  }
+
+  if (elements.projectPathParentButton) {
+    elements.projectPathParentButton.disabled = !state.projectPathBrowserParent;
+  }
+}
+
+function renderProjectPathDirectoryList() {
+  const container = elements.projectPathDirectoryList;
+  const emptyState = elements.projectPathDirectoryEmpty;
+
+  if (!container || !emptyState) {
+    return;
+  }
+
+  container.replaceChildren();
+
+  const filterValue = (state.projectPathBrowserFilter ?? "").trim().toLowerCase();
+  const visibleEntries = state.projectPathBrowserEntries.filter((entry) => (
+    filterValue.length === 0
+      || entry.name.toLowerCase().includes(filterValue)
+  ));
+
+  if (state.projectPathBrowserLoading) {
+    emptyState.hidden = false;
+    emptyState.textContent = t("projectPickerLoading");
+    return;
+  }
+
+  if (visibleEntries.length === 0) {
+    emptyState.hidden = false;
+    emptyState.textContent = filterValue ? t("projectPickerNoMatch") : t("projectPickerDirectoryEmpty");
+    return;
+  }
+
+  emptyState.hidden = true;
+
+  for (const entry of visibleEntries) {
+    const item = document.createElement("div");
+    item.className = "project-picker__directory-item";
+
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "project-picker__directory-main";
+    openButton.addEventListener("click", () => {
+      void loadProjectDirectoryBrowser(entry.path);
+    });
+
+    const icon = document.createElement("span");
+    icon.className = "project-picker__directory-symbol";
+    icon.textContent = "folder";
+    openButton.append(icon);
+
+    const copy = document.createElement("div");
+    copy.className = "project-picker__directory-copy";
+
+    const title = document.createElement("p");
+    title.className = "project-picker__directory-name";
+    title.textContent = entry.name;
+    copy.append(title);
+
+    const meta = document.createElement("p");
+    meta.className = "project-picker__directory-meta";
+    meta.textContent = buildDirectoryEntryMeta(entry);
+    copy.append(meta);
+    openButton.append(copy);
+
+    const actions = document.createElement("div");
+    actions.className = "project-picker__directory-actions";
+
+    const selectButton = document.createElement("button");
+    selectButton.type = "button";
+    selectButton.className = "project-picker__chip";
+    selectButton.textContent = t("projectPickerEntrySelect");
+    selectButton.addEventListener("click", () => {
+      setProjectPathInput(entry.path);
+    });
+    actions.append(selectButton);
+
+    item.append(openButton, actions);
+    container.append(item);
+  }
+}
+
+function renderProjectPathSelection() {
+  if (!elements.projectPathSelection || !elements.projectPathSelectionBadge) {
+    return;
+  }
+
+  const selectedPath = elements.projectPathInput?.value.trim() ?? "";
+
+  if (!selectedPath) {
+    elements.projectPathSelection.textContent = t("projectPickerNoSelection");
+    elements.projectPathSelectionBadge.hidden = true;
+    return;
+  }
+
+  elements.projectPathSelection.textContent = selectedPath;
+  elements.projectPathSelectionBadge.hidden = false;
+  elements.projectPathSelectionBadge.textContent = selectedPath === state.projectPathBrowserCurrent && state.projectPathCurrentIsRepo
+    ? t("projectPickerEntryRepo")
+    : t("projectPickerEntryFolder");
+}
+
+function setProjectPathInput(nextPath) {
+  if (!elements.projectPathInput) {
+    return;
+  }
+
+  elements.projectPathInput.value = nextPath;
+  renderProjectRegistrationDialog();
+}
+
+function openDialog(dialog) {
+  if (!dialog) {
+    return;
+  }
+
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+    return;
+  }
+
+  dialog.setAttribute("open", "");
+}
+
+function resolveProjectRootLabel(kind) {
+  switch (kind) {
+    case "home":
+      return "projectPickerRootHome";
+    case "workspace":
+      return "projectPickerRootWorkspace";
+    default:
+      return "projectPickerRootRoot";
+  }
+}
+
+function buildPathSegments(currentPath) {
+  if (!currentPath) {
+    return [];
+  }
+
+  const normalizedPath = currentPath.replaceAll("\\", "/");
+  const rootPath = pathRoot(normalizedPath);
+  const relativePath = normalizedPath.slice(rootPath.length).split("/").filter(Boolean);
+  const segments = [{
+    label: rootPath || "/",
+    path: rootPath || "/",
+  }];
+  let partialPath = rootPath || "/";
+
+  for (const segment of relativePath) {
+    partialPath = partialPath === "/" ? `/${segment}` : `${partialPath}/${segment}`;
+    segments.push({
+      label: segment,
+      path: partialPath,
+    });
+  }
+
+  return segments;
+}
+
+function pathRoot(targetPath) {
+  if (!targetPath) {
+    return "/";
+  }
+
+  const rootMatch = targetPath.match(/^([A-Za-z]:\/|\/)/);
+  return rootMatch?.[1] ?? "/";
+}
+
+function buildDirectoryEntryMeta(entry) {
+  const parts = [entry.isGitRepository ? t("projectPickerEntryRepo") : t("projectPickerEntryFolder")];
+
+  if (entry.isSymlink) {
+    parts.push(t("projectPickerEntrySymlink"));
+  }
+
+  return parts.join(" · ");
+}
+
+function renderSidebarProjects() {
+  const container = elements.sidebarProjectList;
+  const empty = elements.sidebarProjectEmpty;
+  if (!container) return;
+
+  if (state.projects.length === 0) {
+    container.innerHTML = "";
+    if (empty) empty.hidden = false;
+    return;
+  }
+
+  if (empty) empty.hidden = true;
+  container.innerHTML = state.projects.map((project) => {
+    const isSelected = project.id === state.selectedProjectId;
+    return `<button class="sidebar__project${isSelected ? " is-selected" : ""}" type="button" data-project-id="${escapeHtmlAttribute(project.id)}">
+      <div class="sidebar__project-name">${escapeHtml(project.name)}</div>
+      <div class="sidebar__project-path">${escapeHtml(project.path)}</div>
+    </button>`;
+  }).join("");
+
+  container.querySelectorAll(".sidebar__project").forEach((button) => {
+    button.addEventListener("click", () => {
+      void selectProject(button.dataset.projectId, { preserveTask: true });
+    });
+  });
+}
+
+function updateSidebarAgentCount() {
+  const el = elements.sidebarAgentCount;
+  if (el) {
+    const count = state.agents.length;
+    el.textContent = t("sidebarActiveAgents", { count });
+  }
+}
+
 renderLocale();
+startLiveStatusRefresh();
 void Promise.all([loadProjects({ preserveSelection: true }), loadAgents(), loadTaskTemplates()]);
+
+function startLiveStatusRefresh() {
+  window.setInterval(() => {
+    if (document.visibilityState === "hidden") {
+      return;
+    }
+
+    void refreshLiveStatus();
+  }, LIVE_STATUS_REFRESH_INTERVAL_MS);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      void refreshLiveStatus();
+    }
+  });
+}
+
+async function refreshLiveStatus() {
+  const work = [loadAgents({ force: true })];
+
+  if (state.selectedProjectId) {
+    work.push(selectProject(state.selectedProjectId, { preserveTask: true }));
+  } else if (state.selectedTaskId) {
+    work.push(loadTaskDetail(state.selectedTaskId));
+  }
+
+  await Promise.allSettled(work);
+}
 
 async function onRegisterProject(event) {
   event.preventDefault();
@@ -1321,19 +2228,20 @@ async function onRegisterProject(event) {
   setButtonBusy(elements.registerProjectButton, true, t("registering"));
 
   try {
+    const projectPath = elements.projectPathInput.value.trim();
     const response = await fetchJson("/api/projects", {
-      body: { path: elements.projectPathInput.value.trim() },
+      body: { path: projectPath },
       method: "POST",
     });
 
+    elements.projectRegistrationForm.reset();
+    await loadProjects({ selectedProjectId: response.project.id });
+    closeProjectRegistrationDialog();
     showFeedback(
-      elements.registrationFeedback,
+      elements.projectDetailFeedback,
       "success",
       t("projectRegistered", { name: response.project.name }),
     );
-
-    elements.projectRegistrationForm.reset();
-    await loadProjects({ selectedProjectId: response.project.id });
   } catch (error) {
     showFeedback(elements.registrationFeedback, "error", buildProjectErrorMessage(error));
   } finally {
@@ -1355,7 +2263,9 @@ async function onCreateTask(event) {
     const response = await fetchJson(routePath, {
       body: {
         attachments,
-        baseBranch: state.selectedBaseBranch,
+        baseBranch: getSelectedTaskBaseBranch(),
+        baseBranchMode: state.baseBranchMode,
+        ...(state.baseBranchMode === "new" ? { baseBranchStartPoint: state.baseBranchStartPoint } : {}),
         description: elements.taskDescriptionInput.value.trim(),
         leadAgentType: state.selectedLeadAgentName,
         projectId: state.selectedProjectId,
@@ -1373,10 +2283,22 @@ async function onCreateTask(event) {
 
     elements.taskCreationForm.reset();
     elements.taskAttachmentList.replaceChildren();
+    state.baseBranchDraftManual = false;
+    state.baseBranchDraftName = "";
+    state.baseBranchMode = "new";
+    state.baseBranchStartPoint = null;
+    state.selectedExistingBaseBranch = null;
     state.selectedTaskId = response.task.id;
     writeStorage(STORAGE_KEYS.selectedTaskId, response.task.id);
+    await loadProjectDetail(state.selectedProjectId);
     await loadProjectTasks(state.selectedProjectId, { selectedTaskId: response.task.id });
     await loadTaskDetail(response.task.id);
+    switchView("tasks");
+    showFeedback(
+      elements.taskDetailFeedback,
+      "success",
+      t("taskCreated", { title: response.task.title }),
+    );
   } catch (error) {
     const message = buildTaskErrorMessage(error);
     const feedbackTarget = String(error?.code ?? "").startsWith("ATTACHMENT_")
@@ -1389,7 +2311,7 @@ async function onCreateTask(event) {
   }
 }
 
-async function onStartClarification() {
+async function onStartClarification(initialContent = null) {
   if (!state.selectedTaskId) {
     return;
   }
@@ -1400,6 +2322,7 @@ async function onStartClarification() {
   try {
     connectTaskStream(state.selectedTaskId);
     const response = await fetchJson(`/api/tasks/${encodeURIComponent(state.selectedTaskId)}/start-clarification`, {
+      body: { content: normalizeOptionalText(initialContent ?? elements.taskMessageInput.value) },
       method: "POST",
     });
     state.taskDetail = {
@@ -1426,16 +2349,28 @@ async function onSendTaskMessage(event) {
   setButtonBusy(elements.sendTaskMessageButton, true, t("sending"));
 
   try {
-    await fetchJson(`/api/tasks/${encodeURIComponent(state.selectedTaskId)}/messages`, {
-      body: { content: elements.taskMessageInput.value.trim() },
-      method: "POST",
-    });
+    const content = elements.taskMessageInput.value.trim();
+    const taskStatus = state.taskDetail?.task?.status ?? null;
+
+    if (taskStatus === "DRAFT") {
+      await onStartClarification(content);
+    } else {
+      await fetchJson(`/api/tasks/${encodeURIComponent(state.selectedTaskId)}/messages`, {
+        body: { content },
+        method: "POST",
+      });
+    }
+
     elements.taskMessageInput.value = "";
     await loadTaskDetail(state.selectedTaskId, { preserveStream: true });
   } catch (error) {
     showFeedback(elements.taskDetailFeedback, "error", buildTaskErrorMessage(error));
   } finally {
-    setButtonBusy(elements.sendTaskMessageButton, false, t("sendMessageButton"));
+    setButtonBusy(
+      elements.sendTaskMessageButton,
+      false,
+      state.taskDetail?.task?.status === "DRAFT" ? t("startClarificationDraftButton") : t("sendMessageButton"),
+    );
   }
 }
 
@@ -1609,12 +2544,17 @@ async function loadAgents(options = {}) {
     state.systemSandboxPolicy = sandboxPolicy.policy ?? null;
     state.workerCandidates = health.workerCandidates ?? [];
 
-    if (!state.leadCandidates.some((candidate) => candidate.agentName === state.selectedLeadAgentName)) {
-      state.selectedLeadAgentName = state.leadCandidates[0]?.agentName ?? null;
+    const selectedLeadCandidate = state.leadCandidates.find((candidate) => candidate.agentName === state.selectedLeadAgentName) ?? null;
+
+    if (!selectedLeadCandidate || (!selectedLeadCandidate.selectable && state.leadCandidates.some((candidate) => candidate.selectable))) {
+      state.selectedLeadAgentName = state.leadCandidates.find((candidate) => candidate.selectable)?.agentName
+        ?? state.leadCandidates[0]?.agentName
+        ?? null;
     }
 
     renderAgentHealth();
     renderLeadSelector();
+    updateSidebarAgentCount();
   } catch (error) {
     state.agents = [];
     state.agentHealth = {};
@@ -1625,6 +2565,7 @@ async function loadAgents(options = {}) {
     state.selectedLeadAgentName = null;
     renderAgentHealth();
     renderLeadSelector();
+    updateSidebarAgentCount();
     showFeedback(elements.agentHealthFeedback, "error", buildAgentErrorMessage(error));
   } finally {
     setButtonBusy(elements.refreshAgentHealthButton, false, t("refreshHealthButton"));
@@ -1653,32 +2594,40 @@ async function loadTaskTemplates() {
 }
 
 function renderProjectList() {
-  elements.projectList.replaceChildren();
-  elements.projectListEmpty.hidden = state.projects.length > 0;
+  // Sidebar is the primary project list now
+  renderSidebarProjects();
 
-  for (const project of state.projects) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "project-list__item";
-    button.dataset.projectId = project.id;
-
-    if (project.id === state.selectedProjectId) {
-      button.classList.add("is-selected");
+  // Legacy project list container (if it exists)
+  if (elements.projectList) {
+    elements.projectList.replaceChildren();
+    if (elements.projectListEmpty) {
+      elements.projectListEmpty.hidden = state.projects.length > 0;
     }
 
-    button.innerHTML = `
-      <div class="project-list__topline">
-        <p class="project-list__title">${escapeHtml(project.name)}</p>
-        <span class="badge badge--clean">${escapeHtml(project.defaultBranch ?? t("unknown"))}</span>
-      </div>
-      <p class="project-list__meta"><strong>${escapeHtml(t("pathMetaLabel"))}:</strong> <span class="project-list__path">${escapeHtml(project.path)}</span></p>
-    `;
+    for (const project of state.projects) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "project-list__item";
+      button.dataset.projectId = project.id;
 
-    button.addEventListener("click", () => {
-      void selectProject(project.id);
-    });
+      if (project.id === state.selectedProjectId) {
+        button.classList.add("is-selected");
+      }
 
-    elements.projectList.append(button);
+      button.innerHTML = `
+        <div class="project-list__topline">
+          <p class="project-list__title">${escapeHtml(project.name)}</p>
+          <span class="badge badge--clean">${escapeHtml(project.defaultBranch ?? t("unknown"))}</span>
+        </div>
+        <p class="project-list__meta"><strong>${escapeHtml(t("pathMetaLabel"))}:</strong> <span class="project-list__path">${escapeHtml(project.path)}</span></p>
+      `;
+
+      button.addEventListener("click", () => {
+        void selectProject(project.id);
+      });
+
+      elements.projectList.append(button);
+    }
   }
 }
 
@@ -1699,6 +2648,12 @@ function renderProjectDetail() {
   elements.registeredPath.textContent = project.path;
   elements.defaultBranch.textContent = repoStatus.defaultBranch ?? t("unknown");
   elements.currentBranch.textContent = repoStatus.currentBranch ?? t("detachedHead");
+  if (elements.projectCurrentBranchBadge) {
+    elements.projectCurrentBranchBadge.textContent = `${t("currentBranchStat")} · ${repoStatus.currentBranch ?? t("detachedHead")}`;
+  }
+  if (elements.dashboardTeamBranchBadge) {
+    elements.dashboardTeamBranchBadge.textContent = `${t("currentBranchStat")} · ${repoStatus.currentBranch ?? t("detachedHead")}`;
+  }
   elements.cleanlinessBadge.textContent = buildCleanlinessLabel(repoStatus.isDirty);
   elements.cleanlinessBadge.className = `badge ${repoStatus.isDirty ? "badge--dirty" : "badge--clean"}`;
   elements.dirtyWarningBanner.hidden = !repoStatus.isDirty;
@@ -1706,7 +2661,7 @@ function renderProjectDetail() {
   const branches = buildBranchList(repoStatus.recentBranches);
   elements.recentBranches.replaceChildren(...branches.map((branchName) => {
     const item = document.createElement("span");
-    item.className = "branches-list__item";
+    item.className = `branches-list__item${branchName === repoStatus.currentBranch ? " is-current" : ""}`;
     item.textContent = branchName;
     return item;
   }));
@@ -1730,28 +2685,54 @@ function renderAgentHealth() {
   elements.agentHealthEmpty.hidden = state.agents.length > 0;
 
   for (const agent of state.agents) {
-    const snapshot = state.agentHealth[agent.name];
-    const capabilityBadges = [
+    const snapshot = state.agentHealth[agent.name] ?? null;
+    const statusSnapshot = snapshot
+      ? { ...snapshot, runtimeMode: snapshot.runtimeMode ?? agent.runtimeMode ?? null }
+      : { runtimeMode: agent.runtimeMode ?? null };
+    const checks = Array.isArray(snapshot?.checks) && snapshot.checks.length > 0
+      ? snapshot.checks
+      : [{
+        message: t("notYetChecked"),
+        name: "availability",
+        status: "SKIP",
+      }];
+    const tone = buildAgentCardTone(agent, snapshot);
+    const dominantCheck = checks.find((check) => ["FAIL", "WARN"].includes(check.status)) ?? checks[0] ?? null;
+    const roleSummary = [
       agent.roles.leadCandidate ? t("capabilityLead") : null,
       agent.roles.workerCandidate ? t("capabilityWorker") : null,
-      agent.capabilities.supportsVision ? t("capabilityVision") : t("capabilityNoVision"),
-      agent.capabilities.supportsInteractiveInput ? t("capabilityInteractive") : t("capabilityOneShot"),
-      ...(agent.capabilities.supportedSandboxTypes ?? []).map((sandboxType) => t("sandboxCapability", { type: sandboxType })),
-    ].filter(Boolean);
+    ].filter(Boolean).join(" / ");
     const article = document.createElement("article");
-    article.className = "agent-card";
+    article.className = `agent-card agent-card--${tone}`;
 
     article.innerHTML = `
-      <div class="agent-card__topline">
-        <div>
-          <p class="agent-card__title">${escapeHtml(agent.name)}</p>
-          <p class="agent-card__description">${escapeHtml(agent.capabilities.description)}</p>
+      <div class="agent-card__header agent-card__header--compact">
+        <div class="agent-card__identity">
+          <span class="agent-card__icon" aria-hidden="true">
+            <span class="material-symbols-outlined">${escapeHtml(buildAgentStatusIcon(agent, snapshot))}</span>
+          </span>
+          <div class="agent-card__copy">
+            <div class="agent-card__topline">
+              <p class="agent-card__title">${escapeHtml(agent.name)}</p>
+              <span class="agent-card__state">${escapeHtml(buildAgentCompactStateLabel(agent, snapshot))}</span>
+            </div>
+            <p class="agent-card__summary">${escapeHtml(buildAgentCompactSummary(agent, snapshot, checks))}</p>
+          </div>
         </div>
-        <span class="badge ${snapshot?.available ? "badge--clean" : "badge--dirty"}">${escapeHtml(buildAgentStatusLabel(snapshot))}</span>
+        <span class="agent-card__signal agent-card__signal--${escapeHtmlAttribute(tone)}" aria-hidden="true"></span>
       </div>
-      <p class="agent-card__meta"><strong>${escapeHtml(t("runtimeLabel"))}:</strong> ${escapeHtml(buildAgentRuntimeModeLabel(agent, snapshot))}</p>
-      <p class="agent-card__meta"><strong>${escapeHtml(t("capabilitiesLabel"))}:</strong> ${escapeHtml(capabilityBadges.join(" · "))}</p>
-      <p class="agent-card__meta"><strong>${escapeHtml(t("failureReasonLabel"))}:</strong> ${escapeHtml(snapshot?.failureReason?.message ?? t("none"))}</p>
+      <div class="agent-card__meta-row">
+        <span class="agent-card__chip">${escapeHtml(buildAgentRuntimeModeLabel(agent, snapshot))}</span>
+        ${roleSummary ? `<span class="agent-card__chip">${escapeHtml(roleSummary)}</span>` : ""}
+        <span class="agent-card__chip">${escapeHtml(`v${snapshot?.version ?? t("unknown")}`)}</span>
+      </div>
+      ${dominantCheck ? `
+        <p class="agent-card__detail">
+          <strong>${escapeHtml(buildAgentCheckLabel(dominantCheck.name))}</strong>
+          <span>${escapeHtml(dominantCheck.message ?? t("none"))}</span>
+        </p>
+      ` : ""}
+      <p class="agent-card__meta">${escapeHtml(`${t("healthCheckedAtStat")} · ${state.healthCheckedAt ? formatTimestamp(state.healthCheckedAt) : t("notYetChecked")}`)}</p>
     `;
 
     elements.agentHealthList.append(article);
@@ -1775,6 +2756,7 @@ function renderLeadSelector() {
   for (const candidate of state.leadCandidates) {
     const option = document.createElement("option");
     option.value = candidate.agentName;
+    option.disabled = !candidate.selectable;
     option.selected = candidate.agentName === state.selectedLeadAgentName;
     option.textContent = candidate.selectable
       ? candidate.agentName
@@ -1786,8 +2768,8 @@ function renderLeadSelector() {
   const gate = buildLeadSelectionState(selectedCandidate);
 
   elements.leadAgentSelect.disabled = false;
-  elements.createTaskButton.disabled = gate.disabled || !state.selectedProjectId;
   showFeedback(elements.leadAgentFeedback, gate.tone, gate.message);
+  updateCreateTaskButtonState();
   renderGuidedTaskComposer();
 }
 
@@ -1826,6 +2808,20 @@ function renderDraftAttachments() {
   }
 }
 
+function onBaseBranchModeChange(event) {
+  state.baseBranchMode = event.target.value === "existing" ? "existing" : "new";
+  syncBranchChoices();
+}
+
+function onTaskTitleInput() {
+  if (state.baseBranchMode === "new" && !state.baseBranchDraftManual) {
+    syncBranchChoices();
+    return;
+  }
+
+  renderTaskCreateFlowSummary();
+}
+
 function onSelectGuidedTemplate(templateId) {
   const previousCopy = getSelectedGuidedTemplateCopy();
   const nextTemplateId = state.selectedGuidedTemplateId === templateId ? null : templateId;
@@ -1848,11 +2844,19 @@ function onSelectGuidedTemplate(templateId) {
   }
 
   renderGuidedTaskComposer();
+  renderTaskCreateFlowSummary();
+  if (state.baseBranchMode === "new" && !state.baseBranchDraftManual) {
+    syncBranchChoices();
+  }
 }
 
 function onClearGuidedTemplateSelection() {
   state.selectedGuidedTemplateId = null;
   renderGuidedTaskComposer();
+  renderTaskCreateFlowSummary();
+  if (state.baseBranchMode === "new" && !state.baseBranchDraftManual) {
+    syncBranchChoices();
+  }
 }
 
 function buildCreateTaskButtonLabel() {
@@ -1877,10 +2881,7 @@ function renderGuidedTaskComposer() {
   customCard.type = "button";
   customCard.className = "guided-template-card";
   customCard.innerHTML = `
-    <div>
-      <p class="guided-template-card__title">${escapeHtml(t("guidedTemplateCustomTitle"))}</p>
-      <p class="guided-template-card__description">${escapeHtml(t("guidedTemplateCustomDescription"))}</p>
-    </div>
+    <span class="guided-template-card__title">${escapeHtml(t("guidedTemplateCustomTitle"))}</span>
     <span class="badge badge--outline">${escapeHtml(t("createTaskButton"))}</span>
   `;
   if (!state.selectedGuidedTemplateId) {
@@ -1895,10 +2896,7 @@ function renderGuidedTaskComposer() {
     card.type = "button";
     card.className = "guided-template-card";
     card.innerHTML = `
-      <div>
-        <p class="guided-template-card__title">${escapeHtml(copy.title)}</p>
-        <p class="guided-template-card__description">${escapeHtml(copy.description)}</p>
-      </div>
+      <span class="guided-template-card__title">${escapeHtml(copy.title)}</span>
       <span class="badge badge--outline">${escapeHtml(countLabel(template.nodeCount ?? template.roles?.length ?? 0, "nodeCountOne", "nodeCountOther"))}</span>
     `;
 
@@ -1934,6 +2932,7 @@ function renderGuidedTaskComposer() {
   }
 
   elements.guidedDemoBody.textContent = selectedCopy?.starterDescription ?? t("guidedDemoBody");
+  renderTaskCreateFlowSummary();
 }
 
 function renderTaskList() {
@@ -1941,6 +2940,7 @@ function renderTaskList() {
   elements.taskListEmpty.hidden = state.tasks.length > 0;
 
   for (const task of state.tasks) {
+    const stageMeta = buildTaskStageMeta(task);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "task-list__item";
@@ -1952,9 +2952,10 @@ function renderTaskList() {
     button.innerHTML = `
       <div class="task-list__topline">
         <p class="task-list__title">${escapeHtml(task.title)}</p>
-        <span class="badge ${task.status === "CLARIFYING" ? "badge--accent-soft" : task.status === "PLANNING" ? "badge--clean" : "badge--outline"}">${escapeHtml(buildTaskStatusLabel(task.status))}</span>
+        <span class="badge ${buildTaskStatusBadgeClass(task.status)}">${escapeHtml(buildTaskStatusLabel(task.status))}</span>
       </div>
       <p class="task-list__meta"><strong>${escapeHtml(t("baseBranchMetaLabel"))}:</strong> ${escapeHtml(task.baseBranch)}</p>
+      <p class="task-list__hint">${escapeHtml(stageMeta.listHint)}</p>
     `;
     button.addEventListener("click", () => {
       void loadTaskDetail(task.id);
@@ -1977,7 +2978,7 @@ function renderTaskDetail() {
   elements.taskDetailTitle.textContent = detail.task.title;
   elements.taskDetailDescription.textContent = detail.task.description;
   elements.taskStatusBadge.textContent = buildTaskStatusLabel(detail.task.status);
-  elements.taskStatusBadge.className = `badge ${detail.task.status === "CLARIFYING" ? "badge--accent-soft" : detail.task.status === "PLANNING" ? "badge--clean" : detail.task.status === "ACTION_REQUIRED" ? "badge--dirty" : "badge--outline"}`;
+  elements.taskStatusBadge.className = `badge ${buildTaskStatusBadgeClass(detail.task.status)}`;
   elements.taskBaseBranchBadge.textContent = detail.task.baseBranch;
   elements.taskLeadAgent.textContent = detail.task.leadAgentType;
   elements.taskBaseCommit.textContent = detail.task.baseCommitSha;
@@ -1988,7 +2989,11 @@ function renderTaskDetail() {
   elements.taskPlanVersion.textContent = String(detail.task.planVersion ?? 0);
   elements.taskPlanSnapshotCount.textContent = String(detail.planSnapshots?.length ?? 0);
 
+  renderTaskStageBoard(detail);
+  renderLeaderConversation(detail);
+  renderLeaderPlanPreview(detail);
   syncEditablePlanDraft(detail);
+  renderDashboardTeamOverview(detail);
   renderCleanupWarnings(detail.cleanupWarnings ?? []);
   renderTeamView(detail);
   renderTaskAttachments(detail.attachments ?? []);
@@ -1997,24 +3002,135 @@ function renderTaskDetail() {
   renderTaskIntegration(detail);
   renderTranscript(detail.messages ?? []);
 
-  const canStartClarification = detail.task.status === "DRAFT";
+  renderTaskMessageComposer(detail);
   const canConfirmRequirements = detail.task.status === "CLARIFYING";
 
-  elements.startClarificationButton.hidden = !canStartClarification;
+  elements.startClarificationButton.hidden = true;
   elements.confirmRequirementsButton.hidden = !canConfirmRequirements;
-  elements.taskMessageForm.hidden = !canConfirmRequirements;
+  if (elements.taskActions) {
+    elements.taskActions.hidden = true;
+  }
+  elements.taskMessageForm.hidden = !(detail.task.status === "DRAFT" || canConfirmRequirements);
 }
 
-function renderTeamView(detail) {
-  const leadSessions = (detail.sessions ?? []).filter((session) => session.sessionType === "LEAD");
-  const latestLeadSession = leadSessions.at(-1) ?? null;
-  const lead = {
-    ...(detail.team?.lead ?? {}),
-    agentType: detail.team?.lead?.agentType ?? detail.task.leadAgentType,
-    sessionId: latestLeadSession?.id ?? detail.team?.lead?.sessionId ?? null,
-    status: latestLeadSession?.status ?? detail.team?.lead?.status ?? "PENDING",
-  };
-  const members = (detail.subTasks ?? []).map((subTask, index) => {
+function renderLeaderConversation(detail) {
+  const leadSession = (detail.sessions ?? []).filter((session) => session.sessionType === "LEAD").at(-1) ?? null;
+  const taskStatus = detail.task.status;
+  const liveOutput = leadSession
+    ? stripAnsi(state.liveSessionOutputs.get(leadSession.id) ?? leadSession.outputBuffer ?? "")
+    : "";
+  const summaryKey = taskStatus === "DRAFT"
+    ? "leaderConversationDraftSummary"
+    : taskStatus === "CLARIFYING"
+      ? "leaderConversationClarifyingSummary"
+      : taskStatus === "PLANNING"
+        ? "leaderConversationPlanningSummary"
+        : taskStatus === "PLAN_REVIEW"
+          ? "leaderConversationPlanReadySummary"
+          : "leaderConversationExecutionSummary";
+
+  if (elements.taskLeadSessionSummary) {
+    elements.taskLeadSessionSummary.textContent = t(summaryKey);
+  }
+
+  if (elements.taskLeadSessionBadge) {
+    elements.taskLeadSessionBadge.textContent = leadSession
+      ? `${translateStatusLabel(leadSession.status)}${leadSession.id ? ` · ${t("sessionIdLabel", { id: leadSession.id })}` : ""}`
+      : t("leadSessionNotStarted");
+    elements.taskLeadSessionBadge.className = `badge ${leadSession?.status === "RUNNING" ? "badge--accent-soft" : leadSession?.status === "FAILED" ? "badge--dirty" : "badge--outline"}`;
+  }
+
+  if (elements.taskLeadSessionOutput) {
+    elements.taskLeadSessionOutput.textContent = liveOutput || t("leaderConversationEmptyOutput");
+  }
+}
+
+function renderLeaderPlanPreview(detail) {
+  if (!elements.taskLeaderPlanList || !elements.taskLeaderPlanEmpty || !elements.taskLeaderPlanSummary || !elements.taskLeaderPlanBadge) {
+    return;
+  }
+
+  const parsedPlan = parseCurrentPlanJson(detail.task.currentPlanJson);
+  const planNodes = getPlanNodes(parsedPlan);
+  const materializedNodes = (detail.subTasks ?? []).map((subTask) => ({
+    branch_suffix: subTask.branchSuffix ?? subTask.branchName ?? "",
+    depends_on: subTask.dependencyBranchSuffixes ?? [],
+    recommended_agent: subTask.agentType ?? "",
+    role: subTask.role ?? "",
+    title: subTask.title ?? "",
+  }));
+  const nodes = planNodes.length > 0 ? planNodes : materializedNodes;
+
+  elements.taskLeaderPlanList.replaceChildren();
+  elements.taskLeaderPlanEmpty.hidden = nodes.length > 0;
+  elements.taskLeaderPlanSummary.textContent = nodes.length > 0
+    ? t("leaderPlanSummaryReady")
+    : t("leaderPlanSummaryDraft");
+  elements.taskLeaderPlanBadge.textContent = nodes.length > 0 ? t("leaderPlanReadyBadge") : t("leaderPlanWaitingBadge");
+  elements.taskLeaderPlanBadge.className = `badge ${nodes.length > 0 ? "badge--clean" : "badge--outline"}`;
+
+  for (const [index, node] of nodes.entries()) {
+    const item = document.createElement("article");
+    item.className = "leader-plan-card";
+    const dependencies = Array.isArray(node.depends_on) && node.depends_on.length > 0
+      ? node.depends_on.join(", ")
+      : t("leaderPlanDependsNone");
+    item.innerHTML = `
+      <div class="leader-plan-card__header">
+        <div>
+          <p class="leader-plan-card__eyebrow">${escapeHtml(t("leaderPlanTaskLabel", { index: index + 1 }))}</p>
+          <h4 class="leader-plan-card__title">${escapeHtml(node.title || `${t("leaderPlanTaskLabel", { index: index + 1 })}`)}</h4>
+        </div>
+        <span class="badge badge--outline">${escapeHtml(node.recommended_agent || node.role || t("unknownAgent"))}</span>
+      </div>
+      <dl class="leader-plan-card__facts">
+        <div>
+          <dt>${escapeHtml(t("leaderPlanAgentLabel"))}</dt>
+          <dd>${escapeHtml(node.recommended_agent || t("unknownAgent"))}</dd>
+        </div>
+        <div>
+          <dt>${escapeHtml(t("leaderPlanRoleLabel"))}</dt>
+          <dd>${escapeHtml(node.role || t("unknown"))}</dd>
+        </div>
+        <div>
+          <dt>${escapeHtml(t("leaderPlanBranchLabel"))}</dt>
+          <dd>${escapeHtml(node.branch_suffix || t("leadSessionPending"))}</dd>
+        </div>
+        <div>
+          <dt>${escapeHtml(t("leaderPlanDependsLabel"))}</dt>
+          <dd>${escapeHtml(dependencies)}</dd>
+        </div>
+      </dl>
+    `;
+    elements.taskLeaderPlanList.append(item);
+  }
+}
+
+function renderTaskMessageComposer(detail) {
+  const taskStatus = detail?.task?.status ?? null;
+
+  if (!elements.taskMessageInput || !elements.taskMessageLabel || !elements.sendTaskMessageButton) {
+    return;
+  }
+
+  const hasDraftMessage = elements.taskMessageInput.value.trim().length > 0;
+
+  if (taskStatus === "DRAFT") {
+    elements.taskMessageLabel.textContent = t("startClarificationDraftLabel");
+    elements.taskMessageInput.setAttribute("placeholder", t("startClarificationDraftPlaceholder"));
+    elements.sendTaskMessageButton.textContent = t("startClarificationDraftButton");
+    elements.sendTaskMessageButton.disabled = !hasDraftMessage;
+    return;
+  }
+
+  elements.taskMessageLabel.textContent = t("sendClarificationReplyLabel");
+  elements.taskMessageInput.setAttribute("placeholder", t("sendClarificationReplyPlaceholder"));
+  elements.sendTaskMessageButton.textContent = t("sendMessageButton");
+  elements.sendTaskMessageButton.disabled = !hasDraftMessage;
+}
+
+function buildTaskTeamMembers(detail) {
+  return (detail.subTasks ?? []).map((subTask, index) => {
     const latestWorkerSession = (detail.sessions ?? [])
       .filter((session) => session.sessionType === "WORKER" && session.subTaskId === subTask.id)
       .at(-1) ?? null;
@@ -2030,9 +3146,124 @@ function renderTeamView(detail) {
       subtaskId: subTask.id,
     };
   });
+}
+
+function renderDashboardTeamOverview(detail = state.taskDetail) {
+  if (!elements.dashboardTeamList || !elements.dashboardTeamEmpty) {
+    return;
+  }
+
+  const currentProjectBranch = state.projectDetail?.repoStatus?.currentBranch ?? null;
+  const currentTaskTitle = detail?.task?.title ?? null;
+  const members = detail?.task ? buildTaskTeamMembers(detail) : [];
+  const teams = buildAgentTeams(members);
+
+  elements.dashboardTeamList.replaceChildren();
+  elements.dashboardTeamEmpty.hidden = teams.length > 0;
+
+  if (elements.dashboardTeamTaskBadge) {
+    elements.dashboardTeamTaskBadge.textContent = `${t("dashboardTeamTaskBadge")} · ${currentTaskTitle ?? t("dashboardTeamTaskIdle")}`;
+  }
+
+  if (elements.dashboardTeamBranchBadge) {
+    elements.dashboardTeamBranchBadge.textContent = currentProjectBranch
+      ? `${t("currentBranchStat")} · ${currentProjectBranch}`
+      : t("currentBranchStat");
+  }
+
+  for (const team of teams) {
+    const agent = state.agents.find((entry) => entry.name === team.agentType) ?? null;
+    const snapshot = state.agentHealth?.[team.agentType] ?? null;
+    const statusSnapshot = snapshot
+      ? { ...snapshot, runtimeMode: snapshot.runtimeMode ?? agent?.runtimeMode ?? null }
+      : { runtimeMode: agent?.runtimeMode ?? null };
+    const card = document.createElement("article");
+    const activityTone = buildAgentTeamTone(team.activitySummary);
+    card.className = `dashboard-team-card dashboard-team-card--${activityTone}`;
+    card.innerHTML = `
+      <div class="dashboard-team-card__header">
+        <div>
+          <p class="dashboard-team-card__eyebrow">${escapeHtml(t("dashboardTeamRuntimeMode"))}</p>
+          <div class="dashboard-team-card__title-row">
+            <h3 class="dashboard-team-card__title">${escapeHtml(team.agentType ?? t("unknownAgent"))}</h3>
+            <span class="badge ${buildAgentStatusBadgeClass(agent, snapshot)}">${escapeHtml(buildAgentStatusLabel(statusSnapshot))}</span>
+          </div>
+          <p class="dashboard-team-card__meta">${escapeHtml([
+            buildAgentRuntimeModeLabel(agent, snapshot),
+            `${team.members.length} ${t("dashboardTeamMembers")}`,
+            `${team.workspaces.length} ${t("dashboardTeamWorkspaceCount")}`,
+            `${team.branches.length} ${t("dashboardTeamBranchCount")}`,
+          ].join(" · "))}</p>
+        </div>
+        <span class="dashboard-team-card__count">${escapeHtml(countLabel(team.members.length, "teamMemberCountOne", "teamMemberCountOther"))}</span>
+      </div>
+      <div class="dashboard-team-card__chamber">
+        <div class="dashboard-team-card__scanline" aria-hidden="true"></div>
+        <div class="dashboard-team-card__chamber-head">
+          <div class="dashboard-team-card__eva-mark">
+            <span class="dashboard-team-card__eva-core"></span>
+          </div>
+          <div class="dashboard-team-card__status-block">
+            <span class="dashboard-team-card__activity-dot dashboard-team-card__activity-dot--${escapeHtmlAttribute(activityTone)}"></span>
+            <span>${escapeHtml(buildAgentTeamActivityLabel(team.activitySummary))}</span>
+          </div>
+        </div>
+        <div class="dashboard-team-card__pilot-deck" role="list" aria-label="${escapeHtmlAttribute(t("teamPilotDeckLabel"))}">
+          ${team.members.map((member) => {
+            const activityState = buildMemberActivityState(member);
+            return `
+              <div class="agent-figure agent-figure--${escapeHtmlAttribute(activityState.toLowerCase())}" role="listitem" title="${escapeHtmlAttribute(buildAgentFigureTitle(member))}">
+                <span class="agent-figure__frame" aria-hidden="true">
+                  <span class="agent-figure__head"></span>
+                  <span class="agent-figure__body"></span>
+                </span>
+                <span class="agent-figure__label">${escapeHtml(member.displayName ?? member.title ?? t("teamMemberFallback"))}</span>
+              </div>
+            `;
+          }).join("")}
+        </div>
+        <p class="dashboard-team-card__terminal">${escapeHtml(buildDashboardTeamTelemetry(team))}</p>
+        <div class="dashboard-team-card__progress">
+          <span class="dashboard-team-card__progress-bar" style="width: ${escapeHtmlAttribute(String(buildDashboardTeamProgress(team.activitySummary)))}%"></span>
+        </div>
+      </div>
+      <div class="dashboard-team-card__footer">
+        <div class="dashboard-team-card__chips">
+          ${team.branches.slice(0, 3).map((branch) => `<span class="dashboard-team-card__chip">${escapeHtml(branch)}</span>`).join("")}
+          ${team.workspaces.slice(0, 2).map((workspace) => `<span class="dashboard-team-card__chip dashboard-team-card__chip--muted">${escapeHtml(workspace)}</span>`).join("")}
+        </div>
+        <button class="button button--secondary dashboard-team-card__action" type="button" data-dashboard-open-task="true">${escapeHtml(t("dashboardTeamOpenTask"))}</button>
+      </div>
+    `;
+
+    card.querySelector("[data-dashboard-open-task]")?.addEventListener("click", () => {
+      switchView("tasks");
+    });
+
+    elements.dashboardTeamList.append(card);
+  }
+}
+
+function renderTeamView(detail) {
+  const leadSessions = (detail.sessions ?? []).filter((session) => session.sessionType === "LEAD");
+  const latestLeadSession = leadSessions.at(-1) ?? null;
+  const lead = {
+    ...(detail.team?.lead ?? {}),
+    agentType: detail.team?.lead?.agentType ?? detail.task.leadAgentType,
+    sessionId: latestLeadSession?.id ?? detail.team?.lead?.sessionId ?? null,
+    status: latestLeadSession?.status ?? detail.team?.lead?.status ?? "PENDING",
+  };
+  const members = buildTaskTeamMembers(detail);
+  const teams = buildAgentTeams(members);
+  const currentProjectBranch = state.projectDetail?.repoStatus?.currentBranch ?? null;
 
   elements.taskTeamMemberList.replaceChildren();
   elements.taskTeamMemberCount.textContent = countLabel(members.length, "teamMemberCountOne", "teamMemberCountOther");
+  if (elements.taskTeamProjectBranch) {
+    elements.taskTeamProjectBranch.textContent = currentProjectBranch
+      ? `${t("currentBranchStat")} · ${currentProjectBranch}`
+      : t("currentBranchStat");
+  }
   elements.taskTeamEmpty.hidden = members.length > 0;
   elements.taskTeamShell.hidden = members.length === 0;
 
@@ -2053,45 +3284,80 @@ function renderTeamView(detail) {
       : t("leadCoordinatorSummary");
   }
 
-  for (const member of members) {
-    const card = document.createElement("button");
-    const isSelected = member.subtaskId === state.selectedExecutionSubTaskId;
-
-    card.type = "button";
-    card.className = `team-member-card${isSelected ? " is-selected" : ""}`;
+  for (const team of teams) {
+    const agent = state.agents.find((entry) => entry.name === team.agentType) ?? null;
+    const snapshot = state.agentHealth?.[team.agentType] ?? null;
+    const statusSnapshot = snapshot
+      ? { ...snapshot, runtimeMode: snapshot.runtimeMode ?? agent?.runtimeMode ?? null }
+      : { runtimeMode: agent?.runtimeMode ?? null };
+    const card = document.createElement("article");
+    card.className = `agent-team-card agent-team-card--${buildAgentCardTone(agent, snapshot)}`;
     card.innerHTML = `
-      <div class="team-member-card__header">
+      <div class="agent-team-card__header">
         <div>
-          <div class="team-member-card__topline">
-            <p class="team-member-card__title">${escapeHtml(member.displayName ?? member.title ?? t("teamMemberFallback"))}</p>
-            <span class="badge badge--outline">${escapeHtml(buildAssignmentSourceLabel(member.assignmentSource))}</span>
+          <p class="agent-team-card__eyebrow">${escapeHtml(t("teamRuntimeSummaryLabel"))}</p>
+          <div class="agent-team-card__topline">
+            <h4 class="agent-team-card__title">${escapeHtml(team.agentType ?? t("unknownAgent"))}</h4>
+            <span class="badge ${buildAgentStatusBadgeClass(agent, snapshot)}">${escapeHtml(buildAgentStatusLabel(statusSnapshot))}</span>
           </div>
-          <p class="team-member-card__meta">${escapeHtml([
-            member.role ?? t("capabilityWorker").toLowerCase(),
-            member.agentType ?? t("unknownAgent"),
-            translateStatusLabel(member.latestSessionStatus ?? member.status ?? "PENDING"),
+          <p class="agent-team-card__meta">${escapeHtml([
+            buildAgentRuntimeModeLabel(agent, snapshot),
+            t("teamWorkspacesSummary", { count: team.workspaces.length }),
+            t("teamBranchesSummary", { count: team.branches.length }),
           ].join(" · "))}</p>
         </div>
-        <span class="badge ${buildExecutionStatusBadgeClass(member.status)}">${escapeHtml(buildSubTaskStatusLabel(member.status))}</span>
+        <span class="badge badge--outline">${escapeHtml(buildAgentTeamActivityLabel(team.activitySummary))}</span>
       </div>
-      <p class="team-member-card__summary">${escapeHtml(member.runSummary ?? t("waitingTeamLifecycle"))}</p>
-      <dl class="team-member-card__facts">
-        <div>
-          <dt>${escapeHtml(t("branchLabel"))}</dt>
-          <dd>${escapeHtml(member.branchName ?? member.branchSuffix ?? t("leadSessionPending"))}</dd>
+      <div class="agent-team-card__hud">
+        <div class="agent-team-card__pilot-deck" role="list" aria-label="${escapeHtmlAttribute(t("teamPilotDeckLabel"))}">
+          ${team.members.map((member) => {
+            const selected = member.subtaskId === state.selectedExecutionSubTaskId;
+            const activityState = buildMemberActivityState(member);
+            return `
+              <button
+                class="agent-figure agent-figure--${escapeHtmlAttribute(activityState.toLowerCase())}${selected ? " is-selected" : ""}"
+                type="button"
+                data-subtask-id="${escapeHtmlAttribute(member.subtaskId)}"
+                title="${escapeHtmlAttribute(buildAgentFigureTitle(member))}"
+              >
+                <span class="agent-figure__frame" aria-hidden="true">
+                  <span class="agent-figure__head"></span>
+                  <span class="agent-figure__body"></span>
+                </span>
+                <span class="agent-figure__label">${escapeHtml(member.displayName ?? member.title ?? t("teamMemberFallback"))}</span>
+              </button>
+            `;
+          }).join("")}
         </div>
-        <div>
-          <dt>${escapeHtml(t("worktreeLabel"))}</dt>
-          <dd>${escapeHtml(member.worktreePath ?? t("leadSessionPending"))}</dd>
-        </div>
-      </dl>
-      <p class="team-member-card__hint">${escapeHtml(t("selectMemberHint"))}</p>
+        <dl class="agent-team-card__facts">
+          <div>
+            <dt>${escapeHtml(t("teamWorkspaceListLabel"))}</dt>
+            <dd>${escapeHtml(team.workspaces[0] ?? t("leadSessionPending"))}</dd>
+          </div>
+          <div>
+            <dt>${escapeHtml(t("teamBranchListLabel"))}</dt>
+            <dd>${escapeHtml(team.branches[0] ?? t("leadSessionPending"))}</dd>
+          </div>
+        </dl>
+      </div>
+      <p class="agent-team-card__summary">${escapeHtml(team.summary)}</p>
+      <div class="agent-team-card__workspace-list">
+        ${team.workspaces.map((workspace) => `<span class="agent-team-card__chip">${escapeHtml(workspace)}</span>`).join("")}
+      </div>
+      <div class="agent-team-card__branch-list">
+        ${team.branches.map((branch) => `<span class="agent-team-card__chip">${escapeHtml(branch)}</span>`).join("")}
+      </div>
     `;
-    card.addEventListener("click", () => {
-      state.selectedExecutionSubTaskId = member.subtaskId;
-      state.selectedExecutionSessionId = resolveFocusedSession(detail, member.subtaskId)?.id ?? null;
-      renderTaskDetail();
+
+    card.querySelectorAll("[data-subtask-id]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const subTaskId = button.getAttribute("data-subtask-id");
+        state.selectedExecutionSubTaskId = subTaskId;
+        state.selectedExecutionSessionId = resolveFocusedSession(detail, subTaskId)?.id ?? null;
+        renderTaskDetail();
+      });
     });
+
     elements.taskTeamMemberList.append(card);
   }
 }
@@ -2109,6 +3375,225 @@ function renderTaskAttachments(attachments) {
     `;
     elements.taskAttachmentsList.append(item);
   }
+}
+
+function buildAgentTeams(members) {
+  const teams = new Map();
+
+  for (const member of members) {
+    const key = member.agentType ?? "unknown-agent";
+    const existing = teams.get(key) ?? {
+      activitySummary: {
+        fault: 0,
+        resting: 0,
+        standby: 0,
+        working: 0,
+      },
+      agentType: key,
+      branches: new Set(),
+      members: [],
+      workspaces: new Set(),
+    };
+    const activityState = buildMemberActivityState(member);
+
+    existing.members.push(member);
+    existing.activitySummary[activityState.toLowerCase()] += 1;
+
+    if (member.branchName ?? member.branchSuffix) {
+      existing.branches.add(member.branchName ?? member.branchSuffix);
+    }
+
+    if (member.worktreePath) {
+      existing.workspaces.add(member.worktreePath);
+    }
+
+    teams.set(key, existing);
+  }
+
+  return [...teams.values()].map((team) => ({
+    ...team,
+    branches: [...team.branches],
+    summary: team.members.find((member) => buildMemberActivityState(member) === "WORKING")?.runSummary
+      ?? team.members[0]?.runSummary
+      ?? t("waitingTeamLifecycle"),
+    workspaces: [...team.workspaces],
+  }));
+}
+
+function buildAgentCardTone(agent, snapshot) {
+  const runtimeMode = snapshot?.runtimeMode ?? agent?.runtimeMode ?? null;
+
+  if (runtimeMode === "STUB") {
+    return "stub";
+  }
+
+  if (snapshot?.available !== true) {
+    return "offline";
+  }
+
+  if (Array.isArray(snapshot?.checks) && snapshot.checks.some((check) => check.status === "WARN")) {
+    return "degraded";
+  }
+
+  return "real";
+}
+
+function buildAgentStatusIcon(agent, snapshot) {
+  const tone = buildAgentCardTone(agent, snapshot);
+
+  if (tone === "offline") {
+    return "dangerous";
+  }
+
+  if (agent?.name === "gemini-cli") {
+    return "data_object";
+  }
+
+  return "terminal";
+}
+
+function buildAgentCompactStateLabel(agent, snapshot) {
+  switch (buildAgentCardTone(agent, snapshot)) {
+    case "real":
+      return t("agentCompactActive");
+    case "degraded":
+      return t("agentCompactDegraded");
+    case "stub":
+      return t("agentCompactStub");
+    default:
+      return t("agentCompactOffline");
+  }
+}
+
+function buildAgentCompactSummary(agent, snapshot, checks) {
+  switch (buildAgentCardTone(agent, snapshot)) {
+    case "real":
+      return t("agentCompactReadySummary");
+    case "degraded":
+      return checks.find((check) => check.status === "WARN")?.message ?? t("agentCompactDegradedSummary");
+    case "stub":
+      return snapshot?.failureReason?.message ?? t("agentCompactStubSummary");
+    default:
+      return snapshot?.failureReason?.message ?? checks.find((check) => check.status === "FAIL")?.message ?? t("agentCompactOfflineSummary");
+  }
+}
+
+function buildAgentStatusBadgeClass(agent, snapshot) {
+  switch (buildAgentCardTone(agent, snapshot)) {
+    case "real":
+      return "badge--clean";
+    case "degraded":
+      return "badge--accent-soft";
+    case "stub":
+      return "badge--outline";
+    default:
+      return "badge--dirty";
+  }
+}
+
+function buildAgentTeamTone(summary) {
+  if ((summary?.working ?? 0) > 0) {
+    return "working";
+  }
+
+  if ((summary?.fault ?? 0) > 0) {
+    return "fault";
+  }
+
+  if ((summary?.standby ?? 0) > 0) {
+    return "standby";
+  }
+
+  return "resting";
+}
+
+function buildAgentCheckLabel(name) {
+  switch (name) {
+    case "auth":
+      return t("agentCheckAuth");
+    case "binary":
+      return t("agentCheckBinary");
+    case "runtime":
+      return t("agentCheckRuntime");
+    case "worker-sandbox":
+      return t("agentCheckWorkerSandbox");
+    default:
+      return t("agentCheckAvailability");
+  }
+}
+
+function buildDashboardTeamTelemetry(team) {
+  const leadLine = team.summary ?? t("waitingTeamLifecycle");
+
+  switch (buildAgentTeamTone(team.activitySummary)) {
+    case "working":
+      return `>> ${t("dashboardTeamWorkingLine")} :: ${leadLine}`;
+    case "fault":
+      return `>> ${t("dashboardTeamFaultLine")} :: ${leadLine}`;
+    case "standby":
+      return `>> ${t("dashboardTeamStandbyLine")} :: ${leadLine}`;
+    default:
+      return `>> ${t("dashboardTeamRestingLine")} :: ${leadLine}`;
+  }
+}
+
+function buildDashboardTeamProgress(summary) {
+  if ((summary?.working ?? 0) > 0) {
+    return 72;
+  }
+
+  if ((summary?.fault ?? 0) > 0) {
+    return 88;
+  }
+
+  if ((summary?.standby ?? 0) > 0) {
+    return 36;
+  }
+
+  return 18;
+}
+
+function buildMemberActivityState(member) {
+  const latestStatus = member.latestSessionStatus ?? member.status ?? "PENDING";
+
+  if (["RUNNING", "REVIEW_PENDING"].includes(latestStatus)) {
+    return "WORKING";
+  }
+
+  if (latestStatus === "FAILED") {
+    return "FAULT";
+  }
+
+  if (["ACCEPTED", "MERGED", "CANCELLED", "DISCARDED"].includes(latestStatus)) {
+    return "RESTING";
+  }
+
+  return "STANDBY";
+}
+
+function buildAgentFigureTitle(member) {
+  return [
+    member.displayName ?? member.title ?? t("teamMemberFallback"),
+    member.agentType ?? t("unknownAgent"),
+    translateStatusLabel(member.latestSessionStatus ?? member.status ?? "PENDING"),
+    member.branchName ?? member.branchSuffix ?? t("leadSessionPending"),
+  ].filter(Boolean).join(" · ");
+}
+
+function buildAgentTeamActivityLabel(summary) {
+  if ((summary?.working ?? 0) > 0) {
+    return `${summary.working} ${t("teamStateWorking")}`;
+  }
+
+  if ((summary?.fault ?? 0) > 0) {
+    return `${summary.fault} ${t("teamStateFault")}`;
+  }
+
+  if ((summary?.standby ?? 0) > 0) {
+    return `${summary.standby} ${t("teamStateStandby")}`;
+  }
+
+  return `${summary?.resting ?? 0} ${t("teamStateResting")}`;
 }
 
 function renderCleanupWarnings(cleanupWarnings) {
@@ -3370,6 +4855,12 @@ function clearProjectDetail() {
   elements.projectDetailEmpty.hidden = false;
   elements.dirtyWarningBanner.hidden = true;
   elements.recentBranches.replaceChildren();
+  if (elements.projectCurrentBranchBadge) {
+    elements.projectCurrentBranchBadge.textContent = t("currentBranchStat");
+  }
+  if (elements.dashboardTeamBranchBadge) {
+    elements.dashboardTeamBranchBadge.textContent = t("currentBranchStat");
+  }
   state.projectDetail = null;
   syncBranchChoices();
 }
@@ -3415,12 +4906,74 @@ function clearTaskDetail() {
   elements.taskExecutionListPanel.hidden = true;
   elements.taskExecutionActivityPanel.hidden = true;
   elements.taskExecutionModeBadge.textContent = buildOperationsModeBadgeLabel(state.taskOperationsView);
+  if (elements.dashboardTeamList) {
+    elements.dashboardTeamList.replaceChildren();
+  }
+  if (elements.dashboardTeamEmpty) {
+    elements.dashboardTeamEmpty.hidden = false;
+  }
+  if (elements.dashboardTeamTaskBadge) {
+    elements.dashboardTeamTaskBadge.textContent = `${t("dashboardTeamTaskBadge")} · ${t("dashboardTeamTaskIdle")}`;
+  }
   elements.taskTeamEmpty.hidden = false;
   elements.taskTeamLeadMeta.textContent = "";
   elements.taskTeamLeadSummary.textContent = "";
   elements.taskTeamLeadStatus.textContent = t("leadSessionPending");
   elements.taskTeamLeadStatus.className = "badge badge--outline";
+  if (elements.taskLeadSessionBadge) {
+    elements.taskLeadSessionBadge.textContent = t("leadSessionNotStarted");
+    elements.taskLeadSessionBadge.className = "badge badge--outline";
+  }
+  if (elements.taskLeadSessionSummary) {
+    elements.taskLeadSessionSummary.textContent = t("leaderConversationDraftSummary");
+  }
+  if (elements.taskLeadSessionOutput) {
+    elements.taskLeadSessionOutput.textContent = t("leaderConversationEmptyOutput");
+  }
+  if (elements.taskLeaderPlanBadge) {
+    elements.taskLeaderPlanBadge.textContent = t("leaderPlanWaitingBadge");
+    elements.taskLeaderPlanBadge.className = "badge badge--outline";
+  }
+  if (elements.taskLeaderPlanSummary) {
+    elements.taskLeaderPlanSummary.textContent = t("leaderPlanSummaryDraft");
+  }
+  if (elements.taskLeaderPlanEmpty) {
+    elements.taskLeaderPlanEmpty.hidden = false;
+  }
+  if (elements.taskLeaderPlanList) {
+    elements.taskLeaderPlanList.replaceChildren();
+  }
   elements.taskTeamMemberCount.textContent = countLabel(0, "teamMemberCountOne", "teamMemberCountOther");
+  if (elements.taskStageRail) {
+    elements.taskStageRail.replaceChildren();
+  }
+  if (elements.taskNextActionTitle) {
+    elements.taskNextActionTitle.textContent = t("taskNextDraftTitle");
+  }
+  if (elements.taskNextActionSummary) {
+    elements.taskNextActionSummary.textContent = t("taskNextDraftSummary");
+  }
+  if (elements.taskNextActionBadge) {
+    elements.taskNextActionBadge.textContent = t("statusDraft");
+    elements.taskNextActionBadge.className = "badge badge--outline";
+  }
+  if (elements.taskNextActionButton) {
+    elements.taskNextActionButton.textContent = t("startClarificationDraftLabel");
+    elements.taskNextActionButton.dataset.action = "focus-compose";
+  }
+  if (elements.taskMessageLabel) {
+    elements.taskMessageLabel.textContent = t("startClarificationDraftLabel");
+  }
+  if (elements.taskMessageInput) {
+    elements.taskMessageInput.value = "";
+    elements.taskMessageInput.setAttribute("placeholder", t("startClarificationDraftPlaceholder"));
+  }
+  if (elements.sendTaskMessageButton) {
+    elements.sendTaskMessageButton.textContent = t("startClarificationDraftButton");
+  }
+  if (elements.taskTeamProjectBranch) {
+    elements.taskTeamProjectBranch.textContent = t("currentBranchStat");
+  }
   elements.taskTeamMemberList.replaceChildren();
   elements.taskTeamShell.hidden = true;
   elements.taskExecutionFocus.hidden = true;
@@ -3430,6 +4983,15 @@ function clearTaskDetail() {
   elements.taskExecutionAgentField.hidden = true;
   elements.taskExecutionReviewActions.hidden = true;
   elements.taskExecutionReworkField.hidden = true;
+  if (elements.taskActions) {
+    elements.taskActions.hidden = true;
+  }
+  if (elements.confirmRequirementsButton) {
+    elements.confirmRequirementsButton.hidden = true;
+  }
+  if (elements.taskMessageForm) {
+    elements.taskMessageForm.hidden = true;
+  }
   elements.taskExecutionMailboxInboxList.replaceChildren();
   elements.taskExecutionMailboxOutboxList.replaceChildren();
   elements.taskExecutionMailboxContractsList.replaceChildren();
@@ -3452,36 +5014,434 @@ function clearTaskDetail() {
 function syncBranchChoices() {
   const repoStatus = state.projectDetail?.repoStatus;
   const branchChoices = uniqueBranches([
-    repoStatus?.defaultBranch,
     repoStatus?.currentBranch,
+    repoStatus?.defaultBranch,
     ...(repoStatus?.recentBranches ?? []),
   ]);
 
-  elements.baseBranchSelect.replaceChildren();
-
   if (branchChoices.length === 0) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = t("noBranchesAvailable");
-    elements.baseBranchSelect.append(option);
-    elements.baseBranchSelect.disabled = true;
+    state.baseBranchStartPoint = null;
+    state.selectedExistingBaseBranch = null;
     state.selectedBaseBranch = null;
+    renderBaseBranchComposer([]);
     return;
   }
 
-  state.selectedBaseBranch = branchChoices.includes(state.selectedBaseBranch)
-    ? state.selectedBaseBranch
-    : branchChoices[0];
+  const preferredStartPoint = branchChoices.includes(state.baseBranchStartPoint)
+    ? state.baseBranchStartPoint
+    : repoStatus?.currentBranch ?? repoStatus?.defaultBranch ?? branchChoices[0];
 
-  for (const branchName of branchChoices) {
-    const option = document.createElement("option");
-    option.value = branchName;
-    option.selected = branchName === state.selectedBaseBranch;
-    option.textContent = branchName;
-    elements.baseBranchSelect.append(option);
+  state.baseBranchStartPoint = preferredStartPoint;
+  state.selectedExistingBaseBranch = branchChoices.includes(state.selectedExistingBaseBranch)
+    ? state.selectedExistingBaseBranch
+    : preferredStartPoint;
+
+  if (!state.baseBranchDraftManual || !normalizeOptionalText(state.baseBranchDraftName)) {
+    state.baseBranchDraftName = buildSuggestedTaskBaseBranchName(preferredStartPoint, elements.taskTitleInput?.value ?? "");
   }
 
-  elements.baseBranchSelect.disabled = false;
+  state.selectedBaseBranch = getSelectedTaskBaseBranch();
+  renderBaseBranchComposer(branchChoices);
+}
+
+function renderBaseBranchComposer(branchChoices = []) {
+  const hasBranches = branchChoices.length > 0;
+  const createNewBranch = state.baseBranchMode !== "existing";
+  const activeBranch = getSelectedTaskBaseBranch();
+  state.selectedBaseBranch = activeBranch;
+
+  syncSelectOptions(elements.baseBranchSelect, branchChoices, state.selectedExistingBaseBranch);
+  syncSelectOptions(elements.baseBranchStartPointSelect, branchChoices, state.baseBranchStartPoint);
+
+  if (elements.baseBranchSelect) {
+    elements.baseBranchSelect.disabled = !hasBranches || createNewBranch;
+  }
+
+  if (elements.baseBranchStartPointSelect) {
+    elements.baseBranchStartPointSelect.disabled = !hasBranches || !createNewBranch;
+  }
+
+  if (elements.baseBranchInput) {
+    elements.baseBranchInput.disabled = !hasBranches || !createNewBranch;
+    if (elements.baseBranchInput.value !== state.baseBranchDraftName) {
+      elements.baseBranchInput.value = state.baseBranchDraftName;
+    }
+  }
+
+  if (elements.baseBranchModeNewInput) {
+    elements.baseBranchModeNewInput.checked = createNewBranch;
+    elements.baseBranchModeNewInput.disabled = !hasBranches;
+  }
+
+  if (elements.baseBranchModeExistingInput) {
+    elements.baseBranchModeExistingInput.checked = !createNewBranch;
+    elements.baseBranchModeExistingInput.disabled = !hasBranches;
+  }
+
+  elements.baseBranchNewPanel.hidden = !createNewBranch;
+  elements.baseBranchExistingPanel.hidden = createNewBranch;
+  elements.baseBranchModeNewLabel?.classList.toggle("is-active", createNewBranch);
+  elements.baseBranchModeExistingLabel?.classList.toggle("is-active", !createNewBranch);
+
+  if (elements.baseBranchModeBadge) {
+    elements.baseBranchModeBadge.textContent = createNewBranch
+      ? t("baseBranchModeNewBadge")
+      : t("baseBranchModeExistingBadge");
+    elements.baseBranchModeBadge.className = `badge ${createNewBranch ? "badge--accent-soft" : "badge--outline"}`;
+  }
+
+  if (elements.taskCreateBranchSummary) {
+    elements.taskCreateBranchSummary.textContent = !hasBranches
+      ? t("noBranchesAvailable")
+      : createNewBranch
+        ? t("taskCreateFlowSummaryNew", {
+            branch: activeBranch || t("unknown"),
+            source: state.baseBranchStartPoint || t("unknown"),
+          })
+        : t("taskCreateFlowSummaryExisting", {
+            branch: activeBranch || t("unknown"),
+          });
+  }
+
+  renderTaskCreateFlowSummary();
+  updateCreateTaskButtonState();
+}
+
+function renderTaskCreateFlowSummary() {
+  if (!elements.taskCreateFlowSummary) {
+    return;
+  }
+
+  elements.taskCreateFlowSummary.textContent = state.selectedGuidedTemplateId
+    ? t("taskCreateFlowSummaryGuided")
+    : t("taskCreateFlowSummaryDraft");
+
+  renderTaskCreateJourney();
+}
+
+function updateCreateTaskButtonState() {
+  const selectedCandidate = state.leadCandidates.find((candidate) => candidate.agentName === state.selectedLeadAgentName) ?? null;
+  const gate = buildLeadSelectionState(selectedCandidate);
+  const hasBranch = Boolean(getSelectedTaskBaseBranch());
+  elements.createTaskButton.disabled = gate.disabled || !state.selectedProjectId || !hasBranch;
+}
+
+function getSelectedTaskBaseBranch() {
+  return state.baseBranchMode === "existing"
+    ? normalizeOptionalText(state.selectedExistingBaseBranch)
+    : normalizeOptionalText(state.baseBranchDraftName);
+}
+
+function renderTaskCreateJourney() {
+  if (!elements.taskCreateJourneySteps) {
+    return;
+  }
+
+  const steps = [
+    { label: t("taskJourneyStepRegister"), state: state.selectedProjectId ? "done" : "current" },
+    { label: t("taskJourneyStepTemplate"), state: state.selectedProjectId ? "done" : "later" },
+    { label: t("taskJourneyStepCreate"), state: state.selectedProjectId ? "current" : "later" },
+    { label: t("taskJourneyStepClarify"), state: state.selectedProjectId ? "next" : "later" },
+    { label: t("taskJourneyStepPlanReview"), state: "later" },
+    { label: t("taskJourneyStepExecute"), state: "later" },
+  ];
+
+  const copyKey = state.selectedGuidedTemplateId
+    ? "taskCreateJourneySummaryGuided"
+    : "taskCreateJourneySummaryStandard";
+  const badgeKey = state.selectedGuidedTemplateId
+    ? "taskCreateJourneyGuidedBadge"
+    : "taskCreateJourneyStandardBadge";
+
+  if (elements.taskCreateRouteSummary) {
+    elements.taskCreateRouteSummary.textContent = t(copyKey);
+  }
+
+  if (elements.taskCreateRouteBadge) {
+    elements.taskCreateRouteBadge.textContent = t(badgeKey);
+    elements.taskCreateRouteBadge.className = `badge ${state.selectedGuidedTemplateId ? "badge--accent-soft" : "badge--outline"}`;
+  }
+
+  elements.taskCreateJourneySteps.replaceChildren(...steps.map((step, index) => {
+    const item = document.createElement("div");
+    item.className = `task-journey-step task-journey-step--${step.state}`;
+    item.innerHTML = `
+      <span class="task-journey-step__index">${escapeHtml(String(index + 1))}</span>
+      <div class="task-journey-step__copy">
+        <p class="task-journey-step__label">${escapeHtml(step.label)}</p>
+        <span class="task-journey-step__state">${escapeHtml(t(resolveJourneyStateKey(step.state)))}</span>
+      </div>
+    `;
+    return item;
+  }));
+}
+
+function resolveJourneyStateKey(stateKey) {
+  switch (stateKey) {
+    case "done":
+      return "taskJourneyStateDone";
+    case "current":
+      return "taskJourneyStateCurrent";
+    case "next":
+      return "taskJourneyStateNext";
+    default:
+      return "taskJourneyStateLater";
+  }
+}
+
+function buildTaskStageMeta(task) {
+  const status = task?.status ?? "DRAFT";
+
+  switch (status) {
+    case "CLARIFYING":
+      return {
+        badgeClass: "badge--accent-soft",
+        buttonAction: "confirm",
+        buttonLabel: t("confirmRequirementsButton"),
+        currentStep: 1,
+        listHint: t("taskListHintClarifying"),
+        summary: t("taskNextClarifyingSummary"),
+        title: t("taskNextClarifyingTitle"),
+      };
+    case "PLANNING":
+      return {
+        badgeClass: "badge--outline",
+        buttonAction: "refresh",
+        buttonLabel: t("refreshTaskButton"),
+        currentStep: 2,
+        listHint: t("taskListHintPlanning"),
+        summary: t("taskNextPlanningSummary"),
+        title: t("taskNextPlanningTitle"),
+      };
+    case "PLAN_REVIEW":
+      return {
+        badgeClass: "badge--clean",
+        buttonAction: "plan",
+        buttonLabel: t("navPlan"),
+        currentStep: 2,
+        listHint: t("taskListHintPlanReview"),
+        summary: t("taskNextPlanReviewSummary"),
+        title: t("taskNextPlanReviewTitle"),
+      };
+    case "EXECUTING":
+    case "REVIEWING":
+    case "MERGING":
+      return {
+        badgeClass: "badge--clean",
+        buttonAction: "ops",
+        buttonLabel: t("navOps"),
+        currentStep: 3,
+        listHint: t("taskListHintExecuting"),
+        summary: t("taskNextExecutingSummary"),
+        title: t("taskNextExecutingTitle"),
+      };
+    case "ACTION_REQUIRED":
+      return {
+        badgeClass: "badge--dirty",
+        buttonAction: "ops",
+        buttonLabel: t("navOps"),
+        currentStep: 3,
+        listHint: t("taskListHintActionRequired"),
+        summary: t("taskNextActionRequiredSummary"),
+        title: t("taskNextActionRequiredTitle"),
+      };
+    case "COMPLETED":
+      return {
+        badgeClass: "badge--clean",
+        buttonAction: "ops",
+        buttonLabel: t("navOps"),
+        currentStep: 3,
+        listHint: t("taskListHintCompleted"),
+        summary: t("taskNextCompletedSummary"),
+        title: t("taskNextCompletedTitle"),
+      };
+    case "FAILED":
+    case "CANCELLED":
+      return {
+        badgeClass: "badge--dirty",
+        buttonAction: "ops",
+        buttonLabel: t("navOps"),
+        currentStep: 3,
+        listHint: t("taskListHintFailed"),
+        summary: t("taskNextFailedSummary"),
+        title: t("taskNextFailedTitle"),
+      };
+    case "DRAFT":
+    default:
+      return {
+        badgeClass: "badge--outline",
+        buttonAction: "focus-compose",
+        buttonLabel: t("startClarificationDraftLabel"),
+        currentStep: 0,
+        listHint: t("taskListHintDraft"),
+        summary: t("taskNextDraftSummary"),
+        title: t("taskNextDraftTitle"),
+      };
+  }
+}
+
+function buildTaskStatusBadgeClass(status) {
+  switch (status) {
+    case "CLARIFYING":
+      return "badge--accent-soft";
+    case "PLAN_REVIEW":
+    case "PLANNING":
+    case "EXECUTING":
+    case "REVIEWING":
+    case "MERGING":
+    case "COMPLETED":
+      return "badge--clean";
+    case "ACTION_REQUIRED":
+    case "FAILED":
+    case "CANCELLED":
+      return "badge--dirty";
+    default:
+      return "badge--outline";
+  }
+}
+
+function renderTaskStageBoard(detail) {
+  const task = detail?.task;
+
+  if (!task || !elements.taskStageRail) {
+    return;
+  }
+
+  const meta = buildTaskStageMeta(task);
+  const steps = [
+    t("taskJourneyStepCreate"),
+    t("taskJourneyStepClarify"),
+    t("taskJourneyStepPlanReview"),
+    t("taskJourneyStepExecute"),
+  ];
+
+  elements.taskStageRail.replaceChildren(...steps.map((label, index) => {
+    const item = document.createElement("div");
+    const stateKey = index < meta.currentStep
+      ? "done"
+      : index === meta.currentStep
+        ? "current"
+        : index === meta.currentStep + 1
+          ? "next"
+          : "later";
+    item.className = `task-stage-step task-stage-step--${stateKey}`;
+    item.innerHTML = `
+      <span class="task-stage-step__index">${escapeHtml(String(index + 1))}</span>
+      <div class="task-stage-step__copy">
+        <p class="task-stage-step__label">${escapeHtml(label)}</p>
+        <span class="task-stage-step__state">${escapeHtml(t(resolveJourneyStateKey(stateKey)))}</span>
+      </div>
+    `;
+    return item;
+  }));
+
+  elements.taskNextActionTitle.textContent = meta.title;
+  elements.taskNextActionSummary.textContent = meta.summary;
+  elements.taskNextActionBadge.textContent = buildTaskStatusLabel(task.status);
+  elements.taskNextActionBadge.className = `badge ${meta.badgeClass}`;
+  elements.taskNextActionButton.textContent = meta.buttonLabel;
+  elements.taskNextActionButton.dataset.action = meta.buttonAction;
+  elements.taskNextActionButton.hidden = false;
+}
+
+async function onTaskNextAction() {
+  const action = elements.taskNextActionButton?.dataset.action;
+
+  if (!action || !state.taskDetail?.task) {
+    return;
+  }
+
+  const busyLabel = action === "start"
+    ? t("starting")
+    : action === "confirm"
+      ? t("confirming")
+      : action === "refresh"
+        ? t("refreshing")
+        : null;
+
+  if (busyLabel) {
+    setButtonBusy(elements.taskNextActionButton, true, busyLabel);
+  }
+
+  if (action === "start") {
+    try {
+      await onStartClarification();
+    } finally {
+      renderTaskStageBoard(state.taskDetail);
+    }
+    return;
+  }
+
+  if (action === "focus-compose") {
+    elements.taskMessageInput?.focus();
+    elements.taskMessageInput?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+
+  if (action === "confirm") {
+    try {
+      await onConfirmRequirements();
+    } finally {
+      renderTaskStageBoard(state.taskDetail);
+    }
+    return;
+  }
+
+  if (action === "plan") {
+    switchView("plan");
+    return;
+  }
+
+  if (action === "ops") {
+    switchView("ops");
+    return;
+  }
+
+  if (action === "refresh" && state.selectedTaskId) {
+    try {
+      await loadTaskDetail(state.selectedTaskId);
+    } finally {
+      renderTaskStageBoard(state.taskDetail);
+    }
+  }
+}
+
+function buildSuggestedTaskBaseBranchName(sourceBranch, title) {
+  const sourceSegment = sanitizeBranchSegment(sourceBranch) || "base";
+  const titleSegment = sanitizeBranchSegment(title) || "workspace";
+  return `task/${sourceSegment}/${titleSegment}`;
+}
+
+function sanitizeBranchSegment(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 36);
+}
+
+function syncSelectOptions(select, values, selectedValue) {
+  if (!select) {
+    return;
+  }
+
+  select.replaceChildren();
+
+  if (values.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = t("noBranchesAvailable");
+    select.append(option);
+    return;
+  }
+
+  for (const value of values) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.selected = value === selectedValue;
+    option.textContent = value;
+    select.append(option);
+  }
 }
 
 function connectTaskStream(taskId) {
@@ -4391,6 +6351,7 @@ function onToggleLanguage() {
   renderLeadSelector();
   renderProjectList();
   renderTaskList();
+  updateSidebarAgentCount();
 
   if (state.projectDetail) {
     renderProjectDetail();
@@ -4403,9 +6364,11 @@ function onToggleLanguage() {
 
 function renderLocale() {
   document.documentElement.lang = state.locale;
-  document.title = t("documentTitle");
-  elements.languageToggle.textContent = state.locale === "zh-CN" ? "English" : "中文";
-  elements.languageToggle.setAttribute("aria-label", state.locale === "zh-CN" ? t("switchToEnglish") : t("switchToChinese"));
+  document.title = t("brandName");
+  if (elements.languageToggle) {
+    elements.languageToggle.textContent = state.locale === "zh-CN" ? "English" : "中文";
+    elements.languageToggle.setAttribute("aria-label", state.locale === "zh-CN" ? t("switchToEnglish") : t("switchToChinese"));
+  }
 
   for (const node of document.querySelectorAll("[data-i18n]")) {
     node.textContent = t(node.dataset.i18n);
@@ -4420,19 +6383,23 @@ function renderLocale() {
   }
 
   renderGuidedTaskComposer();
+  renderProjectRegistrationDialog();
 }
 
 function showFeedback(element, tone, message) {
+  if (!element) return;
   element.textContent = message;
   element.className = `feedback feedback--${tone} is-visible`;
 }
 
 function clearFeedback(element) {
+  if (!element) return;
   element.textContent = "";
   element.className = "feedback";
 }
 
 function setButtonBusy(button, busy, label) {
+  if (!button) return;
   button.disabled = busy;
   button.textContent = label;
 }

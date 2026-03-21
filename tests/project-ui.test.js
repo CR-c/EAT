@@ -36,11 +36,29 @@ test("serves the orchestration UI shell and static assets", async () => {
 
     assert.equal(rootResponse.status, 200);
     assert.match(rootResponse.headers.get("content-type"), /^text\/html/);
+    assert.equal(rootResponse.headers.get("cache-control"), "no-store");
     assert.match(rootResponse.body, /可通过 Web 操控的 Agent 编排/);
+    assert.match(rootResponse.body, /href="\/app\.css\?v=[^"]+"/);
+    assert.match(rootResponse.body, /src="\/app\.js\?v=[^"]+"/);
     assert.match(rootResponse.body, /引导式任务创建/);
+    assert.match(rootResponse.body, /创建后系统会怎么引导你/);
+    assert.match(rootResponse.body, /task-create-journey-steps/);
     assert.match(rootResponse.body, /模板与引导步骤/);
     assert.match(rootResponse.body, /Todo 演示建议/);
+    assert.match(rootResponse.body, /默认新建基线分支/);
+    assert.match(rootResponse.body, /直接使用已有分支/);
+    assert.match(rootResponse.body, /新基线分支名/);
+    assert.match(rootResponse.body, /起始分支/);
+    assert.match(rootResponse.body, /task-create-branch-summary/);
+    assert.match(rootResponse.body, /id="project-registration-dialog"/);
+    assert.match(rootResponse.body, /选择项目路径/);
+    assert.match(rootResponse.body, /系统文件树/);
+    assert.match(rootResponse.body, /直接输入路径/);
+    assert.match(rootResponse.body, /浏览该路径/);
+    assert.match(rootResponse.body, /使用当前目录/);
     assert.match(rootResponse.body, /Lead 会话转录/);
+    assert.match(rootResponse.body, /当前阶段与下一步/);
+    assert.match(rootResponse.body, /task-next-action-button/);
     assert.match(rootResponse.body, /当前计划草稿/);
     assert.match(rootResponse.body, /模板种子/);
     assert.match(rootResponse.body, /应用模板/);
@@ -77,20 +95,31 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /取消成员/);
     assert.match(rootResponse.body, /替换 worker/);
     assert.match(rootResponse.body, /Docker 沙箱/);
+    assert.match(rootResponse.body, /Agent Teams/);
+    assert.match(rootResponse.body, /dashboard-team-list/);
+    assert.match(rootResponse.body, /dashboard-team-task-badge/);
     assert.match(rootResponse.body, /id="language-toggle"/);
     assert.match(rootResponse.body, /language-toggle/);
     assert.match(rootResponse.body, /English/);
 
     assert.equal(cssResponse.status, 200);
     assert.match(cssResponse.headers.get("content-type"), /^text\/css/);
+    assert.equal(cssResponse.headers.get("cache-control"), "no-store");
     assert.match(cssResponse.body, /backdrop-filter|backdrop-blur/);
     assert.match(cssResponse.body, /team-member-card/);
     assert.match(cssResponse.body, /guided-template-card/);
     assert.match(cssResponse.body, /operations-board/);
     assert.match(cssResponse.body, /operations-graph__node/);
+    assert.match(cssResponse.body, /dashboard-team-card/);
+    assert.match(cssResponse.body, /agent-card__signal/);
+    assert.match(cssResponse.body, /choice-pill/);
+    assert.match(cssResponse.body, /task-journey-step/);
+    assert.match(cssResponse.body, /task-stage-board/);
 
     assert.equal(jsResponse.status, 200);
     assert.match(jsResponse.headers.get("content-type"), /^text\/javascript/);
+    assert.equal(jsResponse.headers.get("cache-control"), "no-store");
+    assert.match(jsResponse.body, /\.\/view-model\.js\?v=/);
     assert.match(jsResponse.body, /loadTaskDetail/);
   } finally {
     await new Promise((resolve, reject) => {
@@ -119,6 +148,13 @@ test("formats project, task, agent health, and attachment UI messages", () => {
 
   assert.equal(
     buildProjectErrorMessage({
+      code: "PATH_ACCESS_DENIED",
+    }),
+    "没有权限读取所选目录，请改用可访问的路径。",
+  );
+
+  assert.equal(
+    buildProjectErrorMessage({
       code: "NOT_GIT_REPOSITORY",
     }),
     "所选目录不是非裸 Git 仓库。",
@@ -130,6 +166,7 @@ test("formats project, task, agent health, and attachment UI messages", () => {
   assert.deepEqual(buildBranchList(["main", "feature/ui"]), ["main", "feature/ui"]);
   assert.equal(buildAgentStatusLabel({ available: true, checks: [] }), "健康");
   assert.equal(buildAgentStatusLabel({ available: false, checks: [] }), "不可用");
+  assert.equal(buildAgentStatusLabel({ available: false, runtimeMode: "STUB", checks: [] }), "Stub 运行时");
   assert.equal(buildAgentRuntimeModeLabel({ runtimeMode: "STUB" }, null), "Stub 运行时");
   assert.equal(buildDockerHealthLabel({ available: true }), "就绪");
   assert.equal(buildDockerHealthLabel({ available: false, daemonReachable: false }), "不可用");
@@ -145,6 +182,13 @@ test("formats project, task, agent health, and attachment UI messages", () => {
       code: "SUBTASK_DISCARD_NOT_ALLOWED",
     }),
     "只有最终审查标记为待丢弃后，才能确认丢弃。",
+  );
+  assert.equal(
+    buildTaskErrorMessage({
+      code: "BASE_BRANCH_CREATE_FAILED",
+      details: { baseBranch: "task/main/demo" },
+    }),
+    "无法创建新的基线分支 task/main/demo。",
   );
   assert.equal(
     buildTaskErrorMessage({

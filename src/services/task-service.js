@@ -115,6 +115,7 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   ATTACHMENT_SIZE_EXCEEDED: "ATTACHMENT_SIZE_EXCEEDED",
   ATTACHMENT_TYPE_UNSUPPORTED: "ATTACHMENT_TYPE_UNSUPPORTED",
   AGENT_TYPE_REQUIRED: "AGENT_TYPE_REQUIRED",
+  BASE_BRANCH_CREATE_FAILED: "BASE_BRANCH_CREATE_FAILED",
   BASE_BRANCH_NOT_FOUND: "BASE_BRANCH_NOT_FOUND",
   BASE_BRANCH_REQUIRED: "BASE_BRANCH_REQUIRED",
   DESCRIPTION_REQUIRED: "DESCRIPTION_REQUIRED",
@@ -747,7 +748,7 @@ export class TaskService {
     };
   }
 
-  async startClarification(taskId) {
+  async startClarification(taskId, input = {}) {
     const task = await this.taskRepository.findTaskById(taskId);
 
     if (!task) {
@@ -791,6 +792,16 @@ export class TaskService {
       );
     }
 
+    const initialMessage = normalizeRequiredString(input?.content);
+
+    if (!initialMessage) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.TASK_MESSAGE_REQUIRED,
+        "Message content is required.",
+        { taskId },
+      );
+    }
+
     const session = await this.#createTrackedSession({
       agentType: task.leadAgentType,
       sandboxType: selectLeadSandboxType(agentFactory.capabilities.supportedSandboxTypes),
@@ -828,18 +839,18 @@ export class TaskService {
         publish: false,
       });
 
-      if ((await this.taskRepository.listMessagesByTaskId(task.id)).length === 0) {
-        await this.taskRepository.createMessage({
-          content: buildInitialUserMessage(task),
-          role: MESSAGE_ROLE.USER,
-          taskId: task.id,
-        });
-      }
+      await this.taskRepository.createMessage({
+        content: initialMessage,
+        role: MESSAGE_ROLE.USER,
+        taskId: task.id,
+      });
 
       this.runningLeadSessions.set(task.id, {
         runtime,
         sessionId: session.id,
       });
+
+      await runtime.sendInput(initialMessage);
 
       runtime.onOutput((chunk) => {
         void this.#handleLeadOutput(task.id, session.id, chunk);
@@ -962,12 +973,13 @@ export class TaskService {
       role: MESSAGE_ROLE.SYSTEM,
       taskId,
     });
+    const planningAgentContext = await this.#getPlanningAgentContext(confirmedTask.leadAgentType);
 
     const activeSession = this.runningLeadSessions.get(taskId);
 
     if (activeSession) {
       try {
-        await activeSession.runtime.sendInput(buildPlanningPrompt(confirmedTask));
+        await activeSession.runtime.sendInput(buildPlanningPrompt(confirmedTask, planningAgentContext));
       } catch {
         // Confirmation already advanced the task; keep planning state stable for the next phase.
       }
@@ -4228,6 +4240,8 @@ export class TaskService {
     const title = normalizeRequiredString(input?.title);
     const description = normalizeRequiredString(input?.description);
     const baseBranch = normalizeRequiredString(input?.baseBranch);
+    const baseBranchMode = input?.baseBranchMode === "new" ? "new" : "existing";
+    const baseBranchStartPoint = normalizeRequiredString(input?.baseBranchStartPoint);
     const leadAgentType = normalizeRequiredString(input?.leadAgentType);
 
     if (!projectId) {
@@ -4280,13 +4294,51 @@ export class TaskService {
       );
     }
 
-    const baseCommitSha = await resolveBranchHeadCommit(project.path, baseBranch);
+    let resolvedBaseBranch = baseBranch;
+    let baseCommitSha = null;
+
+    if (baseBranchMode === "new") {
+      const startPoint = baseBranchStartPoint;
+
+      if (!startPoint) {
+        return failure(TASK_SERVICE_ERROR_CODES.BASE_BRANCH_REQUIRED, "Base branch start point is required.");
+      }
+
+      const startPointCommitSha = await resolveBranchHeadCommit(project.path, startPoint);
+
+      if (!startPointCommitSha) {
+        return failure(
+          TASK_SERVICE_ERROR_CODES.BASE_BRANCH_NOT_FOUND,
+          "Selected base branch could not be resolved to a commit.",
+          { baseBranch: startPoint },
+        );
+      }
+
+      resolvedBaseBranch = await resolveUniqueBranchName(project.path, baseBranch);
+
+      try {
+        await ensureBranchExists(project.path, resolvedBaseBranch, startPointCommitSha);
+      } catch {
+        return failure(
+          TASK_SERVICE_ERROR_CODES.BASE_BRANCH_CREATE_FAILED,
+          "Requested base branch could not be created.",
+          {
+            baseBranch: resolvedBaseBranch,
+            sourceBranch: startPoint,
+          },
+        );
+      }
+
+      baseCommitSha = await resolveBranchHeadCommit(project.path, resolvedBaseBranch);
+    } else {
+      baseCommitSha = await resolveBranchHeadCommit(project.path, baseBranch);
+    }
 
     if (!baseCommitSha) {
       return failure(
         TASK_SERVICE_ERROR_CODES.BASE_BRANCH_NOT_FOUND,
         "Selected base branch could not be resolved to a commit.",
-        { baseBranch },
+        { baseBranch: resolvedBaseBranch },
       );
     }
 
@@ -4298,7 +4350,7 @@ export class TaskService {
       ok: true,
       normalizedAttachments,
       taskInput: {
-        baseBranch,
+        baseBranch: resolvedBaseBranch,
         baseCommitSha,
         description,
         leadAgentType,
@@ -4333,6 +4385,23 @@ export class TaskService {
     }
 
     return task.leadAgentType;
+  }
+
+  async #getPlanningAgentContext(defaultAgentType) {
+    const directory = await this.agentService.getAgentDirectory().catch(() => null);
+    const availableAgentNames = directory?.workerCandidates
+      ?.filter((candidate) => candidate.selectable)
+      .map((candidate) => candidate.agentName)
+      ?? [];
+
+    if (!availableAgentNames.includes(defaultAgentType)) {
+      availableAgentNames.push(defaultAgentType);
+    }
+
+    return {
+      availableAgentNames,
+      defaultAgentType,
+    };
   }
 
   close() {
@@ -4508,14 +4577,8 @@ function buildClarificationPrompt(task) {
     "You are the lead agent for EAT clarification.",
     `Task title: ${task.title}`,
     `Requirement description: ${task.description}`,
-    "Ask concise clarification questions until the user explicitly confirms requirements.",
-  ].join("\n");
-}
-
-function buildInitialUserMessage(task) {
-  return [
-    `Task title: ${task.title}`,
-    `Requirement description: ${task.description}`,
+    "The operator will send the first clarification message after the session starts.",
+    "Acknowledge that opening brief, ask concise follow-up questions, and keep clarifying until the user explicitly confirms requirements.",
   ].join("\n");
 }
 

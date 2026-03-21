@@ -61,12 +61,14 @@ export function buildSelectionCandidates(agents, healthSnapshots, role) {
     .filter(predicate)
     .map((agent) => {
       const health = healthSnapshots?.[agent.name] ?? null;
+      const runtimeMode = health?.runtimeMode ?? agent.runtimeMode ?? null;
       return {
         agentName: agent.name,
         available: health?.available === true,
         capabilities: agent.capabilities,
         failureReason: health?.failureReason ?? null,
-        selectable: health?.available === true,
+        runtimeMode,
+        selectable: health?.available === true && runtimeMode !== "STUB",
       };
     });
 }

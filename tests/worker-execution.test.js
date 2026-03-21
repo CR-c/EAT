@@ -3280,7 +3280,10 @@ async function moveTaskToPlanReview(server, taskId, events) {
   const startResponse = await requestJson(
     server,
     `/api/tasks/${encodeURIComponent(taskId)}/start-clarification`,
-    { method: "POST" },
+    {
+      body: { content: "Start clarification before entering the worker execution flow." },
+      method: "POST",
+    },
   );
   assert.equal(startResponse.status, 200);
 

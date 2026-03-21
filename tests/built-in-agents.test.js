@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { PassThrough } from "node:stream";
+import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
@@ -50,6 +52,25 @@ test("codex built-in adapter reports a real runtime and passes host health check
   assert.equal(health.checks[0].status, "PASS");
   assert.equal(health.checks[1].status, "PASS");
   assert.equal(health.checks[2].status, "PASS");
+});
+
+test("stub built-in adapters do not report themselves as real available cli runtimes", async () => {
+  const adapters = createBuiltInAgentAdapters({
+    sandboxManager: null,
+  });
+
+  const claudeAdapter = adapters.find((adapter) => adapter.name === "claude-cli");
+  const geminiAdapter = adapters.find((adapter) => adapter.name === "gemini-cli");
+
+  const claudeHealth = await claudeAdapter.healthCheck();
+  const geminiHealth = await geminiAdapter.healthCheck();
+
+  assert.equal(claudeHealth.available, false);
+  assert.equal(geminiHealth.available, false);
+  assert.equal(claudeHealth.reason.message, "Stub adapter is not treated as a real CLI runtime.");
+  assert.equal(geminiHealth.reason.message, "Stub adapter is not treated as a real CLI runtime.");
+  assert.equal(claudeHealth.checks[0].status, "FAIL");
+  assert.equal(geminiHealth.checks[0].status, "FAIL");
 });
 
 test("codex worker adapter prepares docker runtime state, mounts shared git metadata, and requests host networking for localhost providers", async () => {
@@ -146,4 +167,52 @@ test("codex worker adapter prepares docker runtime state, mounts shared git meta
   } finally {
     await rm(fixturePath, { force: true, recursive: true });
   }
+});
+
+test("codex host exec puts global approval and sandbox flags before exec", async () => {
+  const capturedLaunches = [];
+  const adapters = createBuiltInAgentAdapters({
+    spawnProcess: (_command, args) => {
+      capturedLaunches.push(args);
+
+      const child = new EventEmitter();
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+
+      process.nextTick(() => {
+        child.stdout.write('{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}\n');
+        child.stdout.end();
+        child.stderr.end();
+        child.emit("close", 0);
+      });
+
+      child.kill = () => {};
+      return child;
+    },
+  });
+  const codexAdapter = adapters.find((adapter) => adapter.name === "codex-cli");
+
+  const runtime = await codexAdapter.spawnSession({
+    prompt: "Continue the lead session.",
+    sessionType: "LEAD",
+    workDir: "/tmp/eat-codex-host-exec",
+  });
+
+  await new Promise((resolve) => {
+    runtime.onOutput((chunk) => {
+      if (chunk.includes("ok")) {
+        resolve();
+      }
+    });
+  });
+  await runtime.stop();
+
+  assert.equal(capturedLaunches.length, 1);
+  assert.deepEqual(
+    capturedLaunches[0].slice(0, 6),
+    ["--ask-for-approval", "never", "--sandbox", "read-only", "--cd", "/tmp/eat-codex-host-exec"],
+  );
+  assert.equal(capturedLaunches[0][6], "exec");
 });

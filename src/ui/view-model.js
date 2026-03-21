@@ -11,11 +11,13 @@ const MESSAGES = {
     requestFailed: "请求失败。",
     projectAlreadyRegistered: "该仓库已注册在 {path}。",
     pathNotAbsolute: "请输入绝对路径，例如 /home/code/EAT。",
+    pathAccessDenied: "没有权限读取所选目录，请改用可访问的路径。",
     pathNotFound: "该路径不存在，请检查后重试。",
     pathNotDirectory: "所选路径必须是目录，不能是文件。",
     notGitRepository: "所选目录不是非裸 Git 仓库。",
     bareGitRepository: "暂不支持裸 Git 仓库注册。",
     projectNotFound: "所选项目已不在本地注册表中。",
+    baseBranchCreateFailed: "无法创建新的基线分支 {branch}。",
     baseBranchNotFound: "无法解析所选基线分支 {branch}。",
     leadAgentUnhealthy: "{agent} 当前不可用：{reason}。",
     taskNotDraft: "只有草稿任务才能开始澄清。",
@@ -58,6 +60,7 @@ const MESSAGES = {
     noLeadCandidates: "当前没有已注册的 lead 能力 Agent。",
     leadReady: "{agent} 健康，可用于创建任务。",
     leadBlocked: "{agent} 已被阻止：{reason}",
+    leadStubBlocked: "{agent} 当前仍是 Stub 运行时，不计为真实 CLI 候选。",
     statusDraft: "草稿",
     statusClarifying: "澄清中",
     statusPlanning: "规划中",
@@ -90,6 +93,19 @@ const MESSAGES = {
     reviewGeneric: "审查",
     unknownAttachment: "未知附件",
     sizeUnknown: "大小未知",
+    navDashboard: "控制台",
+    navTaskCreate: "任务创建",
+    navTasks: "任务列表",
+    navPlan: "计划审阅",
+    navOps: "运行看板",
+    navMetrics: "指标",
+    sidebarTitle: "项目",
+    sidebarActiveAgents: "{count} Agent",
+    sidebarRegisterButton: "注册项目",
+    brandName: "EAT Agent Workbench",
+    navStatusIdle: "就绪",
+    metricsTitle: "指标概览",
+    metricsEmpty: "指标视图即将上线。任务执行统计、Agent 利用率和性能数据会在这里显示。",
   },
   en: {
     unknownProjectError: "An unknown project error occurred.",
@@ -98,11 +114,13 @@ const MESSAGES = {
     requestFailed: "Request failed.",
     projectAlreadyRegistered: "This repository is already registered at {path}.",
     pathNotAbsolute: "Use an absolute path such as /home/code/EAT.",
+    pathAccessDenied: "You do not have permission to read that directory. Choose an accessible path instead.",
     pathNotFound: "That path does not exist. Check the directory and try again.",
     pathNotDirectory: "The selected path must be a directory, not a file.",
     notGitRepository: "The selected directory is not a non-bare git repository.",
     bareGitRepository: "Bare git repositories are not supported for project registration.",
     projectNotFound: "The selected project no longer exists in the local registry.",
+    baseBranchCreateFailed: "Unable to create the new baseline branch {branch}.",
     baseBranchNotFound: "The selected base branch {branch} could not be resolved.",
     leadAgentUnhealthy: "{agent} is unhealthy: {reason}.",
     taskNotDraft: "Clarification can only start from a draft task.",
@@ -145,6 +163,7 @@ const MESSAGES = {
     noLeadCandidates: "No lead-capable agents are registered yet.",
     leadReady: "{agent} is healthy and ready for task creation.",
     leadBlocked: "{agent} is blocked: {reason}",
+    leadStubBlocked: "{agent} is still running in stub mode and is not treated as a real CLI candidate.",
     statusDraft: "Draft",
     statusClarifying: "Clarifying",
     statusPlanning: "Planning",
@@ -177,6 +196,19 @@ const MESSAGES = {
     reviewGeneric: "Review",
     unknownAttachment: "Unknown attachment",
     sizeUnknown: "size unknown",
+    navDashboard: "Dashboard",
+    navTaskCreate: "Create Task",
+    navTasks: "Tasks",
+    navPlan: "Plan Review",
+    navOps: "Operations",
+    navMetrics: "Metrics",
+    sidebarTitle: "Projects",
+    sidebarActiveAgents: "{count} Agents",
+    sidebarRegisterButton: "Register Project",
+    brandName: "EAT Agent Workbench",
+    navStatusIdle: "Ready",
+    metricsTitle: "Metrics Overview",
+    metricsEmpty: "Metrics view coming soon. Task execution stats, agent utilization, and performance data will appear here.",
   },
 };
 
@@ -233,6 +265,8 @@ export function buildProjectErrorMessage(error) {
       });
     case "PATH_NOT_ABSOLUTE":
       return translate("pathNotAbsolute");
+    case "PATH_ACCESS_DENIED":
+      return translate("pathAccessDenied");
     case "PATH_NOT_FOUND":
       return translate("pathNotFound");
     case "PATH_NOT_DIRECTORY":
@@ -254,6 +288,10 @@ export function buildTaskErrorMessage(error) {
   }
 
   switch (error.code) {
+    case "BASE_BRANCH_CREATE_FAILED":
+      return translate("baseBranchCreateFailed", {
+        branch: error.details?.baseBranch ?? "",
+      });
     case "BASE_BRANCH_NOT_FOUND":
       return translate("baseBranchNotFound", {
         branch: error.details?.baseBranch ?? "",
@@ -341,6 +379,10 @@ export function buildAgentStatusLabel(snapshot) {
     return translate("unknown");
   }
 
+  if (snapshot.runtimeMode === "STUB") {
+    return translate("stubRuntime");
+  }
+
   if (snapshot.available !== true) {
     return translate("unavailable");
   }
@@ -396,6 +438,14 @@ export function buildLeadSelectionState(candidate) {
       disabled: false,
       message: translate("leadReady", { agent: candidate.agentName }),
       tone: "success",
+    };
+  }
+
+  if (candidate.runtimeMode === "STUB") {
+    return {
+      disabled: true,
+      message: translate("leadStubBlocked", { agent: candidate.agentName }),
+      tone: "error",
     };
   }
 

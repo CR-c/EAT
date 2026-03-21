@@ -53,7 +53,10 @@ test("runs clarification flow, triggers planning, and keeps the task in planning
         const startResponse = await requestJson(
           server,
           `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
-          { method: "POST" },
+          {
+            body: { content: "Build the task within Phase 04 and clarify before planning." },
+            method: "POST",
+          },
         );
         assert.equal(startResponse.status, 200);
         assert.equal(startResponse.body.task.status, "CLARIFYING");
@@ -169,7 +172,10 @@ test("regenerates after an invalid syntactically valid plan and only snapshots t
       await requestJson(
         server,
         `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
-        { method: "POST" },
+        {
+          body: { content: "Start clarification for the regeneration scenario." },
+          method: "POST",
+        },
       );
       const confirmResponse = await requestJson(
         server,
@@ -238,7 +244,10 @@ test("revalidates edited drafts on save and blocks approval when the stored plan
       await requestJson(
         server,
         `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
-        { method: "POST" },
+        {
+          body: { content: "Start clarification for draft save validation." },
+          method: "POST",
+        },
       );
       await requestJson(
         server,
@@ -369,7 +378,10 @@ test("lists plan templates and seeds a role-aware DAG draft that can be approved
       await requestJson(
         server,
         `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
-        { method: "POST" },
+        {
+          body: { content: "Start clarification before listing plan templates." },
+          method: "POST",
+        },
       );
       await requestJson(
         server,
@@ -514,7 +526,10 @@ test("restores a historical plan snapshot into the current draft and appends res
         await requestJson(
           server,
           `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
-          { method: "POST" },
+          {
+            body: { content: "Start clarification before guided template approval checkpoint." },
+            method: "POST",
+          },
         );
         await requestJson(
           server,
@@ -622,7 +637,10 @@ test("approves the validated plan by freezing approvedPlanJson and appending an 
         await requestJson(
           server,
           `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
-          { method: "POST" },
+          {
+            body: { content: "Start clarification before restoring plan snapshot history." },
+            method: "POST",
+          },
         );
         await requestJson(
           server,
@@ -735,7 +753,10 @@ test("rolls back approval writes when subtask materialization fails", async () =
       await requestJson(
         server,
         `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
-        { method: "POST" },
+        {
+          body: { content: "Start clarification before approval rollback coverage." },
+          method: "POST",
+        },
       );
       await requestJson(
         server,

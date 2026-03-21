@@ -170,6 +170,56 @@ test("returns structured validation errors when a registered repository becomes 
   }
 });
 
+test("browses directories for the project picker and supports hidden-directory toggles", async () => {
+  const fixture = await makeTempDir("eat-project-browse-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const repo = await createRepository(fixture.path, "browse-repo", { defaultBranch: "main" });
+    const plainDirectory = path.join(fixture.path, "plain-dir");
+    const hiddenDirectory = path.join(fixture.path, ".hidden-dir");
+    const server = await startServer({ databasePath });
+
+    await mkdir(plainDirectory);
+    await mkdir(hiddenDirectory);
+
+    try {
+      const browseResponse = await requestJson(
+        server,
+        `/api/projects/browse?path=${encodeURIComponent(fixture.path)}`,
+      );
+      assert.equal(browseResponse.status, 200);
+      assert.equal(browseResponse.body.currentPath, fixture.path);
+      assert.equal(browseResponse.body.parentPath, path.dirname(fixture.path));
+      assert.ok(Array.isArray(browseResponse.body.roots));
+      assert.ok(browseResponse.body.roots.some((root) => root.kind === "root"));
+      assert.deepEqual(
+        browseResponse.body.entries.map((entry) => entry.name),
+        ["browse-repo", "plain-dir"],
+      );
+      assert.equal(browseResponse.body.entries[0].isGitRepository, true);
+
+      const hiddenBrowseResponse = await requestJson(
+        server,
+        `/api/projects/browse?path=${encodeURIComponent(fixture.path)}&hidden=1`,
+      );
+      assert.equal(hiddenBrowseResponse.status, 200);
+      assert.ok(hiddenBrowseResponse.body.entries.some((entry) => entry.name === ".hidden-dir"));
+
+      const invalidBrowseResponse = await requestJson(
+        server,
+        `/api/projects/browse?path=${encodeURIComponent(path.join(fixture.path, "missing"))}`,
+      );
+      assert.equal(invalidBrowseResponse.status, 400);
+      assert.equal(invalidBrowseResponse.body.error.code, "PATH_NOT_FOUND");
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 async function startServer(options = {}) {
   const server = createApp({
     ...(options.projectRepository
