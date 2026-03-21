@@ -1,6 +1,16 @@
 # EAT
 
-EAT is a supervised local-first orchestration panel for CLI-based coding agents. An operator registers a local git repository, clarifies requirements with a Leader agent, reviews a generated execution plan, and then supervises execution across isolated branches, worktrees, and sandboxed sessions.
+EAT is a supervised local-first orchestration panel for CLI-based coding agents. An operator registers a local git repository, clarifies requirements with a Leader agent, reviews a generated execution plan, and then supervises execution across a task-mainline branch plus isolated worker branches, worktrees, and sandboxed sessions.
+
+## Worker Sandbox Image
+
+Worker sessions run inside Docker with `eat/worker-base:latest` by default. Build it locally before launching real worker execution:
+
+```bash
+npm run build:worker-image
+```
+
+The image is intentionally small but includes the minimum tools EAT's Codex workers currently rely on: `bash`, `git`, and `rg`.
 
 ## Planning Roles
 

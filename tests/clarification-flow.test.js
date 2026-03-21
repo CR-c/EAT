@@ -70,7 +70,7 @@ test("runs clarification flow, triggers planning, and keeps the task in planning
         assert.equal(sessionStartedEvent.event, "session:started");
 
         const leadOutputEvent = await nextEvent(events, (entry) => entry.eventName === "task:lead-message");
-        assert.match(leadOutputEvent.data.content, /parallel-only/i);
+        assert.match(leadOutputEvent.data.content, /Confirmed: Build the task within Phase 04 and clarify before planning\./i);
 
         const messageResponse = await requestJson(
           server,
@@ -84,7 +84,10 @@ test("runs clarification flow, triggers planning, and keeps the task in planning
         );
         assert.equal(messageResponse.status, 201);
 
-        const followUpEvent = await nextEvent(events, (entry) => entry.eventName === "task:lead-message" && entry.data.messageId !== leadOutputEvent.data.messageId);
+        const followUpEvent = await nextEvent(
+          events,
+          (entry) => entry.eventName === "task:lead-message" && /Confirmed/i.test(entry.data.content),
+        );
         assert.match(followUpEvent.data.content, /Confirmed/i);
 
         const confirmResponse = await requestJson(
@@ -124,11 +127,79 @@ test("runs clarification flow, triggers planning, and keeps the task in planning
         assert.equal(typeof detailResponse.body.task.currentPlanJson, "string");
         assert.deepEqual(
           detailResponse.body.messages.map((message) => message.role),
-          ["USER", "LEAD_AGENT", "USER", "LEAD_AGENT", "SYSTEM", "LEAD_AGENT"],
+          ["USER", "LEAD_AGENT", "LEAD_AGENT", "USER", "LEAD_AGENT", "SYSTEM", "LEAD_AGENT"],
         );
         assert.equal(detailResponse.body.sessions.length, 1);
         assert.equal(detailResponse.body.sessions[0].status, "RUNNING");
         assert.equal(detailResponse.body.planSnapshots.length, 1);
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("persists the first lead reply even when it is emitted immediately after the first user input", async () => {
+  const fixture = await makeTempDir("eat-clarification-immediate-reply-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const server = await startServer({
+      agentService: createImmediateReplyClarificationAgentService(),
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "clarification-fast-repo", { defaultBranch: "main" });
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Need the lead reply captured even if it is immediate.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Immediate lead reply",
+        },
+        method: "POST",
+      });
+
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskResponse.body.task.id, (event) => {
+        events.push(event);
+      });
+
+      try {
+        const startResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}/start-clarification`,
+          {
+            body: { content: "Capture the very first reply." },
+            method: "POST",
+          },
+        );
+        assert.equal(startResponse.status, 200);
+
+        const leadOutputEvent = await nextEvent(events, (entry) => entry.eventName === "task:lead-message");
+        assert.match(leadOutputEvent.data.content, /Immediate reply captured/i);
+
+        const detailResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskResponse.body.task.id)}`,
+        );
+        assert.equal(detailResponse.status, 200);
+        assert.match(
+          detailResponse.body.messages.find((message) => message.role === "LEAD_AGENT")?.content ?? "",
+          /Immediate reply captured/i,
+        );
       } finally {
         unsubscribe();
       }
@@ -893,6 +964,65 @@ function createClarificationAgentService() {
 
           for (const listener of outputListeners) {
             listener(`Confirmed: ${message}\n`);
+          }
+        },
+        async stop() {
+          for (const listener of exitListeners) {
+            listener(0);
+          }
+        },
+      };
+    },
+  });
+
+  return new AgentService({ agentRegistry: registry });
+}
+
+function createImmediateReplyClarificationAgentService() {
+  const registry = new AgentRegistry();
+
+  registry.register({
+    capabilities: {
+      canExecute: true,
+      canOrchestrate: true,
+      description: "Lead clarification adapter with immediate first reply",
+      supportedSandboxTypes: [SESSION_SANDBOX_TYPES.HOST],
+      supportsInteractiveInput: true,
+      supportsVision: true,
+    },
+    async healthCheck() {
+      return {
+        available: true,
+        version: "1.0.0-test",
+      };
+    },
+    name: "healthy-lead",
+    async spawnSession() {
+      const outputListeners = new Set();
+      const exitListeners = new Set();
+
+      return {
+        containerId: null,
+        pid: 4400,
+        sessionId: "lead-runtime-immediate",
+        async kill() {
+          for (const listener of exitListeners) {
+            listener(1);
+          }
+        },
+        onExit(callback) {
+          exitListeners.add(callback);
+        },
+        onOutput(callback) {
+          outputListeners.add(callback);
+        },
+        async sendInput(message) {
+          if (message.includes("Generate the execution plan as JSON only")) {
+            return;
+          }
+
+          for (const listener of outputListeners) {
+            listener("Immediate reply captured before any later turn.\n");
           }
         },
         async stop() {

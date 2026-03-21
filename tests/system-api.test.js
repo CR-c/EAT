@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createApp } from "../src/server/app.js";
+import { DEFAULT_WORKER_IMAGE } from "../src/services/sandbox-manager.js";
 
 test("serves Docker health and sandbox policy from the system API", async () => {
   const server = createApp({
@@ -14,7 +15,7 @@ test("serves Docker health and sandbox policy from the system API", async () => 
           ok: true,
           available: true,
           daemonReachable: true,
-          defaultWorkerImage: "node:22-bookworm-slim",
+          defaultWorkerImage: DEFAULT_WORKER_IMAGE,
         };
       },
       async getSandboxPolicy() {
@@ -22,7 +23,7 @@ test("serves Docker health and sandbox policy from the system API", async () => 
           ok: true,
           policy: {
             defaultSandboxType: "DOCKER",
-            defaultWorkerImage: "node:22-bookworm-slim",
+            defaultWorkerImage: DEFAULT_WORKER_IMAGE,
           },
         };
       },
@@ -39,7 +40,7 @@ test("serves Docker health and sandbox policy from the system API", async () => 
 
     assert.equal(dockerHealth.status, 200);
     assert.equal(dockerHealth.body.available, true);
-    assert.equal(dockerHealth.body.defaultWorkerImage, "node:22-bookworm-slim");
+    assert.equal(dockerHealth.body.defaultWorkerImage, DEFAULT_WORKER_IMAGE);
 
     assert.equal(sandboxPolicy.status, 200);
     assert.equal(sandboxPolicy.body.policy.defaultSandboxType, "DOCKER");

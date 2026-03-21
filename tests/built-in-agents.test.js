@@ -7,6 +7,7 @@ import path from "node:path";
 import { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 
 import { createBuiltInAgentAdapters } from "../src/agents/built-in-agents.js";
+import { DEFAULT_WORKER_IMAGE } from "../src/services/sandbox-manager.js";
 
 test("codex built-in adapter reports a real runtime and passes host health checks", async () => {
   const adapters = createBuiltInAgentAdapters({
@@ -31,7 +32,7 @@ test("codex built-in adapter reports a real runtime and passes host health check
       async getDockerHealth() {
         return {
           available: true,
-          defaultWorkerImage: "node:22-bookworm-slim",
+          defaultWorkerImage: DEFAULT_WORKER_IMAGE,
           networkProfile: "ISOLATED",
         };
       },

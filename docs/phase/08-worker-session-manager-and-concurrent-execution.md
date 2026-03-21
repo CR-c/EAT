@@ -21,6 +21,7 @@ Create isolated branches and worktrees, then run multiple worker sessions concur
 ## Deliverables
 
 - Branch naming and collision handling
+- Task-mainline branch-aware workspace preparation
 - Worktree creation
 - Worker `AgentSession` creation
 - Concurrent execution orchestrator
@@ -40,6 +41,7 @@ Create isolated branches and worktrees, then run multiple worker sessions concur
 
 - Persist or update:
   - `SubTask.branchName`
+  - `SubTask.startCommitSha`
   - `SubTask.worktreePath`
   - `SubTask.retryCount`
   - worker `AgentSession` rows
@@ -67,7 +69,9 @@ Create isolated branches and worktrees, then run multiple worker sessions concur
 - Compute deterministic branch names: `eat/{taskId}/{branchSuffix}`.
 - Resolve collisions using numeric suffixes.
 - Persist resolved branch names and emit rename events.
-- Create one worktree per subtask from `baseCommitSha`.
+- Create one task-mainline branch per task and resolve its current head before first launching a subtask.
+- Create one worktree per subtask from the current task-mainline head, not blindly from the original task `baseCommitSha`.
+- Persist `SubTask.startCommitSha` so review and diff logic can recover the subtask's true starting point.
 - Persist `worktreePath`.
 - Create worker sessions with `taskId`, `subTaskId`, `sessionType = WORKER`.
 - Filter task attachments per assigned agent capability before session spawn.
@@ -102,6 +106,7 @@ Create isolated branches and worktrees, then run multiple worker sessions concur
 
 - Branch/worktree creation failure should move task to `ACTION_REQUIRED`, not silently skip subtasks.
 - Do not reuse the user's active repo directory for execution.
+- Downstream subtasks should inherit the accumulated task-mainline code state when dependencies have already landed.
 - Retries must not create new branches by default.
 - Branch-setup recovery should route through the generic `task:resume` flow after the underlying blocker is fixed.
 

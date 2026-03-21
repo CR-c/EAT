@@ -199,6 +199,7 @@ export class TaskService {
     this.pendingMergeExecutions = new Set();
     this.pendingIntegrationExecutions = new Set();
     this.pendingCleanupTasks = new Set();
+    this.pendingTaskMainlineSyncs = new Map();
     this.integrationGateRunner = options.integrationGateRunner ?? defaultIntegrationGateRunner;
     this.closed = false;
   }
@@ -850,14 +851,14 @@ export class TaskService {
         sessionId: session.id,
       });
 
-      await runtime.sendInput(initialMessage);
-
       runtime.onOutput((chunk) => {
         void this.#handleLeadOutput(task.id, session.id, chunk);
       });
       runtime.onExit((exitCode) => {
         void this.#handleLeadExit(task.id, session.id, exitCode);
       });
+
+      await runtime.sendInput(initialMessage);
 
       this.#publish(task.id, "task:status", {
         taskId: task.id,
@@ -1889,16 +1890,19 @@ export class TaskService {
       return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId: subTask.taskId });
     }
 
+    const taskMainlineBranchName = this.#resolveTaskMainlineBranchName(task);
+    const rebaseRetryEligibleStatuses = new Set([SUBTASK_STATUS.ACCEPTED, SUBTASK_STATUS.REVIEW_PENDING]);
+
     if (
       task.status !== TASK_STATUS.ACTION_REQUIRED
-      || subTask.status !== SUBTASK_STATUS.ACCEPTED
+      || !rebaseRetryEligibleStatuses.has(subTask.status)
       || !latestMergeRecord
       || latestMergeRecord.operation !== MERGE_OPERATION.MERGE
       || latestMergeRecord.status !== MERGE_STATUS.CONFLICT
     ) {
       return failure(
         TASK_SERVICE_ERROR_CODES.SUBTASK_REBASE_RETRY_NOT_ALLOWED,
-        "Rebase & Retry is only available for accepted subtasks whose latest merge attempt conflicted.",
+        "Rebase & Retry is only available for accepted or review-pending subtasks whose latest merge attempt conflicted.",
         {
           latestMergeRecord: latestMergeRecord
             ? {
@@ -1977,11 +1981,6 @@ export class TaskService {
     const nextSubTask = await this.taskRepository.updateSubTask(rebasedSubTask.id, {
       lastError: null,
     });
-    const resumedTask = await this.#updateTaskStatus(task.id, TASK_STATUS.MERGING, {
-      currentTask: task,
-      lastError: null,
-    });
-
     this.#publish(task.id, "merge:status", {
       status: MERGE_STATUS.SUCCEEDED,
       subtaskId: rebasedSubTask.id,
@@ -1989,7 +1988,26 @@ export class TaskService {
     });
     this.#publishSubTaskStatus(task.id, nextSubTask);
 
-    if (rebaseTargetBranch !== task.baseBranch) {
+    let nextTask = task;
+
+    if (taskMainlineBranchName && rebaseTargetBranch === taskMainlineBranchName) {
+      const syncResult = await this.#syncSubTaskIntoTaskMainline(task.id, rebasedSubTask.id);
+
+      if (!syncResult.ok) {
+        return {
+          ok: true,
+          mergeStatus: MERGE_STATUS.CONFLICT,
+          subTask: this.#decorateSubTask(await this.taskRepository.findSubTaskById(rebasedSubTask.id)),
+          task: await this.taskRepository.findTaskById(task.id),
+        };
+      }
+
+      nextTask = await this.#updateTaskStatus(task.id, TASK_STATUS.EXECUTING, {
+        currentTask: task,
+        lastError: null,
+      });
+      await this.#maybeStartFinalReview(task.id);
+    } else if (rebaseTargetBranch !== task.baseBranch) {
       const latestIntegrationRun = await this.taskRepository.findLatestIntegrationRunByTaskId(task.id);
 
       if (latestIntegrationRun) {
@@ -2009,6 +2027,10 @@ export class TaskService {
         this.#queueIntegrationExecution(latestIntegrationRun.id);
       }
     } else {
+      nextTask = await this.#updateTaskStatus(task.id, TASK_STATUS.MERGING, {
+        currentTask: task,
+        lastError: null,
+      });
       this.#queueMergeExecution(task.id);
     }
 
@@ -2016,7 +2038,7 @@ export class TaskService {
       ok: true,
       mergeStatus: MERGE_STATUS.SUCCEEDED,
       subTask: this.#decorateSubTask(nextSubTask),
-      task: resumedTask,
+      task: (await this.taskRepository.findTaskById(task.id)) ?? nextTask,
     };
   }
 
@@ -2264,8 +2286,18 @@ export class TaskService {
       }
 
       if (await isBranchMergedInto(project.path, subTask.branchName, integrationRun.integrationBranch)) {
+        const mergedCommitSha = await resolveRevision(project.path, integrationRun.integrationBranch).catch(() => null);
+        await this.taskRepository.createMergeRecord({
+          completedAt: new Date().toISOString(),
+          operation: MERGE_OPERATION.MERGE,
+          resultCommitSha: mergedCommitSha,
+          sourceBranch: subTask.branchName,
+          status: MERGE_STATUS.SUCCEEDED,
+          subTaskId: subTask.id,
+          targetBranch: integrationRun.integrationBranch,
+        });
         await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
-          mergedCommitSha: await resolveRevision(project.path, "HEAD").catch(() => null),
+          mergedCommitSha,
           status: INTEGRATION_QUEUE_ITEM_STATUS.MERGED,
         });
         continue;
@@ -2388,12 +2420,13 @@ export class TaskService {
         return mergeTarget;
       }
 
-      const baseHeadSha = await resolveRevision(project.path, task.baseBranch).catch(() => null);
+      const integrationBaseBranch = this.#resolveTaskMainlineBranchName(task) ?? task.baseBranch;
+      const baseHeadSha = await resolveRevision(project.path, integrationBaseBranch).catch(() => null);
 
       if (!baseHeadSha) {
         return {
           ok: false,
-          reason: `Failed to resolve ${task.baseBranch} before preparing the integration branch.`,
+          reason: `Failed to resolve ${integrationBaseBranch} before preparing the integration branch.`,
         };
       }
 
@@ -2660,30 +2693,50 @@ export class TaskService {
     return mergedSubTask;
   }
 
-  async #ensureMergeTargetReady(task, project) {
+  #resolveTaskMainlineBranchName(task) {
+    return normalizeRequiredString(task?.taskBranchName) ?? normalizeRequiredString(task?.baseBranch);
+  }
+
+  async #resolveTaskMainlineHeadCommit(task, project) {
+    const taskBranchName = this.#resolveTaskMainlineBranchName(task);
+
+    if (!taskBranchName) {
+      return null;
+    }
+
+    await ensureBranchExists(project.path, taskBranchName, task.baseCommitSha);
+
+    return resolveRevision(project.path, taskBranchName).catch(() => null);
+  }
+
+  async #ensureBranchReady(project, branchName) {
     if (await isWorkingTreeDirty(project.path)) {
       return {
         ok: false,
-        reason: buildDirtyTargetBranchReason(task.baseBranch),
+        reason: buildDirtyTargetBranchReason(branchName),
       };
     }
 
     const currentBranch = await getCurrentBranch(project.path);
 
-    if (currentBranch === task.baseBranch) {
+    if (currentBranch === branchName) {
       return { ok: true };
     }
 
-    const checkoutResult = await checkoutBranch(project.path, task.baseBranch);
+    const checkoutResult = await checkoutBranch(project.path, branchName);
 
     if (!checkoutResult.ok) {
       return {
         ok: false,
-        reason: buildBaseBranchCheckoutFailureReason(task.baseBranch, checkoutResult),
+        reason: buildBaseBranchCheckoutFailureReason(branchName, checkoutResult),
       };
     }
 
     return { ok: true };
+  }
+
+  async #ensureMergeTargetReady(task, project) {
+    return this.#ensureBranchReady(project, task.baseBranch);
   }
 
   async #ensureMergeWorkspace(task, project, subTask) {
@@ -2692,13 +2745,17 @@ export class TaskService {
     try {
       if (!nextSubTask.branchName) {
         const desiredBranchName = computeDeterministicBranchName(task.id, nextSubTask.branchSuffix);
-        await ensureBranchExists(project.path, desiredBranchName, task.baseCommitSha);
+        const startCommitSha = nextSubTask.startCommitSha
+          ?? await this.#resolveTaskMainlineHeadCommit(task, project)
+          ?? task.baseCommitSha;
+        await ensureBranchExists(project.path, desiredBranchName, startCommitSha);
         nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
           branchName: desiredBranchName,
+          startCommitSha,
         });
       }
 
-      await ensureBranchExists(project.path, nextSubTask.branchName, task.baseCommitSha);
+      await ensureBranchExists(project.path, nextSubTask.branchName, nextSubTask.startCommitSha ?? task.baseCommitSha);
 
       if (!nextSubTask.worktreePath) {
         const worktreePath = await resolveWorktreePath(project.path, task.id, nextSubTask.branchSuffix);
@@ -3008,9 +3065,15 @@ export class TaskService {
       if (!nextSubTask.branchName) {
         const desiredBranchName = computeDeterministicBranchName(task.id, nextSubTask.branchSuffix);
         const resolvedBranchName = await resolveUniqueBranchName(project.path, desiredBranchName);
+        const startCommitSha = await this.#resolveTaskMainlineHeadCommit(task, project);
+
+        if (!startCommitSha) {
+          throw new Error(`Failed to resolve the task mainline branch for ${task.title}.`);
+        }
 
         nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
           branchName: resolvedBranchName,
+          startCommitSha,
         });
 
         if (resolvedBranchName !== desiredBranchName) {
@@ -3023,7 +3086,7 @@ export class TaskService {
         }
       }
 
-      await ensureBranchExists(project.path, nextSubTask.branchName, task.baseCommitSha);
+      await ensureBranchExists(project.path, nextSubTask.branchName, nextSubTask.startCommitSha ?? task.baseCommitSha);
 
       if (!nextSubTask.worktreePath) {
         const worktreePath = await resolveWorktreePath(project.path, task.id, nextSubTask.branchSuffix);
@@ -3261,11 +3324,137 @@ export class TaskService {
 
     if (exitCode === 0) {
       await this.#runIncrementalReview(taskId, subTaskId, sessionId);
+      const syncResult = await this.#syncSubTaskIntoTaskMainline(taskId, subTaskId);
+
+      if (!syncResult.ok) {
+        return;
+      }
+
       await this.#createDependencyHandoffMessages(taskId, subTaskId, sessionId);
     }
 
     await this.#progressDependencySchedule(taskId);
     await this.#maybeStartFinalReview(taskId);
+  }
+
+  async #syncSubTaskIntoTaskMainline(taskId, subTaskId) {
+    return this.#withTaskMainlineSyncLock(taskId, async () => {
+      if (this.closed) {
+        return { ok: false };
+      }
+
+      const [task, subTask] = await Promise.all([
+        this.taskRepository.findTaskById(taskId),
+        this.taskRepository.findSubTaskById(subTaskId),
+      ]);
+
+      if (!task || !subTask || subTask.taskId !== taskId) {
+        return { ok: false };
+      }
+
+      const project = await this.projectRepository.findProjectById(task.projectId);
+
+      if (!project) {
+        await this.#setTaskActionRequired(taskId, "Project not found while updating the task mainline branch.");
+        return { ok: false };
+      }
+
+      const taskBranchName = this.#resolveTaskMainlineBranchName(task);
+
+      if (!taskBranchName || !subTask.branchName || taskBranchName === subTask.branchName) {
+        return { ok: true };
+      }
+
+      const branchReady = await this.#ensureBranchReady(project, taskBranchName);
+
+      if (!branchReady.ok) {
+        await this.#setTaskActionRequired(taskId, branchReady.reason);
+        return { ok: false };
+      }
+
+      if (await isBranchMergedInto(project.path, subTask.branchName, taskBranchName)) {
+        return { ok: true };
+      }
+
+      const mergeResult = await mergeBranch(project.path, subTask.branchName);
+
+      if (mergeResult.ok) {
+        await this.taskRepository.createMessage({
+          content: `Task mainline updated: merged ${subTask.branchName} into ${taskBranchName}.`,
+          role: MESSAGE_ROLE.SYSTEM,
+          taskId,
+        });
+
+        this.#publish(taskId, "task:mainline-updated", {
+          sourceBranch: subTask.branchName,
+          subtaskId: subTask.id,
+          targetBranch: taskBranchName,
+          taskId,
+        });
+
+        return { ok: true };
+      }
+
+      const conflictSummary = await this.#buildMergeConflictSummary(
+        project.path,
+        subTask,
+        { baseBranch: taskBranchName },
+        mergeResult,
+      );
+
+      await abortMerge(project.path).catch(() => null);
+      await this.taskRepository.createMergeRecord({
+        completedAt: new Date().toISOString(),
+        conflictSummary,
+        operation: MERGE_OPERATION.MERGE,
+        sourceBranch: subTask.branchName,
+        status: MERGE_STATUS.CONFLICT,
+        subTaskId: subTask.id,
+        targetBranch: taskBranchName,
+      });
+
+      const conflictedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
+        lastError: conflictSummary,
+      });
+
+      if (conflictedSubTask) {
+        this.#publishSubTaskStatus(taskId, conflictedSubTask);
+      }
+
+      await this.taskRepository.createMessage({
+        content: `Task mainline sync blocked: ${conflictSummary}`,
+        role: MESSAGE_ROLE.SYSTEM,
+        taskId,
+      });
+      await this.#setTaskActionRequired(
+        taskId,
+        `Task mainline branch ${taskBranchName} could not absorb ${subTask.branchName}. ${conflictSummary}`,
+      );
+
+      return { ok: false };
+    });
+  }
+
+  async #withTaskMainlineSyncLock(taskId, operation) {
+    const previous = this.pendingTaskMainlineSyncs.get(taskId) ?? Promise.resolve();
+    let releaseLock;
+    const current = new Promise((resolve) => {
+      releaseLock = resolve;
+    });
+    const lock = previous.catch(() => {}).then(() => current);
+    this.pendingTaskMainlineSyncs.set(taskId, lock);
+
+    await previous.catch(() => {});
+
+    try {
+      return await operation();
+    } finally {
+      releaseLock();
+
+      if (this.pendingTaskMainlineSyncs.get(taskId) === lock) {
+        this.pendingTaskMainlineSyncs.delete(taskId);
+      }
+    }
   }
 
   async #runIncrementalReview(taskId, subTaskId, sessionId) {
@@ -3308,7 +3497,9 @@ export class TaskService {
       reviewResponse = await collectAgentResponse(await agentFactory.spawnSession({
         attachments: [],
         branchName: task.baseBranch,
-        prompt: await buildIncrementalReviewPrompt(task, subTask, session),
+        prompt: await buildIncrementalReviewPrompt(task, subTask, session, {
+          diffSummary: await buildSubTaskDiffSummary(task, project, subTask),
+        }),
         sandbox: {
           type: selectLeadSandboxType(agentFactory.capabilities.supportedSandboxTypes),
         },
@@ -3357,6 +3548,10 @@ export class TaskService {
 
   async #maybeStartFinalReview(taskId) {
     if (this.closed) {
+      return;
+    }
+
+    if (this.pendingTaskMainlineSyncs.has(taskId)) {
       return;
     }
 
@@ -3584,6 +3779,7 @@ export class TaskService {
         baseCommitSha: task.baseCommitSha,
         leadAgentType: task.leadAgentType,
         subTasks: subTaskReviews,
+        taskBranchName: task.taskBranchName ?? null,
         taskDescription: task.description,
         taskId: task.id,
         taskTitle: task.title,
@@ -3759,6 +3955,7 @@ export class TaskService {
       task: {
         id: task.id,
         status: task.status,
+        taskBranchName: task.taskBranchName ?? null,
         title: task.title,
       },
     };
@@ -3790,6 +3987,7 @@ export class TaskService {
       task: {
         id: task.id,
         status: task.status,
+        taskBranchName: task.taskBranchName ?? null,
         title: task.title,
       },
     };
@@ -4342,6 +4540,26 @@ export class TaskService {
       );
     }
 
+    const desiredTaskBranchName = buildTaskMainlineBranchName(title);
+    let resolvedTaskBranchName = await resolveUniqueBranchName(project.path, desiredTaskBranchName);
+
+    try {
+      await ensureBranchExists(project.path, resolvedTaskBranchName, baseCommitSha);
+    } catch {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.BASE_BRANCH_CREATE_FAILED,
+        "Task execution branch could not be created.",
+        {
+          baseBranch: resolvedTaskBranchName,
+          sourceBranch: resolvedBaseBranch,
+        },
+      );
+    }
+
+    if (!resolvedTaskBranchName) {
+      resolvedTaskBranchName = resolvedBaseBranch;
+    }
+
     const normalizedAttachments = await Promise.all((input?.attachments ?? []).map((attachment) => (
       normalizeAttachmentInput(attachment)
     )));
@@ -4355,6 +4573,7 @@ export class TaskService {
         description,
         leadAgentType,
         projectId,
+        taskBranchName: resolvedTaskBranchName,
         title,
       },
     };
@@ -4418,6 +4637,7 @@ export class TaskService {
     this.pendingIntegrationExecutions.clear();
     this.pendingMergeExecutions.clear();
     this.pendingCleanupTasks.clear();
+    this.pendingTaskMainlineSyncs.clear();
     this.pendingWorkerLaunches.clear();
     this.runningLeadSessions.clear();
     this.runningWorkerSessions.clear();
@@ -4575,11 +4795,28 @@ function cryptoRandomId() {
 function buildClarificationPrompt(task) {
   return [
     "You are the lead agent for EAT clarification.",
+    "You are speaking only with the human operator. Do not address sub-agents or pretend implementation has started.",
     `Task title: ${task.title}`,
     `Requirement description: ${task.description}`,
     "The operator will send the first clarification message after the session starts.",
-    "Acknowledge that opening brief, ask concise follow-up questions, and keep clarifying until the user explicitly confirms requirements.",
+    "Your job is to gather the missing delivery contract before planning: target outcome, scope boundaries, affected repo areas, constraints, acceptance criteria, testing expectations, deployment expectations, and any branch or base-branch constraints.",
+    "Ask concise follow-up questions, keep the conversation focused, and do not start planning until the operator explicitly confirms requirements are clear.",
+    "When the request is clear enough, summarize the agreed requirements briefly and ask for explicit confirmation to begin planning.",
   ].join("\n");
+}
+
+function buildTaskMainlineBranchName(title) {
+  const normalizedTitle = typeof title === "string" ? title.normalize("NFKC").trim() : "";
+  const sanitized = normalizedTitle
+    .replaceAll(/[\u0000-\u001F\u007F~^:?*[\]\\]/g, " ")
+    .replaceAll(/\s+/g, "-")
+    .replaceAll(/\.\.+/g, ".")
+    .replaceAll(/@{/g, "-")
+    .replaceAll(/^-+/g, "")
+    .replaceAll(/-+$/g, "");
+  const fallback = sanitized.length > 0 ? sanitized : "task";
+
+  return `eat-${fallback}`.slice(0, 96);
 }
 
 function normalizeOutputChunk(chunk) {
@@ -4698,22 +4935,36 @@ function buildPlanRegenerationPrompt(reason, details) {
 }
 
 function buildWorkerPrompt(task, subTask, context = {}) {
+  const planNode = findPlanNodeForSubTask(task, subTask);
   const mailboxSummary = formatWorkerPromptMailboxNotes(context.mailboxMessages, context.subTasks);
+  const acceptanceCriteria = formatAcceptanceCriteriaForPrompt(planNode?.acceptance_criteria);
 
   return [
     "You are the worker agent for one approved EAT subtask.",
+    "You are one member of a supervised agent team. The human operator talks to the lead, not to you.",
     `Task title: ${task.title}`,
     `Task description: ${task.description}`,
+    `Task mainline branch: ${task.taskBranchName ?? task.baseBranch}`,
     `Subtask title: ${subTask.title}`,
     `Subtask description: ${subTask.description}`,
+    `Subtask role: ${planNode?.role ?? subTask.role ?? "worker"}`,
+    planNode?.deliverable ? `Expected deliverable: ${planNode.deliverable}` : null,
     `Branch: ${subTask.branchName}`,
     subTask.dependencyBranchSuffixes.length > 0
       ? `Depends on: ${subTask.dependencyBranchSuffixes.join(", ")}`
       : "Depends on: none",
+    acceptanceCriteria ? `Acceptance criteria:\n${acceptanceCriteria}` : null,
     "Structured mailbox handoff context:",
     mailboxSummary,
-    "Work only inside the provided worktree and use the supplied attachments when relevant.",
-  ].join("\n");
+    "Execution rules:",
+    "1. Work only inside the provided worktree and stay on the assigned branch.",
+    "2. Coordinate with other members through concrete deliverables and mailbox-ready outputs, not vague status claims.",
+    "3. Leave the branch in a reviewable state with the required file changes actually present.",
+    "4. Run the smallest relevant validation or test commands for your slice before finishing.",
+    "5. If validation cannot run, say exactly what you tried, what blocked it, and what remains.",
+    "6. Do not claim completion unless the deliverable, changed files, and validation evidence all align.",
+    "Use the supplied attachments when relevant.",
+  ].filter(Boolean).join("\n");
 }
 
 function formatWorkerPromptMailboxNotes(mailboxMessages = [], subTasks = []) {
@@ -4857,7 +5108,8 @@ function buildAutomaticHandoffMessage(subTask, session) {
   };
 }
 
-async function buildIncrementalReviewPrompt(task, subTask, session) {
+async function buildIncrementalReviewPrompt(task, subTask, session, context = {}) {
+  const planNode = findPlanNodeForSubTask(task, subTask);
   const persistedLog = session.logPath
     ? await readFile(session.logPath, "utf8").catch(() => null)
     : null;
@@ -4865,6 +5117,7 @@ async function buildIncrementalReviewPrompt(task, subTask, session) {
     persistedLog ?? session.outputBuffer ?? "",
     MAX_INCREMENTAL_REVIEW_LOG_BYTES,
   );
+  const acceptanceCriteria = formatAcceptanceCriteriaForPrompt(planNode?.acceptance_criteria);
 
   return [
     "You are the lead reviewer for one completed EAT subtask.",
@@ -4875,12 +5128,39 @@ async function buildIncrementalReviewPrompt(task, subTask, session) {
     `Subtask description: ${subTask.description}`,
     `Worker agent: ${subTask.agentType}`,
     `Worker branch: ${subTask.branchName ?? "unknown"}`,
+    planNode?.deliverable ? `Expected deliverable: ${planNode.deliverable}` : null,
+    acceptanceCriteria ? `Acceptance criteria:\n${acceptanceCriteria}` : null,
     "Return JSON only with this exact shape:",
     '{"decision":"ACCEPTED|REWORK|REJECTED","summary":"one concise actionable paragraph"}',
     "Use REWORK for fixable issues and REJECTED for major misalignment or unusable output.",
+    "Base the decision on actual deliverables in the branch plus the worker log, not on log claims alone.",
+    "If the log claims work that is missing from the diff summary or deliverable evidence, use REWORK or REJECTED.",
+    "Git diff summary from the current branch/worktree:",
+    context.diffSummary ?? "(diff summary unavailable)",
     "Persisted worker log excerpt follows:",
     logExcerpt || "(no worker output captured)",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
+}
+
+function findPlanNodeForSubTask(task, subTask) {
+  const approvedPlan = parseCurrentPlanJson(task?.approvedPlanJson) ?? parseCurrentPlanJson(task?.currentPlanJson);
+
+  if (!approvedPlan || !subTask?.branchSuffix) {
+    return null;
+  }
+
+  return getPlanNodes(approvedPlan).find((node) => node?.branch_suffix === subTask.branchSuffix) ?? null;
+}
+
+function formatAcceptanceCriteriaForPrompt(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+
+  return value
+    .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry, index) => `${index + 1}. ${entry.trim()}`)
+    .join("\n");
 }
 
 function buildFinalReviewPrompt(review) {
@@ -4894,6 +5174,7 @@ function buildFinalReviewPrompt(review) {
     `Task title: ${review.taskTitle}`,
     `Task description: ${review.taskDescription}`,
     `Base branch: ${review.baseBranch}`,
+    review.taskBranchName ? `Task mainline branch: ${review.taskBranchName}` : null,
     `Base commit: ${review.baseCommitSha}`,
     `Lead agent: ${review.leadAgentType}`,
     "Approved plan snapshot:",
@@ -4919,7 +5200,7 @@ function buildFinalReviewPrompt(review) {
       subtask_id: subTask.id,
       title: subTask.title,
     })), null, 2),
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 function parseIncrementalReviewResponse(response) {
@@ -5050,8 +5331,8 @@ async function buildSubTaskDiffSummary(task, project, subTask) {
   try {
     const worktreeOrRepoPath = subTask.worktreePath ?? project.path;
     const diffBase = subTask.worktreePath
-      ? task.baseCommitSha
-      : `${task.baseCommitSha}..${subTask.branchName}`;
+      ? (subTask.startCommitSha ?? task.baseCommitSha)
+      : `${subTask.startCommitSha ?? task.baseCommitSha}..${subTask.branchName}`;
     const { stdout } = await execFileAsync("git", [
       "-C",
       worktreeOrRepoPath,

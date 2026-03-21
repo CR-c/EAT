@@ -36,15 +36,17 @@
    - `cd /home/code/EAT`
 2. 重建前端样式产物
    - `npm run build:ui`
-3. 如有需要先跑测试
+3. 如果改了 `src/services/sandbox-manager.js`、`docker/worker-base/Dockerfile` 或任何 worker 运行时相关代码，先重建 worker 镜像
+   - `npm run build:worker-image`
+4. 如有需要先跑测试
    - `node --test tests/project-api.test.js tests/project-ui.test.js`
-4. 重启服务
+5. 重启服务
    - `systemctl restart eat.service`
-5. 检查服务状态
+6. 检查服务状态
    - `systemctl status eat.service --no-pager`
-6. 验证本机服务
+7. 验证本机服务
    - `curl -i -s http://127.0.0.1:3000/`
-7. 验证网关域名
+8. 验证网关域名
    - `curl -k -i -s --resolve eat.735678.xyz:443:127.0.0.1 https://eat.735678.xyz/`
 
 ## Notes
@@ -54,6 +56,8 @@
   - `systemctl daemon-reload`
 - 如果改了 `/home/nginx-gateway/nginx.conf`，重载网关：
   - `docker exec nginx-gateway nginx -s reload`
+- 如果 Docker 健康检查显示镜像缺失或缺少工具，优先执行：
+  - `npm run build:worker-image`
 - 对外访问失败时，优先检查三层：
   - `systemctl status eat.service --no-pager`
   - `ss -tlnp | rg '127\\.0\\.0\\.1:3000\\b'`

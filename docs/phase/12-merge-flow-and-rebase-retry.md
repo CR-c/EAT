@@ -7,6 +7,7 @@ Merge accepted subtasks deterministically, preserve merge-attempt history, and r
 ## Current Baseline In Repo
 
 - Phase 08 already creates deterministic branches and isolated worktrees per subtask.
+- Successful worker runs are also synced into a task-mainline branch so downstream subtasks branch from accumulated task code.
 - Phase 11 is expected to mark authoritative merge candidates through `ACCEPTED`, `DISCARDED`, and related terminal review states.
 - There is no `MergeRecord` table or merge executor yet.
 - Existing git helper code already centralizes branch and worktree operations and should be extended instead of bypassed.
@@ -87,6 +88,7 @@ Merge accepted subtasks deterministically, preserve merge-attempt history, and r
 - Merge accepted subtasks in stable creation order.
 - Use `--no-ff`.
 - Before each merge, validate base-branch working tree safety.
+- Explicit integration runs should be prepared from the task-mainline head so release gates evaluate the accumulated task result instead of rebuilding from the original base commit.
 - On success:
   - write `MergeRecord` with `operation = MERGE`
   - set `status = SUCCEEDED`

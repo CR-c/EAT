@@ -18,16 +18,32 @@ export const SANDBOX_HEALTH_REASON_CODES = Object.freeze({
   BINARY_MISSING: "BINARY_MISSING",
   DAEMON_UNREACHABLE: "DAEMON_UNREACHABLE",
   IMAGE_MISSING: "IMAGE_MISSING",
+  IMAGE_REQUIREMENTS_UNMET: "IMAGE_REQUIREMENTS_UNMET",
   INVALID_CONFIG: "INVALID_CONFIG",
 });
 
 export const DEFAULT_WORKTREE_ROOT = path.join(os.tmpdir(), ".eat-worktrees");
 export const DEFAULT_UPLOAD_ROOT = path.resolve(process.cwd(), "uploads");
-export const DEFAULT_WORKER_IMAGE = process.env.EAT_WORKER_IMAGE ?? "node:22-bookworm-slim";
+export const DEFAULT_WORKER_IMAGE = process.env.EAT_WORKER_IMAGE ?? "eat/worker-base:latest";
+export const DEFAULT_WORKER_IMAGE_REQUIRED_TOOLS = Object.freeze(["bash", "git", "rg"]);
 
 export class DockerSandboxManager {
   constructor(options = {}) {
     this.defaultWorkerImage = options.defaultWorkerImage ?? DEFAULT_WORKER_IMAGE;
+    this.requiredWorkerTools = uniquePaths(
+      (options.requiredWorkerTools ?? DEFAULT_WORKER_IMAGE_REQUIRED_TOOLS).map((toolName) => {
+        const normalizedToolName = normalizeNonEmptyString(toolName);
+
+        if (!normalizedToolName) {
+          throw buildSandboxConfigError(
+            SANDBOX_HEALTH_REASON_CODES.INVALID_CONFIG,
+            "requiredWorkerTools must only contain non-empty strings.",
+          );
+        }
+
+        return normalizedToolName;
+      }),
+    );
     this.defaultContainerUser = options.defaultContainerUser ?? resolveDefaultContainerUser();
     this.execFile = options.execFile ?? execFileAsync;
     this.spawnProcess = options.spawnProcess ?? spawn;
@@ -45,8 +61,10 @@ export class DockerSandboxManager {
         daemonReachable: false,
         defaultWorkerImage: this.defaultWorkerImage,
         imageAvailable: false,
+        imageToolingReady: false,
         networkProfile: SANDBOX_NETWORK_PROFILES.ISOLATED,
         pullStrategy: "MANUAL_ONLY",
+        requiredTools: [...this.requiredWorkerTools],
         reason: dockerVersion.reason,
         reasonCode: dockerVersion.reasonCode,
         serverVersion: null,
@@ -54,19 +72,40 @@ export class DockerSandboxManager {
     }
 
     const imageInspect = await this.#runDockerText(["image", "inspect", this.defaultWorkerImage, "--format", "{{.Id}}"]);
-    const imageAvailable = imageInspect.ok;
-    const reason = imageAvailable ? null : `Worker image ${this.defaultWorkerImage} is not available locally.`;
+    if (!imageInspect.ok) {
+      return {
+        available: false,
+        binaryAvailable: true,
+        daemonReachable: true,
+        defaultWorkerImage: this.defaultWorkerImage,
+        imageAvailable: false,
+        imageToolingReady: false,
+        networkProfile: SANDBOX_NETWORK_PROFILES.ISOLATED,
+        pullStrategy: "MANUAL_ONLY",
+        requiredTools: [...this.requiredWorkerTools],
+        reason: `Worker image ${this.defaultWorkerImage} is not available locally.`,
+        reasonCode: SANDBOX_HEALTH_REASON_CODES.IMAGE_MISSING,
+        serverVersion: dockerVersion.value?.Version ?? null,
+      };
+    }
+
+    const imageTooling = await this.#checkWorkerImageTooling();
+    const toolingReady = imageTooling.ok;
+    const reason = toolingReady ? null : imageTooling.reason;
 
     return {
-      available: imageAvailable,
+      available: toolingReady,
       binaryAvailable: true,
       daemonReachable: true,
       defaultWorkerImage: this.defaultWorkerImage,
-      imageAvailable,
+      imageAvailable: true,
+      imageToolingReady: toolingReady,
+      missingTools: toolingReady ? [] : imageTooling.missingTools,
       networkProfile: SANDBOX_NETWORK_PROFILES.ISOLATED,
       pullStrategy: "MANUAL_ONLY",
+      requiredTools: [...this.requiredWorkerTools],
       reason,
-      reasonCode: imageAvailable ? null : SANDBOX_HEALTH_REASON_CODES.IMAGE_MISSING,
+      reasonCode: toolingReady ? null : SANDBOX_HEALTH_REASON_CODES.IMAGE_REQUIREMENTS_UNMET,
       serverVersion: dockerVersion.value?.Version ?? null,
     };
   }
@@ -84,6 +123,7 @@ export class DockerSandboxManager {
       },
       networkProfile: SANDBOX_NETWORK_PROFILES.ISOLATED,
       pullStrategy: "MANUAL_ONLY",
+      requiredTools: [...this.requiredWorkerTools],
       roots: {
         uploads: this.uploadRootPath,
         worktrees: this.worktreeRootPath,
@@ -276,6 +316,36 @@ export class DockerSandboxManager {
     }
   }
 
+  async #checkWorkerImageTooling() {
+    const requirementProbe = buildWorkerImageToolProbeCommand(this.requiredWorkerTools);
+    const probe = await this.#runDockerText([
+      "run",
+      "--rm",
+      "--entrypoint",
+      "/bin/sh",
+      this.defaultWorkerImage,
+      "-c",
+      requirementProbe,
+    ]);
+
+    if (probe.ok) {
+      return {
+        ok: true,
+        missingTools: [],
+      };
+    }
+
+    const missingTools = parseMissingWorkerTools(probe.reason);
+
+    return {
+      missingTools,
+      ok: false,
+      reason: missingTools.length > 0
+        ? `Worker image ${this.defaultWorkerImage} is missing required tools: ${missingTools.join(", ")}.`
+        : `Worker image ${this.defaultWorkerImage} failed the runtime tooling check.`,
+    };
+  }
+
   async #runDockerText(args) {
     try {
       const { stdout } = await this.execFile("docker", args, {
@@ -450,4 +520,34 @@ function resolveDefaultContainerUser() {
   }
 
   return "1000:1000";
+}
+
+function buildWorkerImageToolProbeCommand(requiredTools) {
+  const checks = requiredTools.map((toolName) => {
+    const escapedToolName = shellEscape(toolName);
+    return `command -v ${escapedToolName} >/dev/null 2>&1 || missing="$missing ${toolName}"`;
+  });
+
+  return [
+    "missing=''",
+    ...checks,
+    "if [ -n \"$missing\" ]; then printf 'EAT_WORKER_IMAGE_MISSING_TOOLS:%s\\n' \"$missing\" >&2; exit 1; fi",
+  ].join("; ");
+}
+
+function parseMissingWorkerTools(reason) {
+  const match = normalizeNonEmptyString(reason)?.match(/EAT_WORKER_IMAGE_MISSING_TOOLS:\s*(.+)$/imu);
+
+  if (!match?.[1]) {
+    return [];
+  }
+
+  return match[1]
+    .trim()
+    .split(/\s+/u)
+    .filter(Boolean);
+}
+
+function shellEscape(value) {
+  return `'${String(value).replaceAll("'", "'\"'\"'")}'`;
 }

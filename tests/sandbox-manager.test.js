@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   DockerSandboxManager,
+  DEFAULT_WORKER_IMAGE,
   SANDBOX_NETWORK_PROFILES,
   SANDBOX_HEALTH_REASON_CODES,
 } from "../src/services/sandbox-manager.js";
@@ -62,6 +63,42 @@ test("parses Docker health failures into structured reasons", async () => {
 
   assert.equal(health.available, false);
   assert.equal(health.reasonCode, SANDBOX_HEALTH_REASON_CODES.DAEMON_UNREACHABLE);
+});
+
+test("fails Docker health when the worker image is missing required runtime tools", async () => {
+  const manager = new DockerSandboxManager({
+    async execFile(_command, args) {
+      if (args[0] === "version") {
+        return {
+          stdout: JSON.stringify({ Version: "27.0.0" }),
+        };
+      }
+
+      if (args[0] === "image" && args[1] === "inspect") {
+        return {
+          stdout: "sha256:worker-image\n",
+        };
+      }
+
+      if (args[0] === "run") {
+        const error = new Error("runtime tooling check failed");
+        error.stderr = "EAT_WORKER_IMAGE_MISSING_TOOLS: git rg\n";
+        throw error;
+      }
+
+      throw new Error(`Unexpected docker command: ${args.join(" ")}`);
+    },
+  });
+
+  const health = await manager.getDockerHealth();
+
+  assert.equal(health.available, false);
+  assert.equal(health.defaultWorkerImage, DEFAULT_WORKER_IMAGE);
+  assert.equal(health.imageAvailable, true);
+  assert.equal(health.imageToolingReady, false);
+  assert.deepEqual(health.missingTools, ["git", "rg"]);
+  assert.equal(health.reasonCode, SANDBOX_HEALTH_REASON_CODES.IMAGE_REQUIREMENTS_UNMET);
+  assert.match(health.reason, /missing required tools: git, rg/i);
 });
 
 test("allows explicitly allowlisted runtime mounts and host networking for specialized workers", () => {

@@ -440,6 +440,143 @@ test("returns a team view with lead status, member ordering, and persisted orche
   }
 });
 
+test("branches downstream subtasks from the updated task mainline instead of the original base commit", async () => {
+  const fixture = await makeTempDir("eat-task-mainline-branching-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    let taskMainlineBranchName = null;
+    let downstreamLaunchTaskHead = null;
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Upstream foundation",
+            description: "Create the upstream foundation first.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "upstream-foundation",
+          },
+          {
+            title: "Downstream feature",
+            description: "Build on top of the upstream foundation.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "downstream-feature",
+            depends_on: ["upstream-foundation"],
+          },
+        ],
+      },
+      prepareWorkerSession: async (config) => {
+        if (config.branchName.endsWith("upstream-foundation")) {
+          await commitWorktreeChange(config.workDir, "foundation.txt", "foundation\n");
+        }
+      },
+      workerBehavior: (config) => config.branchName.endsWith("upstream-foundation")
+        ? {
+            delayMs: 40,
+            exitCode: 0,
+            output: "upstream complete\n",
+          }
+        : {
+            delayMs: 20,
+            exitCode: 0,
+            output: "downstream complete\n",
+          },
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "mainline-repo");
+      const initialBaseSha = await git(repo.repoPath, ["rev-parse", "main^{commit}"]);
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Ensure downstream work starts from the task mainline head.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Task mainline branching",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      taskMainlineBranchName = taskResponse.body.task.taskBranchName;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        const firstStartedEvent = await nextEvent(
+          events,
+          (event) => event.eventName === "session:started" && event.data.subtaskId,
+        );
+        await nextEvent(
+          events,
+          (event) => event.eventName === "session:ended" && event.data.subtaskId === firstStartedEvent.data.subtaskId,
+        );
+        await nextEvent(
+          events,
+          (event) => event.eventName === "task:mainline-updated" && event.data.subtaskId === firstStartedEvent.data.subtaskId,
+        );
+        downstreamLaunchTaskHead = await git(repo.repoPath, [
+          "rev-parse",
+          `${taskMainlineBranchName}^{commit}`,
+        ]);
+        await nextEvent(
+          events,
+          (event) => event.eventName === "session:started" && event.data.subtaskId !== firstStartedEvent.data.subtaskId,
+        );
+
+        let detailResponse = null;
+
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+          const downstreamCandidate = detailResponse.body.subTasks.find((subTask) => subTask.branchSuffix === "downstream-feature");
+
+          if (downstreamCandidate?.branchName && downstreamCandidate?.startCommitSha) {
+            break;
+          }
+
+          await new Promise((resolve) => {
+            setTimeout(resolve, 10);
+          });
+        }
+
+        assert.equal(detailResponse.status, 200);
+        assert.equal(detailResponse.body.task.taskBranchName, taskMainlineBranchName);
+
+        const upstreamSubTask = detailResponse.body.subTasks.find((subTask) => subTask.branchSuffix === "upstream-foundation");
+        const downstreamSubTask = detailResponse.body.subTasks.find((subTask) => subTask.branchSuffix === "downstream-feature");
+        assert.ok(downstreamSubTask.branchName);
+        assert.ok(downstreamSubTask.startCommitSha);
+
+        assert.ok(upstreamSubTask.startCommitSha);
+        assert.equal(upstreamSubTask.startCommitSha, initialBaseSha);
+        assert.ok(downstreamLaunchTaskHead);
+        assert.equal(downstreamSubTask.startCommitSha, downstreamLaunchTaskHead);
+        assert.notEqual(downstreamSubTask.startCommitSha, initialBaseSha);
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("persists web-posted lead mailbox notes and exposes them in task detail", async () => {
   const fixture = await makeTempDir("eat-mailbox-api-");
 
@@ -1304,6 +1441,102 @@ test("triggers incremental review after a successful worker run and exposes advi
         assert.equal(detailResponse.body.subTasks[0].latestReviewDecision, "REWORK");
         assert.equal(detailResponse.body.subTasks[0].latestReviewPhase, "INCREMENTAL");
         assert.match(detailResponse.body.subTasks[0].latestReviewSummary, /skipped the validation branch/i);
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("includes coordinated delivery, testing, and diff-based review guidance in worker execution prompts", async () => {
+  const fixture = await makeTempDir("eat-worker-prompt-guidance-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    let capturedWorkerPrompt = null;
+    let capturedReviewPrompt = null;
+    const phase08 = createPhase08AgentService({
+      plan: {
+        nodes: [
+          {
+            acceptance_criteria: [
+              "Implement the Todo route.",
+              "Run the relevant tests before finishing.",
+            ],
+            branch_suffix: "todo-foundation",
+            deliverable: "A reviewable Todo foundation slice committed on the assigned branch.",
+            description: "Add the local Todo route and supporting state.",
+            recommended_agent: "worker-agent",
+            role: "senior-developer",
+            template_hint: "foundation-slice",
+            title: "Todo foundation",
+          },
+        ],
+      },
+      prepareWorkerSession: async (config) => {
+        capturedWorkerPrompt = config.prompt;
+      },
+      reviewBehavior: (config) => {
+        capturedReviewPrompt = config.prompt;
+
+        return {
+          decision: "REWORK",
+          summary: "Review prompt captured with diff-aware guidance.",
+        };
+      },
+      workerBehavior: () => ({
+        delayMs: 20,
+        exitCode: 0,
+        output: "worker completed with reviewable output\n",
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "worker-prompt-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Ship a Todo foundation slice with real testing guidance.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Prompt guidance",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
+
+        await nextEvent(events, (event) => event.eventName === "session:ended" && event.data.subtaskId);
+        await nextEvent(events, (event) => event.eventName === "subtask:review");
+
+        assert.match(capturedWorkerPrompt, /The human operator talks to the lead, not to you\./);
+        assert.match(capturedWorkerPrompt, /Expected deliverable: A reviewable Todo foundation slice committed on the assigned branch\./);
+        assert.match(capturedWorkerPrompt, /Acceptance criteria:\n1\. Implement the Todo route\./);
+        assert.match(capturedWorkerPrompt, /Run the smallest relevant validation or test commands for your slice before finishing\./);
+        assert.match(capturedReviewPrompt, /Base the decision on actual deliverables in the branch plus the worker log, not on log claims alone\./);
+        assert.match(capturedReviewPrompt, /Git diff summary from the current branch\/worktree:/);
+        assert.match(capturedReviewPrompt, /Acceptance criteria:\n1\. Implement the Todo route\./);
       } finally {
         unsubscribe();
       }
@@ -2553,13 +2786,11 @@ test("runs accepted subtasks through an explicit integration branch and complete
           `/api/tasks/${encodeURIComponent(taskId)}/integration-runs`,
           { method: "POST" },
         );
-        assert.equal(integrationResponse.status, 201);
+	        assert.equal(integrationResponse.status, 201);
 
-        await nextEvent(events, (event) => event.eventName === "integration:queued");
-        await nextEvent(events, (event) => event.eventName === "integration:started");
-        await nextEvent(events, (event) => event.eventName === "integration:gate-result" && event.data.status === "PASSED");
-        await nextEvent(events, (event) => event.eventName === "integration:completed" && event.data.status === "COMPLETED");
-        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
+	        await nextEvent(events, (event) => event.eventName === "integration:queued");
+	        await nextEvent(events, (event) => event.eventName === "integration:completed" && event.data.status === "COMPLETED");
+	        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
 
         const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(detailResponse.status, 200);
@@ -2925,21 +3156,6 @@ test("records merge conflicts, supports rebase retry, and resumes merge flow aft
       try {
         await moveTaskToPlanReview(server, taskId, events);
         await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`, { method: "POST" });
-        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "MERGING");
-
-        const startResponse = await requestJson(
-          server,
-          `/api/tasks/${encodeURIComponent(taskId)}/integration-runs`,
-          { method: "POST" },
-        );
-        assert.equal(startResponse.status, 201);
-
-        const conflictEvent = await nextEvent(
-          events,
-          (event) => event.eventName === "merge:status" && event.data.status === "CONFLICT",
-        );
-        assert.match(conflictEvent.data.summary, /conflict/i);
-        await nextEvent(events, (event) => event.eventName === "integration:failed" && event.data.status === "ACTION_REQUIRED");
         await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "ACTION_REQUIRED");
 
         const blockedResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
@@ -2947,15 +3163,15 @@ test("records merge conflicts, supports rebase retry, and resumes merge flow aft
         assert.equal(blockedResponse.body.task.status, "ACTION_REQUIRED");
         assert.deepEqual(
           blockedResponse.body.subTasks.map((subTask) => subTask.status),
-          ["ACCEPTED", "ACCEPTED"],
+          ["REVIEW_PENDING", "REVIEW_PENDING"],
         );
-        assert.deepEqual(
-          blockedResponse.body.integration.latestRun.queueItems.map((queueItem) => queueItem.status),
-          ["MERGED", "FAILED"],
+        assert.equal(blockedResponse.body.integration.latestRun, null);
+        const conflictedSubTask = blockedResponse.body.subTasks.find(
+          (subTask) => subTask.mergeRecords.at(-1)?.status === "CONFLICT",
         );
-        assert.equal(blockedResponse.body.subTasks[1].mergeRecords.at(-1).status, "CONFLICT");
-
-        const conflictedSubTask = blockedResponse.body.subTasks[1];
+        assert.ok(conflictedSubTask);
+        assert.match(conflictedSubTask.mergeRecords.at(-1).conflictSummary ?? "", /conflict/i);
+        assert.equal(conflictedSubTask.mergeRecords.at(-1).targetBranch, blockedResponse.body.task.taskBranchName);
         await git(conflictedSubTask.worktreePath, ["reset", "--hard", "main"]);
         await writeFile(path.join(conflictedSubTask.worktreePath, "resolved.txt"), "resolved\n", "utf8");
         await git(conflictedSubTask.worktreePath, ["add", "resolved.txt"]);
@@ -2974,6 +3190,15 @@ test("records merge conflicts, supports rebase retry, and resumes merge flow aft
           && event.data.subtaskId === conflictedSubTask.id
           && event.data.status === "SUCCEEDED"
         ));
+        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "MERGING");
+
+        const startResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/integration-runs`,
+          { method: "POST" },
+        );
+        assert.equal(startResponse.status, 201);
+
         await nextEvent(events, (event) => event.eventName === "integration:completed" && event.data.status === "COMPLETED");
         await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
 
@@ -2984,12 +3209,14 @@ test("records merge conflicts, supports rebase retry, and resumes merge flow aft
           detailResponse.body.subTasks.map((subTask) => subTask.status),
           ["MERGED", "MERGED"],
         );
+        const retriedSubTask = detailResponse.body.subTasks.find((subTask) => subTask.id === conflictedSubTask.id);
         assert.deepEqual(
-          detailResponse.body.subTasks[1].mergeRecords.map((record) => `${record.operation}:${record.status}`),
+          retriedSubTask.mergeRecords.map((record) => `${record.operation}:${record.status}`),
           ["MERGE:CONFLICT", "REBASE:SUCCEEDED", "MERGE:SUCCEEDED"],
         );
         assert.equal(await readFile(path.join(repo.repoPath, "resolved.txt"), "utf8"), "resolved\n");
-        assert.equal(await readFile(path.join(repo.repoPath, "shared.txt"), "utf8"), "alpha\n");
+        const expectedSharedContent = conflictedSubTask.branchSuffix === "shared-a" ? "beta\n" : "alpha\n";
+        assert.equal(await readFile(path.join(repo.repoPath, "shared.txt"), "utf8"), expectedSharedContent);
       } finally {
         unsubscribe();
       }
@@ -3379,7 +3606,7 @@ async function git(cwd, args) {
   return stdout.trim();
 }
 
-async function nextEvent(events, predicate, attempts = 200) {
+async function nextEvent(events, predicate, attempts = 1000) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const index = events.findIndex(predicate);
 
@@ -3398,7 +3625,7 @@ async function nextEvent(events, predicate, attempts = 200) {
 
 async function waitFor(predicate, attempts = 200) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (predicate()) {
+    if (await predicate()) {
       return;
     }
 

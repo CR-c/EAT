@@ -145,6 +145,7 @@ export class SqliteTaskRepository {
       planVersion: 0,
       projectId: input.projectId,
       status: input.status ?? TASK_STATUS.DRAFT,
+      taskBranchName: input.taskBranchName ?? input.baseBranch,
       title: input.title,
       updatedAt: timestamp,
     };
@@ -159,6 +160,7 @@ export class SqliteTaskRepository {
           lead_agent_type,
           base_branch,
           base_commit_sha,
+          task_branch_name,
           status,
           plan_version,
           current_plan_json,
@@ -166,7 +168,7 @@ export class SqliteTaskRepository {
           last_error,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         task.id,
@@ -176,6 +178,7 @@ export class SqliteTaskRepository {
         task.leadAgentType,
         task.baseBranch,
         task.baseCommitSha,
+        task.taskBranchName,
         task.status,
         task.planVersion,
         task.currentPlanJson,
@@ -199,6 +202,7 @@ export class SqliteTaskRepository {
           lead_agent_type AS leadAgentType,
           base_branch AS baseBranch,
           base_commit_sha AS baseCommitSha,
+          task_branch_name AS taskBranchName,
           status,
           plan_version AS planVersion,
           current_plan_json AS currentPlanJson,
@@ -222,6 +226,7 @@ export class SqliteTaskRepository {
     const nextTask = {
       ...existingTask,
       ...updates,
+      taskBranchName: updates.taskBranchName ?? existingTask.taskBranchName ?? existingTask.baseBranch,
       updatedAt: updates.updatedAt ?? new Date().toISOString(),
     };
 
@@ -234,6 +239,7 @@ export class SqliteTaskRepository {
           lead_agent_type = ?,
           base_branch = ?,
           base_commit_sha = ?,
+          task_branch_name = ?,
           status = ?,
           plan_version = ?,
           current_plan_json = ?,
@@ -248,6 +254,7 @@ export class SqliteTaskRepository {
         nextTask.leadAgentType,
         nextTask.baseBranch,
         nextTask.baseCommitSha,
+        nextTask.taskBranchName,
         nextTask.status,
         nextTask.planVersion,
         nextTask.currentPlanJson,
@@ -271,6 +278,7 @@ export class SqliteTaskRepository {
           lead_agent_type AS leadAgentType,
           base_branch AS baseBranch,
           base_commit_sha AS baseCommitSha,
+          task_branch_name AS taskBranchName,
           status,
           plan_version AS planVersion,
           current_plan_json AS currentPlanJson,
@@ -805,6 +813,7 @@ export class SqliteTaskRepository {
       role: normalizeOptionalString(input.role) ?? inferSubTaskRole(input.branchSuffix, input.title),
       retryCount: input.retryCount ?? 0,
       runSummary: normalizeOptionalString(input.runSummary),
+      startCommitSha: normalizeOptionalString(input.startCommitSha),
       status: input.status ?? SUBTASK_STATUS.PENDING,
       taskId: input.taskId,
       title: input.title,
@@ -823,6 +832,7 @@ export class SqliteTaskRepository {
           branch_suffix,
           dependency_branch_suffixes_json,
           branch_name,
+          start_commit_sha,
           worktree_path,
           agent_type,
           status,
@@ -839,7 +849,7 @@ export class SqliteTaskRepository {
           run_summary,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         subTask.id,
@@ -849,6 +859,7 @@ export class SqliteTaskRepository {
         subTask.branchSuffix,
         JSON.stringify(subTask.dependencyBranchSuffixes),
         subTask.branchName,
+        subTask.startCommitSha,
         subTask.worktreePath,
         subTask.agentType,
         subTask.status,
@@ -881,6 +892,7 @@ export class SqliteTaskRepository {
           branch_suffix AS branchSuffix,
           dependency_branch_suffixes_json AS dependencyBranchSuffixesJson,
           branch_name AS branchName,
+          start_commit_sha AS startCommitSha,
           worktree_path AS worktreePath,
           agent_type AS agentType,
           status,
@@ -943,6 +955,7 @@ export class SqliteTaskRepository {
           branch_suffix = ?,
           dependency_branch_suffixes_json = ?,
           branch_name = ?,
+          start_commit_sha = ?,
           worktree_path = ?,
           agent_type = ?,
           status = ?,
@@ -966,6 +979,7 @@ export class SqliteTaskRepository {
         nextSubTask.branchSuffix,
         JSON.stringify(normalizeStringArray(nextSubTask.dependencyBranchSuffixes)),
         nextSubTask.branchName,
+        nextSubTask.startCommitSha,
         nextSubTask.worktreePath,
         nextSubTask.agentType,
         nextSubTask.status,
@@ -998,6 +1012,7 @@ export class SqliteTaskRepository {
           branch_suffix AS branchSuffix,
           dependency_branch_suffixes_json AS dependencyBranchSuffixesJson,
           branch_name AS branchName,
+          start_commit_sha AS startCommitSha,
           worktree_path AS worktreePath,
           agent_type AS agentType,
           status,
@@ -1490,6 +1505,7 @@ export class SqliteTaskRepository {
           lead_agent_type AS leadAgentType,
           base_branch AS baseBranch,
           base_commit_sha AS baseCommitSha,
+          task_branch_name AS taskBranchName,
           status,
           plan_version AS planVersion,
           current_plan_json AS currentPlanJson,

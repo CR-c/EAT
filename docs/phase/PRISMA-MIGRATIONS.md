@@ -172,6 +172,7 @@ This document maps schema work to delivery phases. It is intentionally conservat
 #### `Task`
 
 - `approvedPlanJson?`
+- `taskBranchName?`
 
 #### `SubTask`
 
@@ -193,6 +194,7 @@ This document maps schema work to delivery phases. It is intentionally conservat
 ### Notes
 
 - Keep `branchName` and `worktreePath` nullable until branch/worktree setup succeeds in phase 08.
+- `taskBranchName` should point to the task-mainline branch reserved for execution.
 
 ## Phase 08
 
@@ -207,6 +209,7 @@ This document maps schema work to delivery phases. It is intentionally conservat
 
 - Ensure these fields exist before execution starts:
   - `branchName?`
+  - `startCommitSha?`
   - `worktreePath?`
   - `retryCount`
 

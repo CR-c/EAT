@@ -18,6 +18,7 @@ Freeze the approved plan, create executable `SubTask` records from it, and prepa
 
 - `approvedPlanJson`
 - `PlanSnapshot` with `APPROVED`
+- `Task.taskBranchName`
 - `SubTask` records created from approved plan
 - task transition into `EXECUTING`
 
@@ -33,6 +34,7 @@ Freeze the approved plan, create executable `SubTask` records from it, and prepa
 
 - Required persistence:
   - `Task.approvedPlanJson`
+  - `Task.taskBranchName`
   - `SubTask`
 - Materialized subtasks must start with:
   - `status = PENDING`
@@ -57,6 +59,7 @@ Freeze the approved plan, create executable `SubTask` records from it, and prepa
 - Validate the final `currentPlanJson` one last time at approval time.
 - Copy `currentPlanJson` to `approvedPlanJson`.
 - Create one `PlanSnapshot` with `source = APPROVED`.
+- Ensure the task has one task-mainline branch reserved for execution.
 - Materialize one `SubTask` per approved plan item.
 - Copy fields to `SubTask`:
   - title

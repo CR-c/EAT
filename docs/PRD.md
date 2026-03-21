@@ -39,7 +39,7 @@ Primary goals of this revision:
 
 ### 2.1 Vision
 
-EAT is a local-first orchestration panel for CLI-based AI coding agents. A user selects a local git repository, collaborates with a lead agent to clarify requirements, reviews an editable execution plan, and then launches multiple worker agents on isolated git branches. EAT streams execution in real time, preserves task context, and manages review, rework, merge, and recovery decisions.
+EAT is a local-first orchestration panel for CLI-based AI coding agents. A user selects a local git repository, collaborates with a lead agent to clarify requirements, reviews an editable execution plan, and then launches multiple worker agents on isolated git branches. Each task also gets one task-mainline branch that accumulates successful task progress so downstream work starts from real task code, not only from the original base commit. EAT streams execution in real time, preserves task context, and manages review, rework, merge, and recovery decisions.
 
 ### 2.2 Product Positioning
 
@@ -89,6 +89,7 @@ This product choice is intentional. It keeps failures inspectable and reduces th
 - Generate a structured plan containing independently executable subtasks
 - Let the user edit and approve the plan before execution
 - Materialize approved subtasks into isolated branches and worktrees
+- Create one task-mainline branch per task so downstream subtasks can branch from accumulated task progress
 - Respect optional subtask dependencies and launch downstream work only after prerequisites complete
 - Preserve directed mailbox handoff notes between lead and subtasks, and inject downstream handoff context into worker prompts
 - Run multiple worker agents concurrently in Docker sandboxes on separate branches
@@ -138,6 +139,7 @@ To keep v0.1 buildable, the following restrictions apply:
 | Lead Agent | The agent used for clarification, planning, incremental review prompts, and final review |
 | Worker Agent | The agent used to execute one subtask |
 | Agent Session | One live spawned process instance with its own PTY, logs, and lifecycle |
+| Task Mainline Branch | The task-scoped integration branch created at task creation time and updated during execution so downstream subtasks can branch from accumulated task work |
 | Task Workspace Branch | The branch created for a subtask, under the EAT naming convention |
 | Task Worktree | A dedicated local git worktree used to keep one running subtask isolated from the user's main working directory |
 | Session Sandbox | The runtime isolation boundary used for an agent session, such as `HOST` or `DOCKER` |
@@ -167,6 +169,7 @@ MVP supports lightweight subtask dependencies inside one approved plan.
 - Dependencies must form an acyclic graph
 - Root subtasks may run in parallel
 - Downstream subtasks remain blocked until all prerequisite subtasks complete execution successfully
+- When a prerequisite subtask completes successfully, its branch is merged into the task-mainline branch before downstream subtasks branch from that task-mainline head
 - If a prerequisite fails or requires rework, blocked downstream subtasks do not auto-start
 
 ### 6.3 Attachment Model
@@ -232,7 +235,8 @@ EAT requires a long-running local Node.js server process plus a local container 
 To support concurrent workers safely, EAT uses both dedicated git worktrees and container sandboxes.
 
 - The user's current working directory is never reused as a live worker execution directory
-- Each subtask gets its own isolated worktree rooted at the task's recorded `baseCommitSha`
+- Each task gets one task-mainline branch created from the selected base branch at task creation time
+- Each subtask gets its own isolated worktree on its own branch, but that subtask branch is rooted at the current task-mainline head when the subtask is first launched
 - Each worker session runs inside a dedicated Docker container
 - The container sees only explicitly mounted paths required for that session
 - The default worker mount set is:

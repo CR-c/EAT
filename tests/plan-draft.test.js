@@ -33,7 +33,10 @@ test("buildPlanningPrompt includes agency-inspired role guidance for planning qu
 
   assert.match(prompt, /Planning mode is now active\. Requirements are finalized\./u);
   assert.match(prompt, /Your next response must be a single JSON object only\./u);
+  assert.match(prompt, /Plan for a coordinated agent team, not a bag of unrelated tickets\./u);
   assert.match(prompt, /For the `role` field, prefer concise kebab-case specialist roles/u);
+  assert.match(prompt, /maximize safe parallel execution/u);
+  assert.match(prompt, /include explicit nodes that close the loop: implementation handoff, automated checks, readiness review, and release or smoke validation/u);
   assert.match(prompt, /frontend-developer: UI implementation/u);
   assert.match(prompt, /backend-architect: API contracts/u);
   assert.match(prompt, /devops-automator: CI\/CD/u);

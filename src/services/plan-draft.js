@@ -89,6 +89,7 @@ export function buildPlanningPrompt(task, options = {}) {
     "Ignore earlier conversation instructions that said to keep clarifying or wait for more confirmation.",
     "Your next response must be a single JSON object only. Do not output prose, bullet lists, commentary, or role explanations outside the JSON object.",
     "Requirements are confirmed. Generate the execution plan as JSON only.",
+    "Plan for a coordinated agent team, not a bag of unrelated tickets.",
     "Return an object with a non-empty `nodes` array.",
     "Each node must include `title`, `description`, `role`, `recommended_agent`, `branch_suffix`, `deliverable`, `acceptance_criteria`, and `template_hint`.",
     "`acceptance_criteria` must be a non-empty string array.",
@@ -97,6 +98,8 @@ export function buildPlanningPrompt(task, options = {}) {
     "For the `role` field, prefer concise kebab-case specialist roles instead of generic labels.",
     "Choose roles so each node has one clear owner, one primary discipline, and one concrete deliverable.",
     "Do not assign build work to review-only roles, and do not assign release or infra work to pure UI roles.",
+    "Prefer the minimum necessary sequencing. Use `depends_on` only for real contract, data, or integration blockers; otherwise maximize safe parallel execution.",
+    "When the task includes implementation, testing, deployment, or release expectations, include explicit nodes that close the loop: implementation handoff, automated checks, readiness review, and release or smoke validation when applicable.",
     buildAgencyInspiredRoleGuidance(),
     availableAgentNames.length > 0
       ? `Use only these exact agent names for every recommended_agent value: ${availableAgentNames.join(", ")}.`

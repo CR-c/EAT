@@ -62,9 +62,14 @@ test("creates a task from a fresh baseline branch, snapshots the derived commit,
       assert.equal(createResponse.body.task.status, "DRAFT");
       assert.equal(createResponse.body.task.baseBranch, "task/main/lead-clarification");
       assert.equal(createResponse.body.task.baseCommitSha, expectedSha);
+      assert.equal(createResponse.body.task.taskBranchName, "eat-Lead-clarification");
       assert.equal(createResponse.body.attachments.length, 1);
       assert.equal(
         await git(repo.repoPath, ["rev-parse", "task/main/lead-clarification^{commit}"]),
+        expectedSha,
+      );
+      assert.equal(
+        await git(repo.repoPath, ["rev-parse", "eat-Lead-clarification^{commit}"]),
         expectedSha,
       );
 
@@ -90,6 +95,7 @@ test("creates a task from a fresh baseline branch, snapshots the derived commit,
       assert.equal(projectTasksResponse.status, 200);
       assert.equal(projectTasksResponse.body.tasks.length, 1);
       assert.equal(projectTasksResponse.body.tasks[0].id, createResponse.body.task.id);
+      assert.equal(projectTasksResponse.body.tasks[0].taskBranchName, "eat-Lead-clarification");
     } finally {
       await stopServer(server);
     }
