@@ -240,6 +240,66 @@ test("persists task plan fields, messages, attachments, sessions, subtasks, and 
   }
 });
 
+test("supports task archiving filters and hard deletion", async () => {
+  const fixture = await makeTempDir("eat-task-repo-archive-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const projectRepository = new SqliteProjectRepository({ databasePath });
+    const taskRepository = new SqliteTaskRepository({ databasePath });
+
+    const project = await projectRepository.createProject({
+      defaultBranch: "main",
+      name: "EAT",
+      path: "/home/code/EAT",
+    });
+
+    const activeTask = await taskRepository.createTask({
+      baseBranch: "main",
+      baseCommitSha: "abc123",
+      description: "Visible task",
+      leadAgentType: "codex-cli",
+      projectId: project.id,
+      title: "Visible task",
+    });
+    const archivedTask = await taskRepository.createTask({
+      baseBranch: "main",
+      baseCommitSha: "def456",
+      description: "Archived task",
+      leadAgentType: "codex-cli",
+      projectId: project.id,
+      title: "Archived task",
+    });
+
+    const archivedAt = "2026-03-21T09:00:00.000Z";
+    await taskRepository.updateTask(archivedTask.id, {
+      archivedAt,
+    });
+
+    assert.deepEqual(
+      (await taskRepository.listTasksByProjectId(project.id)).map((task) => task.id),
+      [activeTask.id],
+    );
+    assert.deepEqual(
+      (await taskRepository.listTasksByProjectId(project.id, { includeArchived: true })).map((task) => ({
+        archivedAt: task.archivedAt,
+        id: task.id,
+      })),
+      [
+        { archivedAt, id: archivedTask.id },
+        { archivedAt: null, id: activeTask.id },
+      ],
+    );
+
+    const deletedTask = await taskRepository.deleteTask(archivedTask.id);
+
+    assert.equal(deletedTask.id, archivedTask.id);
+    assert.equal(await taskRepository.findTaskById(archivedTask.id), null);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("persists structured mailbox contracts with refs, branch, schema, and acknowledgement state", async () => {
   const fixture = await makeTempDir("eat-task-repo-mailbox-");
 

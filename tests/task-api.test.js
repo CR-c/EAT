@@ -249,6 +249,101 @@ test("requires an explicit first operator message before starting clarification"
   }
 });
 
+test("archives, restores, and deletes tasks while optionally cleaning the task mainline branch", async () => {
+  const fixture = await makeTempDir("eat-task-api-archive-delete-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const uploadRootPath = path.join(fixture.path, "uploads");
+    const repo = await createRepository(fixture.path, "archive-delete-repo", { defaultBranch: "main" });
+
+    const server = await startServer({
+      agentService: createLeadAgentService(),
+      databasePath,
+      uploadRootPath,
+    });
+
+    try {
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const createResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Archive and delete flows should work.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Archive delete task",
+        },
+        method: "POST",
+      });
+      const taskId = createResponse.body.task.id;
+      const taskBranchName = createResponse.body.task.taskBranchName;
+
+      const archiveResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskId)}/archive`,
+        {
+          body: { deleteBranches: false },
+          method: "POST",
+        },
+      );
+      assert.equal(archiveResponse.status, 200);
+      assert.ok(archiveResponse.body.task.archivedAt);
+
+      const defaultTasksResponse = await requestJson(
+        server,
+        `/api/projects/${encodeURIComponent(registerResponse.body.project.id)}/tasks`,
+      );
+      assert.equal(defaultTasksResponse.status, 200);
+      assert.deepEqual(defaultTasksResponse.body.tasks, []);
+
+      const archivedTasksResponse = await requestJson(
+        server,
+        `/api/projects/${encodeURIComponent(registerResponse.body.project.id)}/tasks?includeArchived=1`,
+      );
+      assert.equal(archivedTasksResponse.status, 200);
+      assert.equal(archivedTasksResponse.body.tasks.length, 1);
+      assert.ok(archivedTasksResponse.body.tasks[0].archivedAt);
+
+      const restoreResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskId)}/unarchive`,
+        { method: "POST" },
+      );
+      assert.equal(restoreResponse.status, 200);
+      assert.equal(restoreResponse.body.task.archivedAt, null);
+
+      const deleteResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskId)}`,
+        {
+          body: { deleteBranches: true },
+          method: "DELETE",
+        },
+      );
+      assert.equal(deleteResponse.status, 200);
+      assert.equal(deleteResponse.body.branchCleanup.cleanedBranches.includes(taskBranchName), true);
+
+      const afterDeleteResponse = await requestJson(
+        server,
+        `/api/projects/${encodeURIComponent(registerResponse.body.project.id)}/tasks?includeArchived=1`,
+      );
+      assert.equal(afterDeleteResponse.status, 200);
+      assert.deepEqual(afterDeleteResponse.body.tasks, []);
+
+      await assert.rejects(
+        git(repo.repoPath, ["rev-parse", `${taskBranchName}^{commit}`]),
+      );
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("creates a guided task in PLAN_REVIEW from a built-in golden-path template", async () => {
   const fixture = await makeTempDir("eat-guided-task-api-");
 

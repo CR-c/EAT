@@ -1,5 +1,5 @@
 import path from "node:path";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -10,6 +10,7 @@ import {
   abortRebase,
   checkoutBranch,
   computeDeterministicBranchName,
+  deleteBranch,
   ensureBranchExists,
   ensureWorktree,
   getCurrentBranch,
@@ -74,6 +75,25 @@ const TERMINAL_TASK_STATUSES = new Set([
   TASK_STATUS.COMPLETED,
   TASK_STATUS.FAILED,
 ]);
+const ACTIVE_TASK_STATUSES = new Set([
+  TASK_STATUS.ACTION_REQUIRED,
+  TASK_STATUS.CLARIFYING,
+  TASK_STATUS.DRAFT,
+  TASK_STATUS.EXECUTING,
+  TASK_STATUS.MERGING,
+  TASK_STATUS.PLANNING,
+  TASK_STATUS.PLAN_REVIEW,
+  TASK_STATUS.REVIEWING,
+]);
+const ARCHIVE_CANCELLABLE_SUBTASK_STATUSES = new Set([
+  SUBTASK_STATUS.BLOCKED,
+  SUBTASK_STATUS.DISCARD_PENDING,
+  SUBTASK_STATUS.PENDING,
+  SUBTASK_STATUS.READY,
+  SUBTASK_STATUS.REVIEW_PENDING,
+  SUBTASK_STATUS.REWORK_REQUIRED,
+  SUBTASK_STATUS.RUNNING,
+]);
 const CLEANUP_WARNING_MESSAGE_PREFIX = "Cleanup warning: ";
 const LAUNCH_FAILURE_MESSAGE_PREFIX = "Launch failure: ";
 const DEFAULT_INTEGRATION_GATE_TYPES = ["TEST"];
@@ -134,6 +154,7 @@ export const TASK_SERVICE_ERROR_CODES = Object.freeze({
   PLAN_TEMPLATE_REQUIRED: "PLAN_TEMPLATE_REQUIRED",
   REQUIREMENTS_ALREADY_CONFIRMED: "REQUIREMENTS_ALREADY_CONFIRMED",
   SESSION_NOT_RUNNING: "SESSION_NOT_RUNNING",
+  TASK_BRANCH_CLEANUP_FAILED: "TASK_BRANCH_CLEANUP_FAILED",
   TASK_MESSAGE_REQUIRED: "TASK_MESSAGE_REQUIRED",
   TASK_NOT_CLARIFYING: "TASK_NOT_CLARIFYING",
   TASK_NOT_DRAFT: "TASK_NOT_DRAFT",
@@ -315,17 +336,105 @@ export class TaskService {
     }
   }
 
-  async listProjectTasks(projectId) {
+  async listProjectTasks(projectId, options = {}) {
     const project = await this.projectRepository.findProjectById(projectId);
 
     if (!project) {
       return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project not found.", { projectId });
     }
 
-    const tasks = await this.taskRepository.listTasksByProjectId(projectId);
+    const tasks = await this.taskRepository.listTasksByProjectId(projectId, {
+      includeArchived: options.includeArchived === true,
+    });
     return {
       ok: true,
       tasks,
+    };
+  }
+
+  async archiveTask(taskId, input = {}) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    const deleteBranches = input?.deleteBranches === true;
+    const subTasks = await this.taskRepository.listSubTasksByTaskId(task.id);
+
+    if (deleteBranches) {
+      await this.#stopTaskSessions(task, subTasks, { persistCancellation: true });
+    }
+
+    const branchCleanup = deleteBranches
+      ? await this.#cleanupTaskBranches(task, subTasks)
+      : buildEmptyTaskCleanupResult();
+
+    if (!branchCleanup.ok) {
+      return branchCleanup;
+    }
+
+    const nextTask = await this.taskRepository.updateTask(task.id, {
+      archivedAt: new Date().toISOString(),
+      lastError: null,
+      status: deleteBranches && ACTIVE_TASK_STATUSES.has(task.status) ? TASK_STATUS.CANCELLED : task.status,
+    });
+
+    return {
+      ok: true,
+      branchCleanup,
+      task: nextTask,
+    };
+  }
+
+  async unarchiveTask(taskId) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    const nextTask = await this.taskRepository.updateTask(task.id, {
+      archivedAt: null,
+    });
+
+    return {
+      ok: true,
+      task: nextTask,
+    };
+  }
+
+  async deleteTask(taskId, input = {}) {
+    const task = await this.taskRepository.findTaskById(taskId);
+
+    if (!task) {
+      return failure(TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND, "Task not found.", { taskId });
+    }
+
+    const deleteBranches = input?.deleteBranches === true;
+    const [subTasks, sessions] = await Promise.all([
+      this.taskRepository.listSubTasksByTaskId(task.id),
+      this.taskRepository.listSessionsByTaskId(task.id),
+    ]);
+
+    await this.#stopTaskSessions(task, subTasks, { persistCancellation: false });
+
+    const branchCleanup = deleteBranches
+      ? await this.#cleanupTaskBranches(task, subTasks)
+      : buildEmptyTaskCleanupResult();
+
+    if (!branchCleanup.ok) {
+      return branchCleanup;
+    }
+
+    const deletedTask = await this.taskRepository.deleteTask(task.id);
+    await rm(path.join(this.uploadRootPath, task.id), { force: true, recursive: true }).catch(() => null);
+    this.#clearTaskRuntimeState(task.id, subTasks, sessions);
+
+    return {
+      ok: true,
+      branchCleanup,
+      task: deletedTask,
     };
   }
 
@@ -4662,6 +4771,155 @@ export class TaskService {
     };
   }
 
+  async #stopTaskSessions(task, subTasks, options = {}) {
+    const persistCancellation = options.persistCancellation === true;
+    const cancelledAt = new Date().toISOString();
+    const sessions = await this.taskRepository.listSessionsByTaskId(task.id);
+
+    const activeLeadSession = this.runningLeadSessions.get(task.id) ?? null;
+    if (activeLeadSession) {
+      await activeLeadSession.runtime?.kill?.().catch(() => null);
+      this.runningLeadSessions.delete(task.id);
+    }
+
+    for (const subTask of subTasks) {
+      const runningSession = this.runningWorkerSessions.get(subTask.id) ?? null;
+
+      if (runningSession?.sessionId) {
+        this.cancelledWorkerSessionIds.add(runningSession.sessionId);
+        await runningSession.runtime?.kill?.().catch(() => null);
+        this.runningWorkerSessions.delete(subTask.id);
+      }
+    }
+
+    if (!persistCancellation) {
+      return;
+    }
+
+    const liveSessions = sessions.filter((session) => WORKER_LIVE_STATUSES.has(session.status));
+    for (const session of liveSessions) {
+      await this.taskRepository.updateSession(session.id, {
+        endedAt: cancelledAt,
+        exitCode: null,
+        status: SESSION_STATUS.CANCELLED,
+      });
+    }
+
+    for (const subTask of subTasks) {
+      if (!ARCHIVE_CANCELLABLE_SUBTASK_STATUSES.has(subTask.status)) {
+        continue;
+      }
+
+      await this.taskRepository.updateSubTask(subTask.id, {
+        assignmentSource: SUBTASK_ASSIGNMENT_SOURCE.OPERATOR,
+        lastError: null,
+        status: SUBTASK_STATUS.CANCELLED,
+      });
+    }
+  }
+
+  async #cleanupTaskBranches(task, subTasks) {
+    const project = await this.projectRepository.findProjectById(task.projectId);
+
+    if (!project) {
+      return failure(
+        TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND,
+        "Project not found.",
+        { projectId: task.projectId, taskId: task.id },
+      );
+    }
+
+    return this.#withProjectGitLock(project.path, async () => {
+      const cleanedBranches = [];
+      const cleanedWorktrees = [];
+      const failures = [];
+
+      for (const subTask of subTasks) {
+        const worktreePath = normalizeRequiredString(subTask.worktreePath);
+
+        if (!worktreePath) {
+          continue;
+        }
+
+        const cleanupResult = await removeWorktree(project.path, worktreePath);
+
+        if (!cleanupResult.ok) {
+          failures.push({
+            reason: cleanupResult.stderr || cleanupResult.stdout || "Failed to remove worktree.",
+            target: worktreePath,
+            type: "WORKTREE",
+          });
+          continue;
+        }
+
+        cleanedWorktrees.push(worktreePath);
+      }
+
+      const branchNames = uniqueStrings([
+        normalizeRequiredString(this.#resolveTaskMainlineBranchName(task)),
+        ...subTasks.map((subTask) => normalizeRequiredString(subTask.branchName)),
+      ]);
+
+      for (const branchName of branchNames) {
+        const deletionResult = await deleteBranch(project.path, branchName);
+
+        if (!deletionResult.ok) {
+          failures.push({
+            reason: deletionResult.stderr || deletionResult.stdout || "Failed to delete branch.",
+            target: branchName,
+            type: "BRANCH",
+          });
+          continue;
+        }
+
+        if (!deletionResult.skipped) {
+          cleanedBranches.push(branchName);
+        }
+      }
+
+      if (failures.length > 0) {
+        return failure(
+          TASK_SERVICE_ERROR_CODES.TASK_BRANCH_CLEANUP_FAILED,
+          "Task branch cleanup failed.",
+          {
+            cleanedBranches,
+            cleanedWorktrees,
+            failures,
+            taskId: task.id,
+          },
+        );
+      }
+
+      return {
+        ok: true,
+        cleanedBranches,
+        cleanedWorktrees,
+      };
+    });
+  }
+
+  #clearTaskRuntimeState(taskId, subTasks, sessions) {
+    this.runningLeadSessions.delete(taskId);
+    this.pendingPlanDrafts.delete(taskId);
+    this.pendingFinalReviews.delete(taskId);
+    this.pendingMergeExecutions.delete(taskId);
+    this.pendingCleanupTasks.delete(taskId);
+    this.pendingTaskMainlineSyncs.delete(taskId);
+
+    for (const subTask of subTasks) {
+      this.pendingWorkerLaunches.delete(subTask.id);
+      this.runningWorkerSessions.delete(subTask.id);
+      this.workerLaunchMetadata.delete(subTask.id);
+      this.workerSessionMetadata.delete(subTask.id);
+    }
+
+    for (const session of sessions) {
+      this.sessionLogPaths.delete(session.id);
+      this.sessionOutputAppends.delete(session.id);
+      this.cancelledWorkerSessionIds.delete(session.id);
+    }
+  }
+
   close() {
     this.closed = true;
     for (const activeSession of this.runningLeadSessions.values()) {
@@ -6085,6 +6343,18 @@ function isAgentChangeEligible(task, subTask) {
       SUBTASK_STATUS.REVIEW_PENDING,
       SUBTASK_STATUS.REWORK_REQUIRED,
     ].includes(subTask?.status);
+}
+
+function uniqueStrings(values) {
+  return [...new Set((values ?? []).filter(Boolean))];
+}
+
+function buildEmptyTaskCleanupResult() {
+  return {
+    ok: true,
+    cleanedBranches: [],
+    cleanedWorktrees: [],
+  };
 }
 
 function resolveLatestLiveWorkerSession(sessions) {

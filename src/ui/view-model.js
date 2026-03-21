@@ -36,6 +36,7 @@ const MESSAGES = {
     attachmentSizeExceeded: "一个或多个附件超过当前大小限制。",
     attachmentMimeMismatch: "一个或多个附件的类型与 MIME 元数据不匹配。",
     taskMessageRequired: "发送给 lead 之前请先填写消息。",
+    taskBranchCleanupFailed: "任务分支或 worktree 清理失败，请先处理占用后重试。",
     invalidPlanFallback: "生成的计划无效，需要重新生成。",
     mailboxMessageRequired: "发送交接说明前请先填写内容。",
     mailboxMessageTypeInvalid: "请选择有效的交接消息类型。",
@@ -139,6 +140,7 @@ const MESSAGES = {
     attachmentSizeExceeded: "One or more attachments exceed the current size limit.",
     attachmentMimeMismatch: "One or more attachments do not match the supplied type or MIME metadata.",
     taskMessageRequired: "Write a message before sending it to the lead agent.",
+    taskBranchCleanupFailed: "Task branch or worktree cleanup failed. Resolve the lock or checkout issue and try again.",
     invalidPlanFallback: "The generated plan is invalid and needs regeneration.",
     mailboxMessageRequired: "Write a handoff note before sending it.",
     mailboxMessageTypeInvalid: "Select a valid handoff message type.",
@@ -333,6 +335,8 @@ export function buildTaskErrorMessage(error) {
       return translate("attachmentMimeMismatch");
     case "TASK_MESSAGE_REQUIRED":
       return translate("taskMessageRequired");
+    case "TASK_BRANCH_CLEANUP_FAILED":
+      return translate("taskBranchCleanupFailed");
     case "INVALID_PLAN":
       return error.message ?? translate("invalidPlanFallback");
     case "MAILBOX_MESSAGE_REQUIRED":

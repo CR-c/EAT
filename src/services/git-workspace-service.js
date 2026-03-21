@@ -140,6 +140,31 @@ export async function removeWorktree(repoPath, worktreePath) {
   return removalResult;
 }
 
+export async function deleteBranch(repoPath, branchName) {
+  if (!(await branchExists(repoPath, branchName))) {
+    return {
+      ok: true,
+      skipped: true,
+      stderr: "",
+      stdout: "",
+    };
+  }
+
+  const deletionResult = await runGitCapture(repoPath, ["branch", "--delete", "--force", branchName]);
+
+  if (deletionResult.ok) {
+    return {
+      ...deletionResult,
+      skipped: false,
+    };
+  }
+
+  return {
+    ...deletionResult,
+    skipped: false,
+  };
+}
+
 export async function pruneWorktrees(repoPath) {
   return runGitCapture(repoPath, ["worktree", "prune", "--expire", "now"]);
 }

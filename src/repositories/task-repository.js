@@ -134,6 +134,7 @@ export class SqliteTaskRepository {
     const timestamp = new Date().toISOString();
     const task = {
       approvedPlanJson: null,
+      archivedAt: input.archivedAt ?? null,
       baseBranch: input.baseBranch,
       baseCommitSha: input.baseCommitSha,
       createdAt: timestamp,
@@ -166,9 +167,10 @@ export class SqliteTaskRepository {
           current_plan_json,
           approved_plan_json,
           last_error,
+          archived_at,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         task.id,
@@ -184,6 +186,7 @@ export class SqliteTaskRepository {
         task.currentPlanJson,
         task.approvedPlanJson,
         task.lastError,
+        task.archivedAt,
         task.createdAt,
         task.updatedAt,
       );
@@ -208,6 +211,7 @@ export class SqliteTaskRepository {
           current_plan_json AS currentPlanJson,
           approved_plan_json AS approvedPlanJson,
           last_error AS lastError,
+          archived_at AS archivedAt,
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM tasks
@@ -226,6 +230,7 @@ export class SqliteTaskRepository {
     const nextTask = {
       ...existingTask,
       ...updates,
+      archivedAt: Object.prototype.hasOwnProperty.call(updates, "archivedAt") ? updates.archivedAt : existingTask.archivedAt,
       taskBranchName: updates.taskBranchName ?? existingTask.taskBranchName ?? existingTask.baseBranch,
       updatedAt: updates.updatedAt ?? new Date().toISOString(),
     };
@@ -245,6 +250,7 @@ export class SqliteTaskRepository {
           current_plan_json = ?,
           approved_plan_json = ?,
           last_error = ?,
+          archived_at = ?,
           updated_at = ?
         WHERE id = ?
       `)
@@ -260,6 +266,7 @@ export class SqliteTaskRepository {
         nextTask.currentPlanJson,
         nextTask.approvedPlanJson,
         nextTask.lastError,
+        nextTask.archivedAt,
         nextTask.updatedAt,
         taskId,
       );
@@ -267,7 +274,9 @@ export class SqliteTaskRepository {
     return nextTask;
   }
 
-  async listTasksByProjectId(projectId) {
+  async listTasksByProjectId(projectId, options = {}) {
+    const includeArchived = options.includeArchived === true;
+
     return this.#getDatabase()
       .prepare(`
         SELECT
@@ -284,13 +293,32 @@ export class SqliteTaskRepository {
           current_plan_json AS currentPlanJson,
           approved_plan_json AS approvedPlanJson,
           last_error AS lastError,
+          archived_at AS archivedAt,
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM tasks
         WHERE project_id = ?
+          AND (? = 1 OR archived_at IS NULL)
         ORDER BY created_at DESC, id DESC
       `)
-      .all(projectId);
+      .all(projectId, includeArchived ? 1 : 0);
+  }
+
+  async deleteTask(taskId) {
+    const existingTask = await this.findTaskById(taskId);
+
+    if (!existingTask) {
+      return null;
+    }
+
+    this.#getDatabase()
+      .prepare(`
+        DELETE FROM tasks
+        WHERE id = ?
+      `)
+      .run(taskId);
+
+    return existingTask;
   }
 
   async createMessage(input) {
@@ -1511,6 +1539,7 @@ export class SqliteTaskRepository {
           current_plan_json AS currentPlanJson,
           approved_plan_json AS approvedPlanJson,
           last_error AS lastError,
+          archived_at AS archivedAt,
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM tasks

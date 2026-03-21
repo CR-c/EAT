@@ -211,7 +211,9 @@ async function routeRequest(request, response, services) {
 
   if (request.method === "GET" && projectTasksMatch) {
     const projectId = decodeURIComponent(projectTasksMatch[1]);
-    const result = await taskService.listProjectTasks(projectId);
+    const result = await taskService.listProjectTasks(projectId, {
+      includeArchived: url.searchParams.get("includeArchived") === "1",
+    });
     return respondServiceResult(response, result);
   }
 
@@ -329,6 +331,40 @@ async function routeRequest(request, response, services) {
   if (request.method === "POST" && taskApprovePlanMatch) {
     const taskId = decodeURIComponent(taskApprovePlanMatch[1]);
     const result = await taskService.approvePlan(taskId);
+    return respondServiceResult(response, result);
+  }
+
+  const taskArchiveMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/archive$/);
+
+  if (request.method === "POST" && taskArchiveMatch) {
+    const taskId = decodeURIComponent(taskArchiveMatch[1]);
+    const body = await readOptionalJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.archiveTask(taskId, body.value);
+    return respondServiceResult(response, result);
+  }
+
+  const taskUnarchiveMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/unarchive$/);
+
+  if (request.method === "POST" && taskUnarchiveMatch) {
+    const taskId = decodeURIComponent(taskUnarchiveMatch[1]);
+    const result = await taskService.unarchiveTask(taskId);
+    return respondServiceResult(response, result);
+  }
+
+  if (request.method === "DELETE" && taskMatch) {
+    const taskId = decodeURIComponent(taskMatch[1]);
+    const body = await readOptionalJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await taskService.deleteTask(taskId, body.value);
     return respondServiceResult(response, result);
   }
 
@@ -651,6 +687,7 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.PLAN_TEMPLATE_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.REQUIREMENTS_ALREADY_CONFIRMED:
     case TASK_SERVICE_ERROR_CODES.SESSION_NOT_RUNNING:
+    case TASK_SERVICE_ERROR_CODES.TASK_BRANCH_CLEANUP_FAILED:
     case TASK_SERVICE_ERROR_CODES.TASK_MESSAGE_REQUIRED:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_CLARIFYING:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_DRAFT:

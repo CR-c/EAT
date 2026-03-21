@@ -653,6 +653,82 @@
     @apply m-0 text-sm leading-6 text-on-surface-variant;
   }
 
+  /* ── Panel header row variant ── */
+  .panel__header--row {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  }
+
+  /* ── Help tip (? icon + tooltip) ── */
+  .help-tip {
+    @apply relative ml-1.5 inline-flex cursor-help items-center align-middle;
+  }
+
+  .help-tip__icon {
+    @apply text-on-surface-variant/50 transition-colors duration-200;
+  }
+
+  .help-tip:hover .help-tip__icon,
+  .help-tip:focus .help-tip__icon {
+    @apply text-primary;
+  }
+
+  .help-tip__bubble {
+    @apply pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-52 -translate-x-1/2 rounded-xl px-3 py-2 text-xs font-normal leading-5 text-on-surface opacity-0 shadow-lg transition-all duration-200;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(243, 243, 251, 0.94));
+    border: 1px solid rgba(116, 119, 127, 0.12);
+  }
+
+  .help-tip:hover .help-tip__bubble,
+  .help-tip:focus .help-tip__bubble {
+    @apply pointer-events-auto opacity-100;
+  }
+
+  .help-tip__bubble::after {
+    content: "";
+    @apply absolute left-1/2 top-full -translate-x-1/2;
+    border: 5px solid transparent;
+    border-top-color: rgba(243, 243, 251, 0.94);
+  }
+
+  /* ── Button size variant ── */
+  .button--sm {
+    @apply gap-1.5 px-3 py-1.5 text-xs;
+  }
+
+  .button__icon {
+    @apply h-4 w-4 shrink-0;
+  }
+
+  /* ── Task journey dialog ── */
+  .task-journey-dialog {
+    width: min(100%, 42rem);
+    border: none;
+    padding: 0;
+    background: transparent;
+  }
+
+  .task-journey-dialog::backdrop {
+    background: rgba(15, 23, 42, 0.18);
+    backdrop-filter: blur(10px);
+  }
+
+  .task-journey-dialog__shell {
+    @apply grid gap-4 rounded-[1.75rem] p-5;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(249, 250, 255, 0.82)),
+      linear-gradient(135deg, rgba(0, 91, 193, 0.05), rgba(148, 163, 184, 0.04));
+    box-shadow: 0 20px 80px rgba(15, 23, 42, 0.18);
+  }
+
+  .task-journey-dialog__header {
+    @apply flex items-start justify-between gap-4;
+  }
+
+  .task-journey-dialog__meta {
+    @apply grid gap-2;
+  }
+
   .field__label {
     @apply text-sm font-semibold text-on-surface;
   }
@@ -810,8 +886,122 @@
     @apply mb-3 flex flex-wrap gap-2;
   }
 
+  .task-list__toolbar {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .task-list__section-title {
+    @apply mt-1 text-xs font-bold uppercase tracking-[0.18em] text-on-surface-variant/80;
+  }
+
+  .task-list__entry {
+    @apply flex flex-col gap-3 rounded-[1.35rem] border border-primary/10 p-3 shadow-glass backdrop-blur-xl transition duration-200 ease-out;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.84), rgba(248,250,255,0.76)),
+      linear-gradient(135deg, rgba(0,91,193,0.05), rgba(142,47,189,0.03));
+  }
+
+  .task-list__entry:hover {
+    @apply -translate-y-0.5 shadow-soft;
+  }
+
+  .task-list__entry.is-selected {
+    @apply ring-2 ring-primary/20;
+    background:
+      linear-gradient(180deg, rgba(231,240,255,0.9), rgba(248,250,255,0.78)),
+      linear-gradient(135deg, rgba(0,91,193,0.08), rgba(142,47,189,0.04));
+  }
+
+  .task-list__entry.is-archived {
+    border-color: rgba(172, 178, 191, 0.38);
+    background:
+      linear-gradient(180deg, rgba(248,250,252,0.84), rgba(241,245,249,0.78)),
+      linear-gradient(135deg, rgba(148,163,184,0.08), rgba(226,232,240,0.04));
+  }
+
+  .task-list__item {
+    @apply grid w-full gap-2 rounded-[1rem] border-0 bg-transparent p-0 text-left shadow-none transition-none;
+  }
+
+  .task-list__item:hover {
+    @apply translate-y-0;
+  }
+
+  .task-list__item.is-selected {
+    @apply bg-transparent ring-0;
+    animation: none;
+  }
+
+  .task-list__content {
+    @apply grid gap-1.5;
+  }
+
+  .task-list__badges {
+    @apply flex flex-wrap items-center justify-end gap-2 self-start;
+  }
+
+  .task-list__item-actions {
+    @apply mt-auto flex flex-wrap items-center justify-end gap-2 border-t border-white/55 pt-2;
+  }
+
+  .task-list__action {
+    @apply min-h-[34px] rounded-full px-3.5 py-1.5 text-xs font-semibold shadow-none;
+    backdrop-filter: blur(10px);
+  }
+
+  .task-list__action--danger {
+    @apply border border-rose-200/80 text-rose-700;
+    background: rgba(255, 241, 242, 0.92);
+  }
+
+  .task-list__action--danger:hover {
+    @apply bg-rose-100;
+  }
+
   .task-list__guide-chip {
     @apply inline-flex items-center rounded-full bg-surface-container-low px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-on-surface-variant;
+  }
+
+  .task-action-dialog {
+    width: min(100%, 26rem);
+    @apply border-0 bg-transparent p-0;
+  }
+
+  .task-action-dialog::backdrop {
+    background:
+      radial-gradient(circle at top, rgba(0,91,193,0.08), transparent 45%),
+      rgba(15, 23, 42, 0.2);
+    backdrop-filter: blur(12px);
+  }
+
+  .task-action-dialog__shell {
+    @apply grid gap-4 rounded-[1.55rem] border border-white/55 p-4 shadow-glass backdrop-blur-2xl;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.92), rgba(247,249,255,0.86)),
+      linear-gradient(135deg, rgba(0,91,193,0.06), rgba(142,47,189,0.035));
+  }
+
+  .task-action-dialog__header {
+    @apply grid gap-1.5;
+  }
+
+  .task-action-dialog__header .panel__summary {
+    @apply mb-0 max-w-none;
+  }
+
+  .task-action-dialog__checkbox {
+    @apply rounded-[1rem] border border-primary/10 px-3.5 py-3;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.7), rgba(239,246,255,0.62)),
+      rgba(255,255,255,0.66);
+  }
+
+  .task-action-dialog__footer {
+    @apply flex flex-wrap items-center justify-end gap-2 border-t border-white/55 pt-3;
+  }
+
+  .task-action-dialog .button {
+    @apply min-h-[36px] px-4 text-sm;
   }
 
   .warning-banner {

@@ -124,7 +124,16 @@ const UI_MESSAGES = {
     agentCompactDegradedSummary: "运行时可见，但有检查项需要人工关注。",
     createEyebrow: "创建",
     taskFormTitle: "引导式任务创建",
+    taskFormTitleSimple: "创建任务",
     taskFormSummary: "选择黄金路径模板后，系统会直接生成一个可审阅的 DAG 草稿；不选模板则保留自定义草稿创建方式。",
+    showJourneyButton: "查看执行主线",
+    closeButton: "关闭",
+    helpBaselineTitle: "基线分支是任务的起点，所有子任务都从这里派生。",
+    helpStartPointLabel: "选择一个已有分支作为新基线的起始点。",
+    helpLeadAgentLabel: "Lead 负责需求澄清和任务拆分，是你的主要对话对象。",
+    helpTaskTitleLabel: "简明描述任务目标，160 字以内。",
+    helpTaskDescriptionLabel: "详细说明需求、约束条件和验收标准。",
+    helpAttachmentsLabel: "支持图片、PDF、Markdown、代码文件。不支持或超限文件会被拒绝。",
     taskCreateJourneyEyebrow: "执行主线",
     taskCreateJourneyTitle: "创建后系统会怎么引导你",
     taskCreateJourneyStandardBadge: "标准路径",
@@ -182,6 +191,26 @@ const UI_MESSAGES = {
     tasksEyebrow: "任务",
     taskListTitle: "项目任务",
     taskListSummary: "先选任务，再与 lead 对话确认需求；确认后去计划审阅，再进入执行。",
+    showArchivedTasksButton: "显示归档",
+    hideArchivedTasksButton: "隐藏归档",
+    taskListArchivedTitle: "已归档",
+    taskListArchivedBadge: "已归档",
+    taskListEmptyArchived: "当前所选项目还没有任务。",
+    taskListEmptyActiveOnly: "当前没有未归档任务。打开“显示归档”可以查看历史任务。",
+    taskArchiveButton: "归档",
+    taskUnarchiveButton: "恢复",
+    taskDeleteButton: "删除",
+    taskActionDialogEyebrow: "任务操作",
+    taskActionArchiveTitle: "归档任务",
+    taskActionDeleteTitle: "删除任务",
+    taskActionArchiveSummary: "已归档任务会从默认列表隐藏，但仍保留记录，之后可以恢复。",
+    taskActionDeleteSummary: "删除任务会移除本地任务记录；如果任务仍在运行，会先停止对应会话。",
+    taskActionDeleteBranchesLabel: "同时删除任务相关分支和 worktree",
+    taskActionDeleteBranchesHint: "默认不勾选。仅会清理任务主线分支和子任务分支，不会删除项目原始主分支。",
+    taskActionDeleteBranchesActiveHint: "如果任务仍在进行中，勾选后会先停止对应会话，再清理任务分支和 worktree。",
+    taskActionArchiveConfirmButton: "确认归档",
+    taskActionDeleteConfirmButton: "确认删除",
+    taskArchivedHint: "已归档，可恢复或删除。",
     refreshTasksButton: "刷新任务",
     taskListEmpty: "当前所选项目还没有任务。",
     clarificationEyebrow: "澄清",
@@ -743,7 +772,16 @@ const UI_MESSAGES = {
     agentCompactDegradedSummary: "Runtime is visible, but at least one check needs attention.",
     createEyebrow: "Create",
     taskFormTitle: "Guided task creation",
+    taskFormTitleSimple: "Create Task",
     taskFormSummary: "Choose a golden-path template to open directly in plan review with a seeded DAG draft, or leave templates unselected to create a custom draft.",
+    showJourneyButton: "View Flow",
+    closeButton: "Close",
+    helpBaselineTitle: "The baseline branch is the starting point for the task; all subtasks branch off from here.",
+    helpStartPointLabel: "Select an existing branch as the starting point for the new baseline.",
+    helpLeadAgentLabel: "The Lead handles requirement clarification and task breakdown.",
+    helpTaskTitleLabel: "Briefly describe the task goal, up to 160 characters.",
+    helpTaskDescriptionLabel: "Describe requirements, constraints, and acceptance criteria in detail.",
+    helpAttachmentsLabel: "Supports images, PDF, Markdown, and code files. Unsupported or oversized files will be rejected.",
     taskCreateJourneyEyebrow: "Flow",
     taskCreateJourneyTitle: "What happens after you create the task",
     taskCreateJourneyStandardBadge: "Standard path",
@@ -801,6 +839,26 @@ const UI_MESSAGES = {
     tasksEyebrow: "Tasks",
     taskListTitle: "Project tasks",
     taskListSummary: "Pick a task first, confirm requirements with the lead, then move into plan review before execution.",
+    showArchivedTasksButton: "Show archived",
+    hideArchivedTasksButton: "Hide archived",
+    taskListArchivedTitle: "Archived",
+    taskListArchivedBadge: "Archived",
+    taskListEmptyArchived: "There are no tasks for the selected project yet.",
+    taskListEmptyActiveOnly: "There are no active tasks right now. Turn on archived tasks to review history.",
+    taskArchiveButton: "Archive",
+    taskUnarchiveButton: "Restore",
+    taskDeleteButton: "Delete",
+    taskActionDialogEyebrow: "Task action",
+    taskActionArchiveTitle: "Archive task",
+    taskActionDeleteTitle: "Delete task",
+    taskActionArchiveSummary: "Archived tasks are hidden from the default list but stay restorable later.",
+    taskActionDeleteSummary: "Deleting a task removes its local record. Any live task sessions will be stopped first.",
+    taskActionDeleteBranchesLabel: "Also delete task branches and worktrees",
+    taskActionDeleteBranchesHint: "Unchecked by default. This only removes the task mainline and subtask branches, not the project's original base branch.",
+    taskActionDeleteBranchesActiveHint: "If the task is still active, checking this will stop its live sessions before cleanup starts.",
+    taskActionArchiveConfirmButton: "Archive task",
+    taskActionDeleteConfirmButton: "Delete task",
+    taskArchivedHint: "Archived. Restore or delete when you no longer need it.",
     refreshTasksButton: "Refresh tasks",
     taskListEmpty: "No tasks exist for the selected project yet.",
     clarificationEyebrow: "Clarification",
@@ -1387,7 +1445,9 @@ const state = {
   selectedLeadAgentName: null,
   selectedProjectId: readStorage(STORAGE_KEYS.selectedProjectId),
   selectedTaskId: readStorage(STORAGE_KEYS.selectedTaskId),
+  showArchivedTasks: false,
   systemDockerHealth: null,
+  taskActionDialogState: null,
   systemSandboxPolicy: null,
   taskDetail: null,
   taskPlanDraft: null,
@@ -1429,15 +1489,9 @@ const elements = {
   currentBranch: document.querySelector("#current-branch"),
   defaultBranch: document.querySelector("#default-branch"),
   dirtyWarningBanner: document.querySelector("#dirty-warning-banner"),
-  guidedDemoBody: document.querySelector("#guided-demo-body"),
-  guidedTemplateClearButton: document.querySelector("#guided-template-clear-button"),
-  guidedTemplateDescription: document.querySelector("#guided-template-description"),
-  guidedTemplateEmpty: document.querySelector("#guided-template-empty"),
-  guidedTemplateGrid: document.querySelector("#guided-template-grid"),
-  guidedTemplateRoles: document.querySelector("#guided-template-roles"),
-  guidedTemplateScenario: document.querySelector("#guided-template-scenario"),
-  guidedTemplateSteps: document.querySelector("#guided-template-steps"),
-  guidedTemplateTitle: document.querySelector("#guided-template-title"),
+  showJourneyButton: document.querySelector("#show-journey-button"),
+  taskJourneyDialog: document.querySelector("#task-journey-dialog"),
+  taskJourneyDialogCloseButton: document.querySelector("#task-journey-dialog-close-button"),
   healthyLeadCount: document.querySelector("#healthy-lead-count"),
   healthyWorkerCount: document.querySelector("#healthy-worker-count"),
   languageToggle: document.querySelector("#language-toggle"),
@@ -1602,9 +1656,20 @@ const elements = {
   taskTeamShell: document.querySelector("#task-team-shell"),
   taskFormFeedback: document.querySelector("#task-form-feedback"),
   taskLeadAgent: document.querySelector("#task-lead-agent"),
+  taskListArchivedToggle: document.querySelector("#task-list-archived-toggle"),
   taskList: document.querySelector("#task-list"),
   taskListEmpty: document.querySelector("#task-list-empty"),
   taskListFeedback: document.querySelector("#task-list-feedback"),
+  taskActionDialog: document.querySelector("#task-action-dialog"),
+  taskActionDialogBranchSummary: document.querySelector("#task-action-dialog-branch-summary"),
+  taskActionDialogCancelButton: document.querySelector("#task-action-dialog-cancel-button"),
+  taskActionDialogCloseButton: document.querySelector("#task-action-dialog-close-button"),
+  taskActionDialogConfirmButton: document.querySelector("#task-action-dialog-confirm-button"),
+  taskActionDialogDeleteBranchesInput: document.querySelector("#task-action-delete-branches-input"),
+  taskActionDialogEyebrow: document.querySelector("#task-action-dialog-eyebrow"),
+  taskActionDialogFeedback: document.querySelector("#task-action-dialog-feedback"),
+  taskActionDialogSummary: document.querySelector("#task-action-dialog-summary"),
+  taskActionDialogTitle: document.querySelector("#task-action-dialog-title"),
   taskMessageCount: document.querySelector("#task-message-count"),
   taskMessageForm: document.querySelector("#task-message-form"),
   taskMessageInput: document.querySelector("#task-message-input"),
@@ -1693,15 +1758,58 @@ elements.baseBranchInput?.addEventListener("input", (event) => {
 });
 elements.taskAttachmentsInput.addEventListener("change", renderDraftAttachments);
 elements.taskCreationForm.addEventListener("submit", onCreateTask);
-elements.guidedTemplateClearButton?.addEventListener("click", onClearGuidedTemplateSelection);
+elements.showJourneyButton?.addEventListener("click", () => {
+  openDialog(elements.taskJourneyDialog);
+});
+elements.taskJourneyDialogCloseButton?.addEventListener("click", () => {
+  if (elements.taskJourneyDialog?.open) {
+    if (typeof elements.taskJourneyDialog.close === "function") {
+      elements.taskJourneyDialog.close();
+    } else {
+      elements.taskJourneyDialog.removeAttribute("open");
+    }
+  }
+});
+elements.taskJourneyDialog?.addEventListener("click", (event) => {
+  if (event.target === elements.taskJourneyDialog) {
+    if (typeof elements.taskJourneyDialog.close === "function") {
+      elements.taskJourneyDialog.close();
+    } else {
+      elements.taskJourneyDialog.removeAttribute("open");
+    }
+  }
+});
 elements.refreshTasksButton.addEventListener("click", () => {
   if (state.selectedProjectId) {
     void loadProjectTasks(state.selectedProjectId, { preserveSelection: true });
   }
 });
+elements.taskListArchivedToggle?.addEventListener("click", () => {
+  state.showArchivedTasks = !state.showArchivedTasks;
+
+  if (state.selectedProjectId) {
+    void loadProjectTasks(state.selectedProjectId, { preserveSelection: true });
+  } else {
+    renderTaskList();
+  }
+});
 elements.refreshTaskDetailButton.addEventListener("click", () => {
   if (state.selectedTaskId) {
     void loadTaskDetail(state.selectedTaskId);
+  }
+});
+elements.taskActionDialogCloseButton?.addEventListener("click", closeTaskActionDialog);
+elements.taskActionDialogCancelButton?.addEventListener("click", closeTaskActionDialog);
+elements.taskActionDialogConfirmButton?.addEventListener("click", () => {
+  void onConfirmTaskAction();
+});
+elements.taskActionDialog?.addEventListener("close", () => {
+  clearFeedback(elements.taskActionDialogFeedback);
+  state.taskActionDialogState = null;
+});
+elements.taskActionDialog?.addEventListener("click", (event) => {
+  if (event.target === elements.taskActionDialog) {
+    closeTaskActionDialog();
   }
 });
 elements.taskNextActionButton?.addEventListener("click", onTaskNextAction);
@@ -2100,6 +2208,138 @@ function openDialog(dialog) {
   dialog.setAttribute("open", "");
 }
 
+function openTaskActionDialog(action, task) {
+  if (!task || !elements.taskActionDialog) {
+    return;
+  }
+
+  state.taskActionDialogState = {
+    action,
+    taskId: task.id,
+  };
+  clearFeedback(elements.taskActionDialogFeedback);
+
+  if (elements.taskActionDialogDeleteBranchesInput) {
+    elements.taskActionDialogDeleteBranchesInput.checked = false;
+  }
+
+  renderTaskActionDialog();
+  openDialog(elements.taskActionDialog);
+}
+
+function closeTaskActionDialog() {
+  const dialog = elements.taskActionDialog;
+
+  if (!dialog?.open) {
+    state.taskActionDialogState = null;
+    return;
+  }
+
+  if (typeof dialog.close === "function") {
+    dialog.close();
+  } else {
+    dialog.removeAttribute("open");
+  }
+
+  clearFeedback(elements.taskActionDialogFeedback);
+  state.taskActionDialogState = null;
+}
+
+function renderTaskActionDialog() {
+  const dialogState = state.taskActionDialogState;
+  const task = dialogState ? resolveTaskFromState(dialogState.taskId) : null;
+
+  if (!dialogState || !task) {
+    return;
+  }
+
+  const isDelete = dialogState.action === "delete";
+  const summary = isDelete ? t("taskActionDeleteSummary") : t("taskActionArchiveSummary");
+  const branchHint = isTaskLifecycleActive(task.status)
+    ? `${t("taskActionDeleteBranchesHint")} ${t("taskActionDeleteBranchesActiveHint")}`
+    : t("taskActionDeleteBranchesHint");
+
+  if (elements.taskActionDialogEyebrow) {
+    elements.taskActionDialogEyebrow.textContent = t("taskActionDialogEyebrow");
+  }
+
+  if (elements.taskActionDialogTitle) {
+    elements.taskActionDialogTitle.textContent = isDelete
+      ? `${t("taskActionDeleteTitle")} · ${task.title}`
+      : `${t("taskActionArchiveTitle")} · ${task.title}`;
+  }
+
+  if (elements.taskActionDialogSummary) {
+    elements.taskActionDialogSummary.textContent = summary;
+  }
+
+  if (elements.taskActionDialogBranchSummary) {
+    elements.taskActionDialogBranchSummary.textContent = branchHint;
+  }
+
+  if (elements.taskActionDialogConfirmButton) {
+    elements.taskActionDialogConfirmButton.textContent = isDelete
+      ? t("taskActionDeleteConfirmButton")
+      : t("taskActionArchiveConfirmButton");
+    elements.taskActionDialogConfirmButton.className = isDelete
+      ? "button task-list__action task-list__action--danger"
+      : "button button--primary";
+  }
+}
+
+async function onConfirmTaskAction() {
+  const dialogState = state.taskActionDialogState;
+  const task = dialogState ? resolveTaskFromState(dialogState.taskId) : null;
+
+  if (!dialogState || !task) {
+    closeTaskActionDialog();
+    return;
+  }
+
+  const deleteBranches = elements.taskActionDialogDeleteBranchesInput?.checked === true;
+  const isDelete = dialogState.action === "delete";
+  const method = isDelete ? "DELETE" : "POST";
+  const url = isDelete
+    ? `/api/tasks/${encodeURIComponent(task.id)}`
+    : `/api/tasks/${encodeURIComponent(task.id)}/archive`;
+
+  clearFeedback(elements.taskActionDialogFeedback);
+  setButtonBusy(
+    elements.taskActionDialogConfirmButton,
+    true,
+    isDelete ? t("taskActionDeleteConfirmButton") : t("taskActionArchiveConfirmButton"),
+  );
+
+  try {
+    await fetchJson(url, {
+      body: { deleteBranches },
+      method,
+    });
+
+    if (state.selectedTaskId === task.id && (isDelete || !state.showArchivedTasks)) {
+      state.selectedTaskId = null;
+      state.taskDetail = null;
+      writeStorage(STORAGE_KEYS.selectedTaskId, "");
+    }
+
+    closeTaskActionDialog();
+
+    if (state.selectedProjectId) {
+      await loadProjectTasks(state.selectedProjectId, { preserveSelection: true });
+    } else {
+      renderTaskList();
+    }
+  } catch (error) {
+    showFeedback(elements.taskActionDialogFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(
+      elements.taskActionDialogConfirmButton,
+      false,
+      isDelete ? t("taskActionDeleteConfirmButton") : t("taskActionArchiveConfirmButton"),
+    );
+  }
+}
+
 function resolveProjectRootLabel(kind) {
   switch (kind) {
     case "home":
@@ -2469,12 +2709,18 @@ async function loadProjectTasks(projectId, options = {}) {
   setButtonBusy(elements.refreshTasksButton, true, t("refreshing"));
 
   try {
-    const response = await fetchJson(`/api/projects/${encodeURIComponent(projectId)}/tasks`);
+    const params = new URLSearchParams();
+
+    if (state.showArchivedTasks) {
+      params.set("includeArchived", "1");
+    }
+
+    const response = await fetchJson(`/api/projects/${encodeURIComponent(projectId)}/tasks${params.toString() ? `?${params.toString()}` : ""}`);
     state.tasks = response.tasks ?? [];
 
     const nextTaskId = options.selectedTaskId
-      ?? (options.preserveSelection ? state.selectedTaskId : null)
-      ?? state.tasks[0]?.id
+      ?? (options.preserveSelection && state.tasks.some((task) => task.id === state.selectedTaskId) ? state.selectedTaskId : null)
+      ?? pickDefaultTaskId(state.tasks)
       ?? null;
 
     renderTaskList();
@@ -2822,37 +3068,14 @@ function onTaskTitleInput() {
   renderTaskCreateFlowSummary();
 }
 
-function onSelectGuidedTemplate(templateId) {
-  const previousCopy = getSelectedGuidedTemplateCopy();
-  const nextTemplateId = state.selectedGuidedTemplateId === templateId ? null : templateId;
-  state.selectedGuidedTemplateId = nextTemplateId;
-
-  if (nextTemplateId) {
-    const nextCopy = getSelectedGuidedTemplateCopy();
-    const currentTitle = elements.taskTitleInput.value.trim();
-    const currentDescription = elements.taskDescriptionInput.value.trim();
-    const canReplaceTitle = !currentTitle || currentTitle === (previousCopy?.starterTitle ?? "");
-    const canReplaceDescription = !currentDescription || currentDescription === (previousCopy?.starterDescription ?? "");
-
-    if (canReplaceTitle) {
-      elements.taskTitleInput.value = nextCopy?.starterTitle ?? "";
-    }
-
-    if (canReplaceDescription) {
-      elements.taskDescriptionInput.value = nextCopy?.starterDescription ?? "";
-    }
-  }
-
+function onSelectGuidedTemplate(_templateId) {
+  // Templates removed — always use custom task flow
+  state.selectedGuidedTemplateId = null;
   renderGuidedTaskComposer();
-  renderTaskCreateFlowSummary();
-  if (state.baseBranchMode === "new" && !state.baseBranchDraftManual) {
-    syncBranchChoices();
-  }
 }
 
 function onClearGuidedTemplateSelection() {
   state.selectedGuidedTemplateId = null;
-  renderGuidedTaskComposer();
   renderTaskCreateFlowSummary();
   if (state.baseBranchMode === "new" && !state.baseBranchDraftManual) {
     syncBranchChoices();
@@ -2860,108 +3083,152 @@ function onClearGuidedTemplateSelection() {
 }
 
 function buildCreateTaskButtonLabel() {
-  return state.selectedGuidedTemplateId ? t("createGuidedTaskButton") : t("createTaskButton");
+  return t("createTaskButton");
 }
 
 function getSelectedGuidedTemplateCopy() {
-  return state.selectedGuidedTemplateId ? getPlanTemplateCopy(state.selectedGuidedTemplateId) : null;
+  return null;
 }
 
 function renderGuidedTaskComposer() {
-  if (!elements.guidedTemplateGrid) {
-    return;
-  }
-
-  elements.guidedTemplateGrid.replaceChildren();
-  elements.guidedTemplateEmpty.hidden = state.planTemplates.length > 0;
   elements.createTaskButton.textContent = buildCreateTaskButtonLabel();
-  elements.guidedTemplateClearButton.hidden = !state.selectedGuidedTemplateId;
-
-  const customCard = document.createElement("button");
-  customCard.type = "button";
-  customCard.className = "guided-template-card";
-  customCard.innerHTML = `
-    <span class="guided-template-card__title">${escapeHtml(t("guidedTemplateCustomTitle"))}</span>
-    <span class="badge badge--outline">${escapeHtml(t("createTaskButton"))}</span>
-  `;
-  if (!state.selectedGuidedTemplateId) {
-    customCard.classList.add("is-selected");
-  }
-  customCard.addEventListener("click", onClearGuidedTemplateSelection);
-  elements.guidedTemplateGrid.append(customCard);
-
-  for (const template of state.planTemplates) {
-    const copy = getPlanTemplateCopy(template.id);
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "guided-template-card";
-    card.innerHTML = `
-      <span class="guided-template-card__title">${escapeHtml(copy.title)}</span>
-      <span class="badge badge--outline">${escapeHtml(countLabel(template.nodeCount ?? template.roles?.length ?? 0, "nodeCountOne", "nodeCountOther"))}</span>
-    `;
-
-    if (template.id === state.selectedGuidedTemplateId) {
-      card.classList.add("is-selected");
-    }
-
-    card.addEventListener("click", () => {
-      onSelectGuidedTemplate(template.id);
-    });
-    elements.guidedTemplateGrid.append(card);
-  }
-
-  const selectedCopy = getSelectedGuidedTemplateCopy();
-  const selectedTemplate = state.planTemplates.find((template) => template.id === state.selectedGuidedTemplateId) ?? null;
-  elements.guidedTemplateTitle.textContent = selectedCopy?.title ?? t("guidedTemplateCustomTitle");
-  elements.guidedTemplateDescription.textContent = selectedCopy?.description ?? t("guidedTemplateCustomDescription");
-  elements.guidedTemplateScenario.textContent = selectedCopy?.scenario ?? t("guidedTemplateCustomDescription");
-  elements.guidedTemplateRoles.textContent = selectedTemplate?.roles?.join(" · ") ?? "lead";
-  elements.guidedTemplateSteps.replaceChildren();
-
-  const steps = Array.isArray(selectedCopy?.steps) && selectedCopy.steps.length > 0
-    ? selectedCopy.steps
-    : [
-      t("guidedTemplateCustomDescription"),
-      t("taskFormSummary"),
-    ];
-
-  for (const step of steps) {
-    const item = document.createElement("li");
-    item.textContent = step;
-    elements.guidedTemplateSteps.append(item);
-  }
-
-  elements.guidedDemoBody.textContent = selectedCopy?.starterDescription ?? t("guidedDemoBody");
   renderTaskCreateFlowSummary();
 }
 
 function renderTaskList() {
   elements.taskList.replaceChildren();
-  elements.taskListEmpty.hidden = state.tasks.length > 0;
+  const activeTasks = state.tasks.filter((task) => !task.archivedAt);
+  const archivedTasks = state.tasks.filter((task) => Boolean(task.archivedAt));
+  const visibleTaskCount = state.showArchivedTasks ? state.tasks.length : activeTasks.length;
 
-  for (const task of state.tasks) {
-    const stageMeta = buildTaskStageMeta(task);
+  elements.taskListEmpty.hidden = visibleTaskCount > 0;
+  elements.taskListEmpty.textContent = state.showArchivedTasks
+    ? t("taskListEmptyArchived")
+    : t("taskListEmptyActiveOnly");
+
+  if (elements.taskListArchivedToggle) {
+    elements.taskListArchivedToggle.textContent = state.showArchivedTasks
+      ? t("hideArchivedTasksButton")
+      : t("showArchivedTasksButton");
+  }
+
+  renderTaskListSection(activeTasks);
+
+  if (state.showArchivedTasks && archivedTasks.length > 0) {
+    const heading = document.createElement("p");
+    heading.className = "task-list__section-title";
+    heading.textContent = `${t("taskListArchivedTitle")} · ${archivedTasks.length}`;
+    elements.taskList.append(heading);
+    renderTaskListSection(archivedTasks, { archived: true });
+  }
+}
+
+function renderTaskListSection(tasks, options = {}) {
+  for (const task of tasks) {
+    const stageMeta = task.archivedAt
+      ? { listHint: t("taskArchivedHint") }
+      : buildTaskStageMeta(task);
+    const entry = document.createElement("article");
+    entry.className = "task-list__entry";
+
+    if (options.archived) {
+      entry.classList.add("is-archived");
+    }
+
+    if (task.id === state.selectedTaskId) {
+      entry.classList.add("is-selected");
+    }
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "task-list__item";
 
-    if (task.id === state.selectedTaskId) {
-      button.classList.add("is-selected");
-    }
-
     button.innerHTML = `
       <div class="task-list__topline">
         <p class="task-list__title">${escapeHtml(task.title)}</p>
-        <span class="badge ${buildTaskStatusBadgeClass(task.status)}">${escapeHtml(buildTaskStatusLabel(task.status))}</span>
+        <div class="task-list__badges">
+          ${task.archivedAt ? `<span class="badge badge--outline">${escapeHtml(t("taskListArchivedBadge"))}</span>` : ""}
+          <span class="badge ${buildTaskStatusBadgeClass(task.status)}">${escapeHtml(buildTaskStatusLabel(task.status))}</span>
+        </div>
       </div>
-      <p class="task-list__meta"><strong>${escapeHtml(t("baseBranchMetaLabel"))}:</strong> ${escapeHtml(task.baseBranch)}</p>
-      <p class="task-list__hint">${escapeHtml(stageMeta.listHint)}</p>
+      <div class="task-list__content">
+        <p class="task-list__meta"><strong>${escapeHtml(t("baseBranchMetaLabel"))}:</strong> ${escapeHtml(task.baseBranch)}</p>
+        <p class="task-list__hint">${escapeHtml(stageMeta.listHint)}</p>
+      </div>
     `;
     button.addEventListener("click", () => {
       void loadTaskDetail(task.id);
     });
-    elements.taskList.append(button);
+
+    const actions = document.createElement("div");
+    actions.className = "task-list__item-actions";
+
+    if (task.archivedAt) {
+      const restoreButton = document.createElement("button");
+      restoreButton.type = "button";
+      restoreButton.className = "button button--secondary task-list__action";
+      restoreButton.textContent = t("taskUnarchiveButton");
+      restoreButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        void onUnarchiveTask(task.id);
+      });
+      actions.append(restoreButton);
+    } else {
+      const archiveButton = document.createElement("button");
+      archiveButton.type = "button";
+      archiveButton.className = "button button--secondary task-list__action";
+      archiveButton.textContent = t("taskArchiveButton");
+      archiveButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openTaskActionDialog("archive", task);
+      });
+      actions.append(archiveButton);
+    }
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "button task-list__action task-list__action--danger";
+    deleteButton.textContent = t("taskDeleteButton");
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openTaskActionDialog("delete", task);
+    });
+    actions.append(deleteButton);
+
+    entry.append(button, actions);
+    elements.taskList.append(entry);
   }
+}
+
+async function onUnarchiveTask(taskId) {
+  try {
+    await fetchJson(`/api/tasks/${encodeURIComponent(taskId)}/unarchive`, {
+      method: "POST",
+    });
+
+    if (state.selectedProjectId) {
+      await loadProjectTasks(state.selectedProjectId, { preserveSelection: true, selectedTaskId: taskId });
+    }
+  } catch (error) {
+    showFeedback(elements.taskListFeedback, "error", buildTaskErrorMessage(error));
+  }
+}
+
+function resolveTaskFromState(taskId) {
+  if (!taskId) {
+    return null;
+  }
+
+  if (state.taskDetail?.task?.id === taskId) {
+    return state.taskDetail.task;
+  }
+
+  return state.tasks.find((task) => task.id === taskId) ?? null;
+}
+
+function pickDefaultTaskId(tasks) {
+  const activeTask = (tasks ?? []).find((task) => !task.archivedAt);
+  return activeTask?.id ?? tasks?.[0]?.id ?? null;
 }
 
 function renderTaskDetail() {
@@ -5112,9 +5379,7 @@ function renderTaskCreateFlowSummary() {
     return;
   }
 
-  elements.taskCreateFlowSummary.textContent = state.selectedGuidedTemplateId
-    ? t("taskCreateFlowSummaryGuided")
-    : t("taskCreateFlowSummaryDraft");
+  elements.taskCreateFlowSummary.textContent = t("taskCreateFlowSummaryDraft");
 
   renderTaskCreateJourney();
 }
@@ -5146,12 +5411,8 @@ function renderTaskCreateJourney() {
     { label: t("taskJourneyStepExecute"), state: "later" },
   ];
 
-  const copyKey = state.selectedGuidedTemplateId
-    ? "taskCreateJourneySummaryGuided"
-    : "taskCreateJourneySummaryStandard";
-  const badgeKey = state.selectedGuidedTemplateId
-    ? "taskCreateJourneyGuidedBadge"
-    : "taskCreateJourneyStandardBadge";
+  const copyKey = "taskCreateJourneySummaryStandard";
+  const badgeKey = "taskCreateJourneyStandardBadge";
 
   if (elements.taskCreateRouteSummary) {
     elements.taskCreateRouteSummary.textContent = t(copyKey);
@@ -5159,7 +5420,7 @@ function renderTaskCreateJourney() {
 
   if (elements.taskCreateRouteBadge) {
     elements.taskCreateRouteBadge.textContent = t(badgeKey);
-    elements.taskCreateRouteBadge.className = `badge ${state.selectedGuidedTemplateId ? "badge--accent-soft" : "badge--outline"}`;
+    elements.taskCreateRouteBadge.className = "badge badge--outline";
   }
 
   elements.taskCreateJourneySteps.replaceChildren(...steps.map((step, index) => {
@@ -5187,6 +5448,19 @@ function resolveJourneyStateKey(stateKey) {
     default:
       return "taskJourneyStateLater";
   }
+}
+
+function isTaskLifecycleActive(status) {
+  return [
+    "ACTION_REQUIRED",
+    "CLARIFYING",
+    "DRAFT",
+    "EXECUTING",
+    "MERGING",
+    "PLANNING",
+    "PLAN_REVIEW",
+    "REVIEWING",
+  ].includes(status);
 }
 
 function buildTaskStageMeta(task) {
@@ -6359,6 +6633,10 @@ function onToggleLanguage() {
 
   if (state.taskDetail) {
     renderTaskDetail();
+  }
+
+  if (state.taskActionDialogState) {
+    renderTaskActionDialog();
   }
 }
 

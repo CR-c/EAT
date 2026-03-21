@@ -356,77 +356,45 @@
         <!-- ══ View: Task Create ══ -->
         <div id="view-task-create" class="view" hidden>
           <section class="panel panel--task-form" aria-labelledby="task-form-title">
-            <div class="panel__header">
-              <p class="panel__eyebrow" data-i18n="createEyebrow">创建</p>
-              <h2 id="task-form-title" data-i18n="taskFormTitle">引导式任务创建</h2>
+            <div class="panel__header panel__header--row">
+              <div>
+                <p class="panel__eyebrow" data-i18n="createEyebrow">创建</p>
+                <h2 id="task-form-title" data-i18n="taskFormTitle">引导式任务创建</h2>
+              </div>
+              <button id="show-journey-button" class="button button--secondary button--sm" type="button" data-i18n="showJourneyButton">
+                <svg class="button__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="3" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="13" r="1.5" fill="currentColor"/></svg>
+                查看执行主线
+              </button>
             </div>
-            <p class="panel__summary" data-i18n="taskFormSummary">
-              选择黄金路径模板后，系统会直接生成一个可审阅的 DAG 草稿；不选模板则保留自定义草稿创建方式。
-            </p>
-            <section class="task-journey task-journey--composer" aria-labelledby="task-create-journey-title">
-              <div class="task-journey__header">
-                <div>
-                  <p class="panel__eyebrow" data-i18n="taskCreateJourneyEyebrow">执行主线</p>
-                  <h3 id="task-create-journey-title" class="plan-history__title" data-i18n="taskCreateJourneyTitle">创建后系统会怎么引导你</h3>
-                </div>
-                <span id="task-create-route-badge" class="badge badge--outline">标准路径</span>
-              </div>
-              <p id="task-create-route-summary" class="task-journey__summary">
-                创建后先进入任务列表，与 lead 澄清需求，再进入计划审阅。
-              </p>
-              <div id="task-create-journey-steps" class="task-journey__rail" aria-label="创建任务流程"></div>
-            </section>
+
             <section class="guided-flow" aria-labelledby="guided-flow-title">
-              <div class="guided-flow__intro">
-                <div>
-                  <p class="panel__eyebrow" data-i18n="guidedFlowEyebrow">黄金路径</p>
-                  <h3 id="guided-flow-title" class="plan-history__title" data-i18n="guidedFlowTitle">模板与引导步骤</h3>
-                </div>
-                <button id="guided-template-clear-button" class="button button--secondary" type="button" hidden data-i18n="guidedTemplateClearButton">
-                  切换为自定义草稿
-                </button>
-              </div>
-              <div id="guided-template-empty" class="empty-state" hidden data-i18n="guidedFlowEmpty">
-                模板列表暂时不可用，仍可继续创建自定义任务。
-              </div>
-              <div id="guided-template-grid" class="guided-template-grid"></div>
-              <div class="guided-flow__selection">
-                <article class="guided-flow__summary">
-                  <p class="panel__eyebrow" data-i18n="guidedTemplateSelectedLabel">当前选择</p>
-                  <h4 id="guided-template-title" class="plan-history__title">自定义任务</h4>
-                  <p id="guided-template-description" class="panel__summary">从空白任务开始，先澄清需求，再由 lead 生成执行计划。</p>
-                  <dl class="guided-flow__facts">
-                    <div>
-                      <dt data-i18n="guidedTemplateRolesLabel">建议角色</dt>
-                      <dd id="guided-template-roles">lead</dd>
-                    </div>
-                    <div>
-                      <dt data-i18n="guidedTemplateScenarioLabel">推荐场景</dt>
-                      <dd id="guided-template-scenario">从空白任务开始，先澄清需求，再由 lead 生成执行计划。</dd>
-                    </div>
-                  </dl>
-                  <div>
-                    <p class="panel__eyebrow" data-i18n="guidedTemplateStepsLabel">推荐步骤</p>
-                    <ol id="guided-template-steps" class="guided-flow__steps"></ol>
-                  </div>
-                </article>
-                <article class="guided-flow__note">
-                  <p class="panel__eyebrow" data-i18n="guidedDemoTitle">Todo 演示建议</p>
-                  <p id="guided-demo-body" class="panel__summary">
-                    推荐先选择"全栈 Web 应用"，再使用类似"做一个全栈 Todo 应用，包含认证、数据库和 React 前端。"的标题和描述。
-                  </p>
-                  <p class="field__hint" data-i18n="guidedDemoHint">
-                    引导任务会直接进入计划审阅，不会绕过后续的审批、执行监督和 integration gate。
-                  </p>
-                </article>
-              </div>
+              <article class="guided-flow__summary">
+                <p class="panel__eyebrow" data-i18n="guidedFlowEyebrow">黄金路径</p>
+                <h3 id="guided-flow-title" class="plan-history__title" data-i18n="guidedFlowTitle">模板与引导步骤</h3>
+                <p class="panel__summary">
+                  先注册项目并选择模板，再创建任务进入任务列表，与 Lead 对话确认需求后继续到计划审阅。
+                </p>
+              </article>
+              <article class="guided-flow__note">
+                <p class="panel__eyebrow" data-i18n="guidedDemoTitle">Todo 演示建议</p>
+                <p id="guided-demo-body" class="task-form__footer-note">
+                  推荐先选择“全栈 Web 应用”，再使用类似“做一个全栈 Todo 应用，包含认证、数据库和 React 前端。”的标题和描述。
+                </p>
+              </article>
             </section>
+
             <form id="task-creation-form" class="task-form task-form--composer">
               <section class="task-form__section task-form__section--baseline" aria-labelledby="task-form-baseline-title">
                 <div class="task-form__section-header">
                   <div>
                     <p class="panel__eyebrow" data-i18n="taskCreateBaselineEyebrow">执行基线</p>
-                    <h3 id="task-form-baseline-title" class="plan-history__title" data-i18n="taskCreateBaselineTitle">基线与 Lead</h3>
+                    <h3 id="task-form-baseline-title" class="plan-history__title">
+                      <span data-i18n="taskCreateBaselineTitle">基线与 Lead</span>
+                      <span class="help-tip" tabindex="0" aria-label="基线说明">
+                        <svg class="help-tip__icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 6.5a1.5 1.5 0 1 1 1.5 1.5v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.5" r="0.75" fill="currentColor"/></svg>
+                        <span class="help-tip__bubble" data-i18n="helpBaselineTitle">基线分支是任务的起点，所有子任务都从这里派生。</span>
+                      </span>
+                    </h3>
                   </div>
                   <span id="task-create-branch-mode-badge" class="badge badge--accent-soft" data-i18n="baseBranchModeNewBadge">新建基线</span>
                 </div>
@@ -442,7 +410,13 @@
                 </div>
                 <div id="base-branch-new-panel" class="task-form__grid task-form__grid--double">
                   <label class="field" for="base-branch-start-point-select">
-                    <span class="field__label" data-i18n="baseBranchStartPointLabel">起始分支</span>
+                    <span class="field__label">
+                      <span data-i18n="baseBranchStartPointLabel">起始分支</span>
+                      <span class="help-tip" tabindex="0" aria-label="起始分支说明">
+                        <svg class="help-tip__icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 6.5a1.5 1.5 0 1 1 1.5 1.5v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.5" r="0.75" fill="currentColor"/></svg>
+                        <span class="help-tip__bubble" data-i18n="helpStartPointLabel">选择一个已有分支作为新基线的起始点。</span>
+                      </span>
+                    </span>
                     <select id="base-branch-start-point-select" class="field__control"></select>
                   </label>
                   <label class="field" for="base-branch-input">
@@ -465,7 +439,13 @@
                 </div>
                 <div class="task-form__grid task-form__grid--compact">
                   <label class="field" for="lead-agent-select">
-                    <span class="field__label" data-i18n="leadAgentLabel">Lead Agent</span>
+                    <span class="field__label">
+                      <span data-i18n="leadAgentLabel">Lead Agent</span>
+                      <span class="help-tip" tabindex="0" aria-label="Lead Agent 说明">
+                        <svg class="help-tip__icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 6.5a1.5 1.5 0 1 1 1.5 1.5v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.5" r="0.75" fill="currentColor"/></svg>
+                        <span class="help-tip__bubble" data-i18n="helpLeadAgentLabel">Lead 负责需求澄清和任务拆分，是你的主要对话对象。</span>
+                      </span>
+                    </span>
                     <select id="lead-agent-select" class="field__control"></select>
                   </label>
                 </div>
@@ -483,20 +463,35 @@
                   </div>
                 </div>
                 <label class="field" for="task-title-input">
-                  <span class="field__label" data-i18n="taskTitleLabel">任务标题</span>
+                  <span class="field__label">
+                    <span data-i18n="taskTitleLabel">任务标题</span>
+                    <span class="help-tip" tabindex="0" aria-label="任务标题说明">
+                      <svg class="help-tip__icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 6.5a1.5 1.5 0 1 1 1.5 1.5v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.5" r="0.75" fill="currentColor"/></svg>
+                      <span class="help-tip__bubble" data-i18n="helpTaskTitleLabel">简明描述任务目标，160 字以内。</span>
+                    </span>
+                  </span>
                   <input id="task-title-input" name="title" type="text" maxlength="160" required>
                 </label>
                 <label class="field" for="task-description-input">
-                  <span class="field__label" data-i18n="taskDescriptionLabel">需求描述</span>
+                  <span class="field__label">
+                    <span data-i18n="taskDescriptionLabel">需求描述</span>
+                    <span class="help-tip" tabindex="0" aria-label="需求描述说明">
+                      <svg class="help-tip__icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 6.5a1.5 1.5 0 1 1 1.5 1.5v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.5" r="0.75" fill="currentColor"/></svg>
+                      <span class="help-tip__bubble" data-i18n="helpTaskDescriptionLabel">详细说明需求、约束条件和验收标准。</span>
+                    </span>
+                  </span>
                   <textarea id="task-description-input" name="description" rows="6" required></textarea>
                 </label>
                 <label class="field" for="task-attachments-input">
-                  <span class="field__label" data-i18n="attachmentsLabelStatic">附件</span>
+                  <span class="field__label">
+                    <span data-i18n="attachmentsLabelStatic">附件</span>
+                    <span class="help-tip" tabindex="0" aria-label="附件说明">
+                      <svg class="help-tip__icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 6.5a1.5 1.5 0 1 1 1.5 1.5v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.5" r="0.75" fill="currentColor"/></svg>
+                      <span class="help-tip__bubble" data-i18n="helpAttachmentsLabel">支持图片、PDF、Markdown、代码文件。不支持或超限文件会被拒绝。</span>
+                    </span>
+                  </span>
                   <input id="task-attachments-input" name="attachments" type="file" multiple>
                 </label>
-                <p class="field__hint" data-i18n="attachmentsHint">
-                  支持图片、PDF/Markdown/文本文件，以及基于文本的代码文件。不支持或超限文件会在任务创建完成前被拒绝。
-                </p>
                 <div id="task-attachment-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
                 <ul id="task-attachment-list" class="attachment-list attachment-list--draft"></ul>
               </section>
@@ -514,6 +509,26 @@
           </section>
         </div>
 
+        <!-- ══ Dialog: Task Journey ══ -->
+        <dialog id="task-journey-dialog" class="task-journey-dialog" aria-labelledby="task-journey-dialog-title">
+          <div class="task-journey-dialog__shell">
+            <div class="task-journey-dialog__header">
+              <div>
+                <p class="panel__eyebrow" data-i18n="taskCreateJourneyEyebrow">执行主线</p>
+                <h2 id="task-journey-dialog-title" data-i18n="taskCreateJourneyTitle">创建后系统会怎么引导你</h2>
+              </div>
+              <button id="task-journey-dialog-close-button" class="button button--secondary" type="button" data-i18n="closeButton">关闭</button>
+            </div>
+            <div class="task-journey-dialog__meta">
+              <span id="task-create-route-badge" class="badge badge--outline">标准路径</span>
+              <p id="task-create-route-summary" class="task-journey__summary">
+                创建后先进入任务列表，与 lead 澄清需求，再进入计划审阅。
+              </p>
+            </div>
+            <div id="task-create-journey-steps" class="task-journey__rail" aria-label="创建任务流程"></div>
+          </div>
+        </dialog>
+
         <!-- ══ View: Tasks ══ -->
         <div id="view-tasks" class="view" hidden>
           <section class="panel panel--tasks" aria-labelledby="task-list-title">
@@ -522,9 +537,14 @@
                 <p class="panel__eyebrow" data-i18n="tasksEyebrow">任务</p>
                 <h2 id="task-list-title" data-i18n="taskListTitle">项目任务</h2>
               </div>
-              <button id="refresh-tasks-button" class="button button--secondary" type="button" data-i18n="refreshTasksButton">
-                刷新任务
-              </button>
+              <div class="task-list__toolbar">
+                <button id="task-list-archived-toggle" class="button button--secondary" type="button" data-i18n="showArchivedTasksButton">
+                  显示归档
+                </button>
+                <button id="refresh-tasks-button" class="button button--secondary" type="button" data-i18n="refreshTasksButton">
+                  刷新任务
+                </button>
+              </div>
             </div>
             <p class="panel__summary" data-i18n="taskListSummary">
               先选任务，再与 lead 对话确认需求；确认后去计划审阅，再进入执行。
@@ -1173,6 +1193,36 @@
 
       </main>
     </div>
+
+    <dialog id="task-action-dialog" class="task-action-dialog" aria-labelledby="task-action-dialog-title">
+      <div class="task-action-dialog__shell">
+        <div class="task-action-dialog__header">
+          <div>
+            <p id="task-action-dialog-eyebrow" class="panel__eyebrow">任务操作</p>
+            <h2 id="task-action-dialog-title">归档任务</h2>
+            <p id="task-action-dialog-summary" class="panel__summary">
+              已归档任务会从默认列表隐藏，但保留历史记录。
+            </p>
+          </div>
+        </div>
+        <label class="checkbox-field task-action-dialog__checkbox" for="task-action-delete-branches-input">
+          <input id="task-action-delete-branches-input" type="checkbox">
+          <span data-i18n="taskActionDeleteBranchesLabel">同时删除任务相关分支和 worktree</span>
+        </label>
+        <p id="task-action-dialog-branch-summary" class="field__hint" data-i18n="taskActionDeleteBranchesHint">
+          默认不勾选。仅会清理任务主线分支和子任务分支，不会删除项目原始主分支。
+        </p>
+        <div id="task-action-dialog-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
+        <div class="task-action-dialog__footer">
+          <button id="task-action-dialog-cancel-button" class="button button--secondary" type="button" data-i18n="projectPickerCancelButton">
+            取消
+          </button>
+          <button id="task-action-dialog-confirm-button" class="button button--primary" type="button">
+            确认
+          </button>
+        </div>
+      </div>
+    </dialog>
 
     <script type="module" src="/app.js"></script>
   </body>
