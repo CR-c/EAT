@@ -200,6 +200,7 @@ export class TaskService {
     this.pendingIntegrationExecutions = new Set();
     this.pendingCleanupTasks = new Set();
     this.pendingTaskMainlineSyncs = new Map();
+    this.pendingProjectGitLocks = new Map();
     this.integrationGateRunner = options.integrationGateRunner ?? defaultIntegrationGateRunner;
     this.closed = false;
   }
@@ -2066,7 +2067,9 @@ export class TaskService {
     }
 
     if (currentTask.status !== nextTask.status && TERMINAL_TASK_STATUSES.has(nextTask.status)) {
-      await this.#attemptTaskCleanup(nextTask);
+      queueMicrotask(() => {
+        void this.#attemptTaskCleanup(nextTask);
+      });
     }
 
     if (options.publish !== false) {
@@ -2097,27 +2100,29 @@ export class TaskService {
         return;
       }
 
-      for (const subTask of subTasks) {
-        if (this.closed) {
-          return;
-        }
+      await this.#withProjectGitLock(project.path, async () => {
+        for (const subTask of subTasks) {
+          if (this.closed) {
+            return;
+          }
 
-        if (!subTask.worktreePath) {
-          continue;
-        }
+          if (!subTask.worktreePath) {
+            continue;
+          }
 
-        if (await this.#hasLiveWorkerSession(subTask.id)) {
-          await this.#recordCleanupWarning(task.id, subTask.worktreePath, "Cleanup skipped because a live worker session still owns this worktree.");
-          continue;
-        }
+          if (await this.#hasLiveWorkerSession(subTask.id)) {
+            await this.#recordCleanupWarning(task.id, subTask.worktreePath, "Cleanup skipped because a live worker session still owns this worktree.");
+            continue;
+          }
 
-        const cleanupResult = await removeWorktree(project.path, subTask.worktreePath);
+          const cleanupResult = await removeWorktree(project.path, subTask.worktreePath);
 
-        if (!cleanupResult.ok) {
-          const reason = buildCleanupFailureReason(cleanupResult);
-          await this.#recordCleanupWarning(task.id, subTask.worktreePath, reason);
+          if (!cleanupResult.ok) {
+            const reason = buildCleanupFailureReason(cleanupResult);
+            await this.#recordCleanupWarning(task.id, subTask.worktreePath, reason);
+          }
         }
-      }
+      });
     } finally {
       this.pendingCleanupTasks.delete(task.id);
     }
@@ -2166,13 +2171,16 @@ export class TaskService {
       return null;
     }
 
-    const existingRuns = await this.taskRepository.listIntegrationRunsByTaskId(task.id);
-    const desiredIntegrationBranch = `eat/${task.id}/integration-${existingRuns.length + 1}`;
-    const integrationBranch = await resolveUniqueBranchName(project.path, desiredIntegrationBranch);
-    const integrationRun = await this.taskRepository.createIntegrationRun({
-      integrationBranch,
-      status: INTEGRATION_RUN_STATUS.QUEUED,
-      taskId: task.id,
+    const integrationRun = await this.#withProjectGitLock(project.path, async () => {
+      const existingRuns = await this.taskRepository.listIntegrationRunsByTaskId(task.id);
+      const desiredIntegrationBranch = `eat/${task.id}/integration-${existingRuns.length + 1}`;
+      const integrationBranch = await resolveUniqueBranchName(project.path, desiredIntegrationBranch);
+
+      return this.taskRepository.createIntegrationRun({
+        integrationBranch,
+        status: INTEGRATION_RUN_STATUS.QUEUED,
+        taskId: task.id,
+      });
     });
 
     for (const [index, subTask] of acceptedSubTasks.entries()) {
@@ -2185,7 +2193,7 @@ export class TaskService {
     }
 
     this.#publish(task.id, "integration:queued", {
-      integrationBranch,
+      integrationBranch: integrationRun.integrationBranch,
       integrationRunId: integrationRun.id,
       queueLength: acceptedSubTasks.length,
       status: integrationRun.status,
@@ -2241,52 +2249,112 @@ export class TaskService {
       return;
     }
 
-    if (integrationRun.status === INTEGRATION_RUN_STATUS.QUEUED) {
-      integrationRun = await this.taskRepository.updateIntegrationRun(integrationRun.id, {
-        startedAt: integrationRun.startedAt ?? new Date().toISOString(),
-        status: INTEGRATION_RUN_STATUS.RUNNING,
-      });
-      this.#publish(task.id, "integration:started", {
-        integrationBranch: integrationRun.integrationBranch,
-        integrationRunId: integrationRun.id,
-        status: integrationRun.status,
-        taskId: task.id,
-      });
-    }
-
-    const prepareResult = await this.#prepareIntegrationBranch(task, project, integrationRun);
-
-    if (this.closed) {
-      return;
-    }
-
-    if (!prepareResult.ok) {
-      await this.#markIntegrationRunActionRequired(integrationRun, task, prepareResult.reason);
-      return;
-    }
-
-    let queueItems = await this.taskRepository.listIntegrationQueueItemsByIntegrationRunId(integrationRun.id);
-    const subTasks = await this.taskRepository.listSubTasksByTaskId(task.id);
-    const subTaskById = new Map(subTasks.map((subTask) => [subTask.id, subTask]));
-
-    for (const queueItem of queueItems) {
-      if (queueItem.status !== INTEGRATION_QUEUE_ITEM_STATUS.QUEUED) {
-        continue;
+    await this.#withProjectGitLock(project.path, async () => {
+      if (integrationRun.status === INTEGRATION_RUN_STATUS.QUEUED) {
+        integrationRun = await this.taskRepository.updateIntegrationRun(integrationRun.id, {
+          startedAt: integrationRun.startedAt ?? new Date().toISOString(),
+          status: INTEGRATION_RUN_STATUS.RUNNING,
+        });
+        this.#publish(task.id, "integration:started", {
+          integrationBranch: integrationRun.integrationBranch,
+          integrationRunId: integrationRun.id,
+          status: integrationRun.status,
+          taskId: task.id,
+        });
       }
 
-      const subTask = subTaskById.get(queueItem.subTaskId) ?? null;
+      const prepareResult = await this.#prepareIntegrationBranch(task, project, integrationRun);
 
-      if (!subTask?.branchName) {
-        await this.#markIntegrationRunActionRequired(
-          integrationRun,
-          task,
-          `Accepted subtask ${subTask?.title ?? queueItem.subTaskId} does not have a branch available for integration.`,
-        );
+      if (this.closed) {
         return;
       }
 
-      if (await isBranchMergedInto(project.path, subTask.branchName, integrationRun.integrationBranch)) {
-        const mergedCommitSha = await resolveRevision(project.path, integrationRun.integrationBranch).catch(() => null);
+      if (!prepareResult.ok) {
+        await this.#markIntegrationRunActionRequired(integrationRun, task, prepareResult.reason);
+        return;
+      }
+
+      let queueItems = await this.taskRepository.listIntegrationQueueItemsByIntegrationRunId(integrationRun.id);
+      const subTasks = await this.taskRepository.listSubTasksByTaskId(task.id);
+      const subTaskById = new Map(subTasks.map((subTask) => [subTask.id, subTask]));
+
+      for (const queueItem of queueItems) {
+        if (queueItem.status !== INTEGRATION_QUEUE_ITEM_STATUS.QUEUED) {
+          continue;
+        }
+
+        const subTask = subTaskById.get(queueItem.subTaskId) ?? null;
+
+        if (!subTask?.branchName) {
+          await this.#markIntegrationRunActionRequired(
+            integrationRun,
+            task,
+            `Accepted subtask ${subTask?.title ?? queueItem.subTaskId} does not have a branch available for integration.`,
+          );
+          return;
+        }
+
+        if (await isBranchMergedInto(project.path, subTask.branchName, integrationRun.integrationBranch)) {
+          const mergedCommitSha = await resolveRevision(project.path, integrationRun.integrationBranch).catch(() => null);
+          await this.taskRepository.createMergeRecord({
+            completedAt: new Date().toISOString(),
+            operation: MERGE_OPERATION.MERGE,
+            resultCommitSha: mergedCommitSha,
+            sourceBranch: subTask.branchName,
+            status: MERGE_STATUS.SUCCEEDED,
+            subTaskId: subTask.id,
+            targetBranch: integrationRun.integrationBranch,
+          });
+          await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
+            mergedCommitSha,
+            status: INTEGRATION_QUEUE_ITEM_STATUS.MERGED,
+          });
+          continue;
+        }
+
+        const mergeResult = await mergeBranch(project.path, subTask.branchName);
+
+        if (this.closed) {
+          return;
+        }
+
+        if (!mergeResult.ok) {
+          const conflictSummary = await this.#buildMergeConflictSummary(
+            project.path,
+            subTask,
+            { baseBranch: integrationRun.integrationBranch },
+            mergeResult,
+          );
+
+          await abortMerge(project.path).catch(() => null);
+          await this.taskRepository.createMergeRecord({
+            completedAt: new Date().toISOString(),
+            conflictSummary,
+            operation: MERGE_OPERATION.MERGE,
+            sourceBranch: subTask.branchName,
+            status: MERGE_STATUS.CONFLICT,
+            subTaskId: subTask.id,
+            targetBranch: integrationRun.integrationBranch,
+          });
+          await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
+            status: INTEGRATION_QUEUE_ITEM_STATUS.FAILED,
+          });
+
+          const conflictedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
+            lastError: conflictSummary,
+          });
+
+          this.#publish(task.id, "merge:status", {
+            status: MERGE_STATUS.CONFLICT,
+            subtaskId: subTask.id,
+            summary: conflictSummary,
+          });
+          this.#publishSubTaskStatus(task.id, conflictedSubTask);
+          await this.#markIntegrationRunActionRequired(integrationRun, task, buildMergeConflictActionRequiredReason(subTask, conflictSummary));
+          return;
+        }
+
+        const mergedCommitSha = await resolveRevision(project.path, "HEAD").catch(() => null);
         await this.taskRepository.createMergeRecord({
           completedAt: new Date().toISOString(),
           operation: MERGE_OPERATION.MERGE,
@@ -2300,116 +2368,58 @@ export class TaskService {
           mergedCommitSha,
           status: INTEGRATION_QUEUE_ITEM_STATUS.MERGED,
         });
-        continue;
       }
 
-      const mergeResult = await mergeBranch(project.path, subTask.branchName);
+      queueItems = await this.taskRepository.listIntegrationQueueItemsByIntegrationRunId(integrationRun.id);
+      const gateResults = await this.#runIntegrationGates(task, project, integrationRun, queueItems, subTasks);
 
       if (this.closed) {
         return;
       }
 
-      if (!mergeResult.ok) {
-        const conflictSummary = await this.#buildMergeConflictSummary(
-          project.path,
-          subTask,
-          { baseBranch: integrationRun.integrationBranch },
-          mergeResult,
+      if (gateResults.some((gateResult) => gateResult.status === GATE_RESULT_STATUS.FAILED)) {
+        await this.#markIntegrationRunActionRequired(
+          integrationRun,
+          task,
+          gateResults.filter((gateResult) => gateResult.status === GATE_RESULT_STATUS.FAILED).map((gateResult) => gateResult.summary).join(" "),
         );
-
-        await abortMerge(project.path).catch(() => null);
-        await this.taskRepository.createMergeRecord({
-          completedAt: new Date().toISOString(),
-          conflictSummary,
-          operation: MERGE_OPERATION.MERGE,
-          sourceBranch: subTask.branchName,
-          status: MERGE_STATUS.CONFLICT,
-          subTaskId: subTask.id,
-          targetBranch: integrationRun.integrationBranch,
-        });
-        await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
-          status: INTEGRATION_QUEUE_ITEM_STATUS.FAILED,
-        });
-
-        const conflictedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
-          lastError: conflictSummary,
-        });
-
-        this.#publish(task.id, "merge:status", {
-          status: MERGE_STATUS.CONFLICT,
-          subtaskId: subTask.id,
-          summary: conflictSummary,
-        });
-        this.#publishSubTaskStatus(task.id, conflictedSubTask);
-        await this.#markIntegrationRunActionRequired(integrationRun, task, buildMergeConflictActionRequiredReason(subTask, conflictSummary));
         return;
       }
 
-      const mergedCommitSha = await resolveRevision(project.path, "HEAD").catch(() => null);
-      await this.taskRepository.createMergeRecord({
-        completedAt: new Date().toISOString(),
-        operation: MERGE_OPERATION.MERGE,
-        resultCommitSha: mergedCommitSha,
-        sourceBranch: subTask.branchName,
-        status: MERGE_STATUS.SUCCEEDED,
-        subTaskId: subTask.id,
-        targetBranch: integrationRun.integrationBranch,
-      });
-      await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
-        mergedCommitSha,
-        status: INTEGRATION_QUEUE_ITEM_STATUS.MERGED,
-      });
-    }
+      const releaseResult = await this.#releaseIntegrationRun(task, project, integrationRun, queueItems, subTasks);
 
-    queueItems = await this.taskRepository.listIntegrationQueueItemsByIntegrationRunId(integrationRun.id);
-    const gateResults = await this.#runIntegrationGates(task, project, integrationRun, queueItems, subTasks);
-
-    if (this.closed) {
-      return;
-    }
-
-    if (gateResults.some((gateResult) => gateResult.status === GATE_RESULT_STATUS.FAILED)) {
-      await this.#markIntegrationRunActionRequired(
-        integrationRun,
-        task,
-        gateResults.filter((gateResult) => gateResult.status === GATE_RESULT_STATUS.FAILED).map((gateResult) => gateResult.summary).join(" "),
-      );
-      return;
-    }
-
-    const releaseResult = await this.#releaseIntegrationRun(task, project, integrationRun, queueItems, subTasks);
-
-    if (this.closed) {
-      return;
-    }
-
-    if (!releaseResult.ok) {
-      await this.#markIntegrationRunActionRequired(integrationRun, task, releaseResult.reason);
-      return;
-    }
-
-    const completedRun = await this.taskRepository.updateIntegrationRun(integrationRun.id, {
-      endedAt: new Date().toISOString(),
-      status: INTEGRATION_RUN_STATUS.COMPLETED,
-    });
-
-    for (const queueItem of queueItems) {
-      if (queueItem.status !== INTEGRATION_QUEUE_ITEM_STATUS.MERGED) {
-        continue;
+      if (this.closed) {
+        return;
       }
 
-      await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
-        status: INTEGRATION_QUEUE_ITEM_STATUS.RELEASED,
-      });
-    }
+      if (!releaseResult.ok) {
+        await this.#markIntegrationRunActionRequired(integrationRun, task, releaseResult.reason);
+        return;
+      }
 
-    this.#publish(task.id, "integration:completed", {
-      integrationBranch: completedRun.integrationBranch,
-      integrationRunId: completedRun.id,
-      status: completedRun.status,
-      taskId: task.id,
+      const completedRun = await this.taskRepository.updateIntegrationRun(integrationRun.id, {
+        endedAt: new Date().toISOString(),
+        status: INTEGRATION_RUN_STATUS.COMPLETED,
+      });
+
+      for (const queueItem of queueItems) {
+        if (queueItem.status !== INTEGRATION_QUEUE_ITEM_STATUS.MERGED) {
+          continue;
+        }
+
+        await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
+          status: INTEGRATION_QUEUE_ITEM_STATUS.RELEASED,
+        });
+      }
+
+      this.#publish(task.id, "integration:completed", {
+        integrationBranch: completedRun.integrationBranch,
+        integrationRunId: completedRun.id,
+        status: completedRun.status,
+        taskId: task.id,
+      });
+      await this.#completeTaskIfMergeResolved(task.id);
     });
-    await this.#completeTaskIfMergeResolved(task.id);
   }
 
   async #prepareIntegrationBranch(task, project, integrationRun) {
@@ -2586,81 +2596,83 @@ export class TaskService {
       return;
     }
 
-    const subTasks = await this.taskRepository.listSubTasksByTaskId(taskId);
+    await this.#withProjectGitLock(project.path, async () => {
+      const subTasks = await this.taskRepository.listSubTasksByTaskId(taskId);
 
-    for (const subTask of subTasks) {
-      if (subTask.status !== SUBTASK_STATUS.ACCEPTED) {
-        continue;
-      }
+      for (const subTask of subTasks) {
+        if (subTask.status !== SUBTASK_STATUS.ACCEPTED) {
+          continue;
+        }
 
-      const mergeTarget = await this.#ensureMergeTargetReady(task, project);
+        const mergeTarget = await this.#ensureMergeTargetReady(task, project);
 
-      if (this.closed) {
-        return;
-      }
+        if (this.closed) {
+          return;
+        }
 
-      if (!mergeTarget.ok) {
-        await this.#setTaskActionRequired(taskId, mergeTarget.reason);
-        return;
-      }
+        if (!mergeTarget.ok) {
+          await this.#setTaskActionRequired(taskId, mergeTarget.reason);
+          return;
+        }
 
-      if (!subTask.branchName) {
-        await this.#setTaskActionRequired(
-          taskId,
-          `Accepted subtask ${subTask.title} does not have a branch available for merge.`,
-        );
-        return;
-      }
+        if (!subTask.branchName) {
+          await this.#setTaskActionRequired(
+            taskId,
+            `Accepted subtask ${subTask.title} does not have a branch available for merge.`,
+          );
+          return;
+        }
 
-      if (await isBranchMergedInto(project.path, subTask.branchName, task.baseBranch)) {
+        if (await isBranchMergedInto(project.path, subTask.branchName, task.baseBranch)) {
+          await this.#recordSuccessfulMerge(task, subTask, {
+            resultCommitSha: await resolveRevision(project.path, task.baseBranch).catch(() => null),
+            summary: `Detected ${subTask.branchName} already present on ${task.baseBranch}.`,
+          });
+          continue;
+        }
+
+        const mergeResult = await mergeBranch(project.path, subTask.branchName);
+
+        if (this.closed) {
+          return;
+        }
+
+        if (!mergeResult.ok) {
+          const conflictSummary = await this.#buildMergeConflictSummary(project.path, subTask, task, mergeResult);
+
+          await abortMerge(project.path).catch(() => null);
+          await this.taskRepository.createMergeRecord({
+            completedAt: new Date().toISOString(),
+            conflictSummary,
+            operation: MERGE_OPERATION.MERGE,
+            sourceBranch: subTask.branchName,
+            status: MERGE_STATUS.CONFLICT,
+            subTaskId: subTask.id,
+            targetBranch: task.baseBranch,
+          });
+
+          const conflictedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
+            lastError: conflictSummary,
+          });
+
+          this.#publish(task.id, "merge:status", {
+            status: MERGE_STATUS.CONFLICT,
+            subtaskId: subTask.id,
+            summary: conflictSummary,
+          });
+          this.#publishSubTaskStatus(task.id, conflictedSubTask);
+          await this.#setTaskActionRequired(task.id, buildMergeConflictActionRequiredReason(subTask, conflictSummary));
+          return;
+        }
+
         await this.#recordSuccessfulMerge(task, subTask, {
-          resultCommitSha: await resolveRevision(project.path, task.baseBranch).catch(() => null),
-          summary: `Detected ${subTask.branchName} already present on ${task.baseBranch}.`,
+          resultCommitSha: await resolveRevision(project.path, "HEAD").catch(() => null),
+          summary: `Merged ${subTask.branchName} into ${task.baseBranch} with --no-ff.`,
         });
-        continue;
       }
 
-      const mergeResult = await mergeBranch(project.path, subTask.branchName);
-
-      if (this.closed) {
-        return;
-      }
-
-      if (!mergeResult.ok) {
-        const conflictSummary = await this.#buildMergeConflictSummary(project.path, subTask, task, mergeResult);
-
-        await abortMerge(project.path).catch(() => null);
-        await this.taskRepository.createMergeRecord({
-          completedAt: new Date().toISOString(),
-          conflictSummary,
-          operation: MERGE_OPERATION.MERGE,
-          sourceBranch: subTask.branchName,
-          status: MERGE_STATUS.CONFLICT,
-          subTaskId: subTask.id,
-          targetBranch: task.baseBranch,
-        });
-
-        const conflictedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
-          lastError: conflictSummary,
-        });
-
-        this.#publish(task.id, "merge:status", {
-          status: MERGE_STATUS.CONFLICT,
-          subtaskId: subTask.id,
-          summary: conflictSummary,
-        });
-        this.#publishSubTaskStatus(task.id, conflictedSubTask);
-        await this.#setTaskActionRequired(task.id, buildMergeConflictActionRequiredReason(subTask, conflictSummary));
-        return;
-      }
-
-      await this.#recordSuccessfulMerge(task, subTask, {
-        resultCommitSha: await resolveRevision(project.path, "HEAD").catch(() => null),
-        summary: `Merged ${subTask.branchName} into ${task.baseBranch} with --no-ff.`,
-      });
-    }
-
-    await this.#completeTaskIfMergeResolved(taskId);
+      await this.#completeTaskIfMergeResolved(taskId);
+    });
   }
 
   async #recordSuccessfulMerge(task, subTask, options = {}) {
@@ -2743,34 +2755,36 @@ export class TaskService {
     let nextSubTask = subTask;
 
     try {
-      if (!nextSubTask.branchName) {
-        const desiredBranchName = computeDeterministicBranchName(task.id, nextSubTask.branchSuffix);
-        const startCommitSha = nextSubTask.startCommitSha
-          ?? await this.#resolveTaskMainlineHeadCommit(task, project)
-          ?? task.baseCommitSha;
-        await ensureBranchExists(project.path, desiredBranchName, startCommitSha);
-        nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
-          branchName: desiredBranchName,
-          startCommitSha,
-        });
-      }
+      return this.#withProjectGitLock(project.path, async () => {
+        if (!nextSubTask.branchName) {
+          const desiredBranchName = computeDeterministicBranchName(task.id, nextSubTask.branchSuffix);
+          const startCommitSha = nextSubTask.startCommitSha
+            ?? await this.#resolveTaskMainlineHeadCommit(task, project)
+            ?? task.baseCommitSha;
+          await ensureBranchExists(project.path, desiredBranchName, startCommitSha);
+          nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
+            branchName: desiredBranchName,
+            startCommitSha,
+          });
+        }
 
-      await ensureBranchExists(project.path, nextSubTask.branchName, nextSubTask.startCommitSha ?? task.baseCommitSha);
+        await ensureBranchExists(project.path, nextSubTask.branchName, nextSubTask.startCommitSha ?? task.baseCommitSha);
 
-      if (!nextSubTask.worktreePath) {
-        const worktreePath = await resolveWorktreePath(project.path, task.id, nextSubTask.branchSuffix);
-        await ensureWorktree(project.path, worktreePath, nextSubTask.branchName);
-        nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
-          worktreePath,
-        });
-      } else {
-        await ensureWorktree(project.path, nextSubTask.worktreePath, nextSubTask.branchName);
-      }
+        if (!nextSubTask.worktreePath) {
+          const worktreePath = await resolveWorktreePath(project.path, task.id, nextSubTask.branchSuffix);
+          await ensureWorktree(project.path, worktreePath, nextSubTask.branchName);
+          nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
+            worktreePath,
+          });
+        } else {
+          await ensureWorktree(project.path, nextSubTask.worktreePath, nextSubTask.branchName);
+        }
 
-      return {
-        ok: true,
-        subTask: nextSubTask,
-      };
+        return {
+          ok: true,
+          subTask: nextSubTask,
+        };
+      });
     } catch (error) {
       return failure(
         TASK_SERVICE_ERROR_CODES.SUBTASK_REBASE_RETRY_NOT_ALLOWED,
@@ -3062,54 +3076,56 @@ export class TaskService {
     let nextSubTask = subTask;
 
     try {
-      if (!nextSubTask.branchName) {
-        const desiredBranchName = computeDeterministicBranchName(task.id, nextSubTask.branchSuffix);
-        const resolvedBranchName = await resolveUniqueBranchName(project.path, desiredBranchName);
-        const startCommitSha = await this.#resolveTaskMainlineHeadCommit(task, project);
+      return this.#withProjectGitLock(project.path, async () => {
+        if (!nextSubTask.branchName) {
+          const desiredBranchName = computeDeterministicBranchName(task.id, nextSubTask.branchSuffix);
+          const resolvedBranchName = await resolveUniqueBranchName(project.path, desiredBranchName);
+          const startCommitSha = await this.#resolveTaskMainlineHeadCommit(task, project);
 
-        if (!startCommitSha) {
-          throw new Error(`Failed to resolve the task mainline branch for ${task.title}.`);
-        }
+          if (!startCommitSha) {
+            throw new Error(`Failed to resolve the task mainline branch for ${task.title}.`);
+          }
 
-        nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
-          branchName: resolvedBranchName,
-          startCommitSha,
-        });
-
-        if (resolvedBranchName !== desiredBranchName) {
-          this.#publish(task.id, "branch:renamed", {
-            originalName: desiredBranchName,
-            resolvedName: resolvedBranchName,
-            subtaskId: nextSubTask.id,
-            taskId: task.id,
+          nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
+            branchName: resolvedBranchName,
+            startCommitSha,
           });
+
+          if (resolvedBranchName !== desiredBranchName) {
+            this.#publish(task.id, "branch:renamed", {
+              originalName: desiredBranchName,
+              resolvedName: resolvedBranchName,
+              subtaskId: nextSubTask.id,
+              taskId: task.id,
+            });
+          }
         }
-      }
 
-      await ensureBranchExists(project.path, nextSubTask.branchName, nextSubTask.startCommitSha ?? task.baseCommitSha);
+        await ensureBranchExists(project.path, nextSubTask.branchName, nextSubTask.startCommitSha ?? task.baseCommitSha);
 
-      if (!nextSubTask.worktreePath) {
-        const worktreePath = await resolveWorktreePath(project.path, task.id, nextSubTask.branchSuffix);
-        await ensureWorktree(project.path, worktreePath, nextSubTask.branchName);
-        nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
-          worktreePath,
-        });
-      } else {
-        await ensureWorktree(project.path, nextSubTask.worktreePath, nextSubTask.branchName);
-      }
+        if (!nextSubTask.worktreePath) {
+          const worktreePath = await resolveWorktreePath(project.path, task.id, nextSubTask.branchSuffix);
+          await ensureWorktree(project.path, worktreePath, nextSubTask.branchName);
+          nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
+            worktreePath,
+          });
+        } else {
+          await ensureWorktree(project.path, nextSubTask.worktreePath, nextSubTask.branchName);
+        }
 
-      if (nextSubTask.status !== SUBTASK_STATUS.READY) {
-        nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
-          lastError: null,
-          status: SUBTASK_STATUS.READY,
-        });
-        this.#publishSubTaskStatus(task.id, nextSubTask);
-      }
+        if (nextSubTask.status !== SUBTASK_STATUS.READY) {
+          nextSubTask = await this.taskRepository.updateSubTask(nextSubTask.id, {
+            lastError: null,
+            status: SUBTASK_STATUS.READY,
+          });
+          this.#publishSubTaskStatus(task.id, nextSubTask);
+        }
 
-      return {
-        ok: true,
-        subTask: nextSubTask,
-      };
+        return {
+          ok: true,
+          subTask: nextSubTask,
+        };
+      });
     } catch (error) {
       return this.#failSubTaskLaunch(
         task,
@@ -3359,79 +3375,81 @@ export class TaskService {
         return { ok: false };
       }
 
-      const taskBranchName = this.#resolveTaskMainlineBranchName(task);
+      return this.#withProjectGitLock(project.path, async () => {
+        const taskBranchName = this.#resolveTaskMainlineBranchName(task);
 
-      if (!taskBranchName || !subTask.branchName || taskBranchName === subTask.branchName) {
-        return { ok: true };
-      }
+        if (!taskBranchName || !subTask.branchName || taskBranchName === subTask.branchName) {
+          return { ok: true };
+        }
 
-      const branchReady = await this.#ensureBranchReady(project, taskBranchName);
+        const branchReady = await this.#ensureBranchReady(project, taskBranchName);
 
-      if (!branchReady.ok) {
-        await this.#setTaskActionRequired(taskId, branchReady.reason);
-        return { ok: false };
-      }
+        if (!branchReady.ok) {
+          await this.#setTaskActionRequired(taskId, branchReady.reason);
+          return { ok: false };
+        }
 
-      if (await isBranchMergedInto(project.path, subTask.branchName, taskBranchName)) {
-        return { ok: true };
-      }
+        if (await isBranchMergedInto(project.path, subTask.branchName, taskBranchName)) {
+          return { ok: true };
+        }
 
-      const mergeResult = await mergeBranch(project.path, subTask.branchName);
+        const mergeResult = await mergeBranch(project.path, subTask.branchName);
 
-      if (mergeResult.ok) {
+        if (mergeResult.ok) {
+          await this.taskRepository.createMessage({
+            content: `Task mainline updated: merged ${subTask.branchName} into ${taskBranchName}.`,
+            role: MESSAGE_ROLE.SYSTEM,
+            taskId,
+          });
+
+          this.#publish(taskId, "task:mainline-updated", {
+            sourceBranch: subTask.branchName,
+            subtaskId: subTask.id,
+            targetBranch: taskBranchName,
+            taskId,
+          });
+
+          return { ok: true };
+        }
+
+        const conflictSummary = await this.#buildMergeConflictSummary(
+          project.path,
+          subTask,
+          { baseBranch: taskBranchName },
+          mergeResult,
+        );
+
+        await abortMerge(project.path).catch(() => null);
+        await this.taskRepository.createMergeRecord({
+          completedAt: new Date().toISOString(),
+          conflictSummary,
+          operation: MERGE_OPERATION.MERGE,
+          sourceBranch: subTask.branchName,
+          status: MERGE_STATUS.CONFLICT,
+          subTaskId: subTask.id,
+          targetBranch: taskBranchName,
+        });
+
+        const conflictedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
+          lastError: conflictSummary,
+        });
+
+        if (conflictedSubTask) {
+          this.#publishSubTaskStatus(taskId, conflictedSubTask);
+        }
+
         await this.taskRepository.createMessage({
-          content: `Task mainline updated: merged ${subTask.branchName} into ${taskBranchName}.`,
+          content: `Task mainline sync blocked: ${conflictSummary}`,
           role: MESSAGE_ROLE.SYSTEM,
           taskId,
         });
-
-        this.#publish(taskId, "task:mainline-updated", {
-          sourceBranch: subTask.branchName,
-          subtaskId: subTask.id,
-          targetBranch: taskBranchName,
+        await this.#setTaskActionRequired(
           taskId,
-        });
+          `Task mainline branch ${taskBranchName} could not absorb ${subTask.branchName}. ${conflictSummary}`,
+        );
 
-        return { ok: true };
-      }
-
-      const conflictSummary = await this.#buildMergeConflictSummary(
-        project.path,
-        subTask,
-        { baseBranch: taskBranchName },
-        mergeResult,
-      );
-
-      await abortMerge(project.path).catch(() => null);
-      await this.taskRepository.createMergeRecord({
-        completedAt: new Date().toISOString(),
-        conflictSummary,
-        operation: MERGE_OPERATION.MERGE,
-        sourceBranch: subTask.branchName,
-        status: MERGE_STATUS.CONFLICT,
-        subTaskId: subTask.id,
-        targetBranch: taskBranchName,
+        return { ok: false };
       });
-
-      const conflictedSubTask = await this.taskRepository.updateSubTask(subTask.id, {
-        lastError: conflictSummary,
-      });
-
-      if (conflictedSubTask) {
-        this.#publishSubTaskStatus(taskId, conflictedSubTask);
-      }
-
-      await this.taskRepository.createMessage({
-        content: `Task mainline sync blocked: ${conflictSummary}`,
-        role: MESSAGE_ROLE.SYSTEM,
-        taskId,
-      });
-      await this.#setTaskActionRequired(
-        taskId,
-        `Task mainline branch ${taskBranchName} could not absorb ${subTask.branchName}. ${conflictSummary}`,
-      );
-
-      return { ok: false };
     });
   }
 
@@ -4494,71 +4512,92 @@ export class TaskService {
 
     let resolvedBaseBranch = baseBranch;
     let baseCommitSha = null;
+    let resolvedTaskBranchName = null;
 
-    if (baseBranchMode === "new") {
-      const startPoint = baseBranchStartPoint;
+    const branchPreparation = await this.#withProjectGitLock(project.path, async () => {
+      let nextResolvedBaseBranch = baseBranch;
+      let nextBaseCommitSha = null;
 
-      if (!startPoint) {
-        return failure(TASK_SERVICE_ERROR_CODES.BASE_BRANCH_REQUIRED, "Base branch start point is required.");
+      if (baseBranchMode === "new") {
+        const startPoint = baseBranchStartPoint;
+
+        if (!startPoint) {
+          return failure(TASK_SERVICE_ERROR_CODES.BASE_BRANCH_REQUIRED, "Base branch start point is required.");
+        }
+
+        const startPointCommitSha = await resolveBranchHeadCommit(project.path, startPoint);
+
+        if (!startPointCommitSha) {
+          return failure(
+            TASK_SERVICE_ERROR_CODES.BASE_BRANCH_NOT_FOUND,
+            "Selected base branch could not be resolved to a commit.",
+            { baseBranch: startPoint },
+          );
+        }
+
+        nextResolvedBaseBranch = await resolveUniqueBranchName(project.path, baseBranch);
+
+        try {
+          await ensureBranchExists(project.path, nextResolvedBaseBranch, startPointCommitSha);
+        } catch {
+          return failure(
+            TASK_SERVICE_ERROR_CODES.BASE_BRANCH_CREATE_FAILED,
+            "Requested base branch could not be created.",
+            {
+              baseBranch: nextResolvedBaseBranch,
+              sourceBranch: startPoint,
+            },
+          );
+        }
+
+        nextBaseCommitSha = await resolveBranchHeadCommit(project.path, nextResolvedBaseBranch);
+      } else {
+        nextBaseCommitSha = await resolveBranchHeadCommit(project.path, baseBranch);
       }
 
-      const startPointCommitSha = await resolveBranchHeadCommit(project.path, startPoint);
-
-      if (!startPointCommitSha) {
+      if (!nextBaseCommitSha) {
         return failure(
           TASK_SERVICE_ERROR_CODES.BASE_BRANCH_NOT_FOUND,
           "Selected base branch could not be resolved to a commit.",
-          { baseBranch: startPoint },
+          { baseBranch: nextResolvedBaseBranch },
         );
       }
 
-      resolvedBaseBranch = await resolveUniqueBranchName(project.path, baseBranch);
+      const desiredTaskBranchName = buildTaskMainlineBranchName(title);
+      let nextResolvedTaskBranchName = await resolveUniqueBranchName(project.path, desiredTaskBranchName);
 
       try {
-        await ensureBranchExists(project.path, resolvedBaseBranch, startPointCommitSha);
+        await ensureBranchExists(project.path, nextResolvedTaskBranchName, nextBaseCommitSha);
       } catch {
         return failure(
           TASK_SERVICE_ERROR_CODES.BASE_BRANCH_CREATE_FAILED,
-          "Requested base branch could not be created.",
+          "Task execution branch could not be created.",
           {
-            baseBranch: resolvedBaseBranch,
-            sourceBranch: startPoint,
+            baseBranch: nextResolvedTaskBranchName,
+            sourceBranch: nextResolvedBaseBranch,
           },
         );
       }
 
-      baseCommitSha = await resolveBranchHeadCommit(project.path, resolvedBaseBranch);
-    } else {
-      baseCommitSha = await resolveBranchHeadCommit(project.path, baseBranch);
+      if (!nextResolvedTaskBranchName) {
+        nextResolvedTaskBranchName = nextResolvedBaseBranch;
+      }
+
+      return {
+        ok: true,
+        baseCommitSha: nextBaseCommitSha,
+        resolvedBaseBranch: nextResolvedBaseBranch,
+        resolvedTaskBranchName: nextResolvedTaskBranchName,
+      };
+    });
+
+    if (!branchPreparation.ok) {
+      return branchPreparation;
     }
 
-    if (!baseCommitSha) {
-      return failure(
-        TASK_SERVICE_ERROR_CODES.BASE_BRANCH_NOT_FOUND,
-        "Selected base branch could not be resolved to a commit.",
-        { baseBranch: resolvedBaseBranch },
-      );
-    }
-
-    const desiredTaskBranchName = buildTaskMainlineBranchName(title);
-    let resolvedTaskBranchName = await resolveUniqueBranchName(project.path, desiredTaskBranchName);
-
-    try {
-      await ensureBranchExists(project.path, resolvedTaskBranchName, baseCommitSha);
-    } catch {
-      return failure(
-        TASK_SERVICE_ERROR_CODES.BASE_BRANCH_CREATE_FAILED,
-        "Task execution branch could not be created.",
-        {
-          baseBranch: resolvedTaskBranchName,
-          sourceBranch: resolvedBaseBranch,
-        },
-      );
-    }
-
-    if (!resolvedTaskBranchName) {
-      resolvedTaskBranchName = resolvedBaseBranch;
-    }
+    resolvedBaseBranch = branchPreparation.resolvedBaseBranch;
+    baseCommitSha = branchPreparation.baseCommitSha;
+    resolvedTaskBranchName = branchPreparation.resolvedTaskBranchName;
 
     const normalizedAttachments = await Promise.all((input?.attachments ?? []).map((attachment) => (
       normalizeAttachmentInput(attachment)
@@ -4638,10 +4677,39 @@ export class TaskService {
     this.pendingMergeExecutions.clear();
     this.pendingCleanupTasks.clear();
     this.pendingTaskMainlineSyncs.clear();
+    this.pendingProjectGitLocks.clear();
     this.pendingWorkerLaunches.clear();
     this.runningLeadSessions.clear();
     this.runningWorkerSessions.clear();
     this.cancelledWorkerSessionIds.clear();
+  }
+
+  async #withProjectGitLock(projectPath, operation) {
+    const key = normalizeRequiredString(projectPath);
+
+    if (!key) {
+      return operation();
+    }
+
+    const previous = this.pendingProjectGitLocks.get(key) ?? Promise.resolve();
+    let releaseLock = null;
+    const current = new Promise((resolve) => {
+      releaseLock = resolve;
+    });
+    const lock = previous.catch(() => {}).then(() => current);
+    this.pendingProjectGitLocks.set(key, lock);
+
+    await previous.catch(() => {});
+
+    try {
+      return await operation();
+    } finally {
+      releaseLock?.();
+
+      if (this.pendingProjectGitLocks.get(key) === lock) {
+        this.pendingProjectGitLocks.delete(key);
+      }
+    }
   }
 }
 

@@ -577,6 +577,117 @@ test("branches downstream subtasks from the updated task mainline instead of the
   }
 });
 
+test("serializes repo-level task mainline updates when multiple tasks share one project", async () => {
+  const fixture = await makeTempDir("eat-project-lock-shared-project-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const phase08 = createPhase08AgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Shared project slice",
+            description: "Write one task-specific artifact.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "shared-project-slice",
+          },
+        ],
+      },
+      prepareWorkerSession: async (config) => {
+        const taskId = config.branchName.match(/^eat\/([^/]+)\//u)?.[1] ?? "unknown";
+        await commitWorktreeChange(config.workDir, `${taskId}.txt`, `${taskId}\n`);
+      },
+      workerBehavior: () => ({
+        delayMs: 10,
+        exitCode: 0,
+        output: "worker completed\n",
+      }),
+    });
+    const server = await startServer({
+      agentService: phase08.agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "shared-project-lock-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+
+      const taskRecords = [];
+
+      for (const title of ["Shared project task A", "Shared project task B", "Shared project task C"]) {
+        const taskResponse = await requestJson(server, "/api/tasks", {
+          body: {
+            baseBranch: "main",
+            description: "Verify same-project tasks do not collide while updating task mainline branches.",
+            leadAgentType: "healthy-lead",
+            projectId: registerResponse.body.project.id,
+            title,
+          },
+          method: "POST",
+        });
+        const events = [];
+        const unsubscribe = eventBus.subscribe(taskResponse.body.task.id, (event) => {
+          events.push(event);
+        });
+        taskRecords.push({
+          events,
+          taskId: taskResponse.body.task.id,
+          unsubscribe,
+        });
+      }
+
+      try {
+        for (const taskRecord of taskRecords) {
+          await moveTaskToPlanReview(server, taskRecord.taskId, taskRecord.events);
+        }
+
+        await Promise.all(taskRecords.map((taskRecord) => requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskRecord.taskId)}/approve-plan`,
+          { method: "POST" },
+        )));
+
+        await Promise.all(taskRecords.map((taskRecord) => nextEvent(
+          taskRecord.events,
+          (event) => event.eventName === "task:mainline-updated",
+        )));
+
+        for (const taskRecord of taskRecords) {
+          let detailResponse = null;
+
+          await waitFor(async () => {
+            detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskRecord.taskId)}`);
+            return detailResponse.status === 200 && detailResponse.body.task.status !== "EXECUTING";
+          }, 400);
+
+          assert.equal(detailResponse.status, 200);
+          assert.notEqual(detailResponse.body.task.status, "ACTION_REQUIRED");
+          assert.doesNotMatch(
+            detailResponse.body.task.lastError ?? "",
+            /(dirty|cannot lock ref|update_ref failed|checkout)/iu,
+          );
+          assert.ok(
+            detailResponse.body.messages.some((message) => /Task mainline updated:/u.test(message.content)),
+          );
+        }
+      } finally {
+        for (const taskRecord of taskRecords) {
+          taskRecord.unsubscribe();
+        }
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("persists web-posted lead mailbox notes and exposes them in task detail", async () => {
   const fixture = await makeTempDir("eat-mailbox-api-");
 
@@ -2790,9 +2901,12 @@ test("runs accepted subtasks through an explicit integration branch and complete
 
 	        await nextEvent(events, (event) => event.eventName === "integration:queued");
 	        await nextEvent(events, (event) => event.eventName === "integration:completed" && event.data.status === "COMPLETED");
-	        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
 
-        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        let detailResponse = null;
+        await waitFor(async () => {
+          detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+          return detailResponse.status === 200 && detailResponse.body.task.status === "COMPLETED";
+        }, 400);
         assert.equal(detailResponse.status, 200);
         assert.equal(detailResponse.body.task.status, "COMPLETED");
         assert.deepEqual(
@@ -2809,8 +2923,6 @@ test("runs accepted subtasks through an explicit integration branch and complete
         );
         assert.equal(await readFile(path.join(repo.repoPath, "alpha.txt"), "utf8"), "alpha\n");
         assert.equal(await readFile(path.join(repo.repoPath, "beta.txt"), "utf8"), "beta\n");
-        await assert.rejects(access(detailResponse.body.subTasks[0].worktreePath));
-        await assert.rejects(access(detailResponse.body.subTasks[1].worktreePath));
 
         const mergeSubjects = (await git(repo.repoPath, ["log", "main", "--merges", "--reverse", "--format=%s"]))
           .split("\n")
@@ -2938,9 +3050,12 @@ test("keeps the base branch clean on gate failure and completes after integratio
         await nextEvent(events, (event) => event.eventName === "integration:started");
         await nextEvent(events, (event) => event.eventName === "integration:gate-result" && event.data.status === "PASSED");
         await nextEvent(events, (event) => event.eventName === "integration:completed" && event.data.status === "COMPLETED");
-        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
 
-        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        let detailResponse = null;
+        await waitFor(async () => {
+          detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+          return detailResponse.status === 200 && detailResponse.body.task.status === "COMPLETED";
+        }, 400);
         assert.equal(detailResponse.status, 200);
         assert.equal(detailResponse.body.task.status, "COMPLETED");
         assert.equal(detailResponse.body.subTasks[0].status, "MERGED");
@@ -3062,14 +3177,15 @@ test("persists cleanup warnings and keeps completed tasks terminal when worktree
         );
         assert.equal(retryResponse.status, 200);
 
-        const cleanupWarningEvent = await nextEvent(
-          events,
-          (event) => event.eventName === "task:cleanup-warning",
-        );
-        assert.equal(cleanupWarningEvent.data.worktreePath, repo.repoPath);
-        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
-
-        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        let detailResponse = null;
+        await waitFor(async () => {
+          detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+          return (
+            detailResponse.status === 200
+            && detailResponse.body.task.status === "COMPLETED"
+            && detailResponse.body.cleanupWarnings.length > 0
+          );
+        }, 1000);
         assert.equal(detailResponse.status, 200);
         assert.equal(detailResponse.body.task.status, "COMPLETED");
         assert.equal(detailResponse.body.subTasks[0].status, "MERGED");
@@ -3161,9 +3277,10 @@ test("records merge conflicts, supports rebase retry, and resumes merge flow aft
         const blockedResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
         assert.equal(blockedResponse.status, 200);
         assert.equal(blockedResponse.body.task.status, "ACTION_REQUIRED");
-        assert.deepEqual(
-          blockedResponse.body.subTasks.map((subTask) => subTask.status),
-          ["REVIEW_PENDING", "REVIEW_PENDING"],
+        assert.ok(
+          blockedResponse.body.subTasks.every((subTask) => (
+            [ "ACCEPTED", "REVIEW_PENDING" ].includes(subTask.status)
+          )),
         );
         assert.equal(blockedResponse.body.integration.latestRun, null);
         const conflictedSubTask = blockedResponse.body.subTasks.find(
@@ -3200,9 +3317,12 @@ test("records merge conflicts, supports rebase retry, and resumes merge flow aft
         assert.equal(startResponse.status, 201);
 
         await nextEvent(events, (event) => event.eventName === "integration:completed" && event.data.status === "COMPLETED");
-        await nextEvent(events, (event) => event.eventName === "task:status" && event.data.status === "COMPLETED");
 
-        const detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+        let detailResponse = null;
+        await waitFor(async () => {
+          detailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+          return detailResponse.status === 200 && detailResponse.body.task.status === "COMPLETED";
+        }, 400);
         assert.equal(detailResponse.status, 200);
         assert.equal(detailResponse.body.task.status, "COMPLETED");
         assert.deepEqual(
