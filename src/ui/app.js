@@ -817,6 +817,71 @@ const UI_MESSAGES = {
     expandNavButton: "展开顶部导航",
     collapseSidebarButton: "收起项目栏",
     expandSidebarButton: "展开项目栏",
+    workspaceCommandCenterEyebrow: "任务中心",
+    workspaceCommandCenterTitle: "少切页完成计划、交付和验收",
+    workspaceCommandCenterBadge: "工作台优先",
+    workspaceCommandCenterSummary: "对于全栈工程师，工作区先给你最关键的计划、交付和成品预览入口，复杂情况再展开深层页面。",
+    workspaceHubPlanEyebrow: "计划与审批",
+    workspaceHubPlanTitleIdle: "等待生成执行计划",
+    workspaceHubPlanTitlePlanning: "Leader 正在整理 DAG 草稿",
+    workspaceHubPlanTitleReady: "已有可审阅的计划草稿",
+    workspaceHubPlanTitleReview: "当前计划等待批准",
+    workspaceHubPlanSummaryIdle: "需求确认后，Leader 生成可编辑的 DAG 草稿；只有批准后才会开始执行。",
+    workspaceHubPlanSummaryPlanning: "先在工作区确认需求边界，系统会自动继续生成可编辑草稿。",
+    workspaceHubPlanSummaryReady: "这里先看摘要；需要改子任务、依赖和角色时，再进入完整计划编辑器。",
+    workspaceHubPlanSummaryReview: "计划已经可以批准。只有要修改节点、依赖或分工时，才需要打开完整编辑视图。",
+    workspaceHubPlanNote: "需要细改时再进入完整计划编辑器。",
+    workspaceHubPlanButton: "展开计划详情",
+    workspaceHubPlanCount: "{count} 个子任务",
+    workspaceHubDeliveryEyebrow: "运行与交付",
+    workspaceHubDeliveryTitleIdle: "等待执行成员物化",
+    workspaceHubDeliveryTitleActive: "系统正在自动推进交付链路",
+    workspaceHubDeliveryTitleCompleted: "交付链路已完成",
+    workspaceHubDeliverySummaryIdle: "批准后系统会自动推进成员执行、Leader 审查和集成；只有异常和最终验收才需要你介入。",
+    workspaceHubDeliverySummaryAttention: "当前有 {count} 个需要人工处理的异常或阻塞。正常链路仍会继续由系统和 Leader 推进。",
+    workspaceHubDeliverySummaryActive: "当前 {running} 个成员在执行，{waiting} 个在等待，已完成 {completed}/{total} 个子任务。",
+    workspaceHubDeliveryNote: "复杂问题仍可进入完整运行看板查看图谱、风险和信箱。",
+    workspaceHubDeliveryButton: "展开运行看板",
+    workspaceHubDeliveryCount: "{count} 个成员",
+    workspaceHubPreviewEyebrow: "最终成品验收",
+    workspaceHubPreviewTitleIdle: "还没有启动 Web 预览",
+    workspaceHubPreviewTitleStarting: "正在准备可验收预览",
+    workspaceHubPreviewTitleRunning: "成品预览已可直接验收",
+    workspaceHubPreviewSummaryIdle: "针对全栈仓库自动推荐可预览的应用根和启动命令，也支持你覆盖为自定义命令。",
+    workspaceHubPreviewSummaryStarting: "系统正在准备候选分支和应用入口，成功后会直接嵌入当前工作区。",
+    workspaceHubPreviewSummaryRunning: "预览已启动，你可以直接在当前页面完成最终成品验收。",
+    workspaceHubPreviewNote: "启动后可直接在工作区内进行成品验收，不必跳出到外部浏览器。",
+    workspaceHubPreviewButton: "进入成品预览",
+    workspaceHubPreviewTargetLabel: "默认目标",
+    workspaceHubPreviewTargetFallback: "任务主线",
+    previewStudioEyebrow: "Preview Studio",
+    previewStudioTitle: "最终成品 Web 预览",
+    previewStudioSummary: "用于全栈任务的最终验收：先选取候选交付分支，再快速启动预览，并在当前网页内查看成品效果。",
+    previewTargetLabel: "预览目标",
+    previewAppRootLabel: "应用根目录",
+    previewCommandLabel: "启动命令",
+    previewPortLabel: "端口",
+    previewPathLabel: "预览路径",
+    previewDetectedLabel: "检测结果",
+    previewDetectedEmpty: "系统会优先推荐最像可交付页面的应用入口。",
+    previewDetectedSummary: "{framework} · {path} · {packageManager}",
+    previewStartButton: "启动预览",
+    previewRestartButton: "重启预览",
+    previewStopButton: "停止预览",
+    previewOpenButton: "在新窗口打开",
+    previewTargetBadgeLabel: "目标分支",
+    previewAppBadgeLabel: "应用目录",
+    previewUrlBadgeLabel: "访问地址",
+    previewEmpty: "启动后将在这里显示可交互的成品页面预览。",
+    previewEmptyFailed: "预览启动失败。请检查命令、应用根目录或日志输出。",
+    previewLogsTitle: "预览日志",
+    previewLogsIdle: "等待启动",
+    previewLogsEmpty: "预览日志会显示在这里。",
+    previewStatusIdle: "待启动",
+    previewStatusStarting: "启动中",
+    previewStatusRunning: "运行中",
+    previewStatusStopped: "已停止",
+    previewStatusFailed: "失败",
     metricsTitle: "指标概览",
     metricsEmpty: "指标视图即将上线。任务执行统计、Agent 利用率和性能数据会在这里显示。",
   },
@@ -1597,6 +1662,71 @@ const UI_MESSAGES = {
     expandNavButton: "Expand top navigation",
     collapseSidebarButton: "Collapse project sidebar",
     expandSidebarButton: "Expand project sidebar",
+    workspaceCommandCenterEyebrow: "Task hub",
+    workspaceCommandCenterTitle: "Plan, delivery, and acceptance without hopping views",
+    workspaceCommandCenterBadge: "Workspace first",
+    workspaceCommandCenterSummary: "For full-stack engineers, the workspace now surfaces the shortest route to plan approval, delivery supervision, and final product preview.",
+    workspaceHubPlanEyebrow: "Plan and approval",
+    workspaceHubPlanTitleIdle: "Waiting for an execution plan",
+    workspaceHubPlanTitlePlanning: "The leader is drafting the DAG",
+    workspaceHubPlanTitleReady: "A draft plan is ready to inspect",
+    workspaceHubPlanTitleReview: "The current plan is waiting for approval",
+    workspaceHubPlanSummaryIdle: "After requirements are confirmed, the leader produces an editable DAG draft. Execution only starts after approval.",
+    workspaceHubPlanSummaryPlanning: "Confirm scope in the workspace first. The system will continue generating the editable draft automatically.",
+    workspaceHubPlanSummaryReady: "Use this summary first. Open the full plan editor only when you need to change nodes, dependencies, or roles.",
+    workspaceHubPlanSummaryReview: "The plan is ready to approve. Open the full editor only when you need to adjust nodes, dependencies, or ownership.",
+    workspaceHubPlanNote: "Only open the full plan editor when you need fine-grained changes.",
+    workspaceHubPlanButton: "Open plan detail",
+    workspaceHubPlanCount: "{count} subtasks",
+    workspaceHubDeliveryEyebrow: "Delivery flow",
+    workspaceHubDeliveryTitleIdle: "Waiting for members to materialize",
+    workspaceHubDeliveryTitleActive: "The system is advancing delivery automatically",
+    workspaceHubDeliveryTitleCompleted: "The delivery flow is complete",
+    workspaceHubDeliverySummaryIdle: "After approval, the system advances worker execution, leader review, and integration automatically. You only step in for exceptions and final acceptance.",
+    workspaceHubDeliverySummaryAttention: "There are currently {count} issues or blockers that need manual attention. The normal flow still remains leader and system owned.",
+    workspaceHubDeliverySummaryActive: "{running} members are running, {waiting} are waiting, and {completed}/{total} subtasks are complete.",
+    workspaceHubDeliveryNote: "Open the full operations board only when you need graph, risk, or mailbox depth.",
+    workspaceHubDeliveryButton: "Open operations board",
+    workspaceHubDeliveryCount: "{count} members",
+    workspaceHubPreviewEyebrow: "Final acceptance",
+    workspaceHubPreviewTitleIdle: "No web preview is running yet",
+    workspaceHubPreviewTitleStarting: "Preparing an acceptance preview",
+    workspaceHubPreviewTitleRunning: "The product preview is ready for review",
+    workspaceHubPreviewSummaryIdle: "The system recommends likely app roots and startup commands for full-stack repos, while still allowing custom overrides.",
+    workspaceHubPreviewSummaryStarting: "The system is preparing the candidate branch and app root. When it succeeds, the preview will embed directly in this workspace.",
+    workspaceHubPreviewSummaryRunning: "The preview is live. You can complete final product acceptance without leaving the page.",
+    workspaceHubPreviewNote: "Launch the preview and review the product inside the workspace instead of bouncing to an external browser.",
+    workspaceHubPreviewButton: "Open product preview",
+    workspaceHubPreviewTargetLabel: "Default target",
+    workspaceHubPreviewTargetFallback: "Task mainline",
+    previewStudioEyebrow: "Preview Studio",
+    previewStudioTitle: "Final product web preview",
+    previewStudioSummary: "Use this for full-stack task acceptance: choose the candidate delivery branch, launch the preview quickly, and review the product inside the current page.",
+    previewTargetLabel: "Preview target",
+    previewAppRootLabel: "App root",
+    previewCommandLabel: "Start command",
+    previewPortLabel: "Port",
+    previewPathLabel: "Preview path",
+    previewDetectedLabel: "Detection",
+    previewDetectedEmpty: "The system will recommend the app entry that most likely represents the shipped surface.",
+    previewDetectedSummary: "{framework} · {path} · {packageManager}",
+    previewStartButton: "Start preview",
+    previewRestartButton: "Restart preview",
+    previewStopButton: "Stop preview",
+    previewOpenButton: "Open in new window",
+    previewTargetBadgeLabel: "Target branch",
+    previewAppBadgeLabel: "App root",
+    previewUrlBadgeLabel: "URL",
+    previewEmpty: "An interactive product preview will appear here after startup.",
+    previewEmptyFailed: "Preview startup failed. Check the command, app root, or logs.",
+    previewLogsTitle: "Preview logs",
+    previewLogsIdle: "Waiting to start",
+    previewLogsEmpty: "Preview logs will appear here.",
+    previewStatusIdle: "Idle",
+    previewStatusStarting: "Starting",
+    previewStatusRunning: "Running",
+    previewStatusStopped: "Stopped",
+    previewStatusFailed: "Failed",
     metricsTitle: "Metrics Overview",
     metricsEmpty: "Metrics view coming soon. Task execution stats, agent utilization, and performance data will appear here.",
   },
@@ -1737,6 +1867,8 @@ const state = {
   taskListSearch: "",
   systemSandboxPolicy: null,
   taskDetail: null,
+  taskPreview: null,
+  taskPreviewPollTimer: null,
   taskPlanDraft: null,
   taskPlanDraftState: null,
   taskPlanNotice: null,
@@ -1873,6 +2005,24 @@ const elements = {
   taskIntegrationShell: document.querySelector("#task-integration-shell"),
   taskIntegrationStartButton: document.querySelector("#task-integration-start-button"),
   taskIntegrationStatusBadge: document.querySelector("#task-integration-status-badge"),
+  taskHubDeliveryBadge: document.querySelector("#task-hub-delivery-badge"),
+  taskHubDeliveryCount: document.querySelector("#task-hub-delivery-count"),
+  taskHubDeliveryNote: document.querySelector("#task-hub-delivery-note"),
+  taskHubDeliveryOpenButton: document.querySelector("#task-hub-delivery-open-button"),
+  taskHubDeliverySummary: document.querySelector("#task-hub-delivery-summary"),
+  taskHubDeliveryTitle: document.querySelector("#task-hub-delivery-title"),
+  taskHubPlanBadge: document.querySelector("#task-hub-plan-badge"),
+  taskHubPlanCount: document.querySelector("#task-hub-plan-count"),
+  taskHubPlanNote: document.querySelector("#task-hub-plan-note"),
+  taskHubPlanOpenButton: document.querySelector("#task-hub-plan-open-button"),
+  taskHubPlanSummary: document.querySelector("#task-hub-plan-summary"),
+  taskHubPlanTitle: document.querySelector("#task-hub-plan-title"),
+  taskHubPreviewBadge: document.querySelector("#task-hub-preview-badge"),
+  taskHubPreviewFocusButton: document.querySelector("#task-hub-preview-focus-button"),
+  taskHubPreviewNote: document.querySelector("#task-hub-preview-note"),
+  taskHubPreviewSummary: document.querySelector("#task-hub-preview-summary"),
+  taskHubPreviewTarget: document.querySelector("#task-hub-preview-target"),
+  taskHubPreviewTitle: document.querySelector("#task-hub-preview-title"),
   taskExecutionAgentField: document.querySelector("#task-execution-agent-field"),
   taskExecutionAgentSelect: document.querySelector("#task-execution-agent-select"),
   taskExecutionChangeAgentButton: document.querySelector("#task-execution-change-agent-button"),
@@ -2054,6 +2204,28 @@ const elements = {
   taskPlanSummary: document.querySelector("#task-plan-summary"),
   taskPlanTemplateSelect: document.querySelector("#task-plan-template-select"),
   taskPlanVersion: document.querySelector("#task-plan-version"),
+  taskPreviewAppBadge: document.querySelector("#task-preview-app-badge"),
+  taskPreviewAppRootSelect: document.querySelector("#task-preview-app-root-select"),
+  taskPreviewCommandInput: document.querySelector("#task-preview-command-input"),
+  taskPreviewDetected: document.querySelector("#task-preview-detected"),
+  taskPreviewEmpty: document.querySelector("#task-preview-empty"),
+  taskPreviewFeedback: document.querySelector("#task-preview-feedback"),
+  taskPreviewForm: document.querySelector("#task-preview-form"),
+  taskPreviewFrame: document.querySelector("#task-preview-frame"),
+  taskPreviewLog: document.querySelector("#task-preview-log"),
+  taskPreviewLogStatus: document.querySelector("#task-preview-log-status"),
+  taskPreviewOpenLink: document.querySelector("#task-preview-open-link"),
+  taskPreviewPathInput: document.querySelector("#task-preview-path-input"),
+  taskPreviewPortInput: document.querySelector("#task-preview-port-input"),
+  taskPreviewRestartButton: document.querySelector("#task-preview-restart-button"),
+  taskPreviewStartButton: document.querySelector("#task-preview-start-button"),
+  taskPreviewStatusBadge: document.querySelector("#task-preview-status-badge"),
+  taskPreviewStopButton: document.querySelector("#task-preview-stop-button"),
+  taskPreviewStudio: document.querySelector("#task-preview-studio"),
+  taskPreviewSummary: document.querySelector("#task-preview-summary"),
+  taskPreviewTargetBadge: document.querySelector("#task-preview-target-badge"),
+  taskPreviewTargetSelect: document.querySelector("#task-preview-target-select"),
+  taskPreviewUrlBadge: document.querySelector("#task-preview-url-badge"),
   taskNextActionBadge: document.querySelector("#task-next-action-badge"),
   taskNextActionButton: document.querySelector("#task-next-action-button"),
   taskNextActionSummary: document.querySelector("#task-next-action-summary"),
@@ -2309,6 +2481,29 @@ elements.taskExecutionReworkButton.addEventListener("click", onReworkSubTask);
 elements.taskExecutionResumeMergeButton.addEventListener("click", onResumeTaskMerge);
 elements.taskExecutionReworkDescription.addEventListener("input", onExecutionDraftDescriptionInput);
 elements.taskExecutionMailboxForm.addEventListener("submit", onSendMailboxMessage);
+elements.taskHubPlanOpenButton?.addEventListener("click", () => {
+  focusTaskPlanPreview();
+});
+elements.taskHubDeliveryOpenButton?.addEventListener("click", () => {
+  focusTaskDeliveryOverview();
+});
+elements.taskHubPreviewFocusButton?.addEventListener("click", () => {
+  focusTaskPreviewStudio();
+});
+elements.taskPreviewTargetSelect?.addEventListener("change", onTaskPreviewPresetChange);
+elements.taskPreviewAppRootSelect?.addEventListener("change", onTaskPreviewPresetChange);
+elements.taskPreviewCommandInput?.addEventListener("input", () => {
+  elements.taskPreviewCommandInput.dataset.autoFilled = "false";
+});
+elements.taskPreviewPortInput?.addEventListener("input", () => {
+  elements.taskPreviewPortInput.dataset.autoFilled = "false";
+});
+elements.taskPreviewPathInput?.addEventListener("input", () => {
+  elements.taskPreviewPathInput.dataset.autoFilled = "false";
+});
+elements.taskPreviewForm?.addEventListener("submit", onStartTaskPreview);
+elements.taskPreviewRestartButton?.addEventListener("click", onRestartTaskPreview);
+elements.taskPreviewStopButton?.addEventListener("click", onStopTaskPreview);
 elements.taskTitleInput.addEventListener("input", onTaskTitleInput);
 elements.taskExecutionMailboxSenderSelect.addEventListener("change", () => {
   if (state.taskDetail && getSelectedExecutionSubTask()) {
@@ -3512,14 +3707,19 @@ async function loadTaskDetail(taskId, options = {}) {
   setButtonBusy(elements.refreshTaskDetailButton, true, t("refreshing"));
 
   try {
-    const response = await fetchJson(`/api/tasks/${encodeURIComponent(taskId)}`);
+    const [response, previewResponse] = await Promise.all([
+      fetchJson(`/api/tasks/${encodeURIComponent(taskId)}`),
+      fetchJson(`/api/tasks/${encodeURIComponent(taskId)}/preview`).catch(() => ({ preview: null })),
+    ]);
     closeLeaderPlanDetailDialog();
     state.selectedTaskId = taskId;
     state.taskDetail = response;
+    state.taskPreview = previewResponse?.preview ?? null;
     hydrateExecutionState(response);
     writeStorage(STORAGE_KEYS.selectedTaskId, taskId);
     renderTaskList();
     renderTaskDetail();
+    scheduleTaskPreviewPoll();
 
     if (options.preserveStream !== true) {
       connectTaskStream(taskId);
@@ -3530,6 +3730,58 @@ async function loadTaskDetail(taskId, options = {}) {
   } finally {
     setButtonBusy(elements.refreshTaskDetailButton, false, t("refreshTaskButton"));
   }
+}
+
+async function refreshTaskPreview(taskId, options = {}) {
+  if (!taskId) {
+    state.taskPreview = null;
+    clearTaskPreviewPoll();
+    return null;
+  }
+
+  try {
+    const response = await fetchJson(`/api/tasks/${encodeURIComponent(taskId)}/preview`);
+    state.taskPreview = response?.preview ?? null;
+
+    if (options.render !== false && state.taskDetail?.task?.id === taskId) {
+      renderTaskPreview(state.taskDetail);
+    }
+
+    scheduleTaskPreviewPoll();
+    return state.taskPreview;
+  } catch (error) {
+    if (options.silent !== true) {
+      showFeedback(elements.taskPreviewFeedback, "error", buildTaskErrorMessage(error));
+    }
+
+    clearTaskPreviewPoll();
+    return null;
+  }
+}
+
+function clearTaskPreviewPoll() {
+  if (state.taskPreviewPollTimer) {
+    window.clearTimeout(state.taskPreviewPollTimer);
+    state.taskPreviewPollTimer = null;
+  }
+}
+
+function scheduleTaskPreviewPoll() {
+  clearTaskPreviewPoll();
+
+  if (!state.selectedTaskId) {
+    return;
+  }
+
+  const status = state.taskPreview?.session?.status ?? null;
+
+  if (!["STARTING", "RUNNING"].includes(status)) {
+    return;
+  }
+
+  state.taskPreviewPollTimer = window.setTimeout(() => {
+    void refreshTaskPreview(state.selectedTaskId, { silent: true });
+  }, status === "STARTING" ? 2000 : 5000);
 }
 
 async function loadAgents(options = {}) {
@@ -4219,6 +4471,8 @@ function renderTaskDetail() {
   renderLeaderConversation(detail);
   renderTaskDocumentPreview(detail);
   renderLeaderPlanPreview(detail);
+  renderTaskWorkspaceHub(detail);
+  renderTaskPreview(detail);
   syncEditablePlanDraft(detail);
   renderDashboardTeamOverview(detail);
   renderCleanupWarnings(detail.cleanupWarnings ?? []);
@@ -4281,6 +4535,353 @@ function renderWorkspaceTaskActions(task) {
   elements.taskWorkspaceDeleteButton.disabled = !deleteAllowed;
   elements.taskWorkspaceDeleteButton.title = !deleteAllowed ? t("taskDeleteRequiresPauseHint") : "";
   elements.taskWorkspaceDeleteButton.textContent = t("taskDeleteButton");
+}
+
+function renderTaskWorkspaceHub(detail) {
+  const parsedPlan = parseCurrentPlanJson(detail.task.currentPlanJson);
+  const planNodeCount = getPlanNodes(parsedPlan).length;
+  const subTasks = detail.subTasks ?? [];
+  const board = detail.board ?? null;
+  const latestIntegrationRun = detail.integration?.latestRun ?? null;
+  const previewSession = state.taskPreview?.session ?? null;
+
+  if (elements.taskHubPlanBadge) {
+    elements.taskHubPlanBadge.textContent = buildTaskDisplayStatusLabel(detail.task);
+    elements.taskHubPlanBadge.className = `badge ${buildTaskStatusBadgeClass(detail.task)}`;
+  }
+  if (elements.taskHubPlanTitle) {
+    elements.taskHubPlanTitle.textContent = detail.task.status === "PLAN_REVIEW"
+      ? t("workspaceHubPlanTitleReview")
+      : detail.task.status === "PLANNING"
+        ? t("workspaceHubPlanTitlePlanning")
+        : planNodeCount > 0
+          ? t("workspaceHubPlanTitleReady")
+          : t("workspaceHubPlanTitleIdle");
+  }
+  if (elements.taskHubPlanSummary) {
+    elements.taskHubPlanSummary.textContent = detail.task.status === "PLAN_REVIEW"
+      ? t("workspaceHubPlanSummaryReview")
+      : detail.task.status === "PLANNING"
+        ? t("workspaceHubPlanSummaryPlanning")
+        : planNodeCount > 0
+          ? t("workspaceHubPlanSummaryReady")
+          : t("workspaceHubPlanSummaryIdle");
+  }
+  if (elements.taskHubPlanCount) {
+    elements.taskHubPlanCount.textContent = t("workspaceHubPlanCount", { count: planNodeCount });
+  }
+
+  if (elements.taskHubDeliveryBadge) {
+    const tone = detail.task.status === "ACTION_REQUIRED"
+      ? "badge--dirty"
+      : latestIntegrationRun?.status === "COMPLETED" || detail.task.status === "COMPLETED"
+        ? "badge--clean"
+        : subTasks.length > 0
+          ? "badge--accent-soft"
+          : "badge--outline";
+    elements.taskHubDeliveryBadge.textContent = latestIntegrationRun
+      ? buildIntegrationRunStatusLabel(latestIntegrationRun.status)
+      : buildTaskDisplayStatusLabel(detail.task);
+    elements.taskHubDeliveryBadge.className = `badge ${tone}`;
+  }
+  if (elements.taskHubDeliveryTitle) {
+    elements.taskHubDeliveryTitle.textContent = detail.task.status === "COMPLETED"
+      ? t("workspaceHubDeliveryTitleCompleted")
+      : subTasks.length > 0
+        ? t("workspaceHubDeliveryTitleActive")
+        : t("workspaceHubDeliveryTitleIdle");
+  }
+  if (elements.taskHubDeliverySummary) {
+    const waiting = board?.workflow?.waiting ?? 0;
+    const running = board?.summary?.running ?? 0;
+    const manualAttention = board?.workflow?.manualAttentionCount ?? 0;
+    elements.taskHubDeliverySummary.textContent = subTasks.length === 0
+      ? t("workspaceHubDeliverySummaryIdle")
+      : manualAttention > 0
+        ? t("workspaceHubDeliverySummaryAttention", { count: manualAttention })
+        : t("workspaceHubDeliverySummaryActive", {
+            running,
+            waiting,
+            completed: board?.workflow?.completed ?? 0,
+            total: board?.workflow?.total ?? subTasks.length,
+          });
+  }
+  if (elements.taskHubDeliveryCount) {
+    elements.taskHubDeliveryCount.textContent = t("workspaceHubDeliveryCount", { count: subTasks.length });
+  }
+
+  if (elements.taskHubPreviewBadge) {
+    elements.taskHubPreviewBadge.textContent = buildPreviewSessionStatusLabel(previewSession?.status);
+    elements.taskHubPreviewBadge.className = `badge ${buildPreviewSessionBadgeClass(previewSession?.status)}`;
+  }
+  if (elements.taskHubPreviewTitle) {
+    elements.taskHubPreviewTitle.textContent = previewSession?.status === "RUNNING"
+      ? t("workspaceHubPreviewTitleRunning")
+      : previewSession?.status === "STARTING"
+        ? t("workspaceHubPreviewTitleStarting")
+        : t("workspaceHubPreviewTitleIdle");
+  }
+  if (elements.taskHubPreviewSummary) {
+    elements.taskHubPreviewSummary.textContent = previewSession?.status === "RUNNING"
+      ? (previewSession.note || t("workspaceHubPreviewSummaryRunning"))
+      : previewSession?.status === "STARTING"
+        ? t("workspaceHubPreviewSummaryStarting")
+        : t("workspaceHubPreviewSummaryIdle");
+  }
+  if (elements.taskHubPreviewTarget) {
+    elements.taskHubPreviewTarget.textContent = `${t("workspaceHubPreviewTargetLabel")} · ${previewSession?.targetLabel ?? state.taskPreview?.recommendation?.label ?? t("workspaceHubPreviewTargetFallback")}`;
+  }
+}
+
+function resetTaskPreviewUi() {
+  clearFeedback(elements.taskPreviewFeedback);
+  if (elements.taskPreviewTargetSelect) {
+    syncSelectOptions(elements.taskPreviewTargetSelect, [], "");
+  }
+  if (elements.taskPreviewAppRootSelect) {
+    syncSelectOptions(elements.taskPreviewAppRootSelect, [], "");
+  }
+  if (elements.taskPreviewCommandInput) {
+    elements.taskPreviewCommandInput.value = "";
+  }
+  if (elements.taskPreviewPortInput) {
+    elements.taskPreviewPortInput.value = "4173";
+  }
+  if (elements.taskPreviewPathInput) {
+    elements.taskPreviewPathInput.value = "/";
+  }
+  if (elements.taskPreviewDetected) {
+    elements.taskPreviewDetected.textContent = t("previewDetectedEmpty");
+  }
+  if (elements.taskPreviewStatusBadge) {
+    elements.taskPreviewStatusBadge.textContent = t("previewStatusIdle");
+    elements.taskPreviewStatusBadge.className = "badge badge--outline";
+  }
+  if (elements.taskPreviewSummary) {
+    elements.taskPreviewSummary.textContent = t("previewStudioSummary");
+  }
+  if (elements.taskPreviewTargetBadge) {
+    elements.taskPreviewTargetBadge.textContent = `${t("previewTargetBadgeLabel")} · -`;
+  }
+  if (elements.taskPreviewAppBadge) {
+    elements.taskPreviewAppBadge.textContent = `${t("previewAppBadgeLabel")} · -`;
+  }
+  if (elements.taskPreviewUrlBadge) {
+    elements.taskPreviewUrlBadge.textContent = `${t("previewUrlBadgeLabel")} · -`;
+  }
+  if (elements.taskPreviewOpenLink) {
+    elements.taskPreviewOpenLink.hidden = true;
+    elements.taskPreviewOpenLink.href = "#";
+  }
+  if (elements.taskPreviewLogStatus) {
+    elements.taskPreviewLogStatus.textContent = t("previewLogsIdle");
+    elements.taskPreviewLogStatus.className = "badge badge--outline";
+  }
+  if (elements.taskPreviewLog) {
+    elements.taskPreviewLog.textContent = t("previewLogsEmpty");
+  }
+  if (elements.taskPreviewFrame) {
+    elements.taskPreviewFrame.hidden = true;
+    elements.taskPreviewFrame.removeAttribute("src");
+  }
+  if (elements.taskPreviewEmpty) {
+    elements.taskPreviewEmpty.hidden = false;
+  }
+  if (elements.taskPreviewRestartButton) {
+    elements.taskPreviewRestartButton.hidden = true;
+  }
+  if (elements.taskPreviewStopButton) {
+    elements.taskPreviewStopButton.hidden = true;
+  }
+}
+
+function renderTaskPreview(detail) {
+  const preview = state.taskPreview;
+  const session = preview?.session ?? null;
+  const targets = Array.isArray(preview?.targets) ? preview.targets : [];
+  const appRoots = Array.isArray(preview?.appRoots) ? preview.appRoots : [];
+  const defaults = preview?.defaults ?? {};
+  const selectedTarget = elements.taskPreviewTargetSelect?.value || defaults.targetId || defaults.targetType || "";
+  const selectedAppRoot = elements.taskPreviewAppRootSelect?.value || defaults.appRoot || "";
+
+  clearFeedback(elements.taskPreviewFeedback);
+  syncSelectOptions(
+    elements.taskPreviewTargetSelect,
+    targets.map((target) => target.id || target.type || ""),
+    selectedTarget,
+  );
+  updateSelectOptionLabels(elements.taskPreviewTargetSelect, targets, (target) => target.label ?? target.branchName ?? target.type ?? "-");
+
+  syncSelectOptions(
+    elements.taskPreviewAppRootSelect,
+    appRoots.map((root) => root.path ?? ""),
+    selectedAppRoot,
+  );
+  updateSelectOptionLabels(elements.taskPreviewAppRootSelect, appRoots, (root) => root.label ?? root.path ?? "-");
+
+  const activeTarget = targets.find((target) => (target.id || target.type || "") === (elements.taskPreviewTargetSelect?.value || selectedTarget)) ?? null;
+  const activeAppRoot = appRoots.find((root) => (root.path ?? "") === (elements.taskPreviewAppRootSelect?.value || selectedAppRoot)) ?? null;
+  const suggestedCommand = activeAppRoot?.command ?? defaults.command ?? "";
+  const suggestedPath = defaults.path ?? "/";
+  const suggestedPort = defaults.port ?? 4173;
+
+  if (elements.taskPreviewCommandInput && (!elements.taskPreviewCommandInput.value || elements.taskPreviewCommandInput.dataset.autoFilled === "true")) {
+    elements.taskPreviewCommandInput.value = session?.command ?? suggestedCommand;
+    elements.taskPreviewCommandInput.dataset.autoFilled = "true";
+  }
+  if (elements.taskPreviewPortInput && (!elements.taskPreviewPortInput.value || elements.taskPreviewPortInput.dataset.autoFilled === "true")) {
+    elements.taskPreviewPortInput.value = String(session?.port ?? suggestedPort);
+    elements.taskPreviewPortInput.dataset.autoFilled = "true";
+  }
+  if (elements.taskPreviewPathInput && (!elements.taskPreviewPathInput.value || elements.taskPreviewPathInput.dataset.autoFilled === "true")) {
+    elements.taskPreviewPathInput.value = defaults.path ?? suggestedPath;
+    elements.taskPreviewPathInput.dataset.autoFilled = "true";
+  }
+
+  if (elements.taskPreviewDetected) {
+    elements.taskPreviewDetected.textContent = activeAppRoot
+      ? t("previewDetectedSummary", {
+          framework: activeAppRoot.framework ?? t("unknown"),
+          path: activeAppRoot.path ?? ".",
+          packageManager: activeAppRoot.packageManager ?? t("unknown"),
+        })
+      : t("previewDetectedEmpty");
+  }
+
+  if (elements.taskPreviewStatusBadge) {
+    elements.taskPreviewStatusBadge.textContent = buildPreviewSessionStatusLabel(session?.status);
+    elements.taskPreviewStatusBadge.className = `badge ${buildPreviewSessionBadgeClass(session?.status)}`;
+  }
+  if (elements.taskPreviewSummary) {
+    elements.taskPreviewSummary.textContent = session?.note
+      ?? activeTarget?.description
+      ?? t("previewStudioSummary");
+  }
+  if (elements.taskPreviewTargetBadge) {
+    elements.taskPreviewTargetBadge.textContent = `${t("previewTargetBadgeLabel")} · ${session?.targetLabel ?? activeTarget?.label ?? t("workspaceHubPreviewTargetFallback")}`;
+  }
+  if (elements.taskPreviewAppBadge) {
+    elements.taskPreviewAppBadge.textContent = `${t("previewAppBadgeLabel")} · ${session?.appRoot ?? activeAppRoot?.path ?? "-"}`;
+  }
+  if (elements.taskPreviewUrlBadge) {
+    elements.taskPreviewUrlBadge.textContent = `${t("previewUrlBadgeLabel")} · ${session?.url ?? "-"}`;
+  }
+  if (elements.taskPreviewOpenLink) {
+    elements.taskPreviewOpenLink.hidden = !session?.url;
+    elements.taskPreviewOpenLink.href = session?.url ?? "#";
+  }
+  if (elements.taskPreviewLogStatus) {
+    elements.taskPreviewLogStatus.textContent = buildPreviewSessionStatusLabel(session?.status);
+    elements.taskPreviewLogStatus.className = `badge ${buildPreviewSessionBadgeClass(session?.status)}`;
+  }
+  if (elements.taskPreviewLog) {
+    elements.taskPreviewLog.textContent = session?.logs || t("previewLogsEmpty");
+  }
+  if (elements.taskPreviewFrame) {
+    if (session?.url && session.status === "RUNNING") {
+      elements.taskPreviewFrame.hidden = false;
+      elements.taskPreviewFrame.src = session.url;
+    } else {
+      elements.taskPreviewFrame.hidden = true;
+      elements.taskPreviewFrame.removeAttribute("src");
+    }
+  }
+  if (elements.taskPreviewEmpty) {
+    elements.taskPreviewEmpty.hidden = Boolean(session?.url && session.status === "RUNNING");
+    if (!session?.url || session.status !== "RUNNING") {
+      elements.taskPreviewEmpty.textContent = session?.status === "FAILED"
+        ? t("previewEmptyFailed")
+        : t("previewEmpty");
+    }
+  }
+  if (elements.taskPreviewRestartButton) {
+    elements.taskPreviewRestartButton.hidden = !session;
+  }
+  if (elements.taskPreviewStopButton) {
+    elements.taskPreviewStopButton.hidden = !session;
+  }
+  if (elements.taskPreviewStartButton) {
+    elements.taskPreviewStartButton.disabled = !normalizeOptionalText(elements.taskPreviewCommandInput?.value)
+      && !suggestedCommand
+      && !session?.command;
+  }
+  if (elements.taskPreviewRestartButton) {
+    elements.taskPreviewRestartButton.disabled = !session;
+  }
+  if (elements.taskPreviewStopButton) {
+    elements.taskPreviewStopButton.disabled = !session;
+  }
+}
+
+function updateSelectOptionLabels(select, entries, buildLabel) {
+  if (!select) {
+    return;
+  }
+
+  [...select.options].forEach((option) => {
+    const entry = entries.find((item) => String(item.id ?? item.type ?? item.path ?? "") === option.value);
+    if (entry) {
+      option.textContent = buildLabel(entry);
+    }
+  });
+}
+
+function buildPreviewSessionStatusLabel(status) {
+  switch (status) {
+    case "FAILED":
+      return t("previewStatusFailed");
+    case "RUNNING":
+      return t("previewStatusRunning");
+    case "STARTING":
+      return t("previewStatusStarting");
+    case "STOPPED":
+      return t("previewStatusStopped");
+    default:
+      return t("previewStatusIdle");
+  }
+}
+
+function buildPreviewSessionBadgeClass(status) {
+  switch (status) {
+    case "FAILED":
+      return "badge--dirty";
+    case "RUNNING":
+      return "badge--clean";
+    case "STARTING":
+      return "badge--accent-soft";
+    case "STOPPED":
+      return "badge--outline";
+    default:
+      return "badge--outline";
+  }
+}
+
+function focusTaskPreviewStudio() {
+  switchView("workspace");
+  elements.taskPreviewStudio?.scrollIntoView({ behavior: "smooth", block: "start" });
+  elements.taskPreviewTargetSelect?.focus();
+}
+
+function focusTaskPlanPreview() {
+  switchView("workspace");
+
+  const detail = state.taskDetail;
+  const parsedPlan = parseCurrentPlanJson(detail?.task?.currentPlanJson);
+  const nodes = getPlanNodes(parsedPlan);
+
+  if (detail && nodes.length > 0) {
+    openLeaderPlanDetailDialog(0, nodes[0]);
+    return;
+  }
+
+  elements.taskLeaderPlanTitle?.scrollIntoView({ behavior: "smooth", block: "start" });
+  elements.taskLeaderPlanList?.querySelector("button")?.focus();
+}
+
+function focusTaskDeliveryOverview() {
+  switchView("workspace");
+  document.querySelector("#task-team-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  elements.taskTeamMemberList?.querySelector("button, [tabindex], a")?.focus();
 }
 
 function renderLeaderConversation(detail) {
@@ -7113,11 +7714,13 @@ function clearTaskList() {
 
 function clearTaskDetail() {
   resetTaskMessageQueueState({ clearInput: true });
+  clearTaskPreviewPoll();
   state.executionDrafts = new Map();
   state.liveSessionOutputs = new Map();
   state.selectedExecutionSessionId = null;
   state.selectedExecutionSubTaskId = null;
   state.taskDetail = null;
+  state.taskPreview = null;
   state.taskPlanDraft = null;
   state.taskPlanDraftState = null;
   state.taskPlanNotice = null;
@@ -7337,6 +7940,7 @@ function clearTaskDetail() {
   elements.taskPlanHistoryList.replaceChildren();
   elements.taskPlanGraph.replaceChildren();
   elements.taskPlanList.replaceChildren();
+  resetTaskPreviewUi();
 }
 
 function syncBranchChoices() {
@@ -7772,12 +8376,14 @@ async function onTaskNextAction() {
   }
 
   if (action === "plan") {
-    switchView("plan");
+    switchView("workspace");
+    elements.taskHubPlanOpenButton?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
 
   if (action === "ops") {
-    switchView("ops");
+    switchView("workspace");
+    elements.taskHubDeliveryOpenButton?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
 
@@ -7787,6 +8393,88 @@ async function onTaskNextAction() {
     } finally {
       renderTaskStageBoard(state.taskDetail);
     }
+  }
+}
+
+function onTaskPreviewPresetChange() {
+  if (elements.taskPreviewCommandInput) {
+    elements.taskPreviewCommandInput.dataset.autoFilled = "true";
+  }
+  if (elements.taskPreviewPortInput) {
+    elements.taskPreviewPortInput.dataset.autoFilled = "true";
+  }
+  if (elements.taskPreviewPathInput) {
+    elements.taskPreviewPathInput.dataset.autoFilled = "true";
+  }
+  if (state.taskDetail) {
+    renderTaskPreview(state.taskDetail);
+  }
+}
+
+async function onStartTaskPreview(event) {
+  event?.preventDefault?.();
+
+  if (!state.selectedTaskId) {
+    return;
+  }
+
+  clearFeedback(elements.taskPreviewFeedback);
+  setButtonBusy(elements.taskPreviewStartButton, true, t("starting"));
+
+  try {
+    const body = {
+      appRoot: normalizeOptionalText(elements.taskPreviewAppRootSelect?.value),
+      command: normalizeOptionalText(elements.taskPreviewCommandInput?.value),
+      path: normalizePreviewPath(elements.taskPreviewPathInput?.value),
+      port: normalizePreviewPort(elements.taskPreviewPortInput?.value),
+      targetId: normalizeOptionalText(elements.taskPreviewTargetSelect?.value),
+    };
+    const response = await fetchJson(`/api/tasks/${encodeURIComponent(state.selectedTaskId)}/preview/start`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+      },
+    });
+    state.taskPreview = response?.preview ?? null;
+    renderTaskPreview(state.taskDetail);
+    scheduleTaskPreviewPoll();
+  } catch (error) {
+    showFeedback(elements.taskPreviewFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskPreviewStartButton, false, t("previewStartButton"));
+  }
+}
+
+async function onRestartTaskPreview() {
+  if (!state.selectedTaskId) {
+    return;
+  }
+
+  await onStartTaskPreview({
+    preventDefault() {},
+  });
+}
+
+async function onStopTaskPreview() {
+  if (!state.selectedTaskId) {
+    return;
+  }
+
+  clearFeedback(elements.taskPreviewFeedback);
+  setButtonBusy(elements.taskPreviewStopButton, true, t("stopping"));
+
+  try {
+    const response = await fetchJson(`/api/tasks/${encodeURIComponent(state.selectedTaskId)}/preview/stop`, {
+      method: "POST",
+    });
+    state.taskPreview = response?.preview ?? null;
+    clearTaskPreviewPoll();
+    renderTaskPreview(state.taskDetail);
+  } catch (error) {
+    showFeedback(elements.taskPreviewFeedback, "error", buildTaskErrorMessage(error));
+  } finally {
+    setButtonBusy(elements.taskPreviewStopButton, false, t("previewStopButton"));
   }
 }
 
@@ -10100,6 +10788,21 @@ function parseMailboxSchemaInput(value) {
 
 function normalizeOptionalText(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
+}
+
+function normalizePreviewPath(value) {
+  const normalized = normalizeOptionalText(value);
+
+  if (!normalized) {
+    return "/";
+  }
+
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function normalizePreviewPort(value) {
+  const numeric = Number.parseInt(String(value ?? "").trim(), 10);
+  return Number.isInteger(numeric) && numeric >= 1000 && numeric <= 65535 ? numeric : 4173;
 }
 
 function formatTimestamp(value) {

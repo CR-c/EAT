@@ -21,7 +21,7 @@
           <span class="topnav__tab-icon">add_circle</span>
           <span class="topnav__tab-label" data-i18n="navTaskCreate">任务创建</span>
         </button>
-        <button class="topnav__tab" type="button" data-view="tasks">
+        <button class="topnav__tab" type="button" data-view="tasks" hidden>
           <span class="topnav__tab-icon">assignment</span>
           <span class="topnav__tab-label" data-i18n="navTasks">任务列表</span>
         </button>
@@ -29,11 +29,11 @@
           <span class="topnav__tab-icon">terminal</span>
           <span class="topnav__tab-label" data-i18n="navWorkspace">工作区</span>
         </button>
-        <button class="topnav__tab" type="button" data-view="plan">
+        <button class="topnav__tab" type="button" data-view="plan" hidden>
           <span class="topnav__tab-icon">fact_check</span>
           <span class="topnav__tab-label" data-i18n="navPlan">计划审阅</span>
         </button>
-        <button class="topnav__tab" type="button" data-view="ops">
+        <button class="topnav__tab" type="button" data-view="ops" hidden>
           <span class="topnav__tab-icon">monitor</span>
           <span class="topnav__tab-label" data-i18n="navOps">运行看板</span>
         </button>
@@ -793,6 +793,150 @@
                   </section>
                 </aside>
               </div>
+
+              <section class="workspace-command-center" aria-labelledby="task-command-center-title">
+                <div class="panel__header panel__header--inline">
+                  <div>
+                    <p class="panel__eyebrow" data-i18n="workspaceCommandCenterEyebrow">任务中心</p>
+                    <h3 id="task-command-center-title" data-i18n="workspaceCommandCenterTitle">少切页完成计划、交付和验收</h3>
+                  </div>
+                  <span id="task-command-center-badge" class="badge badge--outline" data-i18n="workspaceCommandCenterBadge">工作台优先</span>
+                </div>
+                <p id="task-command-center-summary" class="workspace-command-center__summary" data-i18n="workspaceCommandCenterSummary">
+                  当前工作区会先突出最该处理的节点，并把成品预览放到同一页完成验收。
+                </p>
+                <div class="workspace-command-center__grid">
+                  <article class="workspace-stage-card workspace-stage-card--plan" id="task-hub-plan-card">
+                    <div class="workspace-stage-card__header">
+                      <div>
+                        <p class="panel__eyebrow" data-i18n="workspaceHubPlanEyebrow">计划与审批</p>
+                        <h4 id="task-hub-plan-title" class="plan-history__title" data-i18n="workspaceHubPlanTitleIdle">等待生成执行计划</h4>
+                      </div>
+                      <span id="task-hub-plan-badge" class="badge badge--outline">草稿</span>
+                    </div>
+                    <p id="task-hub-plan-summary" class="workspace-stage-card__summary" data-i18n="workspaceHubPlanSummaryIdle">
+                      需求确认后，Leader 生成可编辑的 DAG 草稿；只有批准后才会开始执行。
+                    </p>
+                    <div class="workspace-stage-card__meta">
+                      <span id="task-hub-plan-count" class="workspace-meta-pill workspace-meta-pill--soft">0 个子任务</span>
+                      <span id="task-hub-plan-note" class="workspace-stage-card__note" data-i18n="workspaceHubPlanNote">需要细改时再进入完整计划编辑器。</span>
+                    </div>
+                    <div class="workspace-stage-card__actions">
+                      <button id="task-hub-plan-open-button" class="button button--secondary" type="button" data-i18n="workspaceHubPlanButton">展开计划详情</button>
+                    </div>
+                  </article>
+
+                  <article class="workspace-stage-card workspace-stage-card--delivery" id="task-hub-delivery-card">
+                    <div class="workspace-stage-card__header">
+                      <div>
+                        <p class="panel__eyebrow" data-i18n="workspaceHubDeliveryEyebrow">运行与交付</p>
+                        <h4 id="task-hub-delivery-title" class="plan-history__title" data-i18n="workspaceHubDeliveryTitleIdle">等待执行成员物化</h4>
+                      </div>
+                      <span id="task-hub-delivery-badge" class="badge badge--outline">未开始</span>
+                    </div>
+                    <p id="task-hub-delivery-summary" class="workspace-stage-card__summary" data-i18n="workspaceHubDeliverySummaryIdle">
+                      批准后系统会自动推进成员执行、Leader 审查和集成；只有异常和最终验收才需要你介入。
+                    </p>
+                    <div class="workspace-stage-card__meta">
+                      <span id="task-hub-delivery-count" class="workspace-meta-pill workspace-meta-pill--soft">0 个成员</span>
+                      <span id="task-hub-delivery-note" class="workspace-stage-card__note" data-i18n="workspaceHubDeliveryNote">复杂问题仍可进入完整运行看板查看图谱、风险和信箱。</span>
+                    </div>
+                    <div class="workspace-stage-card__actions">
+                      <button id="task-hub-delivery-open-button" class="button button--secondary" type="button" data-i18n="workspaceHubDeliveryButton">展开运行看板</button>
+                    </div>
+                  </article>
+
+                  <article class="workspace-stage-card workspace-stage-card--preview" id="task-hub-preview-card">
+                    <div class="workspace-stage-card__header">
+                      <div>
+                        <p class="panel__eyebrow" data-i18n="workspaceHubPreviewEyebrow">最终成品验收</p>
+                        <h4 id="task-hub-preview-title" class="plan-history__title" data-i18n="workspaceHubPreviewTitleIdle">还没有启动 Web 预览</h4>
+                      </div>
+                      <span id="task-hub-preview-badge" class="badge badge--outline">待启动</span>
+                    </div>
+                    <p id="task-hub-preview-summary" class="workspace-stage-card__summary" data-i18n="workspaceHubPreviewSummaryIdle">
+                      针对全栈仓库自动推荐可预览的应用根和启动命令，也支持你覆盖为自定义命令。
+                    </p>
+                    <div class="workspace-stage-card__meta">
+                      <span id="task-hub-preview-target" class="workspace-meta-pill workspace-meta-pill--soft">默认目标 · 任务主线</span>
+                      <span id="task-hub-preview-note" class="workspace-stage-card__note" data-i18n="workspaceHubPreviewNote">启动后可直接在工作区内进行成品验收，不必跳出到外部浏览器。</span>
+                    </div>
+                    <div class="workspace-stage-card__actions">
+                      <button id="task-hub-preview-focus-button" class="button button--primary" type="button" data-i18n="workspaceHubPreviewButton">进入成品预览</button>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
+              <section id="task-preview-studio" class="preview-studio" aria-labelledby="task-preview-title">
+                <div class="panel__header panel__header--inline">
+                  <div>
+                    <p class="panel__eyebrow" data-i18n="previewStudioEyebrow">Preview Studio</p>
+                    <h3 id="task-preview-title" data-i18n="previewStudioTitle">最终成品 Web 预览</h3>
+                  </div>
+                  <div class="preview-studio__header-actions">
+                    <span id="task-preview-status-badge" class="badge badge--outline">待启动</span>
+                    <a id="task-preview-open-link" class="button button--secondary" href="#" target="_blank" rel="noreferrer noopener" hidden data-i18n="previewOpenButton">在新窗口打开</a>
+                  </div>
+                </div>
+                <p id="task-preview-summary" class="preview-studio__summary" data-i18n="previewStudioSummary">
+                  用于全栈任务的最终验收：先选取候选交付分支，再快速启动预览，并在当前网页内查看成品效果。
+                </p>
+                <form id="task-preview-form" class="preview-studio__form">
+                  <div class="preview-studio__grid">
+                    <label class="field" for="task-preview-target-select">
+                      <span class="field__label" data-i18n="previewTargetLabel">预览目标</span>
+                      <select id="task-preview-target-select" class="field__control"></select>
+                    </label>
+                    <label class="field" for="task-preview-app-root-select">
+                      <span class="field__label" data-i18n="previewAppRootLabel">应用根目录</span>
+                      <select id="task-preview-app-root-select" class="field__control"></select>
+                    </label>
+                    <label class="field" for="task-preview-command-input">
+                      <span class="field__label" data-i18n="previewCommandLabel">启动命令</span>
+                      <input id="task-preview-command-input" type="text" autocomplete="off" spellcheck="false">
+                    </label>
+                    <label class="field" for="task-preview-port-input">
+                      <span class="field__label" data-i18n="previewPortLabel">端口</span>
+                      <input id="task-preview-port-input" type="number" min="1000" max="65535" step="1">
+                    </label>
+                    <label class="field" for="task-preview-path-input">
+                      <span class="field__label" data-i18n="previewPathLabel">预览路径</span>
+                      <input id="task-preview-path-input" type="text" autocomplete="off" spellcheck="false" placeholder="/">
+                    </label>
+                    <div class="preview-studio__detected">
+                      <p class="preview-studio__detected-label" data-i18n="previewDetectedLabel">检测结果</p>
+                      <p id="task-preview-detected" class="preview-studio__detected-value" data-i18n="previewDetectedEmpty">
+                        系统会优先推荐最像可交付页面的应用入口。
+                      </p>
+                    </div>
+                  </div>
+                  <div class="preview-studio__actions">
+                    <button id="task-preview-start-button" class="button button--primary" type="submit" data-i18n="previewStartButton">启动预览</button>
+                    <button id="task-preview-restart-button" class="button button--secondary" type="button" data-i18n="previewRestartButton">重启预览</button>
+                    <button id="task-preview-stop-button" class="button button--ghost" type="button" data-i18n="previewStopButton">停止预览</button>
+                  </div>
+                  <div id="task-preview-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
+                </form>
+                <div class="preview-studio__meta" aria-label="预览状态摘要">
+                  <span id="task-preview-target-badge" class="workspace-meta-pill workspace-meta-pill--soft">目标分支 · -</span>
+                  <span id="task-preview-app-badge" class="workspace-meta-pill workspace-meta-pill--soft">应用目录 · -</span>
+                  <span id="task-preview-url-badge" class="workspace-meta-pill workspace-meta-pill--soft">访问地址 · -</span>
+                </div>
+                <div class="preview-studio__canvas">
+                  <div id="task-preview-empty" class="empty-state" data-i18n="previewEmpty">
+                    启动后将在这里显示可交互的成品页面预览。
+                  </div>
+                  <iframe id="task-preview-frame" class="preview-studio__frame" title="Task preview" hidden></iframe>
+                </div>
+                <div class="preview-studio__logs">
+                  <div class="mailbox-stream__header">
+                    <h4 class="plan-history__title" data-i18n="previewLogsTitle">预览日志</h4>
+                    <span id="task-preview-log-status" class="badge badge--outline" data-i18n="previewLogsIdle">等待启动</span>
+                  </div>
+                  <pre id="task-preview-log" class="execution-console" data-i18n="previewLogsEmpty">预览日志会显示在这里。</pre>
+                </div>
+              </section>
 
               <section id="task-cleanup-warnings" class="warning-banner" hidden>
                 <p class="warning-banner__eyebrow" data-i18n="cleanupWarningsEyebrow">清理警告</p>

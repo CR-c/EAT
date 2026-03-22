@@ -129,3 +129,22 @@ test("allows explicitly allowlisted runtime mounts and host networking for speci
     ["/tmp/.eat-worktrees/project/task-1/subtask-a", "/tmp/eat-runtime/session-1", "/tmp/project/.git"],
   );
 });
+
+test("includes localhost port publishing when sandboxed preview ports are requested", () => {
+  const manager = new DockerSandboxManager({
+    uploadRootPath: "/tmp/eat-uploads",
+    worktreeRootPath: "/tmp/.eat-worktrees",
+  });
+
+  const sandbox = manager.createWorkerSandboxConfig({
+    publishedPorts: [
+      {
+        containerPort: 4173,
+        hostPort: 44173,
+      },
+    ],
+    worktreePath: "/tmp/.eat-worktrees/project/task-1/subtask-a",
+  });
+
+  assert.deepEqual(sandbox.publishedPorts, [{ containerPort: 4173, hostPort: 44173 }]);
+});

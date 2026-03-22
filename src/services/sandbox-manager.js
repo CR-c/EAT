@@ -166,10 +166,13 @@ export class DockerSandboxManager {
       return normalizedPath;
     }));
 
+    const publishedPorts = normalizePublishedPorts(input.publishedPorts);
+
     return {
       containerImage: normalizeNonEmptyString(input.containerImage) ?? this.defaultWorkerImage,
       containerUser: normalizeNonEmptyString(input.containerUser) ?? this.defaultContainerUser,
       networkProfile: input.networkProfile ?? SANDBOX_NETWORK_PROFILES.ISOLATED,
+      publishedPorts,
       readonlyMounts: uniquePaths([...readonlyMounts, ...extraReadonlyMounts]),
       readwriteMounts: uniquePaths([worktreePath, ...extraReadwriteMounts]),
       type: SESSION_SANDBOX_TYPES.DOCKER,
@@ -423,6 +426,10 @@ function buildDockerCreateArgs({ command, env, sandbox, sessionLabel }) {
     }
   }
 
+  for (const publishedPort of sandbox.publishedPorts ?? []) {
+    args.push("--publish", `127.0.0.1:${publishedPort.hostPort}:${publishedPort.containerPort}`);
+  }
+
   for (const mountPath of sandbox.readwriteMounts) {
     args.push("--mount", `type=bind,src=${mountPath},dst=${mountPath}`);
   }
@@ -437,6 +444,32 @@ function buildDockerCreateArgs({ command, env, sandbox, sessionLabel }) {
 
 function assertAllowedMountPath(targetPath, allowedRootPath, fieldName) {
   assertAllowedMountPathAgainstRoots(targetPath, [allowedRootPath], fieldName);
+}
+
+function normalizePublishedPorts(publishedPorts) {
+  if (!Array.isArray(publishedPorts) || publishedPorts.length === 0) {
+    return [];
+  }
+
+  return publishedPorts.map((entry, index) => {
+    const containerPort = normalizePortNumber(entry?.containerPort, `publishedPorts[${index}].containerPort`);
+    const hostPort = normalizePortNumber(entry?.hostPort, `publishedPorts[${index}].hostPort`);
+
+    return { containerPort, hostPort };
+  });
+}
+
+function normalizePortNumber(value, fieldName) {
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+    throw buildSandboxConfigError(
+      SANDBOX_HEALTH_REASON_CODES.INVALID_CONFIG,
+      `${fieldName} must be an integer between 1 and 65535.`,
+    );
+  }
+
+  return parsed;
 }
 
 function assertAllowedMountPathAgainstRoots(targetPath, allowedRootPaths, fieldName) {

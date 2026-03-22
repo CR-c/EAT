@@ -8,6 +8,7 @@ import { SqliteTaskRepository } from "../repositories/task-repository.js";
 import { AgentService } from "../services/agent-service.js";
 import { MetricsService } from "../services/metrics-service.js";
 import { ProjectService, PROJECT_SERVICE_ERROR_CODES } from "../services/project-service.js";
+import { PreviewService, PREVIEW_SERVICE_ERROR_CODES } from "../services/preview-service.js";
 import { DockerSandboxManager, SystemService } from "../services/sandbox-manager.js";
 import { TaskService, TASK_SERVICE_ERROR_CODES } from "../services/task-service.js";
 import { TaskEventBus } from "../services/task-event-bus.js";
@@ -46,6 +47,12 @@ export function createApp(options = {}) {
     ...options.taskServiceOptions,
     uploadRootPath: options.uploadRootPath,
   });
+  const previewService = options.previewService ?? new PreviewService({
+    projectRepository,
+    sandboxManager,
+    taskRepository,
+    ...options.previewServiceOptions,
+  });
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -53,6 +60,7 @@ export function createApp(options = {}) {
         agentService,
         eventBus,
         metricsService,
+        previewService,
         projectService,
         systemService,
         taskService,
@@ -69,6 +77,7 @@ export function createApp(options = {}) {
   });
 
   server.on("close", () => {
+    previewService.close?.();
     taskService.close?.();
   });
 
@@ -80,6 +89,7 @@ async function routeRequest(request, response, services) {
     agentService,
     eventBus,
     metricsService,
+    previewService,
     projectService,
     systemService,
     taskService,
@@ -248,6 +258,36 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  const taskPreviewMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/preview$/);
+
+  if (request.method === "GET" && taskPreviewMatch) {
+    const taskId = decodeURIComponent(taskPreviewMatch[1]);
+    const result = await previewService.getTaskPreview(taskId);
+    return respondServiceResult(response, result);
+  }
+
+  const taskPreviewStartMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/preview\/start$/);
+
+  if (request.method === "POST" && taskPreviewStartMatch) {
+    const taskId = decodeURIComponent(taskPreviewStartMatch[1]);
+    const body = await readOptionalJsonBody(request);
+
+    if (!body.ok) {
+      return respondJson(response, 400, { error: body.error });
+    }
+
+    const result = await previewService.startTaskPreview(taskId, body.value);
+    return respondServiceResult(response, result);
+  }
+
+  const taskPreviewStopMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/preview\/stop$/);
+
+  if (request.method === "POST" && taskPreviewStopMatch) {
+    const taskId = decodeURIComponent(taskPreviewStopMatch[1]);
+    const result = await previewService.stopTaskPreview(taskId);
+    return respondServiceResult(response, result);
+  }
+
   const taskStartClarificationMatch = pathName.match(/^\/api\/tasks\/([^/]+)\/start-clarification$/);
 
   if (request.method === "POST" && taskStartClarificationMatch) {
@@ -353,6 +393,9 @@ async function routeRequest(request, response, services) {
     }
 
     const result = await taskService.archiveTask(taskId, body.value);
+    if (result.ok) {
+      await previewService.stopTaskPreview(taskId).catch(() => null);
+    }
     return respondServiceResult(response, result);
   }
 
@@ -369,6 +412,9 @@ async function routeRequest(request, response, services) {
   if (request.method === "POST" && taskPauseMatch) {
     const taskId = decodeURIComponent(taskPauseMatch[1]);
     const result = await taskService.pauseTask(taskId);
+    if (result.ok) {
+      await previewService.stopTaskPreview(taskId).catch(() => null);
+    }
     return respondServiceResult(response, result);
   }
 
@@ -381,6 +427,9 @@ async function routeRequest(request, response, services) {
     }
 
     const result = await taskService.deleteTask(taskId, body.value);
+    if (result.ok) {
+      await previewService.stopTaskPreview(taskId).catch(() => null);
+    }
     return respondServiceResult(response, result);
   }
 
@@ -710,6 +759,12 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_CLARIFYING:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_DRAFT:
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_PLAN_REVIEW:
+    case PREVIEW_SERVICE_ERROR_CODES.APP_ROOT_NOT_FOUND:
+    case PREVIEW_SERVICE_ERROR_CODES.PREVIEW_COMMAND_REQUIRED:
+    case PREVIEW_SERVICE_ERROR_CODES.PREVIEW_SANDBOX_UNAVAILABLE:
+    case PREVIEW_SERVICE_ERROR_CODES.PREVIEW_START_FAILED:
+    case PREVIEW_SERVICE_ERROR_CODES.PREVIEW_STOP_FAILED:
+    case PREVIEW_SERVICE_ERROR_CODES.PREVIEW_TARGET_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.TITLE_REQUIRED:
       return 400;
     case PROJECT_SERVICE_ERROR_CODES.PATH_ACCESS_DENIED:
@@ -722,6 +777,8 @@ function mapErrorCodeToStatus(errorCode) {
     case TASK_SERVICE_ERROR_CODES.TASK_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.PLAN_TEMPLATE_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.PLAN_SNAPSHOT_NOT_FOUND:
+    case PREVIEW_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND:
+    case PREVIEW_SERVICE_ERROR_CODES.TASK_NOT_FOUND:
     case TASK_SERVICE_ERROR_CODES.SUBTASK_NOT_FOUND:
       return 404;
     case TASK_SERVICE_ERROR_CODES.SUBTASK_RETRY_NOT_ALLOWED:

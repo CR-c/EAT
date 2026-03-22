@@ -61,6 +61,11 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /id="view-workspace"/);
     assert.match(rootResponse.body, /id="workspace-picker-dialog"/);
     assert.match(rootResponse.body, /id="workspace-picker-search-input"/);
+    assert.match(rootResponse.body, /workspace-command-center/);
+    assert.match(rootResponse.body, /最终成品 Web 预览/);
+    assert.match(rootResponse.body, /id="task-preview-form"/);
+    assert.match(rootResponse.body, /id="task-preview-frame"/);
+    assert.match(rootResponse.body, /id="task-preview-log"/);
     assert.match(rootResponse.body, /id="task-page-list"/);
     assert.match(rootResponse.body, /Leader 对话/);
     assert.match(rootResponse.body, /task-message-branch-hint/);
@@ -133,6 +138,9 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(cssResponse.body, /workspace-chat__queue-list/);
     assert.match(cssResponse.body, /workspace-chat__status-strip/);
     assert.match(cssResponse.body, /workspace-hero__actions/);
+    assert.match(cssResponse.body, /workspace-command-center/);
+    assert.match(cssResponse.body, /preview-studio__frame/);
+    assert.match(cssResponse.body, /preview-studio__logs/);
     assert.match(cssResponse.body, /badge--paused/);
 
     assert.equal(jsResponse.status, 200);
@@ -256,6 +264,12 @@ test("formats project, task, agent health, and attachment UI messages", () => {
       code: "TASK_NOT_PLAN_REVIEW",
     }),
     "该操作仅在计划审阅阶段可用。",
+  );
+  assert.equal(
+    buildTaskErrorMessage({
+      code: "PREVIEW_COMMAND_REQUIRED",
+    }),
+    "当前未检测到可运行的 Web 预览命令。",
   );
   assert.equal(
     buildTaskErrorMessage({

@@ -47,6 +47,12 @@ const MESSAGES = {
     mailboxTargetRequired: "发送交接说明前请先选择目标子任务。",
     planTemplateRequired: "请先选择一个计划模板。",
     planTemplateNotFound: "所选计划模板已不存在。",
+    previewAppRootNotFound: "所选预览目录在当前交付分支中不存在。",
+    previewCommandRequired: "当前未检测到可运行的 Web 预览命令。",
+    previewSandboxUnavailable: "Docker 预览沙箱当前不可用，无法启动内嵌预览。",
+    previewStartFailed: "启动成品预览失败，请检查日志或切换预览目标。",
+    previewStopFailed: "停止成品预览失败，请稍后重试。",
+    previewTargetNotFound: "当前任务还没有可用的预览目标。",
     dirtyWorkingTree: "工作区有未提交改动",
     cleanWorkingTree: "工作区干净",
     noRecentBranches: "未检测到最近的本地分支。",
@@ -153,6 +159,12 @@ const MESSAGES = {
     mailboxTargetRequired: "Select a subtask target before sending a handoff note.",
     planTemplateRequired: "Select a plan template before seeding.",
     planTemplateNotFound: "The selected plan template no longer exists.",
+    previewAppRootNotFound: "The selected preview directory does not exist for the current deliverable branch.",
+    previewCommandRequired: "No runnable web preview command was detected for the selected deliverable.",
+    previewSandboxUnavailable: "The Docker preview sandbox is unavailable, so the embedded preview cannot start.",
+    previewStartFailed: "Unable to start the deliverable preview. Check the logs or switch the preview target.",
+    previewStopFailed: "Unable to stop the deliverable preview. Try again.",
+    previewTargetNotFound: "No preview target is available for this task yet.",
     dirtyWorkingTree: "Dirty working tree",
     cleanWorkingTree: "Clean working tree",
     noRecentBranches: "No recent local branches detected.",
@@ -361,6 +373,18 @@ export function buildTaskErrorMessage(error) {
       return translate("planTemplateRequired");
     case "PLAN_TEMPLATE_NOT_FOUND":
       return translate("planTemplateNotFound");
+    case "APP_ROOT_NOT_FOUND":
+      return translate("previewAppRootNotFound");
+    case "PREVIEW_COMMAND_REQUIRED":
+      return translate("previewCommandRequired");
+    case "PREVIEW_SANDBOX_UNAVAILABLE":
+      return translate("previewSandboxUnavailable");
+    case "PREVIEW_START_FAILED":
+      return translate("previewStartFailed");
+    case "PREVIEW_STOP_FAILED":
+      return translate("previewStopFailed");
+    case "PREVIEW_TARGET_NOT_FOUND":
+      return translate("previewTargetNotFound");
     default:
       return error.message ?? translate("unknownTaskError");
   }
