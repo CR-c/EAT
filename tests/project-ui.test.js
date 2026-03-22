@@ -63,6 +63,8 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /id="workspace-picker-search-input"/);
     assert.match(rootResponse.body, /workspace-command-center/);
     assert.match(rootResponse.body, /最终成品 Web 预览/);
+    assert.match(rootResponse.body, /最终验收就绪度/);
+    assert.match(rootResponse.body, /id="task-preview-readiness-list"/);
     assert.match(rootResponse.body, /id="task-preview-form"/);
     assert.match(rootResponse.body, /id="task-preview-frame"/);
     assert.match(rootResponse.body, /id="task-preview-log"/);
@@ -77,6 +79,7 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /Alt\+Enter/);
     assert.match(rootResponse.body, /当前阶段与下一步/);
     assert.match(rootResponse.body, /task-next-action-button/);
+    assert.match(rootResponse.body, /自动化回路/);
     assert.match(rootResponse.body, /分配预览/);
     assert.match(rootResponse.body, /leader-plan-detail-dialog/);
     assert.match(rootResponse.body, /当前计划草稿/);
@@ -141,6 +144,7 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(cssResponse.body, /workspace-command-center/);
     assert.match(cssResponse.body, /preview-studio__frame/);
     assert.match(cssResponse.body, /preview-studio__logs/);
+    assert.match(cssResponse.body, /preview-readiness-item/);
     assert.match(cssResponse.body, /badge--paused/);
 
     assert.equal(jsResponse.status, 200);

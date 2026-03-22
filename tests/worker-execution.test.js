@@ -903,9 +903,11 @@ test("builds a live operations board snapshot and emits board activity events", 
         assert.equal(boardResponse.body.board.summary.running, 1);
         assert.equal(boardResponse.body.board.summary.blocked, 1);
         assert.ok(boardResponse.body.board.summary.actionRequired >= 1);
+        assert.equal(boardResponse.body.board.workflow.manualAttentionCount, 0);
+        assert.ok(boardResponse.body.board.workflow.systemAttentionCount >= 1);
         assert.ok(
           boardResponse.body.board.actionRequiredItems.some((item) => (
-            item.kind === "BLOCKER" && item.subTaskId === blockedSubTask.id
+            item.kind === "BLOCKER" && item.owner === "LEADER" && item.subTaskId === blockedSubTask.id
           )),
         );
         assert.ok(
@@ -929,7 +931,7 @@ test("builds a live operations board snapshot and emits board activity events", 
         assert.ok(detailAfter.body.board);
         assert.ok(
           detailAfter.body.board.actionRequiredItems.some((item) => (
-            item.kind === "BLOCKER" && item.subTaskId === blockedSubTask.id
+            item.kind === "BLOCKER" && item.owner === "LEADER" && item.subTaskId === blockedSubTask.id
           )),
         );
       } finally {

@@ -623,6 +623,10 @@
     @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-on-surface-variant;
   }
 
+  .task-stage-step__note {
+    @apply m-0 text-xs leading-5 text-on-surface-variant;
+  }
+
   .guided-flow__intro,
   .guided-flow__selection {
     @apply grid gap-3;
@@ -1318,6 +1322,55 @@
   .workspace-command-center__summary,
   .preview-studio__summary {
     @apply m-0 text-sm leading-6 text-on-surface-variant;
+  }
+
+  .preview-studio__readiness {
+    @apply grid gap-3 rounded-[1.4rem] border border-black/5 bg-white/65 p-4 shadow-soft;
+  }
+
+  .preview-studio__readiness-header {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  }
+
+  .preview-studio__readiness-summary {
+    @apply m-0 text-sm leading-6 text-on-surface-variant;
+  }
+
+  .preview-studio__readiness-list {
+    @apply grid gap-2 lg:grid-cols-2;
+  }
+
+  .preview-readiness-item {
+    @apply rounded-[1.15rem] border border-black/5 bg-white/80 p-3 shadow-soft;
+  }
+
+  .preview-readiness-item.is-done {
+    background: rgba(221, 243, 231, 0.8);
+    border-color: rgba(16, 185, 129, 0.16);
+  }
+
+  .preview-readiness-item__header {
+    @apply flex items-start gap-3;
+  }
+
+  .preview-readiness-item__dot {
+    @apply mt-1.5 inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-slate-300;
+  }
+
+  .preview-readiness-item.is-done .preview-readiness-item__dot {
+    @apply bg-emerald-500;
+  }
+
+  .preview-readiness-item__copy {
+    @apply min-w-0 flex-1 grid gap-1;
+  }
+
+  .preview-readiness-item__label {
+    @apply m-0 text-sm font-semibold text-on-surface;
+  }
+
+  .preview-readiness-item__hint {
+    @apply m-0 text-xs leading-5 text-on-surface-variant;
   }
 
   .workspace-command-center__grid {
@@ -2178,8 +2231,12 @@
     color: rgba(191, 219, 254, 0.82);
   }
 
+  .task-stage-step__note {
+    color: rgba(226, 232, 240, 0.82);
+  }
+
   .task-stage-rail {
-    @apply lg:grid-cols-4;
+    @apply sm:grid-cols-2 xl:grid-cols-5;
   }
 
   .task-stage-step {
@@ -2200,6 +2257,11 @@
   .task-stage-step--current {
     background: rgba(59, 130, 246, 0.16);
     border-color: rgba(96, 165, 250, 0.24);
+  }
+
+  .task-stage-step--attention {
+    background: rgba(249, 115, 22, 0.14);
+    border-color: rgba(251, 146, 60, 0.22);
   }
 
   .task-next-action {

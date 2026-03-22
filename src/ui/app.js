@@ -164,6 +164,7 @@ const UI_MESSAGES = {
     taskJourneyStateCurrent: "当前",
     taskJourneyStateNext: "下一步",
     taskJourneyStateLater: "后续",
+    taskJourneyStateAttention: "待接管",
     guidedFlowEyebrow: "黄金路径",
     guidedFlowTitle: "模板与引导步骤",
     guidedFlowEmpty: "模板列表暂时不可用，仍可继续创建自定义任务。",
@@ -882,6 +883,53 @@ const UI_MESSAGES = {
     previewStatusRunning: "运行中",
     previewStatusStopped: "已停止",
     previewStatusFailed: "失败",
+    automationBadgeAuto: "系统推进",
+    automationBadgeGate: "人工关卡",
+    automationBadgeAccept: "验收就绪",
+    automationBadgeDone: "已完成",
+    automationSummaryAuto: "系统会继续自动推进执行、审查和集成，你只需要关注少数人工关卡。",
+    automationSummaryGate: "当前仍有 {count} 个需要人工接管的节点，处理后系统会继续自动推进。",
+    automationSummaryAccept: "代码链路已基本收敛，可以切到预览完成最终成品验收。",
+    automationSummaryDone: "代码链路已完成，建议在工作区回看最终交付与成品效果。",
+    automationStepIntake: "任务创建",
+    automationStepClarify: "Lead 澄清",
+    automationStepScope: "范围锁定",
+    automationStepPlan: "计划草稿",
+    automationStepApprove: "计划批准",
+    automationStepMaterialize: "成员物化",
+    automationStepExecute: "自动执行",
+    automationStepFinalReview: "最终审查",
+    automationStepMerge: "集成合并",
+    automationStepAcceptance: "Web 验收",
+    automationStateDone: "已完成",
+    automationStateActive: "系统推进",
+    automationStateGate: "待人工关卡",
+    automationStateWaiting: "等待上游",
+    automationStateReady: "可进入",
+    previewReadinessEyebrow: "Acceptance readiness",
+    previewReadinessTitle: "最终验收就绪度",
+    previewReadinessSummary: "系统会把预览目标、评审收敛和集成状态压缩成验收清单，方便你判断是否可以进入最终验收。",
+    previewReadinessProgress: "已满足 {done}/{total} 项",
+    previewReadinessPending: "还差 {count} 项即可进入最终验收。",
+    previewReadinessReady: "最终验收条件已基本就绪，可以直接启动或查看预览。",
+    previewReadinessItemTargets: "可预览目标已准备",
+    previewReadinessItemAppRoots: "应用入口已检测",
+    previewReadinessItemManual: "无待接管人工事项",
+    previewReadinessItemReview: "最终审查已收敛",
+    previewReadinessItemMerge: "集成合并链路可追踪",
+    previewReadinessItemRunning: "预览已在工作区内运行",
+    previewReadinessHintTargets: "当前任务还没有候选交付分支可供预览。",
+    previewReadinessHintAppRoots: "当前仓库还没有检测到可启动的 Web 应用入口。",
+    previewReadinessHintManual: "仍有人工关卡未处理，建议先在运行看板中收敛异常。",
+    previewReadinessHintReview: "仍有子任务未完成最终审查或仍在执行。",
+    previewReadinessHintMerge: "最终审查后，系统会把被接受的结果收敛到任务主线和集成链路。",
+    previewReadinessHintRunning: "启动预览后，就可以直接在当前工作区进行成品验收。",
+    previewReadinessHintTargetsReady: "已推荐 {label} 作为当前候选交付分支。",
+    previewReadinessHintAppRootsReady: "已检测到 {label}，可直接作为预览入口。",
+    previewReadinessHintManualReady: "当前没有必须人工接管的阻塞。",
+    previewReadinessHintReviewReady: "最终审查已收敛到可合并或可验收状态。",
+    previewReadinessHintMergeReady: "当前交付链路已进入 {status}。",
+    previewReadinessHintRunningReady: "预览当前正在 {status}，可直接进入成品查看。",
     metricsTitle: "指标概览",
     metricsEmpty: "指标视图即将上线。任务执行统计、Agent 利用率和性能数据会在这里显示。",
   },
@@ -1727,6 +1775,53 @@ const UI_MESSAGES = {
     previewStatusRunning: "Running",
     previewStatusStopped: "Stopped",
     previewStatusFailed: "Failed",
+    automationBadgeAuto: "System owned",
+    automationBadgeGate: "Manual gate",
+    automationBadgeAccept: "Acceptance ready",
+    automationBadgeDone: "Completed",
+    automationSummaryAuto: "The system is still advancing execution, review, and integration automatically. Only a small set of gates should need human takeover.",
+    automationSummaryGate: "{count} items still need manual takeover. Once resolved, the automated flow can continue.",
+    automationSummaryAccept: "The code path is converging cleanly. Switch to preview to complete final product acceptance.",
+    automationSummaryDone: "The delivery path is complete. Use the workspace to review the shipped result and product preview.",
+    automationStepIntake: "Task created",
+    automationStepClarify: "Lead clarification",
+    automationStepScope: "Scope lock",
+    automationStepPlan: "Plan draft",
+    automationStepApprove: "Plan approval",
+    automationStepMaterialize: "Member setup",
+    automationStepExecute: "Automated delivery",
+    automationStepFinalReview: "Final review",
+    automationStepMerge: "Merge and integration",
+    automationStepAcceptance: "Web acceptance",
+    automationStateDone: "Done",
+    automationStateActive: "System running",
+    automationStateGate: "Manual gate",
+    automationStateWaiting: "Waiting",
+    automationStateReady: "Ready",
+    previewReadinessEyebrow: "Acceptance readiness",
+    previewReadinessTitle: "Final acceptance readiness",
+    previewReadinessSummary: "The workspace compresses preview targeting, review convergence, and integration state into an acceptance checklist.",
+    previewReadinessProgress: "{done}/{total} ready",
+    previewReadinessPending: "{count} checks still need to land before final acceptance.",
+    previewReadinessReady: "Final acceptance is mostly ready. Start or inspect the preview directly.",
+    previewReadinessItemTargets: "Preview targets are ready",
+    previewReadinessItemAppRoots: "App entry detected",
+    previewReadinessItemManual: "No manual takeover items",
+    previewReadinessItemReview: "Final review converged",
+    previewReadinessItemMerge: "Merge and integration traceable",
+    previewReadinessItemRunning: "Preview is running in workspace",
+    previewReadinessHintTargets: "No candidate delivery branch is available for preview yet.",
+    previewReadinessHintAppRoots: "No runnable web app entry has been detected yet.",
+    previewReadinessHintManual: "Manual gates are still open. Resolve them in operations first.",
+    previewReadinessHintReview: "Some subtasks are still executing or have not settled final review yet.",
+    previewReadinessHintMerge: "After final review, accepted work is collected onto the task mainline and integration path.",
+    previewReadinessHintRunning: "Once preview starts, final product acceptance happens directly inside this workspace.",
+    previewReadinessHintTargetsReady: "{label} is currently recommended as the delivery candidate.",
+    previewReadinessHintAppRootsReady: "{label} has been detected as the preview entry.",
+    previewReadinessHintManualReady: "There are no blockers that require manual takeover right now.",
+    previewReadinessHintReviewReady: "Final review has converged to a mergeable or acceptable state.",
+    previewReadinessHintMergeReady: "The delivery path is currently in {status}.",
+    previewReadinessHintRunningReady: "Preview is currently {status}, so product review can happen immediately.",
     metricsTitle: "Metrics Overview",
     metricsEmpty: "Metrics view coming soon. Task execution stats, agent utilization, and performance data will appear here.",
   },
@@ -2217,6 +2312,9 @@ const elements = {
   taskPreviewOpenLink: document.querySelector("#task-preview-open-link"),
   taskPreviewPathInput: document.querySelector("#task-preview-path-input"),
   taskPreviewPortInput: document.querySelector("#task-preview-port-input"),
+  taskPreviewReadinessBadge: document.querySelector("#task-preview-readiness-badge"),
+  taskPreviewReadinessList: document.querySelector("#task-preview-readiness-list"),
+  taskPreviewReadinessSummary: document.querySelector("#task-preview-readiness-summary"),
   taskPreviewRestartButton: document.querySelector("#task-preview-restart-button"),
   taskPreviewStartButton: document.querySelector("#task-preview-start-button"),
   taskPreviewStatusBadge: document.querySelector("#task-preview-status-badge"),
@@ -4687,6 +4785,16 @@ function resetTaskPreviewUi() {
   if (elements.taskPreviewEmpty) {
     elements.taskPreviewEmpty.hidden = false;
   }
+  if (elements.taskPreviewReadinessBadge) {
+    elements.taskPreviewReadinessBadge.textContent = "0/0";
+    elements.taskPreviewReadinessBadge.className = "badge badge--outline";
+  }
+  if (elements.taskPreviewReadinessSummary) {
+    elements.taskPreviewReadinessSummary.textContent = t("previewReadinessSummary");
+  }
+  if (elements.taskPreviewReadinessList) {
+    elements.taskPreviewReadinessList.replaceChildren();
+  }
   if (elements.taskPreviewRestartButton) {
     elements.taskPreviewRestartButton.hidden = true;
   }
@@ -4811,6 +4919,99 @@ function renderTaskPreview(detail) {
   if (elements.taskPreviewStopButton) {
     elements.taskPreviewStopButton.disabled = !session;
   }
+
+  renderTaskPreviewReadiness(detail);
+}
+
+function renderTaskPreviewReadiness(detail) {
+  if (!elements.taskPreviewReadinessList || !elements.taskPreviewReadinessSummary || !elements.taskPreviewReadinessBadge) {
+    return;
+  }
+
+  const preview = state.taskPreview ?? null;
+  const previewTargets = Array.isArray(preview?.targets) ? preview.targets : [];
+  const appRoots = Array.isArray(preview?.appRoots) ? preview.appRoots : [];
+  const previewSession = preview?.session ?? null;
+  const workflow = detail?.board?.workflow ?? { manualAttentionCount: 0 };
+  const latestIntegrationRun = detail?.integration?.latestRun ?? null;
+  const subTasks = detail?.subTasks ?? [];
+  const reviewSettled = subTasks.length > 0 && subTasks.every((subTask) => !["BLOCKED", "PENDING", "READY", "REVIEW_PENDING", "RUNNING"].includes(subTask.status));
+  const items = [
+    {
+      done: previewTargets.length > 0,
+      hint: previewTargets.length > 0
+        ? t("previewReadinessHintTargetsReady", {
+            label: preview?.recommendation?.label ?? previewTargets[0]?.label ?? t("workspaceHubPreviewTargetFallback"),
+          })
+        : t("previewReadinessHintTargets"),
+      label: t("previewReadinessItemTargets"),
+    },
+    {
+      done: appRoots.length > 0,
+      hint: appRoots.length > 0
+        ? t("previewReadinessHintAppRootsReady", {
+            label: appRoots[0]?.label ?? appRoots[0]?.path ?? ".",
+          })
+        : t("previewReadinessHintAppRoots"),
+      label: t("previewReadinessItemAppRoots"),
+    },
+    {
+      done: (workflow.manualAttentionCount ?? 0) === 0,
+      hint: (workflow.manualAttentionCount ?? 0) === 0
+        ? t("previewReadinessHintManualReady")
+        : t("previewReadinessHintManual"),
+      label: t("previewReadinessItemManual"),
+    },
+    {
+      done: reviewSettled,
+      hint: reviewSettled ? t("previewReadinessHintReviewReady") : t("previewReadinessHintReview"),
+      label: t("previewReadinessItemReview"),
+    },
+    {
+      done: Boolean(latestIntegrationRun) || ["MERGING", "COMPLETED"].includes(detail?.task?.status),
+      hint: Boolean(latestIntegrationRun) || ["MERGING", "COMPLETED"].includes(detail?.task?.status)
+        ? t("previewReadinessHintMergeReady", {
+            status: latestIntegrationRun ? buildIntegrationRunStatusLabel(latestIntegrationRun.status) : buildTaskDisplayStatusLabel(detail?.task),
+          })
+        : t("previewReadinessHintMerge"),
+      label: t("previewReadinessItemMerge"),
+    },
+    {
+      done: previewSession?.status === "RUNNING",
+      hint: previewSession?.status === "RUNNING"
+        ? t("previewReadinessHintRunningReady", {
+            status: buildPreviewSessionStatusLabel(previewSession.status),
+          })
+        : t("previewReadinessHintRunning"),
+      label: t("previewReadinessItemRunning"),
+    },
+  ];
+  const doneCount = items.filter((item) => item.done).length;
+
+  elements.taskPreviewReadinessBadge.textContent = t("previewReadinessProgress", {
+    done: doneCount,
+    total: items.length,
+  });
+  elements.taskPreviewReadinessBadge.className = `badge ${doneCount === items.length ? "badge--clean" : doneCount >= 3 ? "badge--accent-soft" : "badge--outline"}`;
+  elements.taskPreviewReadinessSummary.textContent = doneCount === items.length
+    ? t("previewReadinessReady")
+    : t("previewReadinessPending", { count: items.length - doneCount });
+
+  elements.taskPreviewReadinessList.replaceChildren(...items.map((item) => {
+    const card = document.createElement("article");
+    card.className = `preview-readiness-item${item.done ? " is-done" : ""}`;
+    card.innerHTML = `
+      <div class="preview-readiness-item__header">
+        <span class="preview-readiness-item__dot" aria-hidden="true"></span>
+        <div class="preview-readiness-item__copy">
+          <p class="preview-readiness-item__label">${escapeHtml(item.label)}</p>
+          <p class="preview-readiness-item__hint">${escapeHtml(item.hint)}</p>
+        </div>
+        <span class="badge ${item.done ? "badge--clean" : "badge--outline"}">${escapeHtml(item.done ? t("automationStateDone") : t("automationStateWaiting"))}</span>
+      </div>
+    `;
+    return card;
+  }));
 }
 
 function updateSelectOptionLabels(select, entries, buildLabel) {
@@ -8288,6 +8489,223 @@ function buildTaskStatusBadgeClass(taskOrStatus) {
   }
 }
 
+function buildTaskAutomationLoop(detail, preview) {
+  const task = detail?.task ?? null;
+  const subTasks = detail?.subTasks ?? [];
+  const workflow = detail?.board?.workflow ?? {
+    completed: 0,
+    manualAttentionCount: 0,
+    total: subTasks.length,
+    waiting: 0,
+  };
+  const latestIntegrationRun = detail?.integration?.latestRun ?? null;
+  const parsedPlan = parseCurrentPlanJson(task?.currentPlanJson);
+  const planNodeCount = getPlanNodes(parsedPlan).length;
+  const previewTargets = Array.isArray(preview?.targets) ? preview.targets : [];
+  const appRoots = Array.isArray(preview?.appRoots) ? preview.appRoots : [];
+  const previewSession = preview?.session ?? null;
+  const reviewSettled = subTasks.length > 0 && subTasks.every((subTask) => !["BLOCKED", "PENDING", "READY", "REVIEW_PENDING", "RUNNING"].includes(subTask.status));
+  const mergeTracked = Boolean(latestIntegrationRun) || ["MERGING", "COMPLETED"].includes(task?.status);
+  const deliveryAutoRunning = task?.status === "EXECUTING" || ((detail?.board?.summary?.running ?? 0) > 0);
+  const acceptanceReady = workflow.manualAttentionCount === 0
+    && reviewSettled
+    && previewTargets.length > 0
+    && appRoots.length > 0;
+  const steps = [
+    {
+      label: t("automationStepIntake"),
+      note: task?.createdAt ? formatTimestamp(task.createdAt) : buildTaskDisplayStatusLabel(task),
+      state: "done",
+    },
+    {
+      label: t("automationStepClarify"),
+      note: task?.status === "DRAFT" ? t("taskNextDraftSummary") : t("taskNextClarifyingSummary"),
+      state: task?.status === "DRAFT"
+        ? "next"
+        : task?.status === "CLARIFYING"
+          ? "current"
+          : "done",
+    },
+    {
+      label: t("automationStepScope"),
+      note: task?.status === "CLARIFYING"
+        ? t("taskNextClarifyingSummary")
+        : t("workspacePreviewGuideTaskDocConfirmed"),
+      state: task?.status === "CLARIFYING"
+        ? "attention"
+        : ["PLANNING", "PLAN_REVIEW", "EXECUTING", "REVIEWING", "MERGING", "ACTION_REQUIRED", "COMPLETED", "FAILED", "CANCELLED"].includes(task?.status)
+          ? "done"
+          : "waiting",
+    },
+    {
+      label: t("automationStepPlan"),
+      note: planNodeCount > 0 ? t("workspaceHubPlanSummaryReady") : t("workspaceHubPlanSummaryIdle"),
+      state: task?.status === "PLANNING"
+        ? "current"
+        : planNodeCount > 0 || ["PLAN_REVIEW", "EXECUTING", "REVIEWING", "MERGING", "ACTION_REQUIRED", "COMPLETED", "FAILED", "CANCELLED"].includes(task?.status)
+          ? "done"
+          : "waiting",
+    },
+    {
+      label: t("automationStepApprove"),
+      note: subTasks.length > 0 ? t("workspaceHubPlanSummaryReady") : t("workspaceHubPlanSummaryReview"),
+      state: task?.status === "PLAN_REVIEW"
+        ? "attention"
+        : subTasks.length > 0 || Boolean(task?.approvedPlanJson)
+          ? "done"
+          : "waiting",
+    },
+    {
+      label: t("automationStepMaterialize"),
+      note: subTasks.length > 0 ? t("workspaceHubDeliveryCount", { count: subTasks.length }) : t("workspaceHubDeliverySummaryIdle"),
+      state: subTasks.length > 0 ? "done" : "waiting",
+    },
+    {
+      label: t("automationStepExecute"),
+      note: workflow.manualAttentionCount > 0
+        ? t("automationSummaryGate", { count: workflow.manualAttentionCount })
+        : deliveryAutoRunning
+          ? t("workspaceHubDeliverySummaryActive", {
+              completed: workflow.completed ?? 0,
+              running: detail?.board?.summary?.running ?? 0,
+              total: workflow.total ?? subTasks.length,
+              waiting: workflow.waiting ?? 0,
+            })
+          : t("automationSummaryAuto"),
+      state: workflow.manualAttentionCount > 0
+        ? "attention"
+        : deliveryAutoRunning
+          ? "current"
+          : subTasks.length > 0 && ["REVIEWING", "MERGING", "COMPLETED"].includes(task?.status)
+            ? "done"
+            : subTasks.length > 0
+              ? "next"
+              : "waiting",
+    },
+    {
+      label: t("automationStepFinalReview"),
+      note: reviewSettled ? t("previewReadinessHintReviewReady") : t("previewReadinessHintReview"),
+      state: task?.status === "REVIEWING"
+        ? "current"
+        : reviewSettled
+          ? "done"
+          : subTasks.length > 0
+            ? "next"
+            : "waiting",
+    },
+    {
+      label: t("automationStepMerge"),
+      note: mergeTracked
+        ? t("previewReadinessHintMergeReady", {
+            status: latestIntegrationRun ? buildIntegrationRunStatusLabel(latestIntegrationRun.status) : buildTaskDisplayStatusLabel(task),
+          })
+        : t("previewReadinessHintMerge"),
+      state: task?.status === "MERGING" || ["QUEUED", "RUNNING"].includes(latestIntegrationRun?.status)
+        ? "current"
+        : task?.status === "COMPLETED" || latestIntegrationRun?.status === "COMPLETED"
+          ? "done"
+          : workflow.manualAttentionCount > 0 && ["ACTION_REQUIRED", "FAILED", "ROLLED_BACK"].includes(latestIntegrationRun?.status)
+            ? "attention"
+            : reviewSettled
+              ? "next"
+              : "waiting",
+    },
+    {
+      label: t("automationStepAcceptance"),
+      note: previewSession?.status === "RUNNING"
+        ? t("previewReadinessHintRunningReady", {
+            status: buildPreviewSessionStatusLabel(previewSession.status),
+          })
+        : previewTargets.length > 0
+          ? t("previewReadinessHintTargetsReady", {
+              label: preview?.recommendation?.label ?? previewTargets[0]?.label ?? t("workspaceHubPreviewTargetFallback"),
+            })
+          : t("previewReadinessHintTargets"),
+      state: previewSession?.status === "RUNNING"
+        ? "current"
+        : task?.status === "COMPLETED" && previewSession?.status === "STOPPED"
+          ? "ready"
+          : acceptanceReady
+            ? "ready"
+            : previewTargets.length > 0
+              ? "next"
+              : "waiting",
+    },
+  ];
+  const completedCount = steps.filter((step) => step.state === "done").length;
+  let badgeLabel = t("automationBadgeAuto");
+  let badgeClass = "badge--accent-soft";
+  let summary = t("automationSummaryAuto");
+
+  if (workflow.manualAttentionCount > 0) {
+    badgeLabel = t("automationBadgeGate");
+    badgeClass = "badge--dirty";
+    summary = t("automationSummaryGate", { count: workflow.manualAttentionCount });
+  } else if (previewSession?.status === "RUNNING" || acceptanceReady) {
+    badgeLabel = t("automationBadgeAccept");
+    badgeClass = "badge--clean";
+    summary = t("automationSummaryAccept");
+  } else if (task?.status === "COMPLETED") {
+    badgeLabel = t("automationBadgeDone");
+    badgeClass = "badge--clean";
+    summary = t("automationSummaryDone");
+  }
+
+  return {
+    badgeClass,
+    badgeLabel,
+    completedCount,
+    summary,
+    totalSteps: steps.length,
+    steps,
+  };
+}
+
+function buildTaskStagePrimaryAction(detail, automationModel, fallbackMeta) {
+  const preview = state.taskPreview;
+  const previewTargets = Array.isArray(preview?.targets) ? preview.targets : [];
+  const previewSession = preview?.session ?? null;
+
+  if (previewSession?.status === "RUNNING") {
+    return {
+      ...fallbackMeta,
+      badgeClass: "badge--clean",
+      buttonAction: "preview",
+      buttonLabel: t("workspaceHubPreviewButton"),
+      summary: automationModel.summary,
+      title: t("workspaceHubPreviewTitleRunning"),
+    };
+  }
+
+  if (previewTargets.length > 0 && detail?.board?.workflow?.manualAttentionCount === 0 && ["MERGING", "COMPLETED"].includes(detail?.task?.status)) {
+    return {
+      ...fallbackMeta,
+      badgeClass: "badge--clean",
+      buttonAction: "preview",
+      buttonLabel: t("workspaceHubPreviewButton"),
+      summary: automationModel.summary,
+      title: t("workspaceHubPreviewTitleIdle"),
+    };
+  }
+
+  return fallbackMeta;
+}
+
+function buildAutomationStepStateLabel(state) {
+  switch (state) {
+    case "done":
+      return t("automationStateDone");
+    case "current":
+      return t("automationStateActive");
+    case "attention":
+      return t("automationStateGate");
+    case "ready":
+      return t("automationStateReady");
+    default:
+      return t("automationStateWaiting");
+  }
+}
+
 function renderTaskStageBoard(detail) {
   const task = detail?.task;
 
@@ -8295,38 +8713,31 @@ function renderTaskStageBoard(detail) {
     return;
   }
 
-  const meta = buildTaskStageMeta(task);
-  const steps = [
-    t("taskJourneyStepCreate"),
-    t("taskJourneyStepClarify"),
-    t("taskJourneyStepPlanReview"),
-    t("taskJourneyStepExecute"),
-  ];
+  const meta = buildTaskStagePrimaryAction(detail, buildTaskAutomationLoop(detail, state.taskPreview), buildTaskStageMeta(task));
+  const automationModel = buildTaskAutomationLoop(detail, state.taskPreview);
 
-  elements.taskStageRail.replaceChildren(...steps.map((label, index) => {
+  elements.taskStageRail.hidden = false;
+  elements.taskStageRail.replaceChildren(...automationModel.steps.map((step, index) => {
     const item = document.createElement("div");
-    const stateKey = index < meta.currentStep
-      ? "done"
-      : index === meta.currentStep
-        ? "current"
-        : index === meta.currentStep + 1
-          ? "next"
-          : "later";
-    item.className = `task-stage-step task-stage-step--${stateKey}`;
+    item.className = `task-stage-step task-stage-step--${step.state === "ready" ? "next" : step.state}`;
     item.innerHTML = `
       <span class="task-stage-step__index">${escapeHtml(String(index + 1))}</span>
       <div class="task-stage-step__copy">
-        <p class="task-stage-step__label">${escapeHtml(label)}</p>
-        <span class="task-stage-step__state">${escapeHtml(t(resolveJourneyStateKey(stateKey)))}</span>
+        <p class="task-stage-step__label">${escapeHtml(step.label)}</p>
+        <span class="task-stage-step__state">${escapeHtml(buildAutomationStepStateLabel(step.state))}</span>
+        <p class="task-stage-step__note">${escapeHtml(step.note ?? automationModel.summary)}</p>
       </div>
     `;
     return item;
   }));
 
   elements.taskNextActionTitle.textContent = meta.title;
-  elements.taskNextActionSummary.textContent = meta.summary;
-  elements.taskNextActionBadge.textContent = buildTaskDisplayStatusLabel(task);
-  elements.taskNextActionBadge.className = `badge ${meta.badgeClass}`;
+  elements.taskNextActionSummary.textContent = `${automationModel.summary} ${t("previewReadinessProgress", {
+    done: automationModel.completedCount,
+    total: automationModel.totalSteps,
+  })}`;
+  elements.taskNextActionBadge.textContent = automationModel.badgeLabel;
+  elements.taskNextActionBadge.className = `badge ${automationModel.badgeClass}`;
   elements.taskNextActionButton.textContent = meta.buttonLabel;
   elements.taskNextActionButton.dataset.action = meta.buttonAction;
   elements.taskNextActionButton.hidden = false;
@@ -8384,6 +8795,11 @@ async function onTaskNextAction() {
   if (action === "ops") {
     switchView("workspace");
     elements.taskHubDeliveryOpenButton?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+
+  if (action === "preview") {
+    focusTaskPreviewStudio();
     return;
   }
 

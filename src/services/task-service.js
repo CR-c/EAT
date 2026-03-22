@@ -4415,6 +4415,10 @@ export class TaskService {
         reviewPending: subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.REVIEW_PENDING).length,
         running: subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.RUNNING).length,
       },
+      workflow: buildBoardWorkflowSummary({
+        actionRequiredItems,
+        subTasks,
+      }),
       task: {
         id: task.id,
         lastError: task.lastError ?? null,
@@ -6476,6 +6480,7 @@ function buildBoardActionRequiredItems(context) {
       items.push({
         createdAt: subTask.updatedAt ?? subTask.createdAt ?? null,
         kind: "REWORK_REQUIRED",
+        owner: resolveBoardActionOwner("REWORK_REQUIRED"),
         primaryAction: "REWORK",
         severity: 20,
         subTaskId: subTask.id,
@@ -6487,6 +6492,7 @@ function buildBoardActionRequiredItems(context) {
       items.push({
         createdAt: subTask.updatedAt ?? subTask.createdAt ?? null,
         kind: "DISCARD_PENDING",
+        owner: resolveBoardActionOwner("DISCARD_PENDING"),
         primaryAction: "CONFIRM_DISCARD",
         severity: 10,
         subTaskId: subTask.id,
@@ -6498,6 +6504,7 @@ function buildBoardActionRequiredItems(context) {
       items.push({
         createdAt: subTask.updatedAt ?? subTask.createdAt ?? null,
         kind: "FAILED_SUBTASK",
+        owner: resolveBoardActionOwner("FAILED_SUBTASK"),
         primaryAction: "REASSIGN",
         severity: 15,
         subTaskId: subTask.id,
@@ -6513,6 +6520,7 @@ function buildBoardActionRequiredItems(context) {
       items.push({
         createdAt: latestMergeConflict.completedAt ?? latestMergeConflict.createdAt ?? null,
         kind: "MERGE_CONFLICT",
+        owner: resolveBoardActionOwner("MERGE_CONFLICT"),
         primaryAction: "REBASE_RETRY",
         severity: 5,
         subTaskId: subTask.id,
@@ -6525,6 +6533,7 @@ function buildBoardActionRequiredItems(context) {
     items.push({
       createdAt: failure.createdAt ?? null,
       kind: failure.kind,
+      owner: resolveBoardActionOwner(failure.kind),
       primaryAction: "REASSIGN",
       severity: 12,
       subTaskId: failure.subTaskId ?? null,
@@ -6540,6 +6549,7 @@ function buildBoardActionRequiredItems(context) {
     items.push({
       createdAt: message.createdAt ?? null,
       kind: message.messageType,
+      owner: resolveBoardActionOwner(message.messageType),
       primaryAction: message.targetType === MAILBOX_TARGET_TYPE.LEAD ? "OPEN_MAILBOX" : "SEND_NOTE",
       severity: message.messageType === MAILBOX_MESSAGE_TYPE.BLOCKER ? 18 : 25,
       subTaskId: message.targetSubTaskId ?? message.senderSubTaskId ?? null,
@@ -6563,6 +6573,7 @@ function buildBoardActionRequiredItems(context) {
     items.push({
       createdAt: latestIntegrationRun.updatedAt ?? latestIntegrationRun.endedAt ?? latestIntegrationRun.createdAt ?? null,
       kind: "INTEGRATION_ATTENTION",
+      owner: resolveBoardActionOwner("INTEGRATION_ATTENTION"),
       primaryAction: "OPEN_INTEGRATION",
       severity: 6,
       subTaskId: failedQueueItem?.subTaskId ?? null,
@@ -6574,6 +6585,7 @@ function buildBoardActionRequiredItems(context) {
     items.push({
       createdAt: null,
       kind: "TASK_RESUME_MERGE",
+      owner: resolveBoardActionOwner("TASK_RESUME_MERGE"),
       primaryAction: "RESUME_MERGE",
       severity: 8,
       subTaskId: null,
@@ -6595,6 +6607,41 @@ function buildBoardActionRequiredItems(context) {
       ...item,
       id: `${item.kind}:${item.subTaskId ?? "task"}:${index}`,
     }));
+}
+
+function resolveBoardActionOwner(kind) {
+  switch (kind) {
+    case "MERGE_CONFLICT":
+    case "FAILED_SUBTASK":
+    case "INTEGRATION_ATTENTION":
+    case "SANDBOX_LAUNCH_FAILURE":
+    case "TASK_RESUME_MERGE":
+    case "WORKER_LAUNCH_FAILURE":
+      return "USER";
+    default:
+      return "LEADER";
+  }
+}
+
+function buildBoardWorkflowSummary(context) {
+  const subTasks = Array.isArray(context?.subTasks) ? context.subTasks : [];
+  const actionRequiredItems = Array.isArray(context?.actionRequiredItems) ? context.actionRequiredItems : [];
+  const completed = subTasks.filter((subTask) => (
+    [SUBTASK_STATUS.ACCEPTED, SUBTASK_STATUS.CANCELLED, SUBTASK_STATUS.DISCARDED, SUBTASK_STATUS.MERGED].includes(subTask.status)
+  )).length;
+  const manualAttentionCount = actionRequiredItems.filter((item) => item.owner === "USER").length;
+  const systemAttentionCount = actionRequiredItems.filter((item) => item.owner !== "USER").length;
+  const waiting = subTasks.filter((subTask) => (
+    [SUBTASK_STATUS.BLOCKED, SUBTASK_STATUS.PENDING, SUBTASK_STATUS.READY, SUBTASK_STATUS.REVIEW_PENDING].includes(subTask.status)
+  )).length;
+
+  return {
+    completed,
+    manualAttentionCount,
+    systemAttentionCount,
+    total: subTasks.length,
+    waiting,
+  };
 }
 
 function buildBoardActivityEntries(context) {

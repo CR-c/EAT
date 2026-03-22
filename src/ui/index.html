@@ -674,7 +674,7 @@
                           开始澄清
                         </button>
                       </div>
-                      <div id="task-stage-rail" hidden></div>
+                      <div id="task-stage-rail" class="task-stage-rail" aria-label="自动化回路"></div>
                       <div class="workspace-hero__actions-row">
                         <div id="task-workspace-actions" class="workspace-hero__actions" hidden>
                           <button id="task-workspace-pause-button" class="button button--secondary workspace-hero__action" type="button">
@@ -882,6 +882,19 @@
                 <p id="task-preview-summary" class="preview-studio__summary" data-i18n="previewStudioSummary">
                   用于全栈任务的最终验收：先选取候选交付分支，再快速启动预览，并在当前网页内查看成品效果。
                 </p>
+                <section class="preview-studio__readiness" aria-labelledby="task-preview-readiness-title">
+                  <div class="preview-studio__readiness-header">
+                    <div>
+                      <p class="panel__eyebrow" data-i18n="previewReadinessEyebrow">Acceptance readiness</p>
+                      <h4 id="task-preview-readiness-title" class="plan-history__title" data-i18n="previewReadinessTitle">最终验收就绪度</h4>
+                    </div>
+                    <span id="task-preview-readiness-badge" class="badge badge--outline">0/0</span>
+                  </div>
+                  <p id="task-preview-readiness-summary" class="preview-studio__readiness-summary" data-i18n="previewReadinessSummary">
+                    系统会把预览目标、评审收敛和集成状态压缩成验收清单，方便你判断是否可以进入最终验收。
+                  </p>
+                  <div id="task-preview-readiness-list" class="preview-studio__readiness-list"></div>
+                </section>
                 <form id="task-preview-form" class="preview-studio__form">
                   <div class="preview-studio__grid">
                     <label class="field" for="task-preview-target-select">
