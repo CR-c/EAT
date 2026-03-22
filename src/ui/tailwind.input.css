@@ -1442,6 +1442,11 @@
     -webkit-line-clamp: 2;
   }
 
+  .workspace-chat__status-strip {
+    @apply flex min-h-[26px] items-center gap-2 rounded-[0.7rem] border border-slate-800/80 px-2.5 py-1 text-[10px] font-medium leading-4 text-slate-400;
+    background: rgba(2, 6, 23, 0.38);
+  }
+
   .workspace-chat__history {
     @apply grid min-h-0 flex-1 content-start gap-1 overflow-y-auto px-0 py-0.5;
     overscroll-behavior: contain;

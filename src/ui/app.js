@@ -324,7 +324,7 @@ const UI_MESSAGES = {
     taskDocConfirmHint: "确认这份任务文档无误后，点击“已确认任务文档”。系统随后才会进入 agent 分工与执行方案生成。",
     taskStageEyebrow: "主线",
     taskStageTitle: "当前阶段与下一步",
-    taskNextActionEyebrow: "下一步",
+    taskNextActionEyebrow: "当前阶段与下一步",
     taskNextDraftTitle: "先写给 Lead 的第一条消息",
     taskNextDraftSummary: "任务还没有启动真实 Lead 会话。先在下方写清你要做什么、限制条件和期望结果，再开始澄清。",
     taskNextClarifyingTitle: "先把任务文档和 Lead 对齐",
@@ -385,6 +385,32 @@ const UI_MESSAGES = {
     executionBoardTitle: "监督式实时运行看板",
     executionBoardSummary: "执行阶段默认切换到 board-first，总览团队状态、阻塞链路、风险聚合，再深入聚焦单个会话。",
     executionEmpty: "计划批准后，已批准的子任务和 worker 会话会显示在这里。",
+    operationsPriorityEyebrow: "执行主线",
+    operationsPriorityRunningTitle: "{name} 正在推进",
+    operationsPriorityRunningSummary: "当前有 {count} 个子任务在执行。优先关注正在运行的成员，其他节点会按依赖自动推进。",
+    operationsPriorityReviewTitle: "Leader 正在收敛已完成结果",
+    operationsPriorityReviewSummary: "已有 {count} 个子任务完成执行，系统会自动交给 Leader 审查并决定是否进入合并。",
+    operationsPriorityLeaderTitle: "Leader 正在处理中间结果",
+    operationsPriorityLeaderSummary: "当前有 {count} 个中间项由 Leader 或系统继续处理，你只需要在最后统一审核。",
+    operationsPriorityBlockedTitle: "自动流程正在等待上游",
+    operationsPriorityBlockedSummary: "仍有 {count} 个节点在等待依赖完成。上游结果进入主线后，下游会自动启动。",
+    operationsPriorityManualTitle: "自动流程被阻塞",
+    operationsPriorityManualSummary: "出现 {count} 个无法自动恢复的问题，需要人工接管后才能继续。",
+    operationsPriorityMergingTitle: "正在整理合并结果",
+    operationsPriorityMergingSummary: "Leader 已完成审查，系统正在把被接受的结果收敛到任务主线。",
+    operationsPriorityCompletedTitle: "执行链路已收敛",
+    operationsPriorityCompletedSummary: "所有中间流程已经结束，现在只需要你做最后审核。",
+    operationsPriorityIdleTitle: "等待新的执行事件",
+    operationsPriorityIdleSummary: "当前没有活动中的 worker，系统会在条件满足时继续推进。",
+    operationsPriorityAutoBadge: "自动推进中",
+    operationsPriorityLeaderBadge: "Leader 处理中",
+    operationsPriorityManualBadge: "需要人工接管",
+    operationsPriorityFinalBadge: "等待最终审核",
+    operationsPriorityDoneBadge: "流程已收敛",
+    operationsPriorityAutoCaption: "除最终审核外，无需用户中途介入。",
+    operationsPriorityLeaderCaption: "中间审查、返工判断和合并决策都会先交给 Leader 处理。",
+    operationsPriorityManualCaption: "只有自动流程无法继续时，才需要用户接管。",
+    operationsPriorityFinalCaption: "现在不需要再盯住子任务，只需在最后统一审核结果。",
     operationsBoardEyebrow: "运行看板",
     operationsBoardTitle: "实时运行总览",
     operationsHealthTitle: "运行时与健康",
@@ -392,19 +418,23 @@ const UI_MESSAGES = {
     operationsActionEyebrow: "待处理",
     operationsActionTitle: "需要人处理的事项",
     operationsActionEmpty: "当前没有需要人工处理的事项。",
+    operationsQueueAutoTitle: "Leader / 系统队列",
+    operationsQueueManualTitle: "阻塞与接管",
+    operationsQueueAutoSummary: "这些事项会由 Leader 或系统继续处理，你只需要在最后统一审核。",
+    operationsQueueManualSummary: "这些问题会阻塞自动推进，需要人工接管后才能继续。",
+    operationsQueueCleanSummary: "当前没有额外处理项，系统会继续自动推进。",
     operationsModeLabel: "看板视图",
     operationsGraphButton: "图谱",
     operationsListButton: "列表",
     operationsActivityButton: "活动",
     operationsActivityEmpty: "当前还没有可展示的运行活动。",
     operationsSummaryRunning: "运行中",
-    operationsSummaryBlocked: "阻塞中",
-    operationsSummaryActionRequired: "待处理",
-    operationsSummaryAccepted: "已接受",
-    operationsSummaryReviewPending: "待审查",
-    operationsSummaryFailed: "失败",
-    operationsSummaryMerged: "已合并",
-    operationsSummaryPending: "待启动",
+    operationsSummaryWaiting: "等待链路",
+    operationsSummaryCompleted: "已完成",
+    operationsSummaryUserStage: "用户阶段",
+    operationsSummaryNoAction: "无需",
+    operationsSummaryFinalReview: "最终审核",
+    operationsSummaryAttention: "接管中",
     operationsHealthLead: "Lead 健康",
     operationsHealthWorkers: "Worker 健康",
     operationsHealthSandbox: "Docker 沙箱",
@@ -452,6 +482,14 @@ const UI_MESSAGES = {
     operationsActionKindTestRequest: "测试请求",
     operationsActionKindTaskResumeMerge: "恢复合并",
     operationsActionKindIntegrationAttention: "集成待处理",
+    operationsOwnerLeader: "Leader",
+    operationsOwnerSystem: "系统",
+    operationsOwnerUser: "用户",
+    operationsHighlightProgress: "进度",
+    operationsHighlightFlow: "流程状态",
+    operationsHighlightNext: "当前焦点",
+    operationsHighlightNoNext: "等待下一步自动推进",
+    operationsRiskAllClear: "当前没有关键风险。",
     integrationEyebrow: "集成发布",
     integrationTitle: "Integration Queue 与 Gate",
     integrationEmpty: "当前还没有 integration run。",
@@ -536,19 +574,19 @@ const UI_MESSAGES = {
     sendHandoffNoteButton: "发送交接说明",
     executionFocusEmpty: "选择一个子任务摘要，即可查看最新 worker 会话，而不必同时挂载所有终端。",
     planDraftEyebrow: "执行方案",
-    currentPlanDraftTitle: "执行方案审阅",
+    currentPlanDraftTitle: "当前计划草稿",
     planEmpty: "确认任务文档后会触发执行方案生成、校验与草稿持久化。",
     planEditorHint: "批准执行方案前可先编辑草稿。变更仅保存在当前浏览器，直到草稿同步功能上线。",
     planViewLabel: "计划视图",
-    planGraphViewButton: "执行顺序",
-    planListViewButton: "卡片视图",
+    planGraphViewButton: "图谱视图",
+    planListViewButton: "列表视图",
     planTemplateLabel: "模板种子",
     applyTemplateButton: "应用模板",
     planTemplateHint: "用常见团队骨架快速初始化执行方案，之后仍需人工审阅并批准。",
     saveDraftButton: "保存草稿",
     addSubtaskButton: "添加子任务",
     resetLocalEditsButton: "重置本地修改",
-    approveDraftButton: "批准执行方案",
+    approveDraftButton: "批准草稿",
     planningNotesLabel: "规划备注",
     planningNotesPlaceholder: "可选：为当前草稿补充执行备注。",
     roleField: "角色",
@@ -1066,7 +1104,7 @@ const UI_MESSAGES = {
     taskDocConfirmHint: "Once this task document looks correct, click “Task document confirmed”. Only then should the system move on to executor allocation.",
     taskStageEyebrow: "Flow",
     taskStageTitle: "Current stage and next step",
-    taskNextActionEyebrow: "Next step",
+    taskNextActionEyebrow: "Current Stage and Next Step",
     taskNextDraftTitle: "Write the first message to the lead",
     taskNextDraftSummary: "A real lead session has not started yet. First write what you want built, the constraints, and the expected outcome, then start clarification.",
     taskNextClarifyingTitle: "Finish the task document with the lead",
@@ -1127,6 +1165,32 @@ const UI_MESSAGES = {
     executionBoardTitle: "Supervised live operations board",
     executionBoardSummary: "Execution now defaults to a board-first view: inspect team state, blockers, and risk hotspots before drilling into one focused session.",
     executionEmpty: "Approved subtasks and worker sessions will appear here after plan approval.",
+    operationsPriorityEyebrow: "Execution lane",
+    operationsPriorityRunningTitle: "{name} is moving",
+    operationsPriorityRunningSummary: "{count} subtasks are currently running. Focus on active members first; the rest of the graph advances automatically.",
+    operationsPriorityReviewTitle: "The lead is converging finished work",
+    operationsPriorityReviewSummary: "{count} subtasks have finished execution. The system now routes them to the lead automatically for review and merge decisions.",
+    operationsPriorityLeaderTitle: "The lead is handling intermediate outcomes",
+    operationsPriorityLeaderSummary: "{count} intermediate items are still being processed by the lead or the system. You only need to review the final result.",
+    operationsPriorityBlockedTitle: "The flow is waiting on upstream work",
+    operationsPriorityBlockedSummary: "{count} nodes are still waiting on dependencies. Downstream work will start automatically once upstream progress lands.",
+    operationsPriorityManualTitle: "Automatic flow is blocked",
+    operationsPriorityManualSummary: "{count} problems cannot be recovered automatically and need manual takeover before the flow can continue.",
+    operationsPriorityMergingTitle: "Merge results are being consolidated",
+    operationsPriorityMergingSummary: "Lead review is done and the system is now collecting accepted work onto the task mainline.",
+    operationsPriorityCompletedTitle: "The execution lane has converged",
+    operationsPriorityCompletedSummary: "All intermediate work is done. Only the final user review remains.",
+    operationsPriorityIdleTitle: "Waiting for the next execution event",
+    operationsPriorityIdleSummary: "There are no active workers right now. The system will continue automatically when the next condition is met.",
+    operationsPriorityAutoBadge: "Auto advancing",
+    operationsPriorityLeaderBadge: "Lead handling",
+    operationsPriorityManualBadge: "Manual takeover",
+    operationsPriorityFinalBadge: "Final review",
+    operationsPriorityDoneBadge: "Converged",
+    operationsPriorityAutoCaption: "No user action is needed in the middle of the flow.",
+    operationsPriorityLeaderCaption: "Intermediate review, rework calls, and merge decisions are routed through the lead first.",
+    operationsPriorityManualCaption: "The user only needs to step in when automatic recovery is no longer possible.",
+    operationsPriorityFinalCaption: "You do not need to watch every subtask anymore. Review the final result at the end.",
     operationsBoardEyebrow: "Operations board",
     operationsBoardTitle: "Live execution overview",
     operationsHealthTitle: "Runtime and health",
@@ -1134,19 +1198,23 @@ const UI_MESSAGES = {
     operationsActionEyebrow: "Action queue",
     operationsActionTitle: "Human decisions required",
     operationsActionEmpty: "No operator action is required right now.",
+    operationsQueueAutoTitle: "Lead / system queue",
+    operationsQueueManualTitle: "Blockers and takeover",
+    operationsQueueAutoSummary: "These items keep moving through the lead or the system. You only need to review the final result.",
+    operationsQueueManualSummary: "These issues block automatic progress and require manual takeover before the flow can continue.",
+    operationsQueueCleanSummary: "There are no extra queue items right now. The system keeps advancing automatically.",
     operationsModeLabel: "Board mode",
     operationsGraphButton: "Graph",
     operationsListButton: "List",
     operationsActivityButton: "Activity",
     operationsActivityEmpty: "No live execution activity is available yet.",
     operationsSummaryRunning: "Running",
-    operationsSummaryBlocked: "Blocked",
-    operationsSummaryActionRequired: "Action required",
-    operationsSummaryAccepted: "Accepted",
-    operationsSummaryReviewPending: "Review pending",
-    operationsSummaryFailed: "Failed",
-    operationsSummaryMerged: "Merged",
-    operationsSummaryPending: "Queued",
+    operationsSummaryWaiting: "Waiting",
+    operationsSummaryCompleted: "Completed",
+    operationsSummaryUserStage: "User stage",
+    operationsSummaryNoAction: "None",
+    operationsSummaryFinalReview: "Final review",
+    operationsSummaryAttention: "Takeover",
     operationsHealthLead: "Lead health",
     operationsHealthWorkers: "Worker health",
     operationsHealthSandbox: "Docker sandbox",
@@ -1194,6 +1262,14 @@ const UI_MESSAGES = {
     operationsActionKindTestRequest: "Test request",
     operationsActionKindTaskResumeMerge: "Resume merge",
     operationsActionKindIntegrationAttention: "Integration attention",
+    operationsOwnerLeader: "Lead",
+    operationsOwnerSystem: "System",
+    operationsOwnerUser: "User",
+    operationsHighlightProgress: "Progress",
+    operationsHighlightFlow: "Flow state",
+    operationsHighlightNext: "Current focus",
+    operationsHighlightNoNext: "Waiting for the next automatic step",
+    operationsRiskAllClear: "No critical risk is active right now.",
     integrationEyebrow: "Release",
     integrationTitle: "Integration Queue and Gates",
     integrationEmpty: "No integration run has been created yet.",
@@ -1278,19 +1354,19 @@ const UI_MESSAGES = {
     sendHandoffNoteButton: "Send handoff note",
     executionFocusEmpty: "Pick a subtask summary to inspect the latest worker session without mounting every terminal at once.",
     planDraftEyebrow: "Execution plan",
-    currentPlanDraftTitle: "Execution plan review",
+    currentPlanDraftTitle: "Current plan draft",
     planEmpty: "Confirm the task document to trigger execution-plan generation, validation, and draft persistence.",
     planEditorHint: "Edit the draft before approving the execution plan. Changes stay in this browser until plan draft sync is enabled.",
     planViewLabel: "Plan view",
-    planGraphViewButton: "Execution order",
-    planListViewButton: "Card view",
+    planGraphViewButton: "Graph view",
+    planListViewButton: "List view",
     planTemplateLabel: "Template seed",
     applyTemplateButton: "Apply template",
     planTemplateHint: "Start from a common team DAG skeleton, then keep review and execution approval under operator control.",
     saveDraftButton: "Save draft",
     addSubtaskButton: "Add subtask",
     resetLocalEditsButton: "Reset local edits",
-    approveDraftButton: "Approve execution plan",
+    approveDraftButton: "Approve draft",
     planningNotesLabel: "Planning notes",
     planningNotesPlaceholder: "Optional execution notes for the current draft.",
     roleField: "Role",
@@ -1773,6 +1849,8 @@ const elements = {
   taskExecutionActionCount: document.querySelector("#task-operations-action-count"),
   taskExecutionActionEmpty: document.querySelector("#task-operations-action-empty"),
   taskExecutionActionList: document.querySelector("#task-operations-action-list"),
+  taskExecutionActionSummary: document.querySelector("#task-operations-action-summary"),
+  taskExecutionActionTitle: document.querySelector("#task-operations-action-title"),
   taskExecutionEmpty: document.querySelector("#task-execution-empty"),
   taskExecutionFocus: document.querySelector("#task-execution-focus"),
   taskExecutionFocusBadge: document.querySelector("#task-execution-focus-badge"),
@@ -1783,6 +1861,7 @@ const elements = {
   taskExecutionGraphPanel: document.querySelector("#task-operations-graph-panel"),
   taskExecutionGraphView: document.querySelector("#task-operations-graph"),
   taskExecutionHealthList: document.querySelector("#task-operations-health-list"),
+  taskExecutionHighlightList: document.querySelector("#task-operations-highlight-list"),
   taskIntegrationEmpty: document.querySelector("#task-integration-empty"),
   taskIntegrationGateEmpty: document.querySelector("#task-integration-gate-empty"),
   taskIntegrationGateList: document.querySelector("#task-integration-gate-list"),
@@ -1802,6 +1881,11 @@ const elements = {
   taskExecutionListButton: document.querySelector("#task-operations-list-button"),
   taskExecutionListPanel: document.querySelector("#task-operations-list-panel"),
   taskExecutionModeBadge: document.querySelector("#task-operations-mode-badge"),
+  taskExecutionPriorityBadge: document.querySelector("#task-operations-priority-badge"),
+  taskExecutionPriorityCaption: document.querySelector("#task-operations-priority-caption"),
+  taskExecutionPriorityEyebrow: document.querySelector("#task-operations-priority-eyebrow"),
+  taskExecutionPrioritySummary: document.querySelector("#task-operations-priority-summary"),
+  taskExecutionPriorityTitle: document.querySelector("#task-operations-priority-title"),
   taskExecutionReworkButton: document.querySelector("#task-execution-rework-button"),
   taskExecutionRebaseRetryButton: document.querySelector("#task-execution-rebase-retry-button"),
   taskExecutionReassignButton: document.querySelector("#task-execution-reassign-button"),
@@ -5679,23 +5763,20 @@ function buildTaskOperationsBoard(detail, sessionsBySubTaskId) {
     .map(parseLaunchFailureMessageFromDetail)
     .filter(Boolean);
   const summary = {
-    accepted: subTasks.filter((subTask) => subTask.status === "ACCEPTED").length,
-    actionRequired: 0,
     blocked: subTasks.filter((subTask) => subTask.status === "BLOCKED").length,
-    failed: subTasks.filter((subTask) => subTask.status === "FAILED").length,
-    merged: subTasks.filter((subTask) => subTask.status === "MERGED").length,
     pending: subTasks.filter((subTask) => ["PENDING", "READY"].includes(subTask.status)).length,
     reviewPending: subTasks.filter((subTask) => subTask.status === "REVIEW_PENDING").length,
     running: subTasks.filter((subTask) => subTask.status === "RUNNING").length,
   };
   const actionRequiredItems = buildTaskOperationActionItems(detail, launchFailures);
-  summary.actionRequired = actionRequiredItems.length;
+  const workflow = buildTaskOperationsWorkflow(detail, summary, actionRequiredItems);
 
   return {
     actionRequiredItems,
     activity: buildTaskOperationActivities(detail, launchFailures, sessionsBySubTaskId),
     graph: buildTaskOperationGraph(detail, mailboxMessages, sessionsBySubTaskId, actionRequiredItems),
     health: buildTaskOperationHealth(detail, subTasks),
+    priority: buildTaskOperationsPriority(detail, summary, actionRequiredItems),
     risk: {
       integrationFailures: (detail.integration?.runs ?? []).reduce((count, integrationRun) => (
         count + (integrationRun.gateResults ?? []).filter((gateResult) => gateResult.status === "FAILED").length
@@ -5707,6 +5788,7 @@ function buildTaskOperationsBoard(detail, sessionsBySubTaskId) {
       reviewRequired: subTasks.filter((subTask) => ["DISCARD_PENDING", "REWORK_REQUIRED"].includes(subTask.status)).length,
     },
     summary,
+    workflow,
   };
 }
 
@@ -5794,6 +5876,131 @@ function buildTaskOperationHealth(detail, subTasks) {
   };
 }
 
+function buildTaskOperationsWorkflow(detail, summary, actionRequiredItems) {
+  const subTasks = detail.subTasks ?? [];
+  const completed = subTasks.filter((subTask) => ["ACCEPTED", "CANCELLED", "DISCARDED", "MERGED"].includes(subTask.status)).length;
+  const manualAttentionCount = actionRequiredItems.filter((item) => item.owner === "USER").length;
+  const userStageLabel = manualAttentionCount > 0
+    ? t("operationsSummaryAttention")
+    : detail.task?.status === "COMPLETED"
+      ? t("operationsSummaryFinalReview")
+      : t("operationsSummaryNoAction");
+
+  return {
+    completed,
+    manualAttentionCount,
+    total: subTasks.length,
+    userStageLabel,
+    waiting: summary.blocked + summary.pending + summary.reviewPending,
+  };
+}
+
+function buildTaskOperationsPriority(detail, summary, actionRequiredItems) {
+  const subTasks = detail.subTasks ?? [];
+  const userItems = actionRequiredItems.filter((item) => item.owner === "USER");
+  const leaderItems = actionRequiredItems.filter((item) => item.owner !== "USER");
+  const runningSubTask = subTasks.find((subTask) => subTask.status === "RUNNING") ?? null;
+  const reviewPendingCount = summary.reviewPending;
+  const waitingCount = summary.blocked + summary.pending;
+  let title = t("operationsPriorityIdleTitle");
+  let summaryText = t("operationsPriorityIdleSummary");
+  let badgeLabel = t("operationsPriorityAutoBadge");
+  let badgeClass = "badge--accent-soft";
+  let caption = t("operationsPriorityAutoCaption");
+
+  if (userItems.length > 0) {
+    title = t("operationsPriorityManualTitle");
+    summaryText = t("operationsPriorityManualSummary", { count: userItems.length });
+    badgeLabel = t("operationsPriorityManualBadge");
+    badgeClass = "badge--dirty";
+    caption = t("operationsPriorityManualCaption");
+  } else if (detail.task?.status === "COMPLETED") {
+    title = t("operationsPriorityCompletedTitle");
+    summaryText = t("operationsPriorityCompletedSummary");
+    badgeLabel = t("operationsPriorityFinalBadge");
+    badgeClass = "badge--clean";
+    caption = t("operationsPriorityFinalCaption");
+  } else if (detail.task?.status === "MERGING") {
+    title = t("operationsPriorityMergingTitle");
+    summaryText = t("operationsPriorityMergingSummary");
+    badgeLabel = t("operationsPriorityLeaderBadge");
+    badgeClass = "badge--accent-soft";
+    caption = t("operationsPriorityLeaderCaption");
+  } else if (detail.task?.status === "REVIEWING" || reviewPendingCount > 0) {
+    title = t("operationsPriorityReviewTitle");
+    summaryText = t("operationsPriorityReviewSummary", { count: reviewPendingCount || completedReviewableCount(subTasks) });
+    badgeLabel = t("operationsPriorityLeaderBadge");
+    badgeClass = "badge--accent-soft";
+    caption = t("operationsPriorityLeaderCaption");
+  } else if (leaderItems.length > 0) {
+    title = t("operationsPriorityLeaderTitle");
+    summaryText = t("operationsPriorityLeaderSummary", { count: leaderItems.length });
+    badgeLabel = t("operationsPriorityLeaderBadge");
+    badgeClass = "badge--accent-soft";
+    caption = t("operationsPriorityLeaderCaption");
+  } else if (runningSubTask) {
+    title = t("operationsPriorityRunningTitle", { name: runningSubTask.displayName ?? runningSubTask.title });
+    summaryText = t("operationsPriorityRunningSummary", { count: summary.running });
+    badgeLabel = t("operationsPriorityAutoBadge");
+    badgeClass = "badge--accent-soft";
+    caption = t("operationsPriorityAutoCaption");
+  } else if (waitingCount > 0) {
+    title = t("operationsPriorityBlockedTitle");
+    summaryText = t("operationsPriorityBlockedSummary", { count: waitingCount });
+    badgeLabel = t("operationsPriorityAutoBadge");
+    badgeClass = "badge--outline";
+    caption = t("operationsPriorityAutoCaption");
+  }
+
+  return {
+    badgeClass,
+    badgeLabel,
+    caption,
+    highlights: [
+      {
+        label: t("operationsHighlightProgress"),
+        value: `${subTasks.filter((subTask) => ["ACCEPTED", "CANCELLED", "DISCARDED", "MERGED"].includes(subTask.status)).length}/${subTasks.length || 0}`,
+      },
+      {
+        label: t("operationsHighlightFlow"),
+        value: badgeLabel,
+      },
+      {
+        label: t("operationsHighlightNext"),
+        value: buildTaskOperationsNextHighlight(detail, actionRequiredItems),
+      },
+    ],
+    title,
+    summary: summaryText,
+  };
+}
+
+function buildTaskOperationsNextHighlight(detail, actionRequiredItems) {
+  const subTasks = detail.subTasks ?? [];
+  const userItem = actionRequiredItems.find((item) => item.owner === "USER") ?? null;
+
+  if (userItem) {
+    return buildOperationsActionTitle(userItem.kind);
+  }
+
+  const runningSubTask = subTasks.find((subTask) => subTask.status === "RUNNING")
+    ?? subTasks.find((subTask) => subTask.status === "REVIEW_PENDING")
+    ?? subTasks.find((subTask) => ["BLOCKED", "READY", "PENDING"].includes(subTask.status))
+    ?? null;
+
+  if (!runningSubTask) {
+    return detail.task?.status === "COMPLETED"
+      ? t("operationsSummaryFinalReview")
+      : t("operationsHighlightNoNext");
+  }
+
+  return `${runningSubTask.title} · ${buildSubTaskStatusLabel(runningSubTask.status)}`;
+}
+
+function completedReviewableCount(subTasks) {
+  return subTasks.filter((subTask) => subTask.status === "REVIEW_PENDING").length;
+}
+
 function buildTaskOperationActionItems(detail, launchFailures) {
   const items = [];
   const subTasks = detail.subTasks ?? [];
@@ -5805,6 +6012,7 @@ function buildTaskOperationActionItems(detail, launchFailures) {
       items.push({
         kind: "DISCARD_PENDING",
         label: t("operationsActionDiscardButton"),
+        owner: resolveOperationsActionOwner("DISCARD_PENDING"),
         primaryAction: "CONFIRM_DISCARD",
         subTaskId: subTask.id,
         summary: subTask.latestReviewSummary ?? subTask.runSummary ?? subTask.title,
@@ -5815,6 +6023,7 @@ function buildTaskOperationActionItems(detail, launchFailures) {
       items.push({
         kind: "REWORK_REQUIRED",
         label: t("operationsActionReworkButton"),
+        owner: resolveOperationsActionOwner("REWORK_REQUIRED"),
         primaryAction: "REWORK",
         subTaskId: subTask.id,
         summary: subTask.latestReviewSummary ?? subTask.runSummary ?? subTask.title,
@@ -5825,6 +6034,7 @@ function buildTaskOperationActionItems(detail, launchFailures) {
       items.push({
         kind: "FAILED_SUBTASK",
         label: t("operationsActionReassignButton"),
+        owner: resolveOperationsActionOwner("FAILED_SUBTASK"),
         primaryAction: "REASSIGN",
         subTaskId: subTask.id,
         summary: subTask.lastError ?? subTask.runSummary ?? subTask.title,
@@ -5837,6 +6047,7 @@ function buildTaskOperationActionItems(detail, launchFailures) {
       items.push({
         kind: "MERGE_CONFLICT",
         label: t("operationsActionRebaseButton"),
+        owner: resolveOperationsActionOwner("MERGE_CONFLICT"),
         primaryAction: "REBASE_RETRY",
         subTaskId: subTask.id,
         summary: latestConflict.conflictSummary ?? subTask.title,
@@ -5848,6 +6059,7 @@ function buildTaskOperationActionItems(detail, launchFailures) {
     items.push({
       kind: failure.kind,
       label: t("operationsActionReplaceButton"),
+      owner: resolveOperationsActionOwner(failure.kind),
       primaryAction: "OPEN",
       subTaskId: failure.subTaskId ?? null,
       summary: failure.reason,
@@ -5862,6 +6074,7 @@ function buildTaskOperationActionItems(detail, launchFailures) {
     items.push({
       kind: message.messageType,
       label: message.targetType === "LEAD" ? t("operationsActionOpenButton") : t("operationsActionSendNoteButton"),
+      owner: resolveOperationsActionOwner(message.messageType),
       primaryAction: "OPEN",
       subTaskId: message.targetSubTaskId ?? message.senderSubTaskId ?? null,
       summary: message.content,
@@ -5880,6 +6093,7 @@ function buildTaskOperationActionItems(detail, launchFailures) {
     items.push({
       kind: "INTEGRATION_ATTENTION",
       label: t("operationsActionOpenButton"),
+      owner: resolveOperationsActionOwner("INTEGRATION_ATTENTION"),
       primaryAction: "OPEN_INTEGRATION",
       subTaskId: null,
       summary: failedGateSummary ?? detail.task.lastError ?? buildIntegrationRunStatusLabel(latestIntegrationRun.status),
@@ -5894,6 +6108,7 @@ function buildTaskOperationActionItems(detail, launchFailures) {
     items.push({
       kind: "TASK_RESUME_MERGE",
       label: t("operationsActionResumeButton"),
+      owner: resolveOperationsActionOwner("TASK_RESUME_MERGE"),
       primaryAction: "RESUME_MERGE",
       subTaskId: null,
       summary: detail.task.lastError ?? t("mergeResumed"),
@@ -5901,6 +6116,20 @@ function buildTaskOperationActionItems(detail, launchFailures) {
   }
 
   return items.sort((left, right) => buildActionPriority(left.kind) - buildActionPriority(right.kind));
+}
+
+function resolveOperationsActionOwner(kind) {
+  switch (kind) {
+    case "MERGE_CONFLICT":
+    case "FAILED_SUBTASK":
+    case "INTEGRATION_ATTENTION":
+    case "SANDBOX_LAUNCH_FAILURE":
+    case "TASK_RESUME_MERGE":
+    case "WORKER_LAUNCH_FAILURE":
+      return "USER";
+    default:
+      return "LEADER";
+  }
 }
 
 function buildActionPriority(kind) {
@@ -6015,13 +6244,11 @@ function parseLaunchFailureMessageFromDetail(message) {
 function renderTaskOperationsSummary(boardSnapshot) {
   const summaryItems = [
     ["operationsSummaryRunning", boardSnapshot.summary.running],
-    ["operationsSummaryBlocked", boardSnapshot.summary.blocked],
-    ["operationsSummaryActionRequired", boardSnapshot.summary.actionRequired],
-    ["operationsSummaryAccepted", boardSnapshot.summary.accepted],
-    ["operationsSummaryReviewPending", boardSnapshot.summary.reviewPending],
-    ["operationsSummaryFailed", boardSnapshot.summary.failed],
-    ["operationsSummaryMerged", boardSnapshot.summary.merged],
-    ["operationsSummaryPending", boardSnapshot.summary.pending],
+    ["operationsSummaryWaiting", boardSnapshot.workflow.waiting],
+    ["operationsSummaryCompleted", `${boardSnapshot.workflow.completed}/${boardSnapshot.workflow.total}`],
+    ["operationsSummaryUserStage", boardSnapshot.workflow.manualAttentionCount > 0
+      ? String(boardSnapshot.workflow.manualAttentionCount)
+      : boardSnapshot.workflow.userStageLabel],
   ];
 
   elements.taskExecutionSummaryList.replaceChildren();
@@ -6037,6 +6264,26 @@ function renderTaskOperationsSummary(boardSnapshot) {
   }
 }
 
+function renderTaskOperationsPriority(boardSnapshot) {
+  elements.taskExecutionPriorityEyebrow.textContent = t("operationsPriorityEyebrow");
+  elements.taskExecutionPriorityTitle.textContent = boardSnapshot.priority.title;
+  elements.taskExecutionPrioritySummary.textContent = boardSnapshot.priority.summary;
+  elements.taskExecutionPriorityBadge.textContent = boardSnapshot.priority.badgeLabel;
+  elements.taskExecutionPriorityBadge.className = `badge ${boardSnapshot.priority.badgeClass}`;
+  elements.taskExecutionPriorityCaption.textContent = boardSnapshot.priority.caption;
+  elements.taskExecutionHighlightList.replaceChildren();
+
+  for (const highlight of boardSnapshot.priority.highlights) {
+    const item = document.createElement("article");
+    item.className = "operations-highlight";
+    item.innerHTML = `
+      <p class="operations-highlight__label">${escapeHtml(highlight.label)}</p>
+      <p class="operations-highlight__value">${escapeHtml(highlight.value)}</p>
+    `;
+    elements.taskExecutionHighlightList.append(item);
+  }
+}
+
 function renderTaskOperationsHealth(boardSnapshot) {
   renderOperationsMetaList(elements.taskExecutionHealthList, [
     [t("operationsHealthLead"), boardSnapshot.health.lead],
@@ -6047,14 +6294,19 @@ function renderTaskOperationsHealth(boardSnapshot) {
 }
 
 function renderTaskOperationsRisk(boardSnapshot) {
-  renderOperationsMetaList(elements.taskExecutionRiskList, [
+  const riskEntries = [
     [t("operationsRiskMailbox"), boardSnapshot.risk.mailboxBlockers],
     [t("operationsRiskReview"), boardSnapshot.risk.reviewRequired],
     [t("operationsRiskMerge"), boardSnapshot.risk.mergeConflicts],
     [t("operationsRiskIntegration"), boardSnapshot.risk.integrationFailures],
     [t("operationsRiskLaunch"), boardSnapshot.risk.launchFailures],
     [t("operationsRiskAck"), boardSnapshot.risk.requiresAck],
-  ]);
+  ].filter(([, value]) => Number(value) > 0);
+
+  renderOperationsMetaList(
+    elements.taskExecutionRiskList,
+    riskEntries.length > 0 ? riskEntries : [[t("operationsRiskTitle"), t("operationsRiskAllClear")]],
+  );
 }
 
 function renderOperationsMetaList(element, entries) {
@@ -6072,18 +6324,36 @@ function renderOperationsMetaList(element, entries) {
 }
 
 function renderTaskOperationsActionQueue(boardSnapshot) {
+  const manualAttentionCount = boardSnapshot.actionRequiredItems.filter((item) => item.owner === "USER").length;
+  const queueTitle = manualAttentionCount > 0
+    ? t("operationsQueueManualTitle")
+    : t("operationsQueueAutoTitle");
+  const queueSummary = boardSnapshot.actionRequiredItems.length === 0
+    ? t("operationsQueueCleanSummary")
+    : manualAttentionCount > 0
+      ? t("operationsQueueManualSummary")
+      : t("operationsQueueAutoSummary");
+
+  elements.taskExecutionActionTitle.textContent = queueTitle;
+  elements.taskExecutionActionSummary.textContent = queueSummary;
   elements.taskExecutionActionList.replaceChildren();
   elements.taskExecutionActionCount.textContent = String(boardSnapshot.actionRequiredItems.length);
   elements.taskExecutionActionEmpty.hidden = boardSnapshot.actionRequiredItems.length > 0;
+  elements.taskExecutionActionEmpty.textContent = queueSummary;
 
   for (const item of boardSnapshot.actionRequiredItems) {
     const card = document.createElement("article");
     card.className = "operations-action-card";
-    const buttonLabel = item.label ?? buildOperationsActionButtonLabel(item.primaryAction);
+    const buttonLabel = item.owner === "USER"
+      ? (item.label ?? buildOperationsActionButtonLabel(item.primaryAction))
+      : t("operationsActionOpenButton");
     card.innerHTML = `
       <div class="operations-action-card__header">
         <div>
-          <p class="operations-action-card__title">${escapeHtml(buildOperationsActionTitle(item.kind))}</p>
+          <div class="operations-action-card__title-row">
+            <p class="operations-action-card__title">${escapeHtml(buildOperationsActionTitle(item.kind))}</p>
+            <span class="badge ${item.owner === "USER" ? "badge--dirty" : "badge--outline"}">${escapeHtml(buildOperationsActionOwnerLabel(item.owner))}</span>
+          </div>
           <p class="operations-action-card__summary">${escapeHtml(item.summary ?? "")}</p>
         </div>
         <button class="button button--secondary" type="button">${escapeHtml(buttonLabel)}</button>
@@ -6122,6 +6392,17 @@ async function onTaskOperationsAction(item) {
     default:
       renderTaskDetail();
       break;
+  }
+}
+
+function buildOperationsActionOwnerLabel(owner) {
+  switch (owner) {
+    case "USER":
+      return t("operationsOwnerUser");
+    case "LEADER":
+      return t("operationsOwnerLeader");
+    default:
+      return t("operationsOwnerSystem");
   }
 }
 
@@ -6345,22 +6626,28 @@ function renderSubTaskExecution(detail) {
 
   if (subTasks.length === 0) {
     elements.taskExecutionFocus.hidden = true;
-  elements.taskExecutionSummaryList.replaceChildren();
-  elements.taskExecutionHealthList.replaceChildren();
-  elements.taskExecutionRiskList.replaceChildren();
-  elements.taskIntegrationMetaList.replaceChildren();
-  elements.taskIntegrationGateList.replaceChildren();
-  elements.taskIntegrationQueueList.replaceChildren();
-  elements.taskIntegrationEmpty.hidden = true;
-  elements.taskIntegrationGateEmpty.hidden = true;
-  elements.taskIntegrationQueueEmpty.hidden = true;
-  elements.taskIntegrationShell.hidden = false;
-  elements.taskIntegrationStatusBadge.textContent = t("integrationRunQueued");
-  elements.taskIntegrationStatusBadge.className = "badge badge--outline";
-  elements.taskIntegrationStartButton.hidden = true;
-  elements.taskIntegrationRetryButton.hidden = true;
-  elements.taskIntegrationRollbackButton.hidden = true;
-  elements.taskExecutionActionCount.textContent = "0";
+    elements.taskExecutionSummaryList.replaceChildren();
+    elements.taskExecutionHealthList.replaceChildren();
+    elements.taskExecutionHighlightList.replaceChildren();
+    elements.taskExecutionPriorityTitle.textContent = t("operationsPriorityIdleTitle");
+    elements.taskExecutionPrioritySummary.textContent = t("operationsPriorityIdleSummary");
+    elements.taskExecutionPriorityBadge.textContent = t("operationsPriorityAutoBadge");
+    elements.taskExecutionPriorityBadge.className = "badge badge--outline";
+    elements.taskExecutionPriorityCaption.textContent = t("operationsPriorityAutoCaption");
+    elements.taskExecutionRiskList.replaceChildren();
+    elements.taskIntegrationMetaList.replaceChildren();
+    elements.taskIntegrationGateList.replaceChildren();
+    elements.taskIntegrationQueueList.replaceChildren();
+    elements.taskIntegrationEmpty.hidden = true;
+    elements.taskIntegrationGateEmpty.hidden = true;
+    elements.taskIntegrationQueueEmpty.hidden = true;
+    elements.taskIntegrationShell.hidden = false;
+    elements.taskIntegrationStatusBadge.textContent = t("integrationRunQueued");
+    elements.taskIntegrationStatusBadge.className = "badge badge--outline";
+    elements.taskIntegrationStartButton.hidden = true;
+    elements.taskIntegrationRetryButton.hidden = true;
+    elements.taskIntegrationRollbackButton.hidden = true;
+    elements.taskExecutionActionCount.textContent = "0";
     elements.taskExecutionActionEmpty.hidden = true;
     elements.taskExecutionActionList.replaceChildren();
     elements.taskExecutionGraphView.replaceChildren();
@@ -6370,6 +6657,7 @@ function renderSubTaskExecution(detail) {
   }
 
   const boardSnapshot = buildTaskOperationsBoard(detail, sessionsBySubTaskId);
+  renderTaskOperationsPriority(boardSnapshot);
   renderTaskOperationsSummary(boardSnapshot);
   renderTaskOperationsHealth(boardSnapshot);
   renderTaskOperationsRisk(boardSnapshot);
@@ -6402,15 +6690,21 @@ function renderTaskExecutionList(detail, sessionsBySubTaskId) {
     const latestSession = sessions.at(-1) ?? null;
     const mergeRecords = Array.isArray(subTask.mergeRecords) ? subTask.mergeRecords : [];
     const latestMergeRecord = mergeRecords.at(-1) ?? null;
-    const includedAttachments = subTask.launchMetadata?.included?.map((attachment) => attachment.fileName) ?? [];
-    const excludedAttachments = subTask.launchMetadata?.excluded?.map((attachment) => (
-      `${attachment.fileName} (${attachment.reason})`
-    )) ?? [];
-    const previewText = stripAnsi(latestSession?.outputBuffer ?? "");
     const reviewDecision = buildReviewDecisionLabel(subTask.latestReviewDecision);
     const reviewPhase = buildReviewPhaseLabel(subTask.latestReviewPhase);
     const reviewSummary = buildExecutionReviewSummary(subTask);
     const isSelected = subTask.id === state.selectedExecutionSubTaskId;
+    const showReviewBlock = Boolean(subTask.latestReviewDecision || mergeRecords.length > 0 || subTask.status === "FAILED");
+    const statusChips = [
+      subTask.role ?? null,
+      subTask.agentType,
+      latestSession ? `${translateStatusLabel(latestSession.status)}` : null,
+    ].filter(Boolean);
+    const supportingLine = [
+      latestSession ? `${t("latestSessionLabel")}: ${latestSession.agentType}` : null,
+      `${t("retriesLabel")}: ${String(subTask.retryCount ?? 0)}`,
+      mergeRecords.length > 0 ? `${t("mergeAttemptsLabel")}: ${String(mergeRecords.length)}` : null,
+    ].filter(Boolean).join(" · ");
     const card = document.createElement("button");
 
     card.type = "button";
@@ -6419,31 +6713,21 @@ function renderTaskExecutionList(detail, sessionsBySubTaskId) {
       <div class="execution-card__header">
         <div>
           <p class="execution-card__title">${escapeHtml(subTask.title)}</p>
-          <p class="execution-card__meta">${escapeHtml(`${subTask.agentType} · ${buildSubTaskStatusLabel(subTask.status)}`)}</p>
+          <p class="execution-card__meta">${escapeHtml(buildSubTaskStatusLabel(subTask.status))}</p>
         </div>
         <span class="badge ${buildExecutionStatusBadgeClass(subTask.status)}">${escapeHtml(buildSubTaskStatusLabel(subTask.status))}</span>
       </div>
-      <div class="execution-card__summary">
-        <p class="execution-card__summary-line"><strong>${escapeHtml(t("latestSessionLabel"))}:</strong> ${escapeHtml(latestSession ? `${latestSession.agentType} · ${translateStatusLabel(latestSession.status)}` : t("latestSessionNone"))}</p>
-        <p class="execution-card__summary-line"><strong>${escapeHtml(t("retriesLabel"))}:</strong> ${escapeHtml(String(subTask.retryCount ?? 0))} · <strong>${escapeHtml(t("sessionsLabelOther", { count: sessions.length }).replace(`${sessions.length} `, ""))}:</strong> ${escapeHtml(String(sessions.length))}</p>
-        <p class="execution-card__summary-line"><strong>${escapeHtml(t("mergeAttemptsLabel"))}:</strong> ${escapeHtml(String(mergeRecords.length))} · <strong>${escapeHtml(t("latestMergeLabel"))}:</strong> ${escapeHtml(buildMergeHistoryHeadline(latestMergeRecord))}</p>
-        <p class="execution-card__summary-line"><strong>${escapeHtml(t("attachmentsLabel"))}:</strong> ${escapeHtml(`${t("includedCount", { count: includedAttachments.length })} · ${t("excludedCount", { count: excludedAttachments.length })}`)}</p>
+      <p class="execution-card__next-step">${escapeHtml(subTask.runSummary ?? reviewSummary)}</p>
+      <div class="execution-card__chip-row">
+        ${statusChips.map((chip) => `<span class="execution-card__chip">${escapeHtml(chip)}</span>`).join("")}
       </div>
-      <div class="execution-card__review">
-        <p class="execution-card__review-title">${escapeHtml(`${reviewPhase} · ${reviewDecision}`)}</p>
-        <p class="execution-card__review-summary">${escapeHtml(reviewSummary)}</p>
-      </div>
-      <dl class="execution-card__facts">
-        <div>
-          <dt>${escapeHtml(t("branchLabel"))}</dt>
-          <dd>${escapeHtml(subTask.branchName ?? t("leadSessionPending"))}</dd>
+      <p class="execution-card__supporting">${escapeHtml(supportingLine || t("latestSessionNone"))}</p>
+      ${showReviewBlock ? `
+        <div class="execution-card__review">
+          <p class="execution-card__review-title">${escapeHtml(latestMergeRecord ? buildMergeHistoryHeadline(latestMergeRecord) : `${reviewPhase} · ${reviewDecision}`)}</p>
+          <p class="execution-card__review-summary">${escapeHtml(latestMergeRecord ? buildExecutionMergeSummary(subTask, latestMergeRecord) : reviewSummary)}</p>
         </div>
-        <div>
-          <dt>${escapeHtml(t("worktreeLabel"))}</dt>
-          <dd>${escapeHtml(subTask.worktreePath ?? t("leadSessionPending"))}</dd>
-        </div>
-      </dl>
-      <pre class="execution-card__preview">${escapeHtml(previewText || t("waitingWorkerOutput"))}</pre>
+      ` : ""}
     `;
 
     card.addEventListener("click", () => {
@@ -6851,11 +7135,14 @@ function clearTaskDetail() {
   elements.taskAttachmentsList.replaceChildren();
   elements.taskExecutionList.replaceChildren();
   elements.taskExecutionBoard.hidden = true;
+  elements.taskExecutionHighlightList.replaceChildren();
   elements.taskExecutionSummaryList.replaceChildren();
   elements.taskExecutionHealthList.replaceChildren();
   elements.taskExecutionRiskList.replaceChildren();
   elements.taskExecutionActionList.replaceChildren();
   elements.taskExecutionActionCount.textContent = "0";
+  elements.taskExecutionActionTitle.textContent = t("operationsActionTitle");
+  elements.taskExecutionActionSummary.textContent = t("operationsQueueCleanSummary");
   elements.taskExecutionActionEmpty.hidden = true;
   elements.taskExecutionGraphView.replaceChildren();
   elements.taskExecutionActivityList.replaceChildren();
@@ -6864,6 +7151,11 @@ function clearTaskDetail() {
   elements.taskExecutionListPanel.hidden = true;
   elements.taskExecutionActivityPanel.hidden = true;
   elements.taskExecutionModeBadge.textContent = buildOperationsModeBadgeLabel(state.taskOperationsView);
+  elements.taskExecutionPriorityTitle.textContent = t("operationsPriorityIdleTitle");
+  elements.taskExecutionPrioritySummary.textContent = t("operationsPriorityIdleSummary");
+  elements.taskExecutionPriorityBadge.textContent = t("operationsPriorityAutoBadge");
+  elements.taskExecutionPriorityBadge.className = "badge badge--outline";
+  elements.taskExecutionPriorityCaption.textContent = t("operationsPriorityAutoCaption");
   if (elements.dashboardTeamList) {
     elements.dashboardTeamList.replaceChildren();
   }
@@ -9109,12 +9401,37 @@ function syncExecutionSelection(detail) {
 
   const selectedSubTask = subTasks.find((subTask) => subTask.id === state.selectedExecutionSubTaskId) ?? null;
   const nextSubTask = selectedSubTask
-    ?? subTasks.find((subTask) => subTask.status === "RUNNING")
-    ?? subTasks.at(0)
+    ?? [...subTasks].sort((left, right) => buildExecutionSelectionPriority(left) - buildExecutionSelectionPriority(right))[0]
     ?? null;
 
   state.selectedExecutionSubTaskId = nextSubTask?.id ?? null;
   state.selectedExecutionSessionId = resolveFocusedSession(detail, state.selectedExecutionSubTaskId)?.id ?? null;
+}
+
+function buildExecutionSelectionPriority(subTask) {
+  switch (subTask?.status) {
+    case "RUNNING":
+      return 1;
+    case "FAILED":
+      return 2;
+    case "REVIEW_PENDING":
+      return 3;
+    case "REWORK_REQUIRED":
+    case "DISCARD_PENDING":
+      return 4;
+    case "BLOCKED":
+      return 5;
+    case "READY":
+      return 6;
+    case "PENDING":
+      return 7;
+    case "ACCEPTED":
+      return 8;
+    case "MERGED":
+      return 9;
+    default:
+      return 10;
+  }
 }
 
 function syncExecutionDrafts(detail) {

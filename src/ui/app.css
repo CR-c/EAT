@@ -3186,6 +3186,26 @@ body.layout--sidebar-collapsed .main-content {
   -webkit-line-clamp: 2;
 }
 
+.workspace-chat__status-strip {
+  display: flex;
+  min-height: 26px;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.7rem;
+  border-width: 1px;
+  border-color: rgb(30 41 59 / 0.8);
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1rem;
+  --tw-text-opacity: 1;
+  color: rgb(148 163 184 / var(--tw-text-opacity, 1));
+  background: rgba(2, 6, 23, 0.38);
+}
+
 .workspace-chat__history {
   display: grid;
   min-height: 0px;
@@ -5573,30 +5593,6 @@ body.layout--sidebar-collapsed .main-content {
   font-size: 0.75rem;
   line-height: 1rem;
   font-weight: 500;
-  --tw-text-opacity: 1;
-  color: rgb(68 71 78 / var(--tw-text-opacity, 1));
-}
-
-.execution-card__summary,
-  .execution-card__facts,
-  .team-member-card__facts {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.execution-card__facts div,
-  .team-member-card__facts div {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.execution-card__facts dt,
-  .team-member-card__facts dt {
-  font-size: 0.75rem;
-  line-height: 1rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
   --tw-text-opacity: 1;
   color: rgb(68 71 78 / var(--tw-text-opacity, 1));
 }

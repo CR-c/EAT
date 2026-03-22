@@ -618,7 +618,7 @@
                         ></textarea>
                       </label>
                       <div class="workspace-chat__composer-meta">
-                        <div class="workspace-chat__context">
+                        <div class="workspace-chat__context workspace-chat__status-strip">
                           <span id="task-message-branch-hint" class="workspace-chat__context-chip">当前分支 · -</span>
                           <span id="task-message-queue-status" class="workspace-chat__context-chip workspace-chat__context-chip--muted">当前空闲</span>
                         </div>
@@ -661,6 +661,7 @@
                       </div>
                       <div class="workspace-hero__nextline">
                         <div class="workspace-hero__nextcopy">
+                          <p class="panel__eyebrow" data-i18n="taskNextActionEyebrow">当前阶段与下一步</p>
                           <span id="task-next-action-badge" class="badge badge--accent-soft">草稿</span>
                           <div class="workspace-hero__nexttext">
                             <h4 id="task-next-action-title" class="plan-history__title">先启动首轮需求澄清</h4>
@@ -687,6 +688,7 @@
                     </section>
 
                     <section class="workspace-orchestration workspace-orchestration--side" aria-labelledby="task-team-title">
+                      <span class="sr-only" data-i18n="teamLifecycleTitle">Leader 编排</span>
                       <div class="panel__header panel__header--inline">
                         <div>
                           <p class="panel__eyebrow" data-i18n="agentStatusEyebrow">执行态势</p>
@@ -967,7 +969,7 @@
             <div class="panel__header">
               <div>
                 <p class="panel__eyebrow" data-i18n="planDraftEyebrow">执行方案</p>
-                <h2 id="task-plan-title" data-i18n="currentPlanDraftTitle">执行方案审阅</h2>
+                <h2 id="task-plan-title" data-i18n="currentPlanDraftTitle">当前计划草稿</h2>
               </div>
             </div>
             <div id="task-plan-feedback" class="feedback" role="status" aria-live="polite"></div>
@@ -992,7 +994,14 @@
                 <div class="plan-editor__toolbar">
                   <div class="segmented-control" aria-label="Plan view">
                     <span class="segmented-control__label" data-i18n="planViewLabel">计划视图</span>
-                    <span class="badge badge--outline" data-i18n="planGraphViewButton">执行顺序</span>
+                    <div class="plan-editor__actions">
+                      <button id="task-plan-graph-view-button" class="button button--secondary" type="button" data-i18n="planGraphViewButton">
+                        图谱视图
+                      </button>
+                      <button id="task-plan-list-view-button" class="button button--secondary" type="button" data-i18n="planListViewButton">
+                        列表视图
+                      </button>
+                    </div>
                   </div>
                   <p class="plan-editor__hint" data-i18n="planEditorHint">
                     批准前可先编辑草稿。变更仅保存在当前浏览器，直到草稿同步功能上线。
@@ -1008,7 +1017,7 @@
                       重置本地修改
                     </button>
                     <button id="task-plan-approve-button" class="button button--primary" type="button" data-i18n="approveDraftButton">
-                      批准执行方案
+                      批准草稿
                     </button>
                   </div>
                 </div>
@@ -1059,6 +1068,22 @@
             <div id="task-execution-board" class="execution-board">
               <div class="operations-board">
                 <section class="operations-section" aria-labelledby="task-operations-summary-title">
+                  <div class="operations-priority">
+                    <div class="operations-priority__copy">
+                      <p id="task-operations-priority-eyebrow" class="panel__eyebrow" data-i18n="operationsPriorityEyebrow">执行主线</p>
+                      <h4 id="task-operations-priority-title" class="operations-priority__title" data-i18n="operationsPriorityIdleTitle">等待新的执行事件</h4>
+                      <p id="task-operations-priority-summary" class="operations-priority__summary" data-i18n="operationsPriorityIdleSummary">
+                        当前没有活动中的 worker，系统会在条件满足时继续推进。
+                      </p>
+                    </div>
+                    <div class="operations-priority__status">
+                      <span id="task-operations-priority-badge" class="badge badge--outline" data-i18n="operationsPriorityAutoBadge">自动推进中</span>
+                      <p id="task-operations-priority-caption" class="operations-priority__caption" data-i18n="operationsPriorityAutoCaption">
+                        除最终审核外，无需用户中途介入。
+                      </p>
+                    </div>
+                  </div>
+                  <div id="task-operations-highlight-list" class="operations-highlight-list"></div>
                   <div class="panel__header panel__header--inline">
                     <div>
                       <p class="panel__eyebrow" data-i18n="operationsBoardEyebrow">运行看板</p>
@@ -1088,6 +1113,9 @@
                     <div>
                       <p class="panel__eyebrow" data-i18n="operationsActionEyebrow">待处理</p>
                       <h4 id="task-operations-action-title" class="plan-history__title" data-i18n="operationsActionTitle">需要人处理的事项</h4>
+                      <p id="task-operations-action-summary" class="operations-section__summary" data-i18n="operationsQueueCleanSummary">
+                        当前没有额外处理项，系统会继续自动推进。
+                      </p>
                     </div>
                     <span id="task-operations-action-count" class="badge badge--outline">0</span>
                   </div>

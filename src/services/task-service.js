@@ -7024,19 +7024,19 @@ function buildDerivedRunSummary(subTask) {
         ? `Running inside ${subTask.worktreePath}.`
         : "Worker session is running.";
     case SUBTASK_STATUS.REVIEW_PENDING:
-      return "Worker run finished. Waiting for review outcome.";
+      return "Worker run finished. Lead review will continue automatically.";
     case SUBTASK_STATUS.ACCEPTED:
-      return "Accepted for integration.";
+      return "Accepted by the lead and waiting for integration.";
     case SUBTASK_STATUS.REWORK_REQUIRED:
-      return normalizeRequiredString(subTask?.latestReviewSummary) ?? "Needs another worker pass before integration.";
+      return normalizeRequiredString(subTask?.latestReviewSummary) ?? "Lead requested another worker pass before integration.";
     case SUBTASK_STATUS.DISCARD_PENDING:
-      return normalizeRequiredString(subTask?.latestReviewSummary) ?? "Marked for discard and waiting for operator confirmation.";
+      return normalizeRequiredString(subTask?.latestReviewSummary) ?? "Lead marked this result to stay out of the merge set.";
     case SUBTASK_STATUS.MERGED:
       return "Merged into the task base branch.";
     case SUBTASK_STATUS.FAILED:
       return normalizeRequiredString(subTask?.lastError) ?? "Worker execution failed.";
     case SUBTASK_STATUS.CANCELLED:
-      return "Cancelled by the operator.";
+      return "Removed from the current team run.";
     case SUBTASK_STATUS.DISCARDED:
       return "Discarded from the merge set.";
     default:
