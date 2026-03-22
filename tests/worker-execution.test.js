@@ -3203,18 +3203,19 @@ test("persists cleanup warnings and keeps completed tasks terminal when worktree
   }
 });
 
-test("deletes a paused task with branch cleanup after the worker releases its worktree shortly after pause", async () => {
+test("deletes a paused task with branch cleanup after waiting for a delayed worker release", async () => {
   const fixture = await makeTempDir("eat-delete-paused-cleanup-retry-");
 
   try {
     const databasePath = path.join(fixture.path, "data", "eat.db");
     const eventBus = new TaskEventBus();
     const { agentService } = createDelayedCleanupReleaseAgentService({
+      releaseDelayMs: 4_200,
       plan: {
         subtasks: [
           {
             title: "Delayed cleanup release",
-            description: "Hold the worktree briefly after pause before releasing it.",
+            description: "Hold the worktree for several seconds after pause before releasing it.",
             recommended_agent: "worker-agent",
             branch_suffix: "delayed-cleanup-release",
           },
@@ -3740,6 +3741,9 @@ function createPhase08AgentService(options) {
 function createDelayedCleanupReleaseAgentService(options) {
   const registry = new AgentRegistry();
   const plan = options.plan;
+  const releaseDelayMs = Number.isFinite(options.releaseDelayMs) && options.releaseDelayMs > 0
+    ? Math.trunc(options.releaseDelayMs)
+    : 1_200;
 
   registry.register({
     capabilities: {
@@ -3822,7 +3826,7 @@ function createDelayedCleanupReleaseAgentService(options) {
         "bash",
         [
           "-lc",
-          "trap 'sleep 1.2; exit 0' TERM; printf 'worker running\\n'; while true; do sleep 0.1; done",
+          `trap 'sleep ${releaseDelayMs / 1000}; exit 0' TERM; printf 'worker running\\n'; while true; do sleep 0.1; done`,
         ],
         {
           cwd: config.workDir,

@@ -20,11 +20,14 @@ import {
 const STORAGE_KEYS = {
   draftPrefix: "eat.phase06.planDraft",
   locale: "eat.ui.locale",
+  navCollapsed: "eat.ui.navCollapsed",
   selectedProjectId: "eat.phase04.selectedProjectId",
   selectedTaskId: "eat.phase04.selectedTaskId",
+  sidebarCollapsed: "eat.ui.sidebarCollapsed",
 };
 const DEFAULT_OUTPUT_BUFFER_MAX_BYTES = 65_536;
 const LIVE_STATUS_REFRESH_INTERVAL_MS = 30_000;
+const TASK_DOCUMENT_SNAPSHOT_MESSAGE_PREFIX = "Task document snapshot: ";
 const TASK_PAUSED_REASON_PREFIX = "Paused by operator from ";
 const LEADER_CHAT_SENDABLE_STATUSES = new Set([
   "ACTION_REQUIRED",
@@ -201,7 +204,8 @@ const UI_MESSAGES = {
     createGuidedTaskButton: "创建引导任务",
     tasksEyebrow: "工作区",
     taskListTitle: "工作区",
-    taskListSummary: "先选任务，再与 lead 对话确认需求；确认后去计划审阅，再进入执行。",
+    taskListSummary: "先与 Lead 对齐任务文档，再确认 agent 分工，最后批准执行方案。",
+    workspaceTaskRailTitle: "任务工作台",
     showArchivedTasksButton: "显示归档",
     hideArchivedTasksButton: "隐藏归档",
     taskListArchivedTitle: "已归档",
@@ -235,10 +239,10 @@ const UI_MESSAGES = {
     clarificationTitle: "Leader 对话",
     leaderConversationEyebrow: "Leader 对话",
     leaderConversationTitle: "Leader 实时会话",
-    leaderConversationDraftSummary: "你只和 Leader 对话。先发送第一条任务说明，真实 Leader 会话才会启动。",
-    leaderConversationClarifyingSummary: "当前正在和 Leader 澄清需求。继续补充约束、边界和验收标准，确认无误后再点“已确认需求”。",
-    leaderConversationPlanningSummary: "Leader 已收到确认，正在根据对话结果生成任务拆分与依赖关系。",
-    leaderConversationPlanReadySummary: "Leader 已给出任务拆分方案。先检查下面的分配预览，再决定是否进入计划审阅。",
+    leaderConversationDraftSummary: "你只和 Leader 对话。先发送第一条任务说明，Lead 会开始整理可确认的任务文档草稿。",
+    leaderConversationClarifyingSummary: "当前正在围绕任务文档草稿继续澄清。把范围、约束和验收标准补齐，确认右侧文档无误后再点“已确认任务文档”。",
+    leaderConversationPlanningSummary: "任务文档已确认。Leader 正在根据文档生成 agent 分工、依赖关系和执行方案。",
+    leaderConversationPlanReadySummary: "执行方案已经生成。先确认右侧 agent 分配和依赖无误，再进入计划审阅并批准执行方案。",
     leaderConversationPausedSummary: "任务已被暂停，实时会话已停止。确认无误后才能删除，或保留当前任务稍后处理。",
     leaderConversationExecutionSummary: "需求和分配已确认。后续由 Leader 继续编排执行，操作员不直接和子 agent 对话。",
     leaderConversationEmptyOutput: "这里会显示 Leader 的实时输出。",
@@ -280,17 +284,55 @@ const UI_MESSAGES = {
     leaderPlanBranchLabel: "分支",
     leaderPlanAgentLabel: "执行成员",
     leaderPlanRoleLabel: "角色",
+    executionPlanEyebrow: "执行方案",
+    executionPlanTitle: "分配预览",
+    executionPlanEmpty: "执行方案还在生成中。",
+    executionPlanSummaryGenerating: "任务文档已确认。Leader 正在整理执行成员、依赖和分支策略。",
+    executionPlanSummaryReady: "以下是当前执行拆分。点击条目查看细节，确认无误后再进入计划审阅。",
+    executionPlanWaitingBadge: "生成中",
+    executionPlanReadyBadge: "待执行确认",
+    executionPlanLoadingLabel: "执行方案生成中",
+    workspacePreviewCountDocument: "{count} 个章节",
+    workspacePreviewCountPlan: "{count} 个执行单元",
+    workspacePreviewGuideTaskDoc: "左侧澄清会实时沉淀到这里。",
+    workspacePreviewGuideTaskDocConfirmed: "这份文档已锁定，等待执行方案生成。",
+    workspacePreviewGuideExecutionPlanPending: "生成完成后，可逐条查看拆分和依赖。",
+    workspacePreviewGuideExecutionPlan: "点击条目查看拆分、依赖和执行成员。",
+    taskDocEyebrow: "任务文档",
+    taskDocTitle: "任务文档",
+    taskDocEmpty: "Lead 会先围绕需求整理一份可确认的任务文档草稿。",
+    taskDocSummaryDraft: "这里展示任务文档的基础信息。",
+    taskDocSummaryClarifying: "这里实时汇总当前已确认的任务基础信息。",
+    taskDocSummaryConfirmed: "任务文档已确认，这里固定展示基础信息。",
+    taskDocLoadingLabel: "任务文档整理中",
+    taskDocBadgeDraft: "草稿中",
+    taskDocBadgeReady: "待确认",
+    taskDocBadgeConfirmed: "已确认",
+    taskDocGoalLabel: "任务目标",
+    taskDocScopeLabel: "工作范围",
+    taskDocClarificationLabel: "补充约束",
+    taskDocAcceptanceLabel: "验收与验证",
+    taskDocContextLabel: "上下文",
+    taskDocConfirmLabel: "确认后动作",
+    taskDocProjectLabel: "项目",
+    taskDocBaseBranchLabel: "基线分支",
+    taskDocAttachmentsSummaryLabel: "附件",
+    taskDocClarificationEmpty: "还没有补充约束。继续在左侧对话里补齐范围、字段、交互和验收标准。",
+    taskDocScopeEmpty: "工作范围还没有稳定下来。继续补齐涉及页面、接口、数据、交互边界和不做什么。",
+    taskDocAcceptanceEmpty: "验收与验证方式还没有明确下来。继续补齐测试、检查点、交付物和完成标准。",
+    taskDocContextEmpty: "无附件；将基于当前项目和任务基线分支继续澄清。",
+    taskDocConfirmHint: "确认这份任务文档无误后，点击“已确认任务文档”。系统随后才会进入 agent 分工与执行方案生成。",
     taskStageEyebrow: "主线",
     taskStageTitle: "当前阶段与下一步",
     taskNextActionEyebrow: "下一步",
     taskNextDraftTitle: "先写给 Lead 的第一条消息",
     taskNextDraftSummary: "任务还没有启动真实 Lead 会话。先在下方写清你要做什么、限制条件和期望结果，再开始澄清。",
-    taskNextClarifyingTitle: "继续和 Lead 对话，确认后进入计划审阅",
-    taskNextClarifyingSummary: "把需求、约束和验收标准聊清楚后，再点击“已确认需求”。",
-    taskNextPlanningTitle: "等待计划草稿生成完成",
-    taskNextPlanningSummary: "系统正在生成并校验计划。生成完成后，这个任务会自动进入计划审阅。",
-    taskNextPlanReviewTitle: "去计划审阅检查分工与依赖",
-    taskNextPlanReviewSummary: "计划草稿已经准备好。先检查分支、依赖和验收标准，再批准进入执行。",
+    taskNextClarifyingTitle: "先把任务文档和 Lead 对齐",
+    taskNextClarifyingSummary: "继续把范围、约束和验收标准聊清楚，确认右侧任务文档无误后，再点击“已确认任务文档”。",
+    taskNextPlanningTitle: "等待执行方案生成完成",
+    taskNextPlanningSummary: "系统正在根据已确认的任务文档生成并校验 agent 分工。生成完成后，这个任务会自动进入计划审阅。",
+    taskNextPlanReviewTitle: "确认 agent 分工后再批准执行方案",
+    taskNextPlanReviewSummary: "执行方案已经准备好。先检查分支、依赖和执行成员，再批准执行方案。",
     taskNextPausedTitle: "任务已暂停，可删除或保留",
     taskNextPausedSummary: "所有实时会话都已停止。确认不再需要后再删除；若要继续推进，需要后续恢复方案。",
     taskNextExecutingTitle: "去运行看板跟进执行状态",
@@ -315,7 +357,10 @@ const UI_MESSAGES = {
     taskListHintFailed: "需要排查",
     refreshTaskButton: "刷新任务",
     taskDetailEmpty: "选择一个任务进入工作区，与 Leader 对话并确认后续分配。",
-    selectedTaskEyebrow: "当前任务",
+    selectedTaskEyebrow: "任务概览",
+    workspaceOverviewProjectLabel: "项目",
+    workspaceOverviewLeadLabel: "Lead",
+    workspaceOverviewSessionLabel: "会话",
     cleanupWarningsEyebrow: "清理警告",
     cleanupWarningsTitle: "可能仍需手动清理",
     leadAgentStat: "Lead Agent",
@@ -325,6 +370,9 @@ const UI_MESSAGES = {
     planVersionStat: "计划版本",
     snapshotsStat: "快照数",
     leaderOrchestrationEyebrow: "Leader 编排",
+    agentStatusEyebrow: "执行态势",
+    agentStatusTitle: "执行态势",
+    agentStatusSummary: "展示 Lead、执行成员和当前分支。",
     teamLifecycleTitle: "Leader 编排",
     teamLifecycleSummary: "先查看 lead 协调者和所有具名 worker，再进入聚焦执行与恢复操作。",
     teamEmpty: "计划批准并物化为可执行子任务后，团队成员会显示在这里。",
@@ -487,20 +535,20 @@ const UI_MESSAGES = {
     mailboxToLeadOption: "Lead",
     sendHandoffNoteButton: "发送交接说明",
     executionFocusEmpty: "选择一个子任务摘要，即可查看最新 worker 会话，而不必同时挂载所有终端。",
-    planDraftEyebrow: "计划草稿",
-    currentPlanDraftTitle: "当前计划草稿",
-    planEmpty: "确认需求后会触发计划生成、校验与草稿持久化。",
-    planEditorHint: "批准前可先编辑草稿。变更仅保存在当前浏览器，直到草稿同步功能上线。",
+    planDraftEyebrow: "执行方案",
+    currentPlanDraftTitle: "执行方案审阅",
+    planEmpty: "确认任务文档后会触发执行方案生成、校验与草稿持久化。",
+    planEditorHint: "批准执行方案前可先编辑草稿。变更仅保存在当前浏览器，直到草稿同步功能上线。",
     planViewLabel: "计划视图",
-    planGraphViewButton: "图谱视图",
-    planListViewButton: "列表视图",
+    planGraphViewButton: "执行顺序",
+    planListViewButton: "卡片视图",
     planTemplateLabel: "模板种子",
     applyTemplateButton: "应用模板",
-    planTemplateHint: "用常见团队骨架快速初始化 DAG 草稿，之后仍需人工审阅和批准。",
+    planTemplateHint: "用常见团队骨架快速初始化执行方案，之后仍需人工审阅并批准。",
     saveDraftButton: "保存草稿",
     addSubtaskButton: "添加子任务",
     resetLocalEditsButton: "重置本地修改",
-    approveDraftButton: "批准草稿",
+    approveDraftButton: "批准执行方案",
     planningNotesLabel: "规划备注",
     planningNotesPlaceholder: "可选：为当前草稿补充执行备注。",
     roleField: "角色",
@@ -515,7 +563,12 @@ const UI_MESSAGES = {
     roleLabel: "角色",
     noDependenciesLabel: "无依赖",
     noAcceptanceCriteria: "尚未定义验收标准。",
-    graphColumnLabel: "阶段 {count}",
+    graphColumnLabel: "步骤 {count}",
+    planNodeDetailTitle: "子任务详情",
+    planNodeDetailSummary: "主区只保留摘要卡片，完整字段在这里查看和编辑。",
+    planNodeRoleAgentMeta: "{role} · {agent}",
+    planNodeNoAgent: "未分配 Agent",
+    planSequenceParallelLabel: "并行 {count}",
     nodeCountOne: "{count} 个节点",
     nodeCountOther: "{count} 个节点",
     templateSummary: "模板 {template}",
@@ -527,7 +580,7 @@ const UI_MESSAGES = {
     transcriptTitle: "已持久化的澄清消息",
     transcriptEmpty: "开始澄清后，这里会创建首个 lead 会话和转录消息。",
     startClarificationButton: "开始澄清",
-    confirmRequirementsButton: "已确认需求",
+    confirmRequirementsButton: "已确认任务文档",
     sendClarificationReplyLabel: "发送澄清回复",
     sendClarificationReplyPlaceholder: "补充需求、约束条件或验收标准。",
     sendMessageButton: "发送消息",
@@ -618,13 +671,13 @@ const UI_MESSAGES = {
     attachmentsLabel: "附件",
     includedCount: "{count} 个纳入",
     excludedCount: "{count} 个排除",
-    planDraftReady: "计划草稿已可审阅。版本 {version} 已保存，可进入下一阶段。",
-    planTemplateApplied: "模板骨架已写入当前计划草稿，可继续编辑后再批准。",
+    planDraftReady: "执行方案草稿已可审阅。版本 {version} 已保存，可进入下一阶段。",
+    planTemplateApplied: "模板骨架已写入当前执行方案草稿，可继续编辑后再批准。",
     planningRetryingOne: "计划正在重试，此前已有 {count} 次校验失败。",
     planningRetryingOther: "计划正在重试，此前已有 {count} 次校验失败。",
-    planningInProgress: "规划进行中，正在等待 lead agent 输出有效的 JSON 草稿。",
+    planningInProgress: "执行方案生成中，正在等待 lead agent 输出有效的 JSON 草稿。",
     staleDraftNotice: "服务端草稿已在其他标签页或恢复操作后变更。继续前请先重置本地修改。",
-    saveBeforeApprovalButton: "先保存再批准",
+    saveBeforeApprovalButton: "先保存再批准执行方案",
     agentMetaLabel: "Agent",
     dependsOnLabel: "依赖于",
     restoreSnapshotButton: "恢复快照",
@@ -642,10 +695,10 @@ const UI_MESSAGES = {
     transcriptRoleSystem: "系统",
     latestServerDraftFirst: "请先重置本地修改，再查看最新服务端草稿。",
     draftSaved: "草稿已保存，服务端校验通过。",
-    latestServerDraftBeforeApproval: "批准前请先将本地修改重置为最新服务端草稿。",
-    saveDraftBeforeApproval: "请先保存草稿，再执行批准。",
-    planApprovedIdempotent: "计划此前已批准，现复用已物化的子任务。",
-    planApprovedNew: "计划已批准，子任务已物化并准备进入执行。",
+    latestServerDraftBeforeApproval: "批准执行方案前请先将本地修改重置为最新服务端草稿。",
+    saveDraftBeforeApproval: "请先保存草稿，再批准执行方案。",
+    planApprovedIdempotent: "执行方案此前已批准，现复用已物化的子任务。",
+    planApprovedNew: "执行方案已批准，子任务已物化并进入执行阶段。",
     restoreSnapshotConfirm: "将此快照恢复到当前草稿吗？此标签页中未保存的本地修改将被替换。",
     snapshotRestored: "快照已恢复到当前草稿。",
     snapshotRestoredNotice: "快照 {snapshotId} 已恢复到当前草稿。",
@@ -722,6 +775,10 @@ const UI_MESSAGES = {
     sidebarRegisterButton: "注册项目",
     brandName: "EAT Agent Workbench",
     navStatusIdle: "就绪",
+    collapseNavButton: "收起顶部导航",
+    expandNavButton: "展开顶部导航",
+    collapseSidebarButton: "收起项目栏",
+    expandSidebarButton: "展开项目栏",
     metricsTitle: "指标概览",
     metricsEmpty: "指标视图即将上线。任务执行统计、Agent 利用率和性能数据会在这里显示。",
   },
@@ -889,7 +946,8 @@ const UI_MESSAGES = {
     createGuidedTaskButton: "Create guided task",
     tasksEyebrow: "Workspace",
     taskListTitle: "Workspace",
-    taskListSummary: "Pick a task first, confirm requirements with the lead, then move into plan review before execution.",
+    taskListSummary: "Pick a task, finish the task document with the lead, then review agent allocation before approving the execution plan.",
+    workspaceTaskRailTitle: "Task desk",
     showArchivedTasksButton: "Show archived",
     hideArchivedTasksButton: "Hide archived",
     taskListArchivedTitle: "Archived",
@@ -923,10 +981,10 @@ const UI_MESSAGES = {
     clarificationTitle: "Leader conversation",
     leaderConversationEyebrow: "Leader conversation",
     leaderConversationTitle: "Leader live session",
-    leaderConversationDraftSummary: "You only talk to the leader. A real leader session starts only after you send the first task brief.",
-    leaderConversationClarifyingSummary: "You are actively clarifying with the leader. Keep adding constraints, boundaries, and acceptance criteria, then confirm when ready.",
-    leaderConversationPlanningSummary: "The leader has your confirmed brief and is generating task splits and dependencies from the conversation.",
-    leaderConversationPlanReadySummary: "The leader has produced an assignment draft. Review the split preview below before moving into plan review.",
+    leaderConversationDraftSummary: "You only talk to the leader. After your first brief, the lead starts shaping a confirmable task document draft.",
+    leaderConversationClarifyingSummary: "The lead is still refining the task document draft with you. Keep adding scope, constraints, and acceptance criteria, then confirm the document when it is accurate.",
+    leaderConversationPlanningSummary: "The task document is confirmed. The leader is now generating executor allocation, dependencies, and the execution plan.",
+    leaderConversationPlanReadySummary: "The execution plan is ready. Confirm the executor split and dependencies before moving into plan review and approval.",
     leaderConversationPausedSummary: "The task is paused and live sessions have stopped. Delete it only after you confirm the current state is safe.",
     leaderConversationExecutionSummary: "Requirements and allocation are already confirmed. The leader continues orchestrating execution; the operator does not chat with sub-agents directly.",
     leaderConversationEmptyOutput: "The leader's live output will appear here.",
@@ -968,17 +1026,55 @@ const UI_MESSAGES = {
     leaderPlanBranchLabel: "Branch",
     leaderPlanAgentLabel: "Executor",
     leaderPlanRoleLabel: "Role",
+    executionPlanEyebrow: "Execution plan",
+    executionPlanTitle: "Allocation preview",
+    executionPlanEmpty: "The execution plan is still being generated.",
+    executionPlanSummaryGenerating: "The task document is confirmed. The leader is now shaping executors, dependencies, and branch strategy.",
+    executionPlanSummaryReady: "This is the current execution split. Open an item to inspect the detail before moving into plan review.",
+    executionPlanWaitingBadge: "Generating",
+    executionPlanReadyBadge: "Awaiting execution approval",
+    executionPlanLoadingLabel: "Execution plan is being generated",
+    workspacePreviewCountDocument: "{count} sections",
+    workspacePreviewCountPlan: "{count} execution items",
+    workspacePreviewGuideTaskDoc: "Clarification on the left keeps feeding this document.",
+    workspacePreviewGuideTaskDocConfirmed: "This document is locked while the execution plan is being generated.",
+    workspacePreviewGuideExecutionPlanPending: "Once ready, open each item to inspect split and dependencies.",
+    workspacePreviewGuideExecutionPlan: "Open an item to inspect split, dependencies, and executor.",
+    taskDocEyebrow: "Task document",
+    taskDocTitle: "Task document",
+    taskDocEmpty: "The lead will first shape a confirmable task document here.",
+    taskDocSummaryDraft: "This panel shows the basic task document information.",
+    taskDocSummaryClarifying: "This panel keeps the currently confirmed basics in sync.",
+    taskDocSummaryConfirmed: "The task document is confirmed and pinned here as basic information.",
+    taskDocLoadingLabel: "Task document is being prepared",
+    taskDocBadgeDraft: "Drafting",
+    taskDocBadgeReady: "Awaiting confirmation",
+    taskDocBadgeConfirmed: "Confirmed",
+    taskDocGoalLabel: "Goal",
+    taskDocScopeLabel: "Scope",
+    taskDocClarificationLabel: "Constraints",
+    taskDocAcceptanceLabel: "Acceptance",
+    taskDocContextLabel: "Context",
+    taskDocConfirmLabel: "After confirmation",
+    taskDocProjectLabel: "Project",
+    taskDocBaseBranchLabel: "Base branch",
+    taskDocAttachmentsSummaryLabel: "Attachments",
+    taskDocClarificationEmpty: "No extra constraints yet. Keep using the conversation to pin down scope, data, interactions, and acceptance criteria.",
+    taskDocScopeEmpty: "The working scope is not stable yet. Keep clarifying affected pages, APIs, data, interaction boundaries, and what stays out of scope.",
+    taskDocAcceptanceEmpty: "Acceptance and verification are still incomplete. Keep clarifying tests, checks, deliverables, and the definition of done.",
+    taskDocContextEmpty: "No attachments yet. Clarification will continue from the current project and task base branch.",
+    taskDocConfirmHint: "Once this task document looks correct, click “Task document confirmed”. Only then should the system move on to executor allocation.",
     taskStageEyebrow: "Flow",
     taskStageTitle: "Current stage and next step",
     taskNextActionEyebrow: "Next step",
     taskNextDraftTitle: "Write the first message to the lead",
     taskNextDraftSummary: "A real lead session has not started yet. First write what you want built, the constraints, and the expected outcome, then start clarification.",
-    taskNextClarifyingTitle: "Keep talking to the lead, then confirm requirements",
-    taskNextClarifyingSummary: "Only confirm once the scope, constraints, and acceptance criteria are clear.",
-    taskNextPlanningTitle: "Wait for the plan draft to finish",
-    taskNextPlanningSummary: "The system is generating and validating the plan. Once ready, the task moves into plan review.",
-    taskNextPlanReviewTitle: "Open plan review and inspect the split",
-    taskNextPlanReviewSummary: "A draft is ready. Check branches, dependencies, and acceptance criteria before approval.",
+    taskNextClarifyingTitle: "Finish the task document with the lead",
+    taskNextClarifyingSummary: "Only confirm once the task document is accurate about scope, constraints, and acceptance criteria.",
+    taskNextPlanningTitle: "Wait for executor allocation to finish",
+    taskNextPlanningSummary: "The system is generating and validating executor allocation from the confirmed task document.",
+    taskNextPlanReviewTitle: "Review executor allocation before approval",
+    taskNextPlanReviewSummary: "The execution draft is ready. Check branches, dependencies, and executors before approving the execution plan.",
     taskNextPausedTitle: "Task paused. Delete it or keep it",
     taskNextPausedSummary: "All live sessions are stopped. Delete only when you are sure the task is no longer needed.",
     taskNextExecutingTitle: "Open operations and track execution",
@@ -1003,7 +1099,10 @@ const UI_MESSAGES = {
     taskListHintFailed: "Needs diagnosis",
     refreshTaskButton: "Refresh task",
     taskDetailEmpty: "Select a task to enter the workspace and continue the leader conversation.",
-    selectedTaskEyebrow: "Selected task",
+    selectedTaskEyebrow: "Task overview",
+    workspaceOverviewProjectLabel: "Project",
+    workspaceOverviewLeadLabel: "Lead",
+    workspaceOverviewSessionLabel: "Session",
     cleanupWarningsEyebrow: "Cleanup warnings",
     cleanupWarningsTitle: "Manual cleanup may still be required",
     leadAgentStat: "Lead agent",
@@ -1013,6 +1112,9 @@ const UI_MESSAGES = {
     planVersionStat: "Plan version",
     snapshotsStat: "Snapshots",
     leaderOrchestrationEyebrow: "Leader orchestration",
+    agentStatusEyebrow: "Execution status",
+    agentStatusTitle: "Execution status",
+    agentStatusSummary: "Shows the lead, executors, and current branch.",
     teamLifecycleTitle: "Leader orchestration",
     teamLifecycleSummary: "See the lead coordinator and every named worker before drilling into focused execution and recovery actions.",
     teamEmpty: "Team members will appear here after plan approval materializes executable subtasks.",
@@ -1175,20 +1277,20 @@ const UI_MESSAGES = {
     mailboxToLeadOption: "Lead",
     sendHandoffNoteButton: "Send handoff note",
     executionFocusEmpty: "Pick a subtask summary to inspect the latest worker session without mounting every terminal at once.",
-    planDraftEyebrow: "Plan draft",
-    currentPlanDraftTitle: "Current plan draft",
-    planEmpty: "Confirm requirements to trigger plan generation, validation, and draft persistence.",
-    planEditorHint: "Edit the draft before approval. Changes stay in this browser until plan draft sync is enabled.",
+    planDraftEyebrow: "Execution plan",
+    currentPlanDraftTitle: "Execution plan review",
+    planEmpty: "Confirm the task document to trigger execution-plan generation, validation, and draft persistence.",
+    planEditorHint: "Edit the draft before approving the execution plan. Changes stay in this browser until plan draft sync is enabled.",
     planViewLabel: "Plan view",
-    planGraphViewButton: "Graph view",
-    planListViewButton: "List view",
+    planGraphViewButton: "Execution order",
+    planListViewButton: "Card view",
     planTemplateLabel: "Template seed",
     applyTemplateButton: "Apply template",
-    planTemplateHint: "Start from a common team DAG skeleton, then keep review and approval under operator control.",
+    planTemplateHint: "Start from a common team DAG skeleton, then keep review and execution approval under operator control.",
     saveDraftButton: "Save draft",
     addSubtaskButton: "Add subtask",
     resetLocalEditsButton: "Reset local edits",
-    approveDraftButton: "Approve draft",
+    approveDraftButton: "Approve execution plan",
     planningNotesLabel: "Planning notes",
     planningNotesPlaceholder: "Optional execution notes for the current draft.",
     roleField: "Role",
@@ -1203,7 +1305,12 @@ const UI_MESSAGES = {
     roleLabel: "Role",
     noDependenciesLabel: "No dependencies",
     noAcceptanceCriteria: "No acceptance criteria defined yet.",
-    graphColumnLabel: "Stage {count}",
+    graphColumnLabel: "Step {count}",
+    planNodeDetailTitle: "Subtask detail",
+    planNodeDetailSummary: "The main area only shows summary cards. Open full fields and edit here.",
+    planNodeRoleAgentMeta: "{role} · {agent}",
+    planNodeNoAgent: "Unassigned agent",
+    planSequenceParallelLabel: "Parallel {count}",
     nodeCountOne: "{count} node",
     nodeCountOther: "{count} nodes",
     templateSummary: "Template {template}",
@@ -1215,7 +1322,7 @@ const UI_MESSAGES = {
     transcriptTitle: "Persisted clarification messages",
     transcriptEmpty: "Start clarification to create the first lead session and transcript entries.",
     startClarificationButton: "Start clarification",
-    confirmRequirementsButton: "Requirements confirmed",
+    confirmRequirementsButton: "Task document confirmed",
     sendClarificationReplyLabel: "Send a clarification reply",
     sendClarificationReplyPlaceholder: "Clarify requirements, constraints, or acceptance criteria.",
     sendMessageButton: "Send message",
@@ -1306,13 +1413,13 @@ const UI_MESSAGES = {
     attachmentsLabel: "Attachments",
     includedCount: "{count} included",
     excludedCount: "{count} excluded",
-    planDraftReady: "Plan draft ready for review. Version {version} is saved and available for the next phase.",
-    planTemplateApplied: "Template skeleton applied to the current plan draft. Edit it before approval.",
+    planDraftReady: "Execution-plan draft ready for review. Version {version} is saved and available for the next phase.",
+    planTemplateApplied: "Template skeleton applied to the current execution-plan draft. Edit it before approval.",
     planningRetryingOne: "Planning is retrying after {count} validation failure.",
     planningRetryingOther: "Planning is retrying after {count} validation failures.",
-    planningInProgress: "Planning is in progress. Waiting for a valid JSON draft from the lead agent.",
+    planningInProgress: "Execution-plan generation is in progress. Waiting for a valid JSON draft from the lead agent.",
     staleDraftNotice: "Server draft changed in another tab or after a restore. Reset local edits before continuing.",
-    saveBeforeApprovalButton: "Save before approval",
+    saveBeforeApprovalButton: "Save before approving execution",
     agentMetaLabel: "Agent",
     dependsOnLabel: "Depends on",
     restoreSnapshotButton: "Restore snapshot",
@@ -1330,10 +1437,10 @@ const UI_MESSAGES = {
     transcriptRoleSystem: "System",
     latestServerDraftFirst: "Reset local edits to review the latest server draft first.",
     draftSaved: "Draft saved. Server validation passed.",
-    latestServerDraftBeforeApproval: "Reset local edits to the latest server draft before approval.",
-    saveDraftBeforeApproval: "Save the draft before approval.",
-    planApprovedIdempotent: "Plan was already approved. Materialized subtasks were reused.",
-    planApprovedNew: "Plan approved. Subtasks are materialized and ready for execution.",
+    latestServerDraftBeforeApproval: "Reset local edits to the latest server draft before approving the execution plan.",
+    saveDraftBeforeApproval: "Save the draft before approving the execution plan.",
+    planApprovedIdempotent: "The execution plan was already approved. Materialized subtasks were reused.",
+    planApprovedNew: "The execution plan is approved. Subtasks are materialized and the task has entered execution.",
     restoreSnapshotConfirm: "Restore this snapshot into the current draft? Unsaved local edits in this tab will be replaced.",
     snapshotRestored: "Snapshot restored into the current draft.",
     snapshotRestoredNotice: "Snapshot {snapshotId} was restored into the current draft.",
@@ -1410,6 +1517,10 @@ const UI_MESSAGES = {
     sidebarRegisterButton: "Register Project",
     brandName: "EAT Agent Workbench",
     navStatusIdle: "Ready",
+    collapseNavButton: "Collapse top navigation",
+    expandNavButton: "Expand top navigation",
+    collapseSidebarButton: "Collapse project sidebar",
+    expandSidebarButton: "Expand project sidebar",
     metricsTitle: "Metrics Overview",
     metricsEmpty: "Metrics view coming soon. Task execution stats, agent utilization, and performance data will appear here.",
   },
@@ -1513,8 +1624,10 @@ const state = {
   leadCandidates: [],
   locale: normalizeLocale(readStorage(STORAGE_KEYS.locale)),
   liveSessionOutputs: new Map(),
+  navCollapsed: readBooleanStorage(STORAGE_KEYS.navCollapsed, true),
   expandedTaskCards: new Set(),
   leaderPlanDetailState: null,
+  taskPlanNodeDetailState: null,
   taskMessageInFlight: null,
   taskMessageQueue: [],
   taskMessageQueuePaused: false,
@@ -1542,6 +1655,7 @@ const state = {
   selectedProjectId: readStorage(STORAGE_KEYS.selectedProjectId),
   selectedTaskId: readStorage(STORAGE_KEYS.selectedTaskId),
   showArchivedTasks: false,
+  sidebarCollapsed: readBooleanStorage(STORAGE_KEYS.sidebarCollapsed, true),
   systemDockerHealth: null,
   taskActionDialogState: null,
   taskListSearch: "",
@@ -1746,10 +1860,27 @@ const elements = {
   taskPageFeedback: document.querySelector("#task-page-feedback"),
   taskPageList: document.querySelector("#task-page-list"),
   taskPageSearchInput: document.querySelector("#task-page-search-input"),
+  taskDocumentBadge: document.querySelector("#task-document-badge"),
+  taskDocumentCount: document.querySelector("#task-document-count"),
+  taskDocumentEmpty: document.querySelector("#task-document-empty"),
+  taskDocumentEyebrow: document.querySelector("#task-document-eyebrow"),
+  taskDocumentGuide: document.querySelector("#task-document-guide"),
+  taskDocumentList: document.querySelector("#task-document-list"),
+  taskDocumentLoading: document.querySelector("#task-document-loading"),
+  taskDocumentLoadingLabel: document.querySelector("#task-document-loading-label"),
+  taskDocumentPanel: document.querySelector("#task-document-panel"),
+  taskDocumentSummary: document.querySelector("#task-document-summary"),
+  taskDocumentTitle: document.querySelector("#task-document-title"),
   taskLeaderPlanBadge: document.querySelector("#task-leader-plan-badge"),
+  taskLeaderPlanCount: document.querySelector("#task-leader-plan-count"),
   taskLeaderPlanEmpty: document.querySelector("#task-leader-plan-empty"),
+  taskLeaderPlanEyebrow: document.querySelector("#task-leader-plan-eyebrow"),
+  taskLeaderPlanGuide: document.querySelector("#task-leader-plan-guide"),
   taskLeaderPlanList: document.querySelector("#task-leader-plan-list"),
+  taskLeaderPlanLoading: document.querySelector("#task-leader-plan-loading"),
+  taskLeaderPlanLoadingLabel: document.querySelector("#task-leader-plan-loading-label"),
   taskLeaderPlanSummary: document.querySelector("#task-leader-plan-summary"),
+  taskLeaderPlanTitle: document.querySelector("#task-leader-plan-title"),
   leaderPlanDetailCloseButton: document.querySelector("#leader-plan-detail-close-button"),
   leaderPlanDetailDialog: document.querySelector("#leader-plan-detail-dialog"),
   leaderPlanDetailFacts: document.querySelector("#leader-plan-detail-facts"),
@@ -1757,11 +1888,13 @@ const elements = {
   leaderPlanDetailTitle: document.querySelector("#leader-plan-detail-title"),
   taskTeamEmpty: document.querySelector("#task-team-empty"),
   taskTeamLeadMeta: document.querySelector("#task-team-lead-meta"),
+  taskTeamLeadPill: document.querySelector("#task-team-lead-pill"),
   taskTeamLeadStatus: document.querySelector("#task-team-lead-status"),
   taskTeamLeadSummary: document.querySelector("#task-team-lead-summary"),
   taskTeamMemberCount: document.querySelector("#task-team-member-count"),
   taskTeamMemberList: document.querySelector("#task-team-member-list"),
   taskTeamProjectBranch: document.querySelector("#task-team-project-branch"),
+  taskTeamWorkerPill: document.querySelector("#task-team-worker-pill"),
   taskTeamShell: document.querySelector("#task-team-shell"),
   taskFormFeedback: document.querySelector("#task-form-feedback"),
   taskLeadAgent: document.querySelector("#task-lead-agent"),
@@ -1780,6 +1913,9 @@ const elements = {
   taskActionDialogCancelButton: document.querySelector("#task-action-dialog-cancel-button"),
   taskActionDialogCloseButton: document.querySelector("#task-action-dialog-close-button"),
   taskActionDialogConfirmButton: document.querySelector("#task-action-dialog-confirm-button"),
+  taskProjectPill: document.querySelector("#task-project-pill"),
+  taskLeadPill: document.querySelector("#task-lead-pill"),
+  taskSessionPill: document.querySelector("#task-session-pill"),
   taskActionDialogDeleteBranchesField: document.querySelector("#task-action-dialog-delete-branches-field"),
   taskActionDialogDeleteBranchesInput: document.querySelector("#task-action-delete-branches-input"),
   taskActionDialogEyebrow: document.querySelector("#task-action-dialog-eyebrow"),
@@ -1788,6 +1924,23 @@ const elements = {
   taskActionDialogTitle: document.querySelector("#task-action-dialog-title"),
   taskMessageCount: document.querySelector("#task-message-count"),
   taskMessageForm: document.querySelector("#task-message-form"),
+  taskPlanNodeAgentSelect: document.querySelector("#task-plan-node-agent-select"),
+  taskPlanNodeCloseButton: document.querySelector("#task-plan-node-close-button"),
+  taskPlanNodeDependsInput: document.querySelector("#task-plan-node-depends-input"),
+  taskPlanNodeDescriptionInput: document.querySelector("#task-plan-node-description-input"),
+  taskPlanNodeDeliverableInput: document.querySelector("#task-plan-node-deliverable-input"),
+  taskPlanNodeDialog: document.querySelector("#task-plan-node-dialog"),
+  taskPlanNodeEditor: document.querySelector("#task-plan-node-editor"),
+  taskPlanNodeReadonlyFacts: document.querySelector("#task-plan-node-readonly-facts"),
+  taskPlanNodeRemoveButton: document.querySelector("#task-plan-node-remove-button"),
+  taskPlanNodeRoleInput: document.querySelector("#task-plan-node-role-input"),
+  taskPlanNodeScopeInput: document.querySelector("#task-plan-node-scope-input"),
+  taskPlanNodeSummary: document.querySelector("#task-plan-node-summary"),
+  taskPlanNodeTemplateInput: document.querySelector("#task-plan-node-template-input"),
+  taskPlanNodeTitle: document.querySelector("#task-plan-node-title"),
+  taskPlanNodeTitleInput: document.querySelector("#task-plan-node-title-input"),
+  taskPlanNodeBranchInput: document.querySelector("#task-plan-node-branch-input"),
+  taskPlanNodeCriteriaInput: document.querySelector("#task-plan-node-criteria-input"),
   taskMessageInput: document.querySelector("#task-message-input"),
   taskMessageLabel: document.querySelector("#task-message-label"),
   taskMessageQueueList: document.querySelector("#task-message-queue-list"),
@@ -1830,10 +1983,14 @@ const elements = {
   taskAttachmentsInput: document.querySelector("#task-attachments-input"),
   // Sidebar elements
   sidebarAgentCount: document.querySelector("#sidebar-agent-count"),
+  sidebarCollapseIcon: document.querySelector("#sidebar-collapse-icon"),
+  sidebarCollapseToggle: document.querySelector("#sidebar-collapse-toggle"),
   sidebarProjectList: document.querySelector("#sidebar-project-list"),
   sidebarProjectEmpty: document.querySelector("#sidebar-project-empty"),
   sidebarRegisterToggle: document.querySelector("#sidebar-register-toggle"),
   // TopNav elements
+  topnavCollapseIcon: document.querySelector("#topnav-collapse-icon"),
+  topnavCollapseToggle: document.querySelector("#topnav-collapse-toggle"),
   topnavStatus: document.querySelector("#topnav-status"),
   topnavTabs: document.querySelectorAll(".topnav__tab"),
   // View containers
@@ -1841,6 +1998,8 @@ const elements = {
 };
 
 setLocale(state.locale);
+applyLayoutChrome();
+mountTaskPlanNodeDrawer();
 
 elements.projectRegistrationForm.addEventListener("submit", onRegisterProject);
 elements.refreshProjectsButton?.addEventListener("click", () => {
@@ -1855,6 +2014,16 @@ elements.refreshAgentHealthButton.addEventListener("click", () => {
   void loadAgents({ force: true });
 });
 elements.languageToggle?.addEventListener("click", onToggleLanguage);
+elements.topnavCollapseToggle?.addEventListener("click", () => {
+  state.navCollapsed = !state.navCollapsed;
+  writeStorage(STORAGE_KEYS.navCollapsed, String(state.navCollapsed));
+  applyLayoutChrome();
+});
+elements.sidebarCollapseToggle?.addEventListener("click", () => {
+  state.sidebarCollapsed = !state.sidebarCollapsed;
+  writeStorage(STORAGE_KEYS.sidebarCollapsed, String(state.sidebarCollapsed));
+  applyLayoutChrome();
+});
 elements.leadAgentSelect.addEventListener("change", (event) => {
   state.selectedLeadAgentName = event.target.value || null;
   renderLeadSelector();
@@ -2007,8 +2176,36 @@ elements.taskMessageStopButton?.addEventListener("click", () => {
 elements.taskPlanAddSubtaskButton.addEventListener("click", onAddPlanSubtask);
 elements.taskPlanApplyTemplateButton.addEventListener("click", onApplyPlanTemplate);
 elements.taskPlanApproveButton.addEventListener("click", onApprovePlanDraft);
-elements.taskPlanGraphViewButton.addEventListener("click", () => onSetPlanView("graph"));
-elements.taskPlanListViewButton.addEventListener("click", () => onSetPlanView("list"));
+elements.taskPlanGraphViewButton?.addEventListener("click", () => onSetPlanView("graph"));
+elements.taskPlanListViewButton?.addEventListener("click", () => onSetPlanView("list"));
+elements.taskPlanNodeCloseButton?.addEventListener("click", closeTaskPlanNodeDialog);
+elements.taskPlanNodeDialog?.addEventListener("click", (event) => {
+  if (elements.taskPlanNodeDialog?.tagName === "DIALOG" && event.target === elements.taskPlanNodeDialog) {
+    closeTaskPlanNodeDialog();
+  }
+});
+elements.taskPlanNodeDialog?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeTaskPlanNodeDialog();
+  }
+});
+[
+  elements.taskPlanNodeTitleInput,
+  elements.taskPlanNodeRoleInput,
+  elements.taskPlanNodeAgentSelect,
+  elements.taskPlanNodeDescriptionInput,
+  elements.taskPlanNodeDeliverableInput,
+  elements.taskPlanNodeCriteriaInput,
+  elements.taskPlanNodeBranchInput,
+  elements.taskPlanNodeDependsInput,
+  elements.taskPlanNodeTemplateInput,
+  elements.taskPlanNodeScopeInput,
+].forEach((input) => {
+  input?.addEventListener("input", onPlanSubtaskInput);
+  input?.addEventListener("change", onPlanSubtaskInput);
+});
+elements.taskPlanNodeRemoveButton?.addEventListener("click", onRemovePlanSubtask);
 elements.taskPlanResetDraftButton.addEventListener("click", onResetPlanDraft);
 elements.taskPlanSaveDraftButton.addEventListener("click", onSavePlanDraft);
 elements.taskPlanNotesInput.addEventListener("input", onPlanNotesInput);
@@ -2383,9 +2580,17 @@ function openDialog(dialog) {
     return;
   }
 
-  if (typeof dialog.showModal === "function") {
-    dialog.showModal();
+  if (dialog.open) {
     return;
+  }
+
+  if (typeof dialog.showModal === "function") {
+    try {
+      dialog.showModal();
+      return;
+    } catch {
+      // Fall back to the open attribute when showModal is unavailable or fails.
+    }
   }
 
   dialog.setAttribute("open", "");
@@ -2427,6 +2632,56 @@ function closeLeaderPlanDetailDialog() {
   }
 
   state.leaderPlanDetailState = null;
+}
+
+function openTaskPlanNodeDialog(index) {
+  if (!elements.taskPlanNodeDialog) {
+    return;
+  }
+
+  state.taskPlanNodeDetailState = { index };
+  renderTaskPlanNodeDialog();
+  openTaskPlanNodeDrawer(elements.taskPlanNodeDialog);
+}
+
+function closeTaskPlanNodeDialog() {
+  closeTaskPlanNodeDrawer(elements.taskPlanNodeDialog);
+  state.taskPlanNodeDetailState = null;
+}
+
+function openTaskPlanNodeDrawer(drawer) {
+  if (!drawer) {
+    return;
+  }
+
+  if (drawer.parentElement !== document.body) {
+    document.body.append(drawer);
+  }
+
+  drawer.hidden = false;
+  drawer.classList.add("is-open");
+  drawer.setAttribute("data-open", "true");
+  drawer.setAttribute("aria-hidden", "false");
+  elements.taskPlanNodeCloseButton?.focus();
+}
+
+function closeTaskPlanNodeDrawer(drawer) {
+  if (!drawer) {
+    return;
+  }
+
+  drawer.classList.remove("is-open");
+  drawer.hidden = true;
+  drawer.removeAttribute("data-open");
+  drawer.setAttribute("aria-hidden", "true");
+}
+
+function mountTaskPlanNodeDrawer() {
+  if (!elements.taskPlanNodeDialog || elements.taskPlanNodeDialog.parentElement === document.body) {
+    return;
+  }
+
+  document.body.append(elements.taskPlanNodeDialog);
 }
 
 function openTaskActionDialog(action, task) {
@@ -2656,9 +2911,14 @@ function renderSidebarProjects() {
   if (empty) empty.hidden = true;
   container.innerHTML = state.projects.map((project) => {
     const isSelected = project.id === state.selectedProjectId;
-    return `<button class="sidebar__project${isSelected ? " is-selected" : ""}" type="button" data-project-id="${escapeHtmlAttribute(project.id)}">
-      <div class="sidebar__project-name">${escapeHtml(project.name)}</div>
-      <div class="sidebar__project-path">${escapeHtml(project.path)}</div>
+    const glyph = buildProjectGlyph(project.name);
+    const projectTitle = String(project.name ?? "").trim() || project.path || t("sidebarTitle");
+    return `<button class="sidebar__project${isSelected ? " is-selected" : ""}" type="button" data-project-id="${escapeHtmlAttribute(project.id)}" title="${escapeHtmlAttribute(projectTitle)}" aria-label="${escapeHtmlAttribute(projectTitle)}">
+      <span class="sidebar__project-glyph" aria-hidden="true">${escapeHtml(glyph)}</span>
+      <span class="sidebar__project-meta">
+        <div class="sidebar__project-name">${escapeHtml(project.name)}</div>
+        <div class="sidebar__project-path">${escapeHtml(project.path)}</div>
+      </span>
     </button>`;
   }).join("");
 
@@ -2667,6 +2927,11 @@ function renderSidebarProjects() {
       void selectProject(button.dataset.projectId, { preserveTask: true });
     });
   });
+}
+
+function buildProjectGlyph(name) {
+  const compact = String(name ?? "").trim().replace(/[^A-Za-z0-9\u4e00-\u9fff]/g, "");
+  return compact.slice(0, 2).toUpperCase() || "PR";
 }
 
 function updateSidebarAgentCount() {
@@ -2919,6 +3184,8 @@ async function submitTaskMessageNow(message) {
     }
 
     if (state.selectedTaskId === taskId) {
+      renderTaskMessageComposer(state.taskDetail);
+      renderLeaderConversation(state.taskDetail);
       await loadTaskDetail(taskId, { preserveStream: true });
     }
   } catch (error) {
@@ -3542,13 +3809,21 @@ function syncTaskSearchInputs() {
 
 function renderWorkspacePickerTrigger() {
   const selectedTask = resolveTaskFromState(state.selectedTaskId);
+  const taskTitle = selectedTask?.title ?? "选择任务";
+  const switcherLabel = selectedTask ? `任务工作台 · ${taskTitle}` : taskTitle;
 
   if (elements.workspacePickerCurrent) {
-    elements.workspacePickerCurrent.textContent = selectedTask?.title ?? "选择任务";
+    elements.workspacePickerCurrent.textContent = taskTitle;
+    elements.workspacePickerCurrent.setAttribute("title", taskTitle);
   }
 
   if (elements.workspacePickerCount) {
     elements.workspacePickerCount.textContent = `${state.tasks.length} 个任务`;
+  }
+
+  if (elements.workspacePickerOpenButton) {
+    elements.workspacePickerOpenButton.setAttribute("title", switcherLabel);
+    elements.workspacePickerOpenButton.setAttribute("aria-label", switcherLabel);
   }
 }
 
@@ -3840,7 +4115,10 @@ function renderTaskDetail() {
   elements.taskDetail.hidden = false;
   elements.taskDetailEmpty.hidden = true;
   elements.taskDetailTitle.textContent = detail.task.title;
+  elements.taskDetailTitle.setAttribute("title", detail.task.title ?? "");
   elements.taskDetailDescription.textContent = detail.task.description;
+  elements.taskDetailDescription.setAttribute("title", detail.task.description ?? "");
+  renderWorkspaceOverview(detail, latestSession);
   elements.taskStatusBadge.textContent = buildTaskDisplayStatusLabel(detail.task);
   elements.taskStatusBadge.className = `badge ${buildTaskStatusBadgeClass(detail.task)}`;
   elements.taskBaseBranchBadge.textContent = detail.task.baseBranch;
@@ -3855,6 +4133,7 @@ function renderTaskDetail() {
 
   renderTaskStageBoard(detail);
   renderLeaderConversation(detail);
+  renderTaskDocumentPreview(detail);
   renderLeaderPlanPreview(detail);
   syncEditablePlanDraft(detail);
   renderDashboardTeamOverview(detail);
@@ -3877,6 +4156,30 @@ function renderTaskDetail() {
     elements.taskActions.hidden = true;
   }
   elements.taskMessageForm.hidden = false;
+}
+
+function renderWorkspaceOverview(detail, latestSession) {
+  const projectName = state.projectDetail?.project?.name
+    ?? state.projects.find((project) => project.id === detail?.task?.projectId)?.name
+    ?? t("unknown");
+  const leadAgent = detail?.task?.leadAgentType ?? t("unknownAgent");
+  const sessionLabel = latestSession
+    ? `${translateSessionType(latestSession.sessionType)} · ${translateStatusLabel(latestSession.status)}`
+    : t("latestSessionNone");
+  const pills = [
+    [elements.taskProjectPill, `${t("workspaceOverviewProjectLabel")} · ${projectName}`],
+    [elements.taskLeadPill, `${t("workspaceOverviewLeadLabel")} · ${leadAgent}`],
+    [elements.taskSessionPill, `${t("workspaceOverviewSessionLabel")} · ${sessionLabel}`],
+  ];
+
+  for (const [element, text] of pills) {
+    if (!element) {
+      continue;
+    }
+
+    element.textContent = text;
+    element.setAttribute("title", text);
+  }
 }
 
 function renderWorkspaceTaskActions(task) {
@@ -3938,36 +4241,458 @@ function renderLeaderPlanPreview(detail) {
   }
 
   const nodes = buildLeaderPlanNodes(detail);
+  renderExecutionPlanPreview(detail, nodes);
+}
+
+function renderTaskDocumentPreview(detail) {
+  if (!elements.taskDocumentList || !elements.taskDocumentEmpty || !elements.taskDocumentSummary || !elements.taskDocumentBadge) {
+    return;
+  }
+
+  const sections = buildTaskDocumentSections(detail);
+  const taskStatus = detail.task.status;
+  const isConfirmedDocument = !["DRAFT", "CLARIFYING"].includes(taskStatus);
+  const shouldShowLoading = sections.length === 0 && ["CLARIFYING", "PLANNING"].includes(taskStatus);
+
+  if (elements.taskDocumentEyebrow) {
+    elements.taskDocumentEyebrow.textContent = t("taskDocEyebrow");
+  }
+  if (elements.taskDocumentTitle) {
+    elements.taskDocumentTitle.textContent = t("taskDocTitle");
+  }
+  if (elements.taskDocumentLoadingLabel) {
+    elements.taskDocumentLoadingLabel.textContent = t("taskDocLoadingLabel");
+  }
+
+  elements.taskDocumentList.replaceChildren();
+  if (elements.taskDocumentLoading) {
+    elements.taskDocumentLoading.hidden = !shouldShowLoading;
+  }
+  elements.taskDocumentEmpty.hidden = sections.length > 0 || shouldShowLoading;
+  elements.taskDocumentEmpty.textContent = t("taskDocEmpty");
+  elements.taskDocumentSummary.textContent = taskStatus === "CLARIFYING"
+    ? t("taskDocSummaryClarifying")
+    : isConfirmedDocument
+      ? t("taskDocSummaryConfirmed")
+      : t("taskDocSummaryDraft");
+  if (elements.taskDocumentCount) {
+    elements.taskDocumentCount.textContent = t("workspacePreviewCountDocument", { count: sections.length });
+  }
+  if (elements.taskDocumentGuide) {
+    elements.taskDocumentGuide.textContent = isConfirmedDocument
+      ? t("workspacePreviewGuideTaskDocConfirmed")
+      : t("workspacePreviewGuideTaskDoc");
+  }
+  elements.taskDocumentBadge.textContent = taskStatus === "CLARIFYING"
+    ? t("taskDocBadgeReady")
+    : isConfirmedDocument
+      ? t("taskDocBadgeConfirmed")
+      : t("taskDocBadgeDraft");
+  elements.taskDocumentBadge.className = `badge ${taskStatus === "CLARIFYING" ? "badge--accent-soft" : isConfirmedDocument ? "badge--clean" : "badge--outline"}`;
+
+  for (const section of sections) {
+    const item = document.createElement("article");
+    item.className = "task-doc-card";
+    item.innerHTML = `
+      <p class="task-doc-card__label">${escapeHtml(section.label)}</p>
+      <p class="task-doc-card__body">${escapeHtml(section.body).replaceAll("\n", "<br>")}</p>
+    `;
+    elements.taskDocumentList.append(item);
+  }
+}
+
+function renderExecutionPlanPreview(detail, nodes = buildLeaderPlanNodes(detail)) {
+  const taskStatus = detail.task.status;
+  const awaitingTaskDocument = ["DRAFT", "CLARIFYING"].includes(taskStatus);
+  const shouldShowLoading = nodes.length === 0 && !awaitingTaskDocument && taskStatus === "PLANNING";
+
+  if (elements.taskLeaderPlanEyebrow) {
+    elements.taskLeaderPlanEyebrow.textContent = t("executionPlanEyebrow");
+  }
+  if (elements.taskLeaderPlanTitle) {
+    elements.taskLeaderPlanTitle.textContent = t("executionPlanTitle");
+  }
+  if (elements.taskLeaderPlanLoadingLabel) {
+    elements.taskLeaderPlanLoadingLabel.textContent = t("executionPlanLoadingLabel");
+  }
 
   elements.taskLeaderPlanList.replaceChildren();
-  elements.taskLeaderPlanEmpty.hidden = nodes.length > 0;
+  if (elements.taskLeaderPlanLoading) {
+    elements.taskLeaderPlanLoading.hidden = !shouldShowLoading;
+  }
+  elements.taskLeaderPlanEmpty.hidden = nodes.length > 0 || shouldShowLoading;
+  elements.taskLeaderPlanEmpty.textContent = awaitingTaskDocument ? t("planEmpty") : t("executionPlanEmpty");
   elements.taskLeaderPlanSummary.textContent = nodes.length > 0
-    ? t("leaderPlanSummaryReady")
-    : t("leaderPlanSummaryDraft");
-  elements.taskLeaderPlanBadge.textContent = nodes.length > 0 ? t("leaderPlanReadyBadge") : t("leaderPlanWaitingBadge");
+    ? t("executionPlanSummaryReady")
+    : awaitingTaskDocument
+      ? t("leaderPlanSummaryDraft")
+      : t("executionPlanSummaryGenerating");
+  if (elements.taskLeaderPlanCount) {
+    elements.taskLeaderPlanCount.textContent = t("workspacePreviewCountPlan", { count: nodes.length });
+  }
+  if (elements.taskLeaderPlanGuide) {
+    elements.taskLeaderPlanGuide.textContent = nodes.length > 0
+      ? t("workspacePreviewGuideExecutionPlan")
+      : awaitingTaskDocument
+        ? t("taskDocConfirmHint")
+        : t("workspacePreviewGuideExecutionPlanPending");
+  }
+  elements.taskLeaderPlanBadge.textContent = nodes.length > 0
+    ? t("executionPlanReadyBadge")
+    : awaitingTaskDocument
+      ? t("leaderPlanWaitingBadge")
+      : t("executionPlanWaitingBadge");
   elements.taskLeaderPlanBadge.className = `badge ${nodes.length > 0 ? "badge--clean" : "badge--outline"}`;
 
   for (const [index, node] of nodes.entries()) {
     const item = document.createElement("button");
     item.type = "button";
     item.className = "leader-plan-card";
-    const dependencies = Array.isArray(node.depends_on) && node.depends_on.length > 0
-      ? node.depends_on.join(", ")
-      : t("leaderPlanDependsNone");
+    const cliType = node.recommended_agent || node.role || t("unknownAgent");
     item.innerHTML = `
       <div class="leader-plan-card__topline">
         <span class="leader-plan-card__eyebrow">${escapeHtml(`T${index + 1}`)}</span>
-        <span class="badge badge--outline">${escapeHtml(node.recommended_agent || node.role || t("unknownAgent"))}</span>
+        <span class="leader-plan-card__cli">${escapeHtml(cliType)}</span>
       </div>
       <h4 class="leader-plan-card__title">${escapeHtml(node.title || `${t("leaderPlanTaskLabel", { index: index + 1 })}`)}</h4>
-      <p class="leader-plan-card__summary">${escapeHtml(node.branch_suffix || t("leadSessionPending"))}</p>
-      <p class="leader-plan-card__meta">${escapeHtml(`${t("leaderPlanDependsLabel")} · ${dependencies}`)}</p>
     `;
     item.addEventListener("click", () => {
       openLeaderPlanDetailDialog(index, node);
     });
     elements.taskLeaderPlanList.append(item);
   }
+}
+
+function buildTaskDocumentSections(detail) {
+  const messages = detail.messages ?? [];
+  const taskDocumentSnapshot = extractTaskDocumentSnapshot(messages);
+  const allUserMessages = messages
+    .filter((message) => message.role === "USER")
+    .map((message) => String(message.content ?? "").trim())
+    .filter(Boolean);
+  const structuredLeadDocument = taskDocumentSnapshot ?? extractStructuredLeadTaskDocument(messages);
+  const conversationLines = collectTaskDocumentConversationLines(messages);
+  const clarificationNotes = allUserMessages.slice(1).join("\n\n").trim();
+  const attachments = detail.attachments ?? [];
+  const projectName = state.projectDetail?.project?.name
+    ?? state.projects.find((project) => project.id === detail.task.projectId)?.name
+    ?? t("unknown");
+  const attachmentText = attachments.length > 0
+    ? attachments.map((attachment) => attachment.fileName).join("、")
+    : t("taskDocContextEmpty");
+  const contextLines = [
+    `${t("taskDocProjectLabel")} · ${projectName}`,
+    `${t("taskDocBaseBranchLabel")} · ${detail.task.baseBranch || t("unknown")}`,
+    `${t("taskDocAttachmentsSummaryLabel")} · ${attachmentText}`,
+  ];
+  const scopeHighlights = structuredLeadDocument?.scope
+    || pickTaskDocumentHighlights(conversationLines, [
+      "范围",
+      "边界",
+      "scope",
+      "in scope",
+      "out of scope",
+      "页面",
+      "接口",
+      "api",
+      "数据库",
+      "schema",
+      "字段",
+      "交互",
+      "ui",
+      "cli",
+    ])
+    || normalizeOptionalText(clarificationNotes)
+    || t("taskDocScopeEmpty");
+  const constraintHighlights = structuredLeadDocument?.constraints
+    ?? pickTaskDocumentHighlights(conversationLines, [
+      "约束",
+      "限制",
+      "必须",
+      "不要",
+      "兼容",
+      "分支",
+      "base branch",
+      "sandbox",
+      "docker",
+      "constraint",
+      "must",
+      "should",
+      "repo",
+      "仓库",
+      "目录",
+      "affected",
+    ])
+    ?? t("taskDocClarificationEmpty");
+  const acceptanceHighlights = structuredLeadDocument?.acceptance
+    ?? pickTaskDocumentHighlights(conversationLines, [
+      "验收",
+      "测试",
+      "验证",
+      "完成标准",
+      "done",
+      "acceptance",
+      "check",
+      "review",
+      "smoke",
+      "发布",
+      "部署",
+    ])
+    ?? t("taskDocAcceptanceEmpty");
+
+  const scopeAndConstraints = [scopeHighlights, constraintHighlights]
+    .map((entry) => normalizeOptionalText(entry))
+    .filter(Boolean)
+    .join("\n\n");
+
+  return [
+    {
+      label: t("taskDocGoalLabel"),
+      body: structuredLeadDocument?.goal || detail.task.description || detail.task.title || t("taskDocEmpty"),
+    },
+    {
+      label: t("taskDocScopeLabel"),
+      body: scopeAndConstraints || t("taskDocScopeEmpty"),
+    },
+    {
+      label: t("taskDocAcceptanceLabel"),
+      body: acceptanceHighlights,
+    },
+    {
+      label: t("taskDocContextLabel"),
+      body: contextLines.join("\n"),
+    },
+  ];
+}
+
+function extractStructuredLeadTaskDocument(messages) {
+  const leadMessages = (messages ?? [])
+    .filter((message) => message.role === "ASSISTANT" || message.role === "LEAD_AGENT")
+    .map((message) => String(message.content ?? "").trim())
+    .filter(Boolean);
+
+  for (let index = leadMessages.length - 1; index >= 0; index -= 1) {
+    const parsed = parseStructuredTaskDocumentSections(leadMessages[index]);
+
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function extractTaskDocumentSnapshot(messages) {
+  return [...(messages ?? [])]
+    .reverse()
+    .map((message) => parseTaskDocumentSnapshotMessage(message))
+    .find(Boolean) ?? null;
+}
+
+function parseTaskDocumentSnapshotMessage(message) {
+  if (
+    message?.role !== "SYSTEM"
+    || typeof message.content !== "string"
+    || !message.content.startsWith(TASK_DOCUMENT_SNAPSHOT_MESSAGE_PREFIX)
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(message.content.slice(TASK_DOCUMENT_SNAPSHOT_MESSAGE_PREFIX.length));
+    const goal = normalizeOptionalText(parsed?.goal);
+    const scope = normalizeOptionalText(parsed?.scope);
+    const constraints = normalizeOptionalText(parsed?.constraints);
+    const acceptance = normalizeOptionalText(parsed?.acceptance);
+
+    if (!goal && !scope && !constraints && !acceptance) {
+      return null;
+    }
+
+    return {
+      acceptance,
+      constraints,
+      context: parsed?.context && typeof parsed.context === "object" ? parsed.context : null,
+      goal,
+      scope,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isHiddenSystemConversationMessage(message) {
+  return Boolean(parseTaskDocumentSnapshotMessage(message));
+}
+
+function parseStructuredTaskDocumentSections(text) {
+  const lines = String(text ?? "").split(/\r?\n/u);
+  const sections = {};
+  let currentKey = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    if (!line) {
+      continue;
+    }
+
+    const heading = matchTaskDocumentHeading(line);
+
+    if (heading) {
+      currentKey = heading.key;
+
+      if (heading.body) {
+        sections[currentKey] = appendTaskDocumentSectionValue(sections[currentKey], heading.body);
+      }
+      continue;
+    }
+
+    if (!currentKey) {
+      continue;
+    }
+
+    sections[currentKey] = appendTaskDocumentSectionValue(sections[currentKey], stripTaskDocumentLine(line));
+  }
+
+  const normalizedSections = Object.fromEntries(
+    Object.entries(sections)
+      .map(([key, value]) => [key, normalizeOptionalText(value)])
+      .filter(([, value]) => Boolean(value)),
+  );
+
+  return Object.keys(normalizedSections).length >= 2 ? normalizedSections : null;
+}
+
+function appendTaskDocumentSectionValue(currentValue, nextLine) {
+  const normalizedLine = normalizeOptionalText(nextLine);
+
+  if (!normalizedLine) {
+    return currentValue ?? "";
+  }
+
+  return currentValue ? `${currentValue}\n${normalizedLine}` : normalizedLine;
+}
+
+function matchTaskDocumentHeading(line) {
+  const matchers = [
+    /^#{1,6}\s*(.+?)\s*$/u,
+    /^\*\*(.+?)\*\*\s*[:：]?\s*(.*)$/u,
+    /^([A-Za-z\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff ()/_-]{1,30})\s*[:：]\s*(.*)$/u,
+  ];
+
+  for (const matcher of matchers) {
+    const match = line.match(matcher);
+
+    if (!match) {
+      continue;
+    }
+
+    const label = normalizeOptionalText(match[1]);
+    const key = resolveTaskDocumentSectionKey(label);
+
+    if (!key) {
+      continue;
+    }
+
+    return {
+      body: stripTaskDocumentLine(match[2] ?? ""),
+      key,
+    };
+  }
+
+  return null;
+}
+
+function resolveTaskDocumentSectionKey(label) {
+  const normalizedLabel = String(label ?? "").trim().toLowerCase();
+
+  if (!normalizedLabel) {
+    return null;
+  }
+
+  if (
+    normalizedLabel.includes("任务目标")
+    || normalizedLabel.includes("需求目标")
+    || normalizedLabel.includes("目标")
+    || normalizedLabel.includes("goal")
+    || normalizedLabel.includes("objective")
+    || normalizedLabel.includes("outcome")
+  ) {
+    return "goal";
+  }
+
+  if (
+    normalizedLabel.includes("工作范围")
+    || normalizedLabel.includes("范围")
+    || normalizedLabel.includes("边界")
+    || normalizedLabel.includes("scope")
+    || normalizedLabel.includes("in scope")
+    || normalizedLabel.includes("out of scope")
+  ) {
+    return "scope";
+  }
+
+  if (
+    normalizedLabel.includes("约束")
+    || normalizedLabel.includes("限制")
+    || normalizedLabel.includes("constraint")
+    || normalizedLabel.includes("assumption")
+    || normalizedLabel.includes("non-goal")
+  ) {
+    return "constraints";
+  }
+
+  if (
+    normalizedLabel.includes("验收")
+    || normalizedLabel.includes("测试")
+    || normalizedLabel.includes("完成标准")
+    || normalizedLabel.includes("acceptance")
+    || normalizedLabel.includes("definition of done")
+    || normalizedLabel.includes("verification")
+  ) {
+    return "acceptance";
+  }
+
+  return null;
+}
+
+function stripTaskDocumentLine(line) {
+  return String(line ?? "").replace(/^[-*•\d.)\s]+/u, "").trim();
+}
+
+function collectTaskDocumentConversationLines(messages) {
+  return (messages ?? [])
+    .filter((message) => message.role === "USER" || message.role === "ASSISTANT" || message.role === "LEAD_AGENT")
+    .flatMap((message) => String(message.content ?? "").split(/\r?\n/u))
+    .map((line) => stripTaskDocumentLine(line))
+    .filter((line) => line.length >= 4);
+}
+
+function pickTaskDocumentHighlights(lines, keywords, maxItems = 4) {
+  const seen = new Set();
+  const matches = [];
+
+  for (const line of lines) {
+    const normalizedLine = line.toLowerCase();
+
+    if (!keywords.some((keyword) => normalizedLine.includes(keyword.toLowerCase()))) {
+      continue;
+    }
+
+    if (seen.has(line)) {
+      continue;
+    }
+
+    seen.add(line);
+    matches.push(line);
+
+    if (matches.length >= maxItems) {
+      break;
+    }
+  }
+
+  return matches.length > 0 ? matches.join("\n") : null;
 }
 
 function buildLeaderPlanNodes(detail) {
@@ -3996,8 +4721,11 @@ function renderLeaderPlanDetailDialog() {
   const dependencies = Array.isArray(node.depends_on) && node.depends_on.length > 0
     ? node.depends_on.join(", ")
     : t("leaderPlanDependsNone");
+  const acceptanceCriteria = Array.isArray(node.acceptance_criteria) && node.acceptance_criteria.length > 0
+    ? node.acceptance_criteria.join("\n")
+    : t("noAcceptanceCriteria");
   elements.leaderPlanDetailTitle.textContent = node.title || t("leaderPlanTaskLabel", { index: index + 1 });
-  elements.leaderPlanDetailSummary.textContent = node.description || "这里展示当前任务拆分的关键分配信息。";
+  elements.leaderPlanDetailSummary.textContent = node.description || node.deliverable || "";
   elements.leaderPlanDetailFacts.innerHTML = `
     <div>
       <dt>${escapeHtml(t("leaderPlanAgentLabel"))}</dt>
@@ -4015,37 +4743,153 @@ function renderLeaderPlanDetailDialog() {
       <dt>${escapeHtml(t("leaderPlanDependsLabel"))}</dt>
       <dd>${escapeHtml(dependencies)}</dd>
     </div>
+    <div>
+      <dt>${escapeHtml(t("deliverableLabel"))}</dt>
+      <dd>${escapeHtml(node.deliverable || t("none"))}</dd>
+    </div>
+    <div>
+      <dt>${escapeHtml(t("acceptanceCriteriaTitle"))}</dt>
+      <dd>${escapeHtml(acceptanceCriteria).replaceAll("\n", "<br>")}</dd>
+    </div>
+    <div>
+      <dt>${escapeHtml(t("estimatedScopeField"))}</dt>
+      <dd>${escapeHtml(node.estimated_scope || t("none"))}</dd>
+    </div>
+    <div>
+      <dt>${escapeHtml(t("templateHintLabel"))}</dt>
+      <dd>${escapeHtml(node.template_hint || t("none"))}</dd>
+    </div>
   `;
+}
+
+function renderTaskPlanNodeDialog() {
+  const detailState = state.taskPlanNodeDetailState;
+
+  if (
+    !detailState
+    || !elements.taskPlanNodeDialog
+    || !elements.taskPlanNodeTitle
+    || !elements.taskPlanNodeSummary
+    || !state.taskDetail?.task
+  ) {
+    return;
+  }
+
+  const editable = state.taskDetail.task.status === "PLAN_REVIEW" && Boolean(state.taskPlanDraft);
+  const activePlan = editable
+    ? state.taskPlanDraft
+    : normalizePlanDraft(parseCurrentPlanJson(state.taskDetail.task.currentPlanJson));
+  const nodes = getPlanNodes(activePlan);
+  const entry = nodes[detailState.index];
+
+  if (!entry) {
+    closeTaskPlanNodeDialog();
+    return;
+  }
+
+  const dependencies = Array.isArray(entry.depends_on) && entry.depends_on.length > 0
+    ? entry.depends_on.join(", ")
+    : t("noDependenciesLabel");
+  const acceptanceCriteria = Array.isArray(entry.acceptance_criteria) && entry.acceptance_criteria.length > 0
+    ? entry.acceptance_criteria.join("\n")
+    : t("noAcceptanceCriteria");
+  const agentLabel = entry.recommended_agent || t("planNodeNoAgent");
+
+  elements.taskPlanNodeTitle.textContent = entry.title || t("leaderPlanTaskLabel", { index: detailState.index + 1 });
+  elements.taskPlanNodeSummary.textContent = t("planNodeDetailSummary");
+
+  if (elements.taskPlanNodeEditor) {
+    elements.taskPlanNodeEditor.hidden = !editable;
+  }
+  if (elements.taskPlanNodeReadonlyFacts) {
+    elements.taskPlanNodeReadonlyFacts.hidden = editable;
+  }
+
+  if (editable) {
+    const fieldBindings = [
+      [elements.taskPlanNodeTitleInput, entry.title ?? ""],
+      [elements.taskPlanNodeRoleInput, entry.role ?? ""],
+      [elements.taskPlanNodeDescriptionInput, entry.description ?? ""],
+      [elements.taskPlanNodeDeliverableInput, entry.deliverable ?? ""],
+      [elements.taskPlanNodeCriteriaInput, acceptanceCriteria === t("noAcceptanceCriteria") ? "" : acceptanceCriteria],
+      [elements.taskPlanNodeBranchInput, entry.branch_suffix ?? ""],
+      [elements.taskPlanNodeDependsInput, Array.isArray(entry.depends_on) ? entry.depends_on.join(", ") : ""],
+      [elements.taskPlanNodeTemplateInput, entry.template_hint ?? ""],
+      [elements.taskPlanNodeScopeInput, entry.estimated_scope ?? ""],
+    ];
+
+    for (const [input, value] of fieldBindings) {
+      if (!input) {
+        continue;
+      }
+
+      input.value = value;
+      input.dataset.subtaskIndex = String(detailState.index);
+    }
+
+    if (elements.taskPlanNodeAgentSelect) {
+      elements.taskPlanNodeAgentSelect.innerHTML = buildWorkerAgentOptions(entry.recommended_agent);
+      elements.taskPlanNodeAgentSelect.dataset.subtaskIndex = String(detailState.index);
+    }
+
+    if (elements.taskPlanNodeRemoveButton) {
+      elements.taskPlanNodeRemoveButton.dataset.removeSubtask = String(detailState.index);
+    }
+  } else if (elements.taskPlanNodeReadonlyFacts) {
+    elements.taskPlanNodeReadonlyFacts.innerHTML = `
+      <div>
+        <dt>${escapeHtml(t("roleField"))}</dt>
+        <dd>${escapeHtml(entry.role || t("unknown"))}</dd>
+      </div>
+      <div>
+        <dt>${escapeHtml(t("workerAgentField"))}</dt>
+        <dd>${escapeHtml(agentLabel)}</dd>
+      </div>
+      <div>
+        <dt>${escapeHtml(t("descriptionField"))}</dt>
+        <dd>${escapeHtml(entry.description || entry.deliverable || "")}</dd>
+      </div>
+      <div>
+        <dt>${escapeHtml(t("deliverableField"))}</dt>
+        <dd>${escapeHtml(entry.deliverable || entry.description || "")}</dd>
+      </div>
+      <div>
+        <dt>${escapeHtml(t("dependsOnField"))}</dt>
+        <dd>${escapeHtml(dependencies)}</dd>
+      </div>
+      <div>
+        <dt>${escapeHtml(t("acceptanceCriteriaField"))}</dt>
+        <dd>${escapeHtml(acceptanceCriteria)}</dd>
+      </div>
+      <div>
+        <dt>${escapeHtml(t("branchSuffixField"))}</dt>
+        <dd>${escapeHtml(entry.branch_suffix || t("missingSuffix"))}</dd>
+      </div>
+    `;
+  }
 }
 
 function renderLeaderConversationHistory(messages, liveOutput, leadSession) {
   elements.taskLeadSessionOutput.replaceChildren();
+  const visibleMessages = (messages ?? []).filter((message) => !isHiddenSystemConversationMessage(message));
+  const pendingLiveOutput = getPendingLeadLiveOutput(visibleMessages, liveOutput);
 
-  const lastAssistantMessage = [...messages]
+  const lastAssistantMessage = [...visibleMessages]
     .reverse()
     .find((message) => message.role === "ASSISTANT" || message.role === "LEAD_AGENT")
     ?.content
     ?.trim();
-  const shouldRenderLiveOutput = liveOutput.trim().length > 0 && liveOutput.trim() !== lastAssistantMessage;
-  const localMessages = [];
+  const shouldRenderLiveOutput = pendingLiveOutput.trim().length > 0 && pendingLiveOutput.trim() !== lastAssistantMessage;
+  const inFlightVisible = Boolean(
+    state.taskMessageInFlight
+    && state.taskMessageInFlight.taskId === state.selectedTaskId
+    && !hasPersistedUserMessage(visibleMessages, state.taskMessageInFlight),
+  );
+  const queuedMessages = state.taskMessageQueue
+    .filter((message) => message.taskId === state.selectedTaskId)
+    .filter((message) => !hasPersistedUserMessage(visibleMessages, message));
 
-  if (state.taskMessageInFlight && state.taskMessageInFlight.taskId === state.selectedTaskId) {
-    localMessages.push({
-      ...state.taskMessageInFlight,
-      localState: "running",
-      role: "USER",
-    });
-  }
-
-  for (const queuedMessage of state.taskMessageQueue.filter((message) => message.taskId === state.selectedTaskId)) {
-    localMessages.push({
-      ...queuedMessage,
-      localState: state.taskMessageQueuePaused ? "paused" : "queued",
-      role: "USER",
-    });
-  }
-
-  if (messages.length === 0 && !shouldRenderLiveOutput && localMessages.length === 0) {
+  if (visibleMessages.length === 0 && !shouldRenderLiveOutput && !inFlightVisible && queuedMessages.length === 0) {
     const empty = document.createElement("div");
     empty.className = "workspace-chat__empty";
     empty.textContent = t("leaderConversationEmptyOutput");
@@ -4053,11 +4897,11 @@ function renderLeaderConversationHistory(messages, liveOutput, leadSession) {
     return;
   }
 
-  for (const message of messages) {
+  for (const message of visibleMessages) {
     elements.taskLeadSessionOutput.append(buildConversationMessage(message.role, message.content, message.createdAt));
   }
 
-  if (state.taskMessageInFlight?.taskId === state.selectedTaskId) {
+  if (inFlightVisible) {
     elements.taskLeadSessionOutput.append(buildConversationMessage(
       "USER",
       state.taskMessageInFlight.content,
@@ -4069,28 +4913,84 @@ function renderLeaderConversationHistory(messages, liveOutput, leadSession) {
   if (shouldRenderLiveOutput) {
     elements.taskLeadSessionOutput.append(buildConversationMessage(
       "ASSISTANT",
-      liveOutput,
+      pendingLiveOutput,
       leadSession?.updatedAt ?? new Date().toISOString(),
       { live: true },
-    ));
-  }
-
-  for (const queuedMessage of state.taskMessageQueue.filter((message) => message.taskId === state.selectedTaskId)) {
-    elements.taskLeadSessionOutput.append(buildConversationMessage(
-      "USER",
-      queuedMessage.content,
-      queuedMessage.createdAt,
-      { localState: state.taskMessageQueuePaused ? "paused" : "queued" },
     ));
   }
 
   elements.taskLeadSessionOutput.scrollTop = elements.taskLeadSessionOutput.scrollHeight;
 }
 
+function getPendingLeadLiveOutput(messages, liveOutput) {
+  const normalizedLiveOutput = typeof liveOutput === "string" ? liveOutput : String(liveOutput ?? "");
+
+  if (normalizedLiveOutput.trim().length === 0) {
+    return "";
+  }
+
+  const lastAssistantContent = [...(messages ?? [])]
+    .reverse()
+    .find((message) => message.role === "ASSISTANT" || message.role === "LEAD_AGENT")
+    ?.content;
+
+  if (typeof lastAssistantContent !== "string" || lastAssistantContent.trim().length === 0) {
+    return normalizedLiveOutput;
+  }
+
+  const overlapIndex = normalizedLiveOutput.lastIndexOf(lastAssistantContent);
+
+  if (overlapIndex < 0) {
+    return normalizedLiveOutput;
+  }
+
+  const trailingOutput = normalizedLiveOutput.slice(overlapIndex + lastAssistantContent.length);
+  return trailingOutput.trim().length > 0 ? trailingOutput : "";
+}
+
+function hasPersistedUserMessage(messages, localMessage) {
+  const localContent = normalizeOptionalText(localMessage?.content);
+
+  if (!localContent) {
+    return false;
+  }
+
+  const localCreatedAt = Date.parse(localMessage?.createdAt ?? "");
+
+  return (messages ?? []).some((message) => {
+    if (message?.role !== "USER") {
+      return false;
+    }
+
+    if (normalizeOptionalText(message.content) !== localContent) {
+      return false;
+    }
+
+    if (!Number.isFinite(localCreatedAt)) {
+      return true;
+    }
+
+    const persistedCreatedAt = Date.parse(message.createdAt ?? "");
+
+    if (!Number.isFinite(persistedCreatedAt)) {
+      return true;
+    }
+
+    return Math.abs(persistedCreatedAt - localCreatedAt) <= 30_000;
+  });
+}
+
 function buildConversationMessage(role, content, createdAt, options = {}) {
   const article = document.createElement("article");
   const roleKey = role === "USER" ? "operator" : (role === "ASSISTANT" || role === "LEAD_AGENT") ? "leader" : "system";
   const localState = options.localState ?? null;
+  const promptLabel = options.live
+    ? "CLI"
+    : role === "USER"
+      ? "YOU"
+      : (role === "ASSISTANT" || role === "LEAD_AGENT")
+        ? "LEAD"
+        : "SYS";
   const statusLabel = localState === "running"
     ? t("taskMessageRunningLabel")
     : localState === "queued"
@@ -4098,15 +4998,15 @@ function buildConversationMessage(role, content, createdAt, options = {}) {
       : localState === "paused"
         ? t("taskMessageStoppedLabel")
         : options.live
-          ? t("taskMessageRunningLabel")
-          : "";
+        ? t("taskMessageRunningLabel")
+        : "";
   article.className = `workspace-chat__message workspace-chat__message--${roleKey}${options.live ? " is-live" : ""}${localState ? ` is-${localState}` : ""}`;
-  const artifactMarkup = buildConversationArtifactMarkup(role, content);
+  const bodyMarkup = buildConversationBodyMarkup(role, content);
   article.innerHTML = `
     <div class="workspace-chat__bubble">
-      <div class="workspace-chat__prompt">${escapeHtml(role === "USER" ? "YOU" : (role === "ASSISTANT" || role === "LEAD_AGENT") ? "LEAD" : "SYS")}</div>
+      <div class="workspace-chat__prompt">${escapeHtml(promptLabel)}</div>
       <div class="workspace-chat__body">
-        ${artifactMarkup ?? `<p class="workspace-chat__text">${escapeHtml(content).replaceAll("\n", "<br>")}</p>`}
+        ${bodyMarkup}
         <div class="workspace-chat__meta">
           ${statusLabel ? `<span class="workspace-chat__state">${escapeHtml(statusLabel)}</span>` : "<span></span>"}
           <span class="workspace-chat__time">${escapeHtml(new Date(createdAt).toLocaleTimeString(state.locale, { hour: "2-digit", minute: "2-digit" }))}</span>
@@ -4117,31 +5017,12 @@ function buildConversationMessage(role, content, createdAt, options = {}) {
   return article;
 }
 
-function buildConversationArtifactMarkup(role, content) {
-  if (role === "USER" || typeof content !== "string") {
-    return null;
+function buildConversationBodyMarkup(role, content) {
+  const safeContent = escapeHtml(typeof content === "string" ? content : String(content ?? ""));
+  if (role === "USER") {
+    return `<p class="workspace-chat__text">${safeContent.replaceAll("\n", "<br>")}</p>`;
   }
-
-  const normalized = content.trim();
-  const looksLikePlan = normalized.length > 400 && /subtasks|branch_suffix|recommended_agent|```json/i.test(normalized);
-  const looksLikeLongOutput = normalized.length > 1200;
-
-  if (!looksLikePlan && !looksLikeLongOutput) {
-    return null;
-  }
-
-  const title = looksLikePlan ? t("leaderPlanArtifactTitle") : t("leaderLongOutputTitle");
-  const hint = looksLikePlan ? t("leaderPlanArtifactHint") : t("leaderLongOutputHint");
-
-  return `
-    <details class="workspace-chat__artifact">
-      <summary class="workspace-chat__artifact-summary">
-        <span class="workspace-chat__artifact-title">${escapeHtml(title)}</span>
-        <span class="workspace-chat__artifact-hint">${escapeHtml(hint)}</span>
-      </summary>
-      <pre class="workspace-chat__artifact-body">${escapeHtml(content)}</pre>
-    </details>
-  `;
+  return `<pre class="workspace-chat__text workspace-chat__text--cli">${safeContent}</pre>`;
 }
 
 function renderTaskMessageQueueList() {
@@ -4422,6 +5303,17 @@ function renderTeamView(detail) {
   }
   elements.taskTeamEmpty.hidden = members.length > 0;
   elements.taskTeamShell.hidden = members.length === 0;
+  if (elements.taskTeamLeadPill) {
+    const leadStatusLabel = translateStatusLabel(lead.status ?? "PENDING");
+    const pill = `${t("workspaceOverviewLeadLabel")} · ${leadStatusLabel}`;
+    elements.taskTeamLeadPill.textContent = pill;
+    elements.taskTeamLeadPill.setAttribute("title", pill);
+  }
+  if (elements.taskTeamWorkerPill) {
+    const pill = `Worker · ${members.length}`;
+    elements.taskTeamWorkerPill.textContent = pill;
+    elements.taskTeamWorkerPill.setAttribute("title", pill);
+  }
 
   if (!lead) {
     elements.taskTeamLeadStatus.textContent = t("leadSessionPending");
@@ -5702,6 +6594,7 @@ function renderPlanDraft(detail) {
   elements.taskPlanList.replaceChildren();
   elements.taskPlanGraph.replaceChildren();
   clearFeedback(elements.taskPlanFeedback);
+  state.taskPlanView = "graph";
 
   const parsedPlan = normalizePlanDraft(parseCurrentPlanJson(detail.task.currentPlanJson));
   const editableDraft = detail.task.status === "PLAN_REVIEW" ? state.taskPlanDraft : null;
@@ -5749,6 +6642,7 @@ function renderPlanDraft(detail) {
   renderPlanHistory(detail);
   renderPlanTemplateOptions(editableDraft ?? parsedPlan);
   updatePlanViewToggle();
+  renderTaskPlanNodeDialog();
 
   if (editableDraft) {
     elements.taskPlanNotesInput.value = editableDraft.notes ?? "";
@@ -5771,26 +6665,14 @@ function renderPlanDraft(detail) {
   elements.taskPlanApproveButton.textContent = hasUnsavedDraft ? t("saveBeforeApprovalButton") : t("approveDraftButton");
   elements.taskPlanApplyTemplateButton.disabled = detail.task.status !== "PLAN_REVIEW" || state.planTemplates.length === 0;
   elements.taskPlanTemplateSelect.disabled = detail.task.status !== "PLAN_REVIEW" || state.planTemplates.length === 0;
-  elements.taskPlanList.hidden = state.taskPlanView === "graph";
-  elements.taskPlanGraph.hidden = state.taskPlanView !== "graph";
+  elements.taskPlanList.hidden = true;
+  elements.taskPlanGraph.hidden = false;
 
   if (!planNodes.length) {
     return;
   }
 
-  if (state.taskPlanView === "graph") {
-    renderPlanGraph(planNodes, Boolean(editableDraft));
-    return;
-  }
-
-  for (const [index, node] of planNodes.entries()) {
-    if (editableDraft) {
-      elements.taskPlanList.append(renderEditablePlanNodeCard(index, node));
-      continue;
-    }
-
-    elements.taskPlanList.append(renderReadonlyPlanNodeCard(index, node));
-  }
+  renderPlanGraph(planNodes, Boolean(editableDraft));
 }
 
 function renderPlanTemplateOptions(activePlan) {
@@ -5809,10 +6691,10 @@ function renderPlanTemplateOptions(activePlan) {
 }
 
 function updatePlanViewToggle() {
-  elements.taskPlanGraphViewButton.classList.toggle("is-active", state.taskPlanView === "graph");
-  elements.taskPlanListViewButton.classList.toggle("is-active", state.taskPlanView === "list");
-  elements.taskPlanGraphViewButton.setAttribute("aria-pressed", state.taskPlanView === "graph" ? "true" : "false");
-  elements.taskPlanListViewButton.setAttribute("aria-pressed", state.taskPlanView === "list" ? "true" : "false");
+  elements.taskPlanGraphViewButton?.classList.toggle("is-active", true);
+  elements.taskPlanListViewButton?.classList.toggle("is-active", false);
+  elements.taskPlanGraphViewButton?.setAttribute("aria-pressed", "true");
+  elements.taskPlanListViewButton?.setAttribute("aria-pressed", "false");
 }
 
 function renderPlanHistory(detail) {
@@ -5852,21 +6734,22 @@ function renderPlanGraph(planNodes, editable) {
 
   for (const column of columns) {
     const section = document.createElement("section");
-    section.className = "plan-graph__column";
+    section.className = "plan-sequence__step";
+    const stepMeta = column.nodes.length > 1
+      ? t("planSequenceParallelLabel", { count: column.nodes.length })
+      : countLabel(column.nodes.length, "nodeCountOne", "nodeCountOther");
     section.innerHTML = `
-      <div class="plan-graph__column-header">
+      <div class="plan-sequence__header">
         <p class="panel__eyebrow">${escapeHtml(t("graphColumnLabel", { count: column.level + 1 }))}</p>
-        <span class="badge badge--outline">${escapeHtml(countLabel(column.nodes.length, "nodeCountOne", "nodeCountOther"))}</span>
+        <span class="badge badge--outline">${escapeHtml(stepMeta)}</span>
       </div>
     `;
 
     const list = document.createElement("div");
-    list.className = "plan-graph__column-list";
+    list.className = "plan-sequence__lane";
 
     for (const entry of column.nodes) {
-      list.append(editable
-        ? renderEditablePlanNodeCard(entry.index, entry.node, true)
-        : renderReadonlyPlanNodeCard(entry.index, entry.node, true));
+      list.append(renderPlanNodeSummaryCard(entry.index, entry.node, { editable, sequenceMode: true }));
     }
 
     section.append(list);
@@ -5875,124 +6758,40 @@ function renderPlanGraph(planNodes, editable) {
 }
 
 function renderEditablePlanNodeCard(index, node, graphMode = false) {
-  const article = document.createElement("article");
-  article.className = graphMode ? "plan-subtask plan-subtask--graph" : "plan-subtask";
-
-  article.innerHTML = `
-    <div class="plan-subtask__header">
-      <div>
-        <p class="plan-subtask__index">${escapeHtml(t("subtaskNumberLabel", { count: index + 1 }))}</p>
-        <p class="plan-card__meta">${escapeHtml(`${t("roleLabel")}: ${node.role ?? node.branch_suffix}`)}</p>
-      </div>
-      <button class="button button--ghost" type="button" data-remove-subtask="${index}">
-        ${escapeHtml(t("removeButton"))}
-      </button>
-    </div>
-    <div class="plan-subtask__grid">
-      <label class="field">
-        <span class="field__label">${escapeHtml(t("titleField"))}</span>
-        <input type="text" value="${escapeHtmlAttribute(node.title ?? "")}" data-plan-field="title" data-subtask-index="${index}">
-      </label>
-      <label class="field">
-        <span class="field__label">${escapeHtml(t("roleField"))}</span>
-        <input type="text" value="${escapeHtmlAttribute(node.role ?? "")}" data-plan-field="role" data-subtask-index="${index}">
-      </label>
-      <label class="field">
-        <span class="field__label">${escapeHtml(t("workerAgentField"))}</span>
-        <select class="field__control" data-plan-field="recommended_agent" data-subtask-index="${index}">
-          ${buildWorkerAgentOptions(node.recommended_agent)}
-        </select>
-      </label>
-      <label class="field">
-        <span class="field__label">${escapeHtml(t("descriptionField"))}</span>
-        <textarea rows="4" data-plan-field="description" data-subtask-index="${index}">${escapeHtml(node.description ?? "")}</textarea>
-      </label>
-      <label class="field">
-        <span class="field__label">${escapeHtml(t("deliverableField"))}</span>
-        <textarea rows="3" data-plan-field="deliverable" data-subtask-index="${index}">${escapeHtml(node.deliverable ?? "")}</textarea>
-      </label>
-      <label class="field">
-        <span class="field__label">${escapeHtml(t("acceptanceCriteriaField"))}</span>
-        <textarea
-          rows="4"
-          placeholder="${escapeHtmlAttribute(t("acceptanceCriteriaPlaceholder"))}"
-          data-plan-field="acceptance_criteria"
-          data-subtask-index="${index}"
-        >${escapeHtml(Array.isArray(node.acceptance_criteria) ? node.acceptance_criteria.join("\n") : "")}</textarea>
-      </label>
-      <label class="field">
-        <span class="field__label">${escapeHtml(t("branchSuffixField"))}</span>
-        <div class="plan-subtask__branch">
-          <input type="text" value="${escapeHtmlAttribute(node.branch_suffix ?? "")}" data-plan-field="branch_suffix" data-subtask-index="${index}">
-          <span class="badge badge--outline">${escapeHtml(node.branch_suffix ?? t("missingSuffix"))}</span>
-        </div>
-      </label>
-      <label class="field">
-        <span class="field__label">${escapeHtml(t("dependsOnField"))}</span>
-        <input
-          type="text"
-          value="${escapeHtmlAttribute(Array.isArray(node.depends_on) ? node.depends_on.join(", ") : "")}"
-          placeholder="${escapeHtmlAttribute(t("dependsOnPlaceholder"))}"
-          data-plan-field="depends_on"
-          data-subtask-index="${index}"
-        >
-      </label>
-      <label class="field">
-        <span class="field__label">${escapeHtml(t("templateHintField"))}</span>
-        <input type="text" value="${escapeHtmlAttribute(node.template_hint ?? "")}" data-plan-field="template_hint" data-subtask-index="${index}">
-      </label>
-      <label class="field">
-        <span class="field__label">${escapeHtml(t("estimatedScopeField"))}</span>
-        <input type="text" value="${escapeHtmlAttribute(node.estimated_scope ?? "")}" data-plan-field="estimated_scope" data-subtask-index="${index}">
-      </label>
-    </div>
-  `;
-
-  article.querySelectorAll("[data-plan-field]").forEach((input) => {
-    input.addEventListener("input", onPlanSubtaskInput);
-    input.addEventListener("change", onPlanSubtaskInput);
-  });
-  article.querySelector("[data-remove-subtask]")?.addEventListener("click", onRemovePlanSubtask);
-
-  return article;
+  return renderPlanNodeSummaryCard(index, node, { editable: true, sequenceMode: graphMode });
 }
 
 function renderReadonlyPlanNodeCard(index, node, graphMode = false) {
-  const article = document.createElement("article");
-  article.className = graphMode ? "plan-card plan-card--graph" : "plan-card";
-  article.innerHTML = `
-    <div class="plan-card__header">
-      <div>
-        <p class="plan-card__title">${escapeHtml(`${index + 1}. ${node.title}`)}</p>
-        <p class="plan-card__meta">${escapeHtml(`${t("roleLabel")}: ${node.role ?? node.branch_suffix}`)}</p>
-        <p class="plan-card__meta">${escapeHtml(`${t("agentMetaLabel")}: ${node.recommended_agent}`)}</p>
-        <p class="plan-card__meta">${escapeHtml(`${t("deliverableLabel")}: ${node.deliverable ?? node.description}`)}</p>
-      </div>
-      <div class="plan-card__badges">
-        <span class="badge badge--outline">${escapeHtml(node.branch_suffix)}</span>
-        <span class="badge badge--outline">${escapeHtml(node.template_hint ?? "custom")}</span>
-      </div>
-    </div>
-    <p class="plan-card__description">${escapeHtml(node.description)}</p>
-    <div class="plan-card__stack">
-      <p class="plan-card__meta">${escapeHtml(`${t("dependsOnLabel")}: ${Array.isArray(node.depends_on) && node.depends_on.length > 0 ? node.depends_on.join(", ") : t("noDependenciesLabel")}`)}</p>
-      <div class="plan-card__criteria">
-        <p class="plan-card__meta">${escapeHtml(t("acceptanceCriteriaTitle"))}</p>
-        <ul class="plan-card__criteria-list">
-          ${buildPlanAcceptanceCriteriaItems(node.acceptance_criteria)}
-        </ul>
-      </div>
-    </div>
-  `;
+  return renderPlanNodeSummaryCard(index, node, { editable: false, sequenceMode: graphMode });
+}
 
-  return article;
+function renderPlanNodeSummaryCard(index, node, options = {}) {
+  const button = document.createElement("button");
+  const sequenceMode = options.sequenceMode === true;
+  const roleLabel = node.role || node.branch_suffix || t("unknown");
+  const agentLabel = node.recommended_agent || t("planNodeNoAgent");
+
+  button.type = "button";
+  button.className = sequenceMode ? "plan-node-card plan-node-card--sequence" : "plan-node-card";
+  button.setAttribute("aria-label", `${node.title || t("leaderPlanTaskLabel", { index: index + 1 })} · ${roleLabel} · ${agentLabel}`);
+  button.innerHTML = `
+    <div class="plan-node-card__topline">
+      <span class="plan-node-card__index">${escapeHtml(`T${index + 1}`)}</span>
+    </div>
+    <h4 class="plan-node-card__title">${escapeHtml(node.title || t("leaderPlanTaskLabel", { index: index + 1 }))}</h4>
+    <p class="plan-node-card__meta">${escapeHtml(roleLabel)}</p>
+    <p class="plan-node-card__meta">${escapeHtml(agentLabel)}</p>
+  `;
+  button.addEventListener("click", () => openTaskPlanNodeDialog(index));
+  return button;
 }
 
 function renderTranscript(messages) {
+  const visibleMessages = (messages ?? []).filter((message) => !isHiddenSystemConversationMessage(message));
   elements.taskTranscript.replaceChildren();
-  elements.taskTranscriptEmpty.hidden = messages.length > 0;
+  elements.taskTranscriptEmpty.hidden = visibleMessages.length > 0;
 
-  for (const message of messages) {
+  for (const message of visibleMessages) {
     const article = document.createElement("article");
     article.className = `transcript__message transcript__message--${message.role.toLowerCase().replaceAll("_", "-")}`;
     article.innerHTML = `
@@ -6041,6 +6840,7 @@ function clearTaskDetail() {
   state.selectedTaskId = null;
   writeStorage(STORAGE_KEYS.selectedTaskId, "");
   closeLeaderPlanDetailDialog();
+  closeTaskPlanNodeDialog();
   disconnectTaskStream();
   elements.taskDetail.hidden = true;
   elements.taskDetailEmpty.hidden = false;
@@ -6104,17 +6904,68 @@ function clearTaskDetail() {
     elements.taskMessageStopButton.textContent = t("taskMessageStopButton");
   }
   if (elements.taskLeaderPlanBadge) {
-    elements.taskLeaderPlanBadge.textContent = t("leaderPlanWaitingBadge");
+    elements.taskLeaderPlanBadge.textContent = t("executionPlanWaitingBadge");
     elements.taskLeaderPlanBadge.className = "badge badge--outline";
   }
+  if (elements.taskLeaderPlanEyebrow) {
+    elements.taskLeaderPlanEyebrow.textContent = t("executionPlanEyebrow");
+  }
+  if (elements.taskLeaderPlanTitle) {
+    elements.taskLeaderPlanTitle.textContent = t("executionPlanTitle");
+  }
   if (elements.taskLeaderPlanSummary) {
-    elements.taskLeaderPlanSummary.textContent = t("leaderPlanSummaryDraft");
+    elements.taskLeaderPlanSummary.textContent = t("executionPlanSummaryGenerating");
   }
   if (elements.taskLeaderPlanEmpty) {
+    elements.taskLeaderPlanEmpty.textContent = t("executionPlanEmpty");
     elements.taskLeaderPlanEmpty.hidden = false;
+  }
+  if (elements.taskLeaderPlanLoading) {
+    elements.taskLeaderPlanLoading.hidden = true;
+  }
+  if (elements.taskLeaderPlanLoadingLabel) {
+    elements.taskLeaderPlanLoadingLabel.textContent = t("executionPlanLoadingLabel");
   }
   if (elements.taskLeaderPlanList) {
     elements.taskLeaderPlanList.replaceChildren();
+  }
+  if (elements.taskLeaderPlanCount) {
+    elements.taskLeaderPlanCount.textContent = t("workspacePreviewCountPlan", { count: 0 });
+  }
+  if (elements.taskLeaderPlanGuide) {
+    elements.taskLeaderPlanGuide.textContent = t("workspacePreviewGuideExecutionPlanPending");
+  }
+  if (elements.taskDocumentBadge) {
+    elements.taskDocumentBadge.textContent = t("taskDocBadgeDraft");
+    elements.taskDocumentBadge.className = "badge badge--outline";
+  }
+  if (elements.taskDocumentEyebrow) {
+    elements.taskDocumentEyebrow.textContent = t("taskDocEyebrow");
+  }
+  if (elements.taskDocumentTitle) {
+    elements.taskDocumentTitle.textContent = t("taskDocTitle");
+  }
+  if (elements.taskDocumentSummary) {
+    elements.taskDocumentSummary.textContent = t("taskDocSummaryDraft");
+  }
+  if (elements.taskDocumentEmpty) {
+    elements.taskDocumentEmpty.textContent = t("taskDocEmpty");
+    elements.taskDocumentEmpty.hidden = false;
+  }
+  if (elements.taskDocumentLoading) {
+    elements.taskDocumentLoading.hidden = true;
+  }
+  if (elements.taskDocumentLoadingLabel) {
+    elements.taskDocumentLoadingLabel.textContent = t("taskDocLoadingLabel");
+  }
+  if (elements.taskDocumentList) {
+    elements.taskDocumentList.replaceChildren();
+  }
+  if (elements.taskDocumentCount) {
+    elements.taskDocumentCount.textContent = t("workspacePreviewCountDocument", { count: 0 });
+  }
+  if (elements.taskDocumentGuide) {
+    elements.taskDocumentGuide.textContent = t("workspacePreviewGuideTaskDoc");
   }
   elements.taskTeamMemberCount.textContent = countLabel(0, "teamMemberCountOne", "teamMemberCountOther");
   if (elements.taskStageRail) {
@@ -6814,12 +7665,21 @@ function syncEditablePlanDraft(detail) {
   const storageKey = getTaskDraftStorageKey(detail.task.id);
   const persistedDraft = readStoredPlanDraft(storageKey);
   const serverFingerprint = detail.task.currentPlanJson;
+  const normalizedPersistedFingerprint = persistedDraft
+    ? JSON.stringify(normalizePlanDraft(persistedDraft.draft))
+    : null;
   const canReusePersistedDraft = persistedDraft
-    && persistedDraft.serverFingerprint === serverFingerprint
-    && persistedDraft.taskUpdatedAt === detail.task.updatedAt;
+    && (
+      (
+        persistedDraft.serverFingerprint === serverFingerprint
+        && persistedDraft.taskUpdatedAt === detail.task.updatedAt
+      )
+      || normalizedPersistedFingerprint === serverFingerprint
+    );
 
   const hasUnsavedPersistedDraft = persistedDraft
-    && JSON.stringify(normalizePlanDraft(persistedDraft.draft)) !== persistedDraft.serverFingerprint;
+    && normalizedPersistedFingerprint !== persistedDraft.serverFingerprint
+    && normalizedPersistedFingerprint !== serverFingerprint;
 
   if (canReusePersistedDraft) {
     state.taskPlanDraft = normalizePlanDraft(persistedDraft.draft);
@@ -6924,7 +7784,7 @@ function onRemovePlanSubtask(event) {
 }
 
 function onSetPlanView(view) {
-  if (!["graph", "list"].includes(view)) {
+  if (view !== "graph") {
     return;
   }
 
@@ -7614,7 +8474,9 @@ function renderLocale() {
   document.title = t("brandName");
   if (elements.languageToggle) {
     elements.languageToggle.textContent = state.locale === "zh-CN" ? "English" : "中文";
-    elements.languageToggle.setAttribute("aria-label", state.locale === "zh-CN" ? t("switchToEnglish") : t("switchToChinese"));
+    const label = state.locale === "zh-CN" ? t("switchToEnglish") : t("switchToChinese");
+    elements.languageToggle.setAttribute("aria-label", label);
+    elements.languageToggle.setAttribute("title", label);
   }
 
   for (const node of document.querySelectorAll("[data-i18n]")) {
@@ -7629,8 +8491,47 @@ function renderLocale() {
     node.innerHTML = t(node.dataset.i18nHtml);
   }
 
+  applyLayoutChrome();
   renderGuidedTaskComposer();
   renderProjectRegistrationDialog();
+}
+
+function applyLayoutChrome() {
+  document.body.classList.toggle("layout--nav-collapsed", state.navCollapsed);
+  document.body.classList.toggle("layout--sidebar-collapsed", state.sidebarCollapsed);
+
+  for (const tab of elements.topnavTabs) {
+    const label = tab.querySelector(".topnav__tab-label")?.textContent?.trim();
+    if (!label) continue;
+    tab.setAttribute("title", label);
+    tab.setAttribute("aria-label", label);
+  }
+
+  if (elements.topnavCollapseToggle) {
+    const label = t(state.navCollapsed ? "expandNavButton" : "collapseNavButton");
+    elements.topnavCollapseToggle.setAttribute("aria-label", label);
+    elements.topnavCollapseToggle.setAttribute("title", label);
+  }
+
+  if (elements.topnavCollapseIcon) {
+    elements.topnavCollapseIcon.textContent = state.navCollapsed ? "unfold_more" : "unfold_less";
+  }
+
+  if (elements.sidebarCollapseToggle) {
+    const label = t(state.sidebarCollapsed ? "expandSidebarButton" : "collapseSidebarButton");
+    elements.sidebarCollapseToggle.setAttribute("aria-label", label);
+    elements.sidebarCollapseToggle.setAttribute("title", label);
+  }
+
+  if (elements.sidebarCollapseIcon) {
+    elements.sidebarCollapseIcon.textContent = state.sidebarCollapsed ? "right_panel_open" : "left_panel_close";
+  }
+
+  if (elements.sidebarRegisterToggle) {
+    const label = t("sidebarRegisterButton");
+    elements.sidebarRegisterToggle.setAttribute("aria-label", label);
+    elements.sidebarRegisterToggle.setAttribute("title", label);
+  }
 }
 
 function showFeedback(element, tone, message) {
@@ -7732,6 +8633,14 @@ function readStorage(key) {
   } catch {
     return null;
   }
+}
+
+function readBooleanStorage(key, fallback) {
+  const value = readStorage(key);
+  if (value === null) {
+    return fallback;
+  }
+  return value === "true";
 }
 
 function removeStorage(key) {
@@ -8886,7 +9795,13 @@ function isEditablePlanDirty(detail) {
     return false;
   }
 
-  return JSON.stringify(state.taskPlanDraft) !== detail.task.currentPlanJson;
+  const normalizedServerPlan = parseCurrentPlanJson(detail.task.currentPlanJson);
+
+  if (!normalizedServerPlan) {
+    return false;
+  }
+
+  return JSON.stringify(normalizePlanDraft(state.taskPlanDraft)) !== JSON.stringify(normalizedServerPlan);
 }
 
 function buildPlanSnapshotLabel(snapshot) {

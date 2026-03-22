@@ -96,10 +96,12 @@ const ARCHIVE_CANCELLABLE_SUBTASK_STATUSES = new Set([
 ]);
 const CLEANUP_WARNING_MESSAGE_PREFIX = "Cleanup warning: ";
 const LAUNCH_FAILURE_MESSAGE_PREFIX = "Launch failure: ";
+const TASK_DOCUMENT_SNAPSHOT_MESSAGE_PREFIX = "Task document snapshot: ";
 const DEFAULT_INTEGRATION_GATE_TYPES = ["TEST"];
 const TASK_PAUSED_REASON_PREFIX = "Paused by operator from ";
 const CLEANUP_RETRY_ATTEMPTS = 4;
 const CLEANUP_RETRY_DELAY_MS = 250;
+const SESSION_STOP_WAIT_TIMEOUT_MS = 7_000;
 
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
 const DOCUMENT_EXTENSIONS = new Set([".md", ".pdf", ".txt"]);
@@ -430,6 +432,10 @@ export class TaskService {
       this.taskRepository.listSubTasksByTaskId(task.id),
       this.taskRepository.listSessionsByTaskId(task.id),
     ]);
+
+    if (deleteBranches) {
+      await this.#stopTaskSessions(task, subTasks, { persistCancellation: true });
+    }
 
     const branchCleanup = deleteBranches
       ? await this.#cleanupTaskBranches(task, subTasks)
@@ -1169,11 +1175,20 @@ export class TaskService {
       lastError: null,
       publish: false,
     });
+    const taskAttachments = await this.taskRepository.listAttachmentsByTaskId(task.id);
+    const existingMessages = await this.taskRepository.listMessagesByTaskId(task.id);
+    const taskDocumentSnapshot = synthesizeTaskDocumentSnapshot(confirmedTask, existingMessages, taskAttachments);
     const confirmationMessage = await this.taskRepository.createMessage({
       content: "User confirmed that requirements are clear.",
       role: MESSAGE_ROLE.SYSTEM,
       taskId,
     });
+    await this.taskRepository.createMessage({
+      content: buildTaskDocumentSnapshotMessage(taskDocumentSnapshot),
+      role: MESSAGE_ROLE.SYSTEM,
+      taskId,
+    });
+    const planningMessages = await this.taskRepository.listMessagesByTaskId(task.id);
     const planningAgentContext = await this.#getPlanningAgentContext(confirmedTask.leadAgentType);
 
     let activeSession = this.runningLeadSessions.get(taskId);
@@ -1189,7 +1204,7 @@ export class TaskService {
         const resumedSession = await this.#spawnLeadSession(
           confirmedTask,
           project,
-          await this.taskRepository.listMessagesByTaskId(task.id),
+          planningMessages,
         );
         activeSession = {
           runtime: resumedSession.runtime,
@@ -1202,7 +1217,11 @@ export class TaskService {
 
     if (activeSession) {
       try {
-        await activeSession.runtime.sendInput(buildPlanningPrompt(confirmedTask, planningAgentContext));
+        await activeSession.runtime.sendInput(buildPlanningPrompt(confirmedTask, {
+          ...planningAgentContext,
+          taskDocumentSnapshot,
+          transcriptMessages: planningMessages,
+        }));
       } catch {
         // Confirmation already advanced the task; keep planning state stable for the next phase.
       }
@@ -3253,6 +3272,7 @@ export class TaskService {
         });
 
         this.runningWorkerSessions.set(preparedSubTask.id, {
+          exitPromise: createDeferredPromise(),
           runtime,
           sessionId: runningSession.id,
         });
@@ -3261,6 +3281,7 @@ export class TaskService {
           void this.#handleWorkerOutput(task.id, preparedSubTask.id, runningSession.id, chunk);
         });
         runtime.onExit((exitCode) => {
+          this.runningWorkerSessions.get(preparedSubTask.id)?.exitPromise.resolve(exitCode);
           void this.#handleWorkerExit(task.id, preparedSubTask.id, runningSession.id, exitCode);
         });
 
@@ -4941,6 +4962,7 @@ export class TaskService {
     });
 
     this.runningLeadSessions.set(task.id, {
+      exitPromise: createDeferredPromise(),
       runtime,
       sessionId: session.id,
     });
@@ -4949,6 +4971,7 @@ export class TaskService {
       void this.#handleLeadOutput(task.id, session.id, chunk);
     });
     runtime.onExit((exitCode) => {
+      this.runningLeadSessions.get(task.id)?.exitPromise.resolve(exitCode);
       void this.#handleLeadExit(task.id, session.id, exitCode);
     });
 
@@ -4964,12 +4987,13 @@ export class TaskService {
     const persistCancellation = options.persistCancellation === true;
     const cancelledAt = new Date().toISOString();
     const sessions = await this.taskRepository.listSessionsByTaskId(task.id);
+    const exitWaits = [];
 
     const activeLeadSession = this.runningLeadSessions.get(task.id) ?? null;
     if (activeLeadSession) {
       this.cancelledLeadSessionIds.add(activeLeadSession.sessionId);
       await activeLeadSession.runtime?.kill?.().catch(() => null);
-      this.runningLeadSessions.delete(task.id);
+      exitWaits.push(waitForDeferredPromise(activeLeadSession.exitPromise, SESSION_STOP_WAIT_TIMEOUT_MS));
     }
 
     for (const subTask of subTasks) {
@@ -4978,8 +5002,12 @@ export class TaskService {
       if (runningSession?.sessionId) {
         this.cancelledWorkerSessionIds.add(runningSession.sessionId);
         await runningSession.runtime?.kill?.().catch(() => null);
-        this.runningWorkerSessions.delete(subTask.id);
+        exitWaits.push(waitForDeferredPromise(runningSession.exitPromise, SESSION_STOP_WAIT_TIMEOUT_MS));
       }
+    }
+
+    if (exitWaits.length > 0) {
+      await Promise.allSettled(exitWaits);
     }
 
     if (!persistCancellation) {
@@ -5045,10 +5073,14 @@ export class TaskService {
         cleanedWorktrees.push(worktreePath);
       }
 
+      const taskMainlineBranchName = normalizeRequiredString(task.taskBranchName);
+      const protectedBranchNames = new Set(uniqueStrings([
+        normalizeRequiredString(task.baseBranch),
+      ]));
       const branchNames = uniqueStrings([
-        normalizeRequiredString(this.#resolveTaskMainlineBranchName(task)),
+        taskMainlineBranchName,
         ...subTasks.map((subTask) => normalizeRequiredString(subTask.branchName)),
-      ]);
+      ]).filter((branchName) => !protectedBranchNames.has(branchName));
 
       for (const branchName of branchNames) {
         const deletionResult = await this.#deleteBranchWithRetries(project.path, branchName);
@@ -5347,12 +5379,13 @@ function buildClarificationPrompt(task, transcriptMessages = []) {
   return [
     "You are the lead agent for EAT clarification.",
     "You are speaking only with the human operator. Do not address sub-agents or pretend implementation has started.",
+    "Your immediate goal is to produce a confirmable task document, not an execution plan yet.",
     `Task title: ${task.title}`,
     `Requirement description: ${task.description}`,
     transcriptSection,
-    "Your job is to gather the missing delivery contract before planning: target outcome, scope boundaries, affected repo areas, constraints, acceptance criteria, testing expectations, deployment expectations, and any branch or base-branch constraints.",
-    "Ask concise follow-up questions, keep the conversation focused, and do not start planning until the operator explicitly confirms requirements are clear.",
-    "When the request is clear enough, summarize the agreed requirements briefly and ask for explicit confirmation to begin planning.",
+    "Your job is to gather the missing delivery contract for the task document before planning: target outcome, scope boundaries, affected repo areas, constraints, acceptance criteria, testing expectations, deployment expectations, and any branch or base-branch constraints.",
+    "Ask concise follow-up questions, keep the conversation focused on producing that task document, and do not start planning until the operator explicitly confirms the task document is correct.",
+    "When the request is clear enough, summarize the agreed task document clearly under short sections and ask for explicit confirmation to begin planning.",
   ].join("\n");
 }
 
@@ -5949,6 +5982,10 @@ function buildCleanupWarningMessage(warning) {
   })}`;
 }
 
+function buildTaskDocumentSnapshotMessage(snapshot) {
+  return `${TASK_DOCUMENT_SNAPSHOT_MESSAGE_PREFIX}${JSON.stringify(snapshot)}`;
+}
+
 function buildLaunchFailureMessage(failure) {
   return `${LAUNCH_FAILURE_MESSAGE_PREFIX}${JSON.stringify({
     kind: failure.kind,
@@ -5961,6 +5998,47 @@ function parseCleanupWarningsFromMessages(messages) {
   return (messages ?? [])
     .map((message) => parseCleanupWarningMessage(message))
     .filter(Boolean);
+}
+
+function parseTaskDocumentSnapshotMessage(message) {
+  if (
+    message?.role !== MESSAGE_ROLE.SYSTEM
+    || typeof message.content !== "string"
+    || !message.content.startsWith(TASK_DOCUMENT_SNAPSHOT_MESSAGE_PREFIX)
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(message.content.slice(TASK_DOCUMENT_SNAPSHOT_MESSAGE_PREFIX.length));
+    const goal = normalizeOptionalString(parsed?.goal);
+    const scope = normalizeOptionalString(parsed?.scope);
+    const constraints = normalizeOptionalString(parsed?.constraints);
+    const acceptance = normalizeOptionalString(parsed?.acceptance);
+    const context = parsed?.context && typeof parsed.context === "object" ? parsed.context : null;
+
+    if (!goal && !scope && !constraints && !acceptance) {
+      return null;
+    }
+
+    return {
+      acceptance,
+      confirmedAt: normalizeOptionalString(parsed?.confirmedAt) ?? message.createdAt,
+      constraints,
+      context: context
+        ? {
+            attachments: Array.isArray(context.attachments)
+              ? context.attachments.map((item) => normalizeOptionalString(item)).filter(Boolean)
+              : [],
+            baseBranch: normalizeOptionalString(context.baseBranch),
+          }
+        : null,
+      goal,
+      scope,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function parseCleanupWarningMessage(message) {
@@ -6022,6 +6100,239 @@ function parseLaunchFailureMessage(message) {
   } catch {
     return null;
   }
+}
+
+function synthesizeTaskDocumentSnapshot(task, messages, attachments = []) {
+  const existingSnapshot = [...(messages ?? [])]
+    .reverse()
+    .map((message) => parseTaskDocumentSnapshotMessage(message))
+    .find(Boolean);
+
+  if (existingSnapshot) {
+    return {
+      ...existingSnapshot,
+      confirmedAt: new Date().toISOString(),
+      context: {
+        attachments: attachments.map((attachment) => attachment.fileName).filter(Boolean),
+        baseBranch: task.baseBranch,
+      },
+    };
+  }
+
+  const structuredLeadDocument = extractStructuredLeadTaskDocument(messages);
+  const conversationLines = collectTaskDocumentConversationLines(messages);
+  const clarificationNotes = (messages ?? [])
+    .filter((message) => message?.role === MESSAGE_ROLE.USER)
+    .map((message) => normalizeOptionalString(message.content))
+    .filter(Boolean)
+    .slice(1)
+    .join("\n\n");
+
+  return {
+    acceptance: structuredLeadDocument?.acceptance
+      || pickTaskDocumentHighlights(conversationLines, ["验收", "测试", "验证", "acceptance", "review", "部署", "发布"])
+      || null,
+    confirmedAt: new Date().toISOString(),
+    constraints: structuredLeadDocument?.constraints
+      || pickTaskDocumentHighlights(conversationLines, ["约束", "限制", "必须", "不要", "constraint", "must", "should", "sandbox", "docker"])
+      || null,
+    context: {
+      attachments: attachments.map((attachment) => attachment.fileName).filter(Boolean),
+      baseBranch: task.baseBranch,
+    },
+    goal: structuredLeadDocument?.goal || normalizeOptionalString(task.description) || normalizeOptionalString(task.title),
+    scope: structuredLeadDocument?.scope
+      || pickTaskDocumentHighlights(conversationLines, ["范围", "边界", "scope", "api", "接口", "页面", "数据库", "schema", "ui", "cli"])
+      || normalizeOptionalString(clarificationNotes)
+      || null,
+  };
+}
+
+function extractStructuredLeadTaskDocument(messages) {
+  const leadMessages = (messages ?? [])
+    .filter((message) => message?.role === MESSAGE_ROLE.LEAD_AGENT)
+    .map((message) => normalizeOptionalString(message.content))
+    .filter(Boolean);
+
+  for (let index = leadMessages.length - 1; index >= 0; index -= 1) {
+    const parsed = parseStructuredTaskDocumentSections(leadMessages[index]);
+
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function parseStructuredTaskDocumentSections(text) {
+  const lines = String(text ?? "").split(/\r?\n/u);
+  const sections = {};
+  let currentKey = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    if (!line) {
+      continue;
+    }
+
+    const heading = matchTaskDocumentHeading(line);
+
+    if (heading) {
+      currentKey = heading.key;
+
+      if (heading.body) {
+        sections[currentKey] = appendTaskDocumentSectionValue(sections[currentKey], heading.body);
+      }
+      continue;
+    }
+
+    if (!currentKey) {
+      continue;
+    }
+
+    sections[currentKey] = appendTaskDocumentSectionValue(sections[currentKey], stripTaskDocumentLine(line));
+  }
+
+  const normalizedSections = Object.fromEntries(
+    Object.entries(sections)
+      .map(([key, value]) => [key, normalizeOptionalString(value)])
+      .filter(([, value]) => Boolean(value)),
+  );
+
+  return Object.keys(normalizedSections).length >= 2 ? normalizedSections : null;
+}
+
+function matchTaskDocumentHeading(line) {
+  const matchers = [
+    /^#{1,6}\s*(.+?)\s*$/u,
+    /^\*\*(.+?)\*\*\s*[:：]?\s*(.*)$/u,
+    /^([A-Za-z\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff ()/_-]{1,30})\s*[:：]\s*(.*)$/u,
+  ];
+
+  for (const matcher of matchers) {
+    const match = line.match(matcher);
+
+    if (!match) {
+      continue;
+    }
+
+    const label = normalizeOptionalString(match[1]);
+    const key = resolveTaskDocumentSectionKey(label);
+
+    if (!key) {
+      continue;
+    }
+
+    return {
+      body: stripTaskDocumentLine(match[2] ?? ""),
+      key,
+    };
+  }
+
+  return null;
+}
+
+function resolveTaskDocumentSectionKey(label) {
+  const normalizedLabel = String(label ?? "").trim().toLowerCase();
+
+  if (!normalizedLabel) {
+    return null;
+  }
+
+  if (
+    normalizedLabel.includes("任务目标")
+    || normalizedLabel.includes("需求目标")
+    || normalizedLabel.includes("目标")
+    || normalizedLabel.includes("goal")
+    || normalizedLabel.includes("objective")
+    || normalizedLabel.includes("outcome")
+  ) {
+    return "goal";
+  }
+
+  if (
+    normalizedLabel.includes("工作范围")
+    || normalizedLabel.includes("范围")
+    || normalizedLabel.includes("边界")
+    || normalizedLabel.includes("scope")
+    || normalizedLabel.includes("in scope")
+    || normalizedLabel.includes("out of scope")
+  ) {
+    return "scope";
+  }
+
+  if (
+    normalizedLabel.includes("约束")
+    || normalizedLabel.includes("限制")
+    || normalizedLabel.includes("constraint")
+    || normalizedLabel.includes("assumption")
+    || normalizedLabel.includes("non-goal")
+  ) {
+    return "constraints";
+  }
+
+  if (
+    normalizedLabel.includes("验收")
+    || normalizedLabel.includes("测试")
+    || normalizedLabel.includes("完成标准")
+    || normalizedLabel.includes("acceptance")
+    || normalizedLabel.includes("definition of done")
+    || normalizedLabel.includes("verification")
+  ) {
+    return "acceptance";
+  }
+
+  return null;
+}
+
+function appendTaskDocumentSectionValue(currentValue, nextLine) {
+  const normalizedLine = normalizeOptionalString(nextLine);
+
+  if (!normalizedLine) {
+    return currentValue ?? "";
+  }
+
+  return currentValue ? `${currentValue}\n${normalizedLine}` : normalizedLine;
+}
+
+function stripTaskDocumentLine(line) {
+  return String(line ?? "").replace(/^[-*•\d.)\s]+/u, "").trim();
+}
+
+function collectTaskDocumentConversationLines(messages) {
+  return (messages ?? [])
+    .filter((message) => message?.role === MESSAGE_ROLE.USER || message?.role === MESSAGE_ROLE.LEAD_AGENT)
+    .flatMap((message) => String(message.content ?? "").split(/\r?\n/u))
+    .map((line) => stripTaskDocumentLine(line))
+    .filter((line) => line.length >= 4);
+}
+
+function pickTaskDocumentHighlights(lines, keywords, maxItems = 4) {
+  const seen = new Set();
+  const matches = [];
+
+  for (const line of lines ?? []) {
+    const normalizedLine = String(line).toLowerCase();
+
+    if (!keywords.some((keyword) => normalizedLine.includes(String(keyword).toLowerCase()))) {
+      continue;
+    }
+
+    if (seen.has(line)) {
+      continue;
+    }
+
+    seen.add(line);
+    matches.push(line);
+
+    if (matches.length >= maxItems) {
+      break;
+    }
+  }
+
+  return matches.length > 0 ? matches.join("\n") : null;
 }
 
 function classifyLaunchFailure(message) {
@@ -6576,6 +6887,38 @@ function isAgentChangeEligible(task, subTask) {
 
 function uniqueStrings(values) {
   return [...new Set((values ?? []).filter(Boolean))];
+}
+
+function createDeferredPromise() {
+  let settled = false;
+  let resolvePromise = () => {};
+
+  const promise = new Promise((resolve) => {
+    resolvePromise = (value) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      resolve(value);
+    };
+  });
+
+  return {
+    promise,
+    resolve: resolvePromise,
+  };
+}
+
+async function waitForDeferredPromise(deferred, timeoutMs) {
+  if (!deferred?.promise) {
+    return;
+  }
+
+  await Promise.race([
+    deferred.promise,
+    sleep(timeoutMs),
+  ]);
 }
 
 async function retryCleanupOperation(operation, attempts, delayMs) {

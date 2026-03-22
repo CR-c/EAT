@@ -11,6 +11,7 @@ import { createApp } from "../src/server/app.js";
 import { AgentRegistry } from "../src/agents/agent-registry.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { SESSION_SANDBOX_TYPES } from "../src/agents/agent-contract.js";
+import { SqliteTaskRepository } from "../src/repositories/task-repository.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -431,6 +432,83 @@ test("requires pausing an active task before deletion", async () => {
       );
       assert.equal(afterDeleteResponse.status, 200);
       assert.deepEqual(afterDeleteResponse.body.tasks, []);
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("deletes a paused task even when historical taskBranchName data falls back to the base branch", async () => {
+  const fixture = await makeTempDir("eat-task-api-delete-base-branch-cleanup-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const uploadRootPath = path.join(fixture.path, "uploads");
+    const repo = await createRepository(fixture.path, "delete-base-branch-cleanup-repo", { defaultBranch: "master" });
+    const repository = new SqliteTaskRepository({ databasePath });
+
+    const server = await startServer({
+      agentService: createLeadAgentService(),
+      databasePath,
+      uploadRootPath,
+    });
+
+    try {
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const createResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "master",
+          description: "Delete a paused task without trying to delete the protected base branch.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Delete paused task with protected base branch cleanup",
+        },
+        method: "POST",
+      });
+
+      assert.equal(createResponse.status, 201);
+      const taskId = createResponse.body.task.id;
+      const taskBranchName = createResponse.body.task.taskBranchName;
+
+      await repository.updateTask(taskId, {
+        lastError: "Paused by operator from EXECUTING.",
+        status: "ACTION_REQUIRED",
+        taskBranchName: "master",
+      });
+
+      const deleteResponse = await requestJson(
+        server,
+        `/api/tasks/${encodeURIComponent(taskId)}`,
+        {
+          body: { deleteBranches: true },
+          method: "DELETE",
+        },
+      );
+
+      assert.equal(deleteResponse.status, 200);
+      assert.equal(deleteResponse.body.branchCleanup.cleanedBranches.includes("master"), false);
+      assert.equal(deleteResponse.body.branchCleanup.cleanedBranches.includes(taskBranchName), false);
+
+      const afterDeleteResponse = await requestJson(
+        server,
+        `/api/projects/${encodeURIComponent(registerResponse.body.project.id)}/tasks?includeArchived=1`,
+      );
+      assert.equal(afterDeleteResponse.status, 200);
+      assert.deepEqual(afterDeleteResponse.body.tasks, []);
+
+      assert.equal(
+        await git(repo.repoPath, ["rev-parse", "master^{commit}"]),
+        await git(repo.repoPath, ["rev-parse", "HEAD^{commit}"]),
+      );
+      assert.equal(
+        await git(repo.repoPath, ["rev-parse", `${taskBranchName}^{commit}`]),
+        await git(repo.repoPath, ["rev-parse", "master^{commit}"]),
+      );
     } finally {
       await stopServer(server);
     }

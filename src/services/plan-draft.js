@@ -83,12 +83,17 @@ export function buildPlanningPrompt(task, options = {}) {
     availableAgentNames,
     defaultAgentType: options.defaultAgentType,
   });
+  const transcriptSection = buildPlanningTranscriptSection(options.transcriptMessages);
+  const taskDocumentSection = buildTaskDocumentSnapshotSection(options.taskDocumentSnapshot);
 
   return [
     "Planning mode is now active. Requirements are finalized.",
-    "Ignore earlier conversation instructions that said to keep clarifying or wait for more confirmation.",
+    "The operator has already confirmed the task document.",
+    "Ignore earlier clarification-stage instructions that said to keep clarifying or wait for more confirmation.",
     "Your next response must be a single JSON object only. Do not output prose, bullet lists, commentary, or role explanations outside the JSON object.",
     "Requirements are confirmed. Generate the execution plan as JSON only.",
+    "Convert the confirmed task document into a role-aware execution plan as JSON only.",
+    "This execution plan will be reviewed by the operator before execution continues, so optimize for clarity, ownership, and realistic sequencing.",
     "Plan for a coordinated agent team, not a bag of unrelated tickets.",
     "Return an object with a non-empty `nodes` array.",
     "Each node must include `title`, `description`, `role`, `recommended_agent`, `branch_suffix`, `deliverable`, `acceptance_criteria`, and `template_hint`.",
@@ -108,9 +113,63 @@ export function buildPlanningPrompt(task, options = {}) {
       ? `If you are unsure which agent to use, set recommended_agent to ${fallbackAgentName}.`
       : null,
     "Do not wrap the response in prose outside the JSON payload.",
-    `Task title: ${task.title}`,
-    `Requirement description: ${task.description}`,
+    `Confirmed task document title: ${task.title}`,
+    `Confirmed task document body: ${task.description}`,
+    taskDocumentSection,
+    transcriptSection,
   ].filter(Boolean).join("\n");
+}
+
+function buildTaskDocumentSnapshotSection(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return null;
+  }
+
+  const normalizedSnapshot = {
+    acceptance: normalizePromptValue(snapshot.acceptance),
+    constraints: normalizePromptValue(snapshot.constraints),
+    context: snapshot.context && typeof snapshot.context === "object"
+      ? {
+          attachments: Array.isArray(snapshot.context.attachments)
+            ? snapshot.context.attachments.map((item) => normalizePromptValue(item)).filter(Boolean)
+            : [],
+          baseBranch: normalizePromptValue(snapshot.context.baseBranch),
+        }
+      : null,
+    goal: normalizePromptValue(snapshot.goal),
+    scope: normalizePromptValue(snapshot.scope),
+  };
+
+  if (!normalizedSnapshot.goal && !normalizedSnapshot.scope && !normalizedSnapshot.constraints && !normalizedSnapshot.acceptance) {
+    return null;
+  }
+
+  return `Confirmed task document snapshot:\n${JSON.stringify(normalizedSnapshot, null, 2)}`;
+}
+
+function buildPlanningTranscriptSection(transcriptMessages = []) {
+  const relevantMessages = (transcriptMessages ?? [])
+    .filter((message) => message?.role === "USER" || message?.role === "LEAD_AGENT" || message?.role === "ASSISTANT")
+    .map((message) => ({
+      content: String(message.content ?? "").trim(),
+      role: message.role === "USER" ? "Operator" : "Leader",
+    }))
+    .filter((message) => message.content.length > 0)
+    .slice(-24);
+
+  if (relevantMessages.length === 0) {
+    return null;
+  }
+
+  return [
+    "Confirmed clarification transcript:",
+    ...relevantMessages.map((message) => `${message.role}: ${message.content}`),
+    "Use this transcript as the authoritative clarified task document context when producing the execution plan.",
+  ].join("\n");
+}
+
+function normalizePromptValue(value) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function buildAgencyInspiredRoleGuidance() {

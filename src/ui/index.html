@@ -8,41 +8,44 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap">
     <link rel="stylesheet" href="/app.css">
   </head>
-  <body>
+  <body class="layout--nav-collapsed layout--sidebar-collapsed">
     <!-- ── TopNav ── -->
     <header class="topnav">
       <span class="topnav__brand" data-i18n="brandName">EAT Agent Workbench</span>
       <nav class="topnav__tabs">
         <button class="topnav__tab is-active" type="button" data-view="dashboard">
           <span class="topnav__tab-icon">dashboard</span>
-          <span data-i18n="navDashboard">控制台</span>
+          <span class="topnav__tab-label" data-i18n="navDashboard">控制台</span>
         </button>
         <button class="topnav__tab" type="button" data-view="task-create">
           <span class="topnav__tab-icon">add_circle</span>
-          <span data-i18n="navTaskCreate">任务创建</span>
+          <span class="topnav__tab-label" data-i18n="navTaskCreate">任务创建</span>
         </button>
         <button class="topnav__tab" type="button" data-view="tasks">
           <span class="topnav__tab-icon">assignment</span>
-          <span data-i18n="navTasks">任务列表</span>
+          <span class="topnav__tab-label" data-i18n="navTasks">任务列表</span>
         </button>
         <button class="topnav__tab" type="button" data-view="workspace">
           <span class="topnav__tab-icon">terminal</span>
-          <span data-i18n="navWorkspace">工作区</span>
+          <span class="topnav__tab-label" data-i18n="navWorkspace">工作区</span>
         </button>
         <button class="topnav__tab" type="button" data-view="plan">
           <span class="topnav__tab-icon">fact_check</span>
-          <span data-i18n="navPlan">计划审阅</span>
+          <span class="topnav__tab-label" data-i18n="navPlan">计划审阅</span>
         </button>
         <button class="topnav__tab" type="button" data-view="ops">
           <span class="topnav__tab-icon">monitor</span>
-          <span data-i18n="navOps">运行看板</span>
+          <span class="topnav__tab-label" data-i18n="navOps">运行看板</span>
         </button>
         <button class="topnav__tab" type="button" data-view="metrics">
           <span class="topnav__tab-icon">monitoring</span>
-          <span data-i18n="navMetrics">指标</span>
+          <span class="topnav__tab-label" data-i18n="navMetrics">指标</span>
         </button>
       </nav>
       <div class="topnav__controls">
+        <button id="topnav-collapse-toggle" class="layout-toggle" type="button" aria-label="展开顶部导航" title="展开顶部导航">
+          <span id="topnav-collapse-icon" class="layout-toggle__icon">unfold_more</span>
+        </button>
         <span id="topnav-status" class="badge badge--outline" data-i18n="navStatusIdle">就绪</span>
         <button
           id="language-toggle"
@@ -60,8 +63,13 @@
       <!-- ── Sidebar: Project list ── -->
       <aside class="sidebar">
         <div class="sidebar__header">
-          <span class="sidebar__title" data-i18n="sidebarTitle">项目</span>
-          <span id="sidebar-agent-count" class="sidebar__count" data-i18n="sidebarActiveAgents">0 Agent</span>
+          <div class="sidebar__header-copy">
+            <span class="sidebar__title" data-i18n="sidebarTitle">项目</span>
+            <span id="sidebar-agent-count" class="sidebar__count" data-i18n="sidebarActiveAgents">0 Agent</span>
+          </div>
+          <button id="sidebar-collapse-toggle" class="layout-toggle layout-toggle--sidebar" type="button" aria-label="展开项目栏" title="展开项目栏">
+            <span id="sidebar-collapse-icon" class="layout-toggle__icon">left_panel_open</span>
+          </button>
         </div>
         <div class="sidebar__projects">
           <div id="sidebar-project-list"></div>
@@ -70,8 +78,9 @@
           </div>
         </div>
         <div class="sidebar__register">
-          <button id="sidebar-register-toggle" class="sidebar__register-toggle" type="button" data-i18n="sidebarRegisterButton">
-            注册项目
+          <button id="sidebar-register-toggle" class="sidebar__register-toggle" type="button">
+            <span class="sidebar__register-icon">add</span>
+            <span class="sidebar__register-label" data-i18n="sidebarRegisterButton">注册项目</span>
           </button>
         </div>
       </aside>
@@ -565,22 +574,7 @@
         <!-- ══ View: Workspace ══ -->
         <div id="view-workspace" class="view" hidden>
           <section class="panel panel--workspace" aria-labelledby="task-list-title">
-            <div class="workspace-toolbar">
-              <div>
-                <p class="panel__eyebrow" data-i18n="tasksEyebrow">工作区</p>
-                <h2 id="task-list-title" data-i18n="taskListTitle">工作区</h2>
-              </div>
-              <div class="workspace-toolbar__actions">
-                <button id="workspace-picker-open-button" class="workspace-picker-trigger" type="button" aria-haspopup="dialog" aria-controls="workspace-picker-dialog">
-                  <span class="workspace-picker-trigger__eyebrow">当前工作区</span>
-                  <span id="workspace-picker-current" class="workspace-picker-trigger__title">选择任务</span>
-                  <span id="workspace-picker-count" class="workspace-picker-trigger__meta">0 个任务</span>
-                </button>
-                <button id="refresh-task-detail-button" class="button button--secondary" type="button" data-i18n="refreshTaskButton">
-                  刷新任务
-                </button>
-              </div>
-            </div>
+            <h2 id="task-list-title" class="sr-only" data-i18n="taskListTitle">工作区</h2>
 
             <div id="task-detail-feedback" class="feedback feedback--inline" role="status" aria-live="polite"></div>
             <div id="task-detail-empty" class="empty-state" data-i18n="taskDetailEmpty">
@@ -588,149 +582,212 @@
             </div>
 
             <article id="task-detail" class="task-detail workspace-detail" hidden>
-              <section class="workspace-hero">
-                <div class="workspace-hero__copy">
-                  <p class="task-detail__eyebrow" data-i18n="selectedTaskEyebrow">当前任务</p>
-                  <h3 id="task-detail-title">任务标题</h3>
-                  <p id="task-detail-description" class="task-detail__description"></p>
-                </div>
-                <div class="workspace-hero__meta">
-                  <span id="task-status-badge" class="badge"></span>
-                  <span id="task-base-branch-badge" class="badge badge--outline"></span>
-                  <div id="task-workspace-actions" class="workspace-hero__actions" hidden>
-                    <button id="task-workspace-pause-button" class="button button--secondary workspace-hero__action" type="button">
-                      暂停任务
-                    </button>
-                    <button id="task-workspace-delete-button" class="button task-list__action task-list__action--danger workspace-hero__action" type="button">
-                      删除任务
-                    </button>
+              <div class="workspace-shell">
+                <div class="workspace-main">
+                  <div class="workspace-main__top">
+                    <div class="workspace-main__toolbar">
+                      <button id="workspace-picker-open-button" class="workspace-switcher-inline" type="button" aria-haspopup="dialog" aria-controls="workspace-picker-dialog">
+                        <span class="workspace-switcher-inline__icon" aria-hidden="true">stacks</span>
+                        <span id="workspace-picker-current" class="workspace-switcher-inline__title">选择任务</span>
+                        <span id="workspace-picker-count" class="sr-only">0 个任务</span>
+                        <span class="workspace-switcher-inline__icon workspace-switcher-inline__icon--end" aria-hidden="true">chevron_right</span>
+                      </button>
+                      <button id="refresh-task-detail-button" class="button button--secondary" type="button" data-i18n="refreshTaskButton" title="刷新当前任务">
+                        刷新任务
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </section>
-
-              <section class="workspace-flow" aria-labelledby="task-stage-board-title">
-                <div class="workspace-flow__header">
-                  <div>
-                    <p class="panel__eyebrow" data-i18n="taskStageEyebrow">主线</p>
-                    <h3 id="task-stage-board-title" data-i18n="taskStageTitle">当前阶段与下一步</h3>
-                  </div>
-                  <button id="task-next-action-button" class="button button--primary workspace-flow__action" type="button">
-                    开始澄清
-                  </button>
-                </div>
-                <div id="task-stage-rail" class="task-stage-rail" aria-label="任务执行主线"></div>
-                <article class="workspace-next-step">
-                  <span id="task-next-action-badge" class="badge badge--accent-soft">草稿</span>
-                  <div class="workspace-next-step__copy">
-                    <h4 id="task-next-action-title" class="plan-history__title">先启动首轮需求澄清</h4>
-                    <p id="task-next-action-summary" class="task-next-action__summary">
-                      任务刚创建，lead 还没有开始工作。
-                    </p>
-                  </div>
-                </article>
-              </section>
-
-              <div class="workspace-main">
-                <section class="workspace-chat" aria-labelledby="clarification-title">
-                  <div class="workspace-chat__header">
-                    <div class="workspace-chat__title-block">
-                      <div class="workspace-chat__title-row">
-                        <p class="panel__eyebrow" data-i18n="clarificationEyebrow">澄清</p>
-                        <span class="help-tip" tabindex="0" aria-label="澄清说明">
-                          <svg class="help-tip__icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 6.5a1.5 1.5 0 1 1 1.5 1.5v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.5" r="0.75" fill="currentColor"/></svg>
-                          <span class="help-tip__bubble">你只和 Leader 对话。先发出第一条任务说明，再在会话中补充约束、边界和验收标准，确认后进入计划审阅。</span>
-                        </span>
-                      </div>
+                  <section class="workspace-chat" aria-labelledby="clarification-title">
+                    <div class="workspace-chat__header">
                       <h3 id="clarification-title" data-i18n="clarificationTitle">Leader 对话</h3>
+                      <span id="task-lead-session-badge" class="badge badge--outline">待启动</span>
                     </div>
-                    <span id="task-lead-session-badge" class="badge badge--outline">待启动</span>
-                  </div>
-                  <div class="workspace-chat__status-strip">
-                    <p id="task-lead-session-summary" class="workspace-chat__summary"></p>
-                  </div>
-                  <div id="task-lead-session-output" class="workspace-chat__history" aria-live="polite">
-                    这里会显示 Leader 的实时输出。
-                  </div>
-                  <form id="task-message-form" class="workspace-chat__composer">
-                    <label class="field workspace-chat__input-field" for="task-message-input">
-                      <span id="task-message-label" class="sr-only" data-i18n="sendClarificationReplyLabel">发送澄清回复</span>
-                      <textarea
-                        id="task-message-input"
-                        name="message"
-                        rows="3"
-                        placeholder="补充需求、约束条件或验收标准。"
-                        data-i18n-placeholder="sendClarificationReplyPlaceholder"
-                      ></textarea>
-                    </label>
-                    <div class="workspace-chat__composer-meta">
-                      <div class="workspace-chat__context">
-                        <span id="task-message-branch-hint" class="workspace-chat__context-chip">当前分支 · -</span>
-                        <span id="task-message-queue-status" class="workspace-chat__context-chip workspace-chat__context-chip--muted">当前空闲</span>
-                      </div>
-                      <div class="workspace-chat__actions">
-                        <button id="task-message-stop-button" class="button button--ghost" type="button" hidden>
-                          中止执行
-                        </button>
-                        <button id="confirm-requirements-button" class="button button--secondary" type="button" data-i18n="confirmRequirementsButton">
-                          已确认需求
-                        </button>
-                        <button id="send-task-message-button" class="button button--primary workspace-chat__send" type="submit" data-i18n="sendMessageButton">
-                          <span>发送</span>
-                          <span class="workspace-chat__send-hint">Alt+Enter</span>
-                        </button>
-                      </div>
+                    <p id="task-lead-session-summary" class="workspace-chat__summary workspace-chat__summary--inline"></p>
+                    <div id="task-lead-session-output" class="workspace-chat__history" aria-live="polite">
+                      这里会显示 Leader 的实时输出。
                     </div>
-                  </form>
-                  <div id="task-message-queue-list" class="workspace-chat__queue-list" hidden></div>
-                </section>
+                    <form id="task-message-form" class="workspace-chat__composer">
+                      <label class="field workspace-chat__input-field" for="task-message-input">
+                        <span id="task-message-label" class="sr-only" data-i18n="sendClarificationReplyLabel">发送澄清回复</span>
+                        <textarea
+                          id="task-message-input"
+                          name="message"
+                          rows="2"
+                          placeholder="补充需求、约束条件或验收标准。"
+                          data-i18n-placeholder="sendClarificationReplyPlaceholder"
+                        ></textarea>
+                      </label>
+                      <div class="workspace-chat__composer-meta">
+                        <div class="workspace-chat__context">
+                          <span id="task-message-branch-hint" class="workspace-chat__context-chip">当前分支 · -</span>
+                          <span id="task-message-queue-status" class="workspace-chat__context-chip workspace-chat__context-chip--muted">当前空闲</span>
+                        </div>
+                        <div class="workspace-chat__actions">
+                          <button id="task-message-stop-button" class="button button--ghost" type="button" hidden>
+                            中止执行
+                          </button>
+                          <button id="confirm-requirements-button" class="button button--secondary" type="button" data-i18n="confirmRequirementsButton" title="确认当前任务文档并进入分配规划">
+                            已确认任务文档
+                          </button>
+                          <button id="send-task-message-button" class="button button--primary workspace-chat__send" type="submit" data-i18n="sendMessageButton">
+                            <span>发送</span>
+                            <span class="workspace-chat__send-hint">Alt+Enter</span>
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                    <div id="task-message-queue-list" class="workspace-chat__queue-list" hidden></div>
+                  </section>
+                </div>
 
-                <aside class="workspace-sidebar">
-                  <section class="workspace-preview" aria-labelledby="task-leader-plan-title">
+                <aside class="workspace-intel">
+                  <div class="workspace-intel__top">
+                    <section class="workspace-hero workspace-hero--panel">
+                      <div class="panel__header panel__header--inline">
+                        <div>
+                          <p class="task-detail__eyebrow" data-i18n="selectedTaskEyebrow">任务概览</p>
+                          <h3 id="task-detail-title">任务标题</h3>
+                        </div>
+                        <div class="workspace-hero__meta">
+                          <span id="task-status-badge" class="badge"></span>
+                          <span id="task-base-branch-badge" class="badge badge--outline"></span>
+                        </div>
+                      </div>
+                      <p id="task-detail-description" class="task-detail__description"></p>
+                      <div class="workspace-hero__facts" aria-label="任务概览">
+                          <span id="task-project-pill" class="workspace-meta-pill">项目 · -</span>
+                          <span id="task-lead-pill" class="workspace-meta-pill">Lead · -</span>
+                          <span id="task-session-pill" class="workspace-meta-pill">会话 · -</span>
+                      </div>
+                      <div class="workspace-hero__nextline">
+                        <div class="workspace-hero__nextcopy">
+                          <span id="task-next-action-badge" class="badge badge--accent-soft">草稿</span>
+                          <div class="workspace-hero__nexttext">
+                            <h4 id="task-next-action-title" class="plan-history__title">先启动首轮需求澄清</h4>
+                            <p id="task-next-action-summary" class="task-next-action__summary">
+                              任务刚创建，lead 还没有开始工作。
+                            </p>
+                          </div>
+                        </div>
+                        <button id="task-next-action-button" class="button button--primary workspace-flow__action" type="button">
+                          开始澄清
+                        </button>
+                      </div>
+                      <div id="task-stage-rail" hidden></div>
+                      <div class="workspace-hero__actions-row">
+                        <div id="task-workspace-actions" class="workspace-hero__actions" hidden>
+                          <button id="task-workspace-pause-button" class="button button--secondary workspace-hero__action" type="button">
+                            暂停任务
+                          </button>
+                          <button id="task-workspace-delete-button" class="button task-list__action task-list__action--danger workspace-hero__action" type="button">
+                            删除任务
+                          </button>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="workspace-orchestration workspace-orchestration--side" aria-labelledby="task-team-title">
+                      <div class="panel__header panel__header--inline">
+                        <div>
+                          <p class="panel__eyebrow" data-i18n="agentStatusEyebrow">执行态势</p>
+                          <h3 id="task-team-title" data-i18n="agentStatusTitle">执行态势</h3>
+                        </div>
+                        <div class="task-team__header-actions">
+                          <span id="task-team-project-branch" class="badge badge--outline">当前分支</span>
+                          <span id="task-team-member-count" class="badge badge--outline">0 个成员</span>
+                        </div>
+                      </div>
+                      <p class="workspace-orchestration__summary" data-i18n="agentStatusSummary">
+                        这里聚焦当前编排态势：Lead 是否在线、已物化多少执行成员、当前任务挂靠在哪个分支上。
+                      </p>
+                      <div class="workspace-orchestration__metrics" aria-label="执行态势摘要">
+                        <span id="task-team-lead-pill" class="workspace-meta-pill workspace-meta-pill--inverse">Lead · 待定</span>
+                        <span id="task-team-worker-pill" class="workspace-meta-pill workspace-meta-pill--inverse">Worker · 0</span>
+                      </div>
+                      <div id="task-team-empty" class="empty-state" data-i18n="teamEmpty">
+                        计划批准并物化为可执行子任务后，团队成员会显示在这里。
+                      </div>
+                      <div id="task-team-shell" class="team-shell workspace-orchestration__shell" hidden>
+                        <article class="team-lead-card">
+                          <div class="team-lead-card__header">
+                            <div>
+                              <p class="panel__eyebrow" data-i18n="leadEyebrow">Lead</p>
+                              <h4 class="plan-history__title" data-i18n="coordinatorTitle">协调者</h4>
+                            </div>
+                            <span id="task-team-lead-status" class="badge badge--outline">待定</span>
+                          </div>
+                          <p id="task-team-lead-meta" class="team-lead-card__meta"></p>
+                          <p id="task-team-lead-summary" class="team-lead-card__summary"></p>
+                        </article>
+                        <div id="task-team-member-list" class="team-member-list"></div>
+                      </div>
+                    </section>
+                  </div>
+
+                  <details id="task-document-panel" class="workspace-preview workspace-preview--document" open>
+                    <summary class="workspace-preview__toggle">
+                      <div class="workspace-preview__toggle-copy">
+                        <p id="task-document-eyebrow" class="panel__eyebrow" data-i18n="taskDocEyebrow">任务文档</p>
+                        <h3 id="task-document-title" data-i18n="taskDocTitle">任务文档</h3>
+                      </div>
+                      <div class="workspace-preview__toggle-meta">
+                        <span id="task-document-badge" class="badge badge--outline">草稿中</span>
+                        <span class="workspace-preview__toggle-icon" aria-hidden="true">expand_more</span>
+                      </div>
+                    </summary>
+                    <div class="workspace-preview__body">
+                      <p id="task-document-summary" class="workspace-preview__summary"></p>
+                      <div class="workspace-preview__meta-row" aria-label="任务文档摘要">
+                        <span id="task-document-count" class="workspace-meta-pill workspace-meta-pill--soft">0 个章节</span>
+                        <span id="task-document-guide" class="workspace-preview__guide">左侧澄清会实时沉淀到这里。</span>
+                      </div>
+                      <div id="task-document-loading" class="workspace-loading" hidden aria-live="polite">
+                        <div class="workspace-loading__header">
+                          <span class="workspace-loading__dot" aria-hidden="true"></span>
+                          <span id="task-document-loading-label" class="workspace-loading__label">任务文档整理中</span>
+                        </div>
+                        <div class="workspace-loading__skeleton">
+                          <span class="workspace-loading__line workspace-loading__line--lg"></span>
+                          <span class="workspace-loading__line"></span>
+                          <span class="workspace-loading__line workspace-loading__line--sm"></span>
+                        </div>
+                      </div>
+                      <div id="task-document-empty" class="empty-state" data-i18n="taskDocEmpty">
+                        Lead 会先围绕需求整理一份可确认的任务文档草稿。
+                      </div>
+                      <div id="task-document-list" class="leader-plan-list"></div>
+                    </div>
+                  </details>
+
+                  <section class="workspace-preview workspace-preview--compact" aria-labelledby="task-leader-plan-title">
                     <div class="panel__header panel__header--inline">
                       <div>
-                        <p class="panel__eyebrow" data-i18n="leaderPlanEyebrow">Leader 规划</p>
+                        <p id="task-leader-plan-eyebrow" class="panel__eyebrow" data-i18n="leaderPlanEyebrow">Leader 规划</p>
                         <h3 id="task-leader-plan-title" data-i18n="leaderPlanTitle">分配预览</h3>
                       </div>
                       <span id="task-leader-plan-badge" class="badge badge--outline">待生成</span>
                     </div>
                     <p id="task-leader-plan-summary" class="workspace-preview__summary"></p>
+                    <div class="workspace-preview__meta-row" aria-label="分配预览摘要">
+                      <span id="task-leader-plan-count" class="workspace-meta-pill workspace-meta-pill--soft">0 个章节</span>
+                      <span id="task-leader-plan-guide" class="workspace-preview__guide">点击条目查看详情</span>
+                    </div>
+                    <div id="task-leader-plan-loading" class="workspace-loading" hidden aria-live="polite">
+                      <div class="workspace-loading__header">
+                        <span class="workspace-loading__dot" aria-hidden="true"></span>
+                        <span id="task-leader-plan-loading-label" class="workspace-loading__label">执行方案生成中</span>
+                      </div>
+                      <div class="workspace-loading__skeleton">
+                        <span class="workspace-loading__line workspace-loading__line--lg"></span>
+                        <span class="workspace-loading__line"></span>
+                        <span class="workspace-loading__line"></span>
+                        <span class="workspace-loading__line workspace-loading__line--sm"></span>
+                      </div>
+                    </div>
                     <div id="task-leader-plan-empty" class="empty-state" data-i18n="leaderPlanEmpty">
                       还没有可展示的分配方案。
                     </div>
                     <div id="task-leader-plan-list" class="leader-plan-list"></div>
-                  </section>
-
-                  <section class="workspace-orchestration" aria-labelledby="task-team-title">
-                    <div class="panel__header panel__header--inline">
-                      <div>
-                        <p class="panel__eyebrow" data-i18n="leaderOrchestrationEyebrow">Leader 编排</p>
-                        <h3 id="task-team-title" data-i18n="teamLifecycleTitle">Leader 编排</h3>
-                      </div>
-                      <div class="task-team__header-actions">
-                        <span id="task-team-project-branch" class="badge badge--outline">当前分支</span>
-                        <span id="task-team-member-count" class="badge badge--outline">0 个成员</span>
-                      </div>
-                    </div>
-                    <p class="workspace-orchestration__summary">
-                      这里先预留给后续的编排视图。
-                    </p>
-                    <div id="task-team-empty" class="empty-state" data-i18n="teamEmpty">
-                      计划批准并物化为可执行子任务后，团队成员会显示在这里。
-                    </div>
-                    <div id="task-team-shell" class="team-shell workspace-orchestration__shell" hidden>
-                      <article class="team-lead-card">
-                        <div class="team-lead-card__header">
-                          <div>
-                            <p class="panel__eyebrow" data-i18n="leadEyebrow">Lead</p>
-                            <h4 class="plan-history__title" data-i18n="coordinatorTitle">协调者</h4>
-                          </div>
-                          <span id="task-team-lead-status" class="badge badge--outline">待定</span>
-                        </div>
-                        <p id="task-team-lead-meta" class="team-lead-card__meta"></p>
-                        <p id="task-team-lead-summary" class="team-lead-card__summary"></p>
-                      </article>
-                      <div id="task-team-member-list" class="team-member-list"></div>
-                    </div>
                   </section>
                 </aside>
               </div>
@@ -843,6 +900,65 @@
               <dl id="leader-plan-detail-facts" class="workspace-drawer__facts"></dl>
             </div>
           </dialog>
+
+          <aside id="task-plan-node-dialog" class="workspace-drawer workspace-drawer--detail workspace-drawer--plan-node" aria-labelledby="task-plan-node-title" aria-modal="false" role="dialog" aria-hidden="true" hidden>
+            <div class="workspace-drawer__shell">
+              <div class="workspace-drawer__header">
+                <div>
+                  <p class="panel__eyebrow" data-i18n="currentPlanDraftTitle">执行方案审阅</p>
+                  <h3 id="task-plan-node-title">子任务详情</h3>
+                </div>
+                <button id="task-plan-node-close-button" class="button button--secondary" type="button" data-i18n="closeButton">关闭</button>
+              </div>
+              <p id="task-plan-node-summary" class="workspace-drawer__summary"></p>
+              <div id="task-plan-node-readonly-facts" class="workspace-drawer__facts" hidden></div>
+              <div id="task-plan-node-editor" class="workspace-drawer__editor" hidden>
+                <label class="field">
+                  <span class="field__label" data-i18n="titleField">标题</span>
+                  <input id="task-plan-node-title-input" type="text" data-plan-field="title">
+                </label>
+                <label class="field">
+                  <span class="field__label" data-i18n="roleField">角色</span>
+                  <input id="task-plan-node-role-input" type="text" data-plan-field="role">
+                </label>
+                <label class="field">
+                  <span class="field__label" data-i18n="workerAgentField">执行 Agent</span>
+                  <select id="task-plan-node-agent-select" class="field__control" data-plan-field="recommended_agent"></select>
+                </label>
+                <label class="field">
+                  <span class="field__label" data-i18n="descriptionField">描述</span>
+                  <textarea id="task-plan-node-description-input" rows="4" data-plan-field="description"></textarea>
+                </label>
+                <label class="field">
+                  <span class="field__label" data-i18n="deliverableField">交付物</span>
+                  <textarea id="task-plan-node-deliverable-input" rows="3" data-plan-field="deliverable"></textarea>
+                </label>
+                <label class="field">
+                  <span class="field__label" data-i18n="acceptanceCriteriaField">验收标准</span>
+                  <textarea id="task-plan-node-criteria-input" rows="4" data-plan-field="acceptance_criteria"></textarea>
+                </label>
+                <label class="field">
+                  <span class="field__label" data-i18n="branchSuffixField">分支后缀</span>
+                  <input id="task-plan-node-branch-input" type="text" data-plan-field="branch_suffix">
+                </label>
+                <label class="field">
+                  <span class="field__label" data-i18n="dependsOnField">依赖</span>
+                  <input id="task-plan-node-depends-input" type="text" data-plan-field="depends_on">
+                </label>
+                <label class="field">
+                  <span class="field__label" data-i18n="templateHintField">模板提示</span>
+                  <input id="task-plan-node-template-input" type="text" data-plan-field="template_hint">
+                </label>
+                <label class="field">
+                  <span class="field__label" data-i18n="estimatedScopeField">范围估计</span>
+                  <input id="task-plan-node-scope-input" type="text" data-plan-field="estimated_scope">
+                </label>
+                <div class="workspace-drawer__actions">
+                  <button id="task-plan-node-remove-button" class="button task-list__action task-list__action--danger" type="button">删除子任务</button>
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
 
         <!-- ══ View: Plan Review ══ -->
@@ -850,13 +966,13 @@
           <section class="panel panel--planning" aria-labelledby="task-plan-title">
             <div class="panel__header">
               <div>
-                <p class="panel__eyebrow" data-i18n="planDraftEyebrow">计划草稿</p>
-                <h2 id="task-plan-title" data-i18n="currentPlanDraftTitle">当前计划草稿</h2>
+                <p class="panel__eyebrow" data-i18n="planDraftEyebrow">执行方案</p>
+                <h2 id="task-plan-title" data-i18n="currentPlanDraftTitle">执行方案审阅</h2>
               </div>
             </div>
             <div id="task-plan-feedback" class="feedback" role="status" aria-live="polite"></div>
             <div id="task-plan-empty" class="empty-state" data-i18n="planEmpty">
-              确认需求后会触发计划生成、校验与草稿持久化。
+              确认任务文档后会触发执行方案生成、校验与草稿持久化。
             </div>
             <div id="task-plan-detail" class="plan-detail" hidden>
               <p id="task-plan-summary" class="plan-detail__summary"></p>
@@ -874,14 +990,9 @@
                   用常见团队骨架快速初始化 DAG 草稿，之后仍需人工审阅和批准。
                 </p>
                 <div class="plan-editor__toolbar">
-                  <div class="segmented-control" role="group" aria-label="Plan view">
+                  <div class="segmented-control" aria-label="Plan view">
                     <span class="segmented-control__label" data-i18n="planViewLabel">计划视图</span>
-                    <button id="task-plan-graph-view-button" class="button button--ghost" type="button" data-i18n="planGraphViewButton">
-                      图谱视图
-                    </button>
-                    <button id="task-plan-list-view-button" class="button button--ghost" type="button" data-i18n="planListViewButton">
-                      列表视图
-                    </button>
+                    <span class="badge badge--outline" data-i18n="planGraphViewButton">执行顺序</span>
                   </div>
                   <p class="plan-editor__hint" data-i18n="planEditorHint">
                     批准前可先编辑草稿。变更仅保存在当前浏览器，直到草稿同步功能上线。
@@ -897,7 +1008,7 @@
                       重置本地修改
                     </button>
                     <button id="task-plan-approve-button" class="button button--primary" type="button" data-i18n="approveDraftButton">
-                      批准草稿
+                      批准执行方案
                     </button>
                   </div>
                 </div>
@@ -925,7 +1036,7 @@
                 <div id="task-plan-history-list" class="plan-history__list"></div>
               </div>
               <div id="task-plan-graph" class="plan-graph" hidden></div>
-              <div id="task-plan-list" class="plan-list"></div>
+              <div id="task-plan-list" class="plan-list" hidden></div>
             </div>
           </section>
         </div>

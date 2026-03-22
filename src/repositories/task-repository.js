@@ -146,7 +146,7 @@ export class SqliteTaskRepository {
       planVersion: 0,
       projectId: input.projectId,
       status: input.status ?? TASK_STATUS.DRAFT,
-      taskBranchName: input.taskBranchName ?? input.baseBranch,
+      taskBranchName: input.taskBranchName ?? null,
       title: input.title,
       updatedAt: timestamp,
     };
@@ -231,7 +231,9 @@ export class SqliteTaskRepository {
       ...existingTask,
       ...updates,
       archivedAt: Object.prototype.hasOwnProperty.call(updates, "archivedAt") ? updates.archivedAt : existingTask.archivedAt,
-      taskBranchName: updates.taskBranchName ?? existingTask.taskBranchName ?? existingTask.baseBranch,
+      taskBranchName: Object.prototype.hasOwnProperty.call(updates, "taskBranchName")
+        ? updates.taskBranchName
+        : existingTask.taskBranchName,
       updatedAt: updates.updatedAt ?? new Date().toISOString(),
     };
 

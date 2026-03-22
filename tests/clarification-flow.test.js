@@ -127,7 +127,12 @@ test("runs clarification flow, triggers planning, and keeps the task in planning
         assert.equal(typeof detailResponse.body.task.currentPlanJson, "string");
         assert.deepEqual(
           detailResponse.body.messages.map((message) => message.role),
-          ["USER", "LEAD_AGENT", "LEAD_AGENT", "USER", "LEAD_AGENT", "SYSTEM", "LEAD_AGENT"],
+          ["USER", "LEAD_AGENT", "LEAD_AGENT", "USER", "LEAD_AGENT", "SYSTEM", "SYSTEM", "LEAD_AGENT"],
+        );
+        assert.ok(
+          detailResponse.body.messages.some(
+            (message) => message.role === "SYSTEM" && message.content.startsWith("Task document snapshot:"),
+          ),
         );
         assert.equal(detailResponse.body.sessions.length, 1);
         assert.equal(detailResponse.body.sessions[0].status, "RUNNING");
