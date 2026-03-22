@@ -344,6 +344,27 @@ const UI_MESSAGES = {
     taskNextCompletedSummary: "主线已经走完。你可以去运行看板回看执行、审查和集成结果。",
     taskNextFailedTitle: "任务已中断，需要先排查原因",
     taskNextFailedSummary: "当前任务未能正常推进。先去运行看板查看失败原因和恢复入口。",
+    taskDecisionEyebrow: "当前决策",
+    taskDecisionTitleIdle: "等待自动推进",
+    taskDecisionSummaryIdle: "系统会在条件满足时继续推进，你只需要盯住阻塞和最终验收。",
+    taskDecisionBadgeIdle: "等待中",
+    taskDecisionTitleBlocked: "先处理人工阻塞",
+    taskDecisionTitleReady: "可以进入验收预览",
+    taskDecisionTitleLive: "正在网页内验收成品",
+    taskDecisionTitleConverging: "等待链路自动收敛",
+    taskDecisionBadgeBlocked: "需接管",
+    taskDecisionBadgeReady: "可验收",
+    taskDecisionBadgeLive: "预览中",
+    taskDecisionBadgeConverging: "自动推进",
+    taskDecisionSummaryBlocked: "当前有 {count} 个阻塞需要人工接管，处理后系统才会继续推进。",
+    taskDecisionSummaryReady: "预览目标、应用入口和最终审查已经就绪，现在可以直接在网页内查看成品。",
+    taskDecisionSummaryLive: "预览已经启动，可以在当前工作区直接完成最终成品验收。",
+    taskDecisionSummaryConverging: "系统正在自动推进执行、审查和集成，你只需要关注异常与最终验收。",
+    taskDecisionPillManual: "人工阻塞 · {count}",
+    taskDecisionPillSystem: "Leader / 系统 · {count}",
+    taskDecisionPillPreview: "预览目标 · {status}",
+    taskDecisionPillReview: "最终审查 · {status}",
+    taskDecisionPillRuntime: "网页预览 · {status}",
     taskListHintDraft: "下一步：先写开场消息",
     startClarificationDraftLabel: "发送给 Lead 的第一条消息",
     startClarificationDraftPlaceholder: "先告诉 Lead 你要做什么、范围边界、约束条件和验收标准，再启动澄清。",
@@ -432,7 +453,8 @@ const UI_MESSAGES = {
     operationsSummaryRunning: "运行中",
     operationsSummaryWaiting: "等待链路",
     operationsSummaryCompleted: "已完成",
-    operationsSummaryUserStage: "用户阶段",
+    operationsSummaryManual: "人工阻塞",
+    operationsSummarySystem: "Leader / 系统",
     operationsSummaryNoAction: "无需",
     operationsSummaryFinalReview: "最终审核",
     operationsSummaryAttention: "接管中",
@@ -465,6 +487,13 @@ const UI_MESSAGES = {
     operationsActionReassignButton: "重派发",
     operationsActionReplaceButton: "替换 Agent",
     operationsActionSendNoteButton: "发消息",
+    operationsActionViewContext: "查看上下文",
+    operationsQueueManualGroupTitle: "需要我处理",
+    operationsQueueManualGroupEmpty: "当前没有需要人工接管的阻塞。",
+    operationsQueueSystemGroupTitle: "Leader / 系统继续处理",
+    operationsQueueSystemGroupEmpty: "当前没有待 Leader 或系统继续收敛的事项。",
+    operationsActionContextLead: "Lead",
+    operationsActionContextTask: "任务主线",
     operationsActivitySessionStarted: "会话启动",
     operationsActivitySessionEnded: "会话结束",
     operationsActivityMailbox: "Mailbox",
@@ -912,6 +941,9 @@ const UI_MESSAGES = {
     previewReadinessProgress: "已满足 {done}/{total} 项",
     previewReadinessPending: "还差 {count} 项即可进入最终验收。",
     previewReadinessReady: "最终验收条件已基本就绪，可以直接启动或查看预览。",
+    previewReadinessBlockedBy: "当前还不能验收：{label}",
+    previewReadinessBlockedReady: "当前可以验收：{label}",
+    previewReadinessBlockedWaiting: "当前仍在等待验收前置条件收敛。",
     previewReadinessItemTargets: "可预览目标已准备",
     previewReadinessItemAppRoots: "应用入口已检测",
     previewReadinessItemManual: "无待接管人工事项",
@@ -1236,6 +1268,27 @@ const UI_MESSAGES = {
     taskNextCompletedSummary: "The main flow is finished. You can review execution, review, and integration history in operations.",
     taskNextFailedTitle: "The task stopped and needs diagnosis",
     taskNextFailedSummary: "The task did not progress cleanly. Open operations to inspect the failure and recovery controls.",
+    taskDecisionEyebrow: "Decision",
+    taskDecisionTitleIdle: "Waiting for automatic progress",
+    taskDecisionSummaryIdle: "The system keeps moving when conditions are met. You only need to watch blockers and final acceptance.",
+    taskDecisionBadgeIdle: "Waiting",
+    taskDecisionTitleBlocked: "Resolve manual blockers first",
+    taskDecisionTitleReady: "Acceptance preview is ready",
+    taskDecisionTitleLive: "Reviewing the product in-browser",
+    taskDecisionTitleConverging: "Waiting for the flow to converge",
+    taskDecisionBadgeBlocked: "Takeover",
+    taskDecisionBadgeReady: "Acceptable",
+    taskDecisionBadgeLive: "Preview live",
+    taskDecisionBadgeConverging: "Auto flow",
+    taskDecisionSummaryBlocked: "{count} blockers need manual takeover before the system can continue.",
+    taskDecisionSummaryReady: "Preview targets, app entry, and final review are ready, so you can inspect the product directly in the browser.",
+    taskDecisionSummaryLive: "The preview is running, so final product acceptance can happen inside this workspace.",
+    taskDecisionSummaryConverging: "Execution, review, and integration are still converging automatically. Focus only on exceptions and final acceptance.",
+    taskDecisionPillManual: "Manual blockers · {count}",
+    taskDecisionPillSystem: "Lead / system · {count}",
+    taskDecisionPillPreview: "Preview target · {status}",
+    taskDecisionPillReview: "Final review · {status}",
+    taskDecisionPillRuntime: "Web preview · {status}",
     taskListHintDraft: "Next: write the opening message",
     startClarificationDraftLabel: "First message to the lead",
     startClarificationDraftPlaceholder: "Tell the lead what to build, the scope boundaries, constraints, and acceptance criteria before starting clarification.",
@@ -1324,7 +1377,8 @@ const UI_MESSAGES = {
     operationsSummaryRunning: "Running",
     operationsSummaryWaiting: "Waiting",
     operationsSummaryCompleted: "Completed",
-    operationsSummaryUserStage: "User stage",
+    operationsSummaryManual: "Manual blockers",
+    operationsSummarySystem: "Lead / system",
     operationsSummaryNoAction: "None",
     operationsSummaryFinalReview: "Final review",
     operationsSummaryAttention: "Takeover",
@@ -1357,6 +1411,13 @@ const UI_MESSAGES = {
     operationsActionReassignButton: "Reassign",
     operationsActionReplaceButton: "Replace agent",
     operationsActionSendNoteButton: "Send note",
+    operationsActionViewContext: "View context",
+    operationsQueueManualGroupTitle: "Needs my action",
+    operationsQueueManualGroupEmpty: "There are no blockers that need manual takeover right now.",
+    operationsQueueSystemGroupTitle: "Lead / system queue",
+    operationsQueueSystemGroupEmpty: "There is nothing left for the lead or system to keep processing right now.",
+    operationsActionContextLead: "Lead",
+    operationsActionContextTask: "Task mainline",
     operationsActivitySessionStarted: "Session started",
     operationsActivitySessionEnded: "Session ended",
     operationsActivityMailbox: "Mailbox",
@@ -1804,6 +1865,9 @@ const UI_MESSAGES = {
     previewReadinessProgress: "{done}/{total} ready",
     previewReadinessPending: "{count} checks still need to land before final acceptance.",
     previewReadinessReady: "Final acceptance is mostly ready. Start or inspect the preview directly.",
+    previewReadinessBlockedBy: "Not ready for acceptance yet: {label}",
+    previewReadinessBlockedReady: "Acceptance is ready: {label}",
+    previewReadinessBlockedWaiting: "Acceptance prerequisites are still converging.",
     previewReadinessItemTargets: "Preview targets are ready",
     previewReadinessItemAppRoots: "App entry detected",
     previewReadinessItemManual: "No manual takeover items",
@@ -2313,6 +2377,7 @@ const elements = {
   taskPreviewPathInput: document.querySelector("#task-preview-path-input"),
   taskPreviewPortInput: document.querySelector("#task-preview-port-input"),
   taskPreviewReadinessBadge: document.querySelector("#task-preview-readiness-badge"),
+  taskPreviewReadinessBlocker: document.querySelector("#task-preview-readiness-blocker"),
   taskPreviewReadinessList: document.querySelector("#task-preview-readiness-list"),
   taskPreviewReadinessSummary: document.querySelector("#task-preview-readiness-summary"),
   taskPreviewRestartButton: document.querySelector("#task-preview-restart-button"),
@@ -2328,6 +2393,10 @@ const elements = {
   taskNextActionButton: document.querySelector("#task-next-action-button"),
   taskNextActionSummary: document.querySelector("#task-next-action-summary"),
   taskNextActionTitle: document.querySelector("#task-next-action-title"),
+  taskDecisionBadge: document.querySelector("#task-decision-badge"),
+  taskDecisionPillList: document.querySelector("#task-decision-pill-list"),
+  taskDecisionSummary: document.querySelector("#task-decision-summary"),
+  taskDecisionTitle: document.querySelector("#task-decision-title"),
   taskSessionStatus: document.querySelector("#task-session-status"),
   taskStageRail: document.querySelector("#task-stage-rail"),
   taskStatusBadge: document.querySelector("#task-status-badge"),
@@ -3842,7 +3911,9 @@ async function refreshTaskPreview(taskId, options = {}) {
     state.taskPreview = response?.preview ?? null;
 
     if (options.render !== false && state.taskDetail?.task?.id === taskId) {
+      renderTaskWorkspaceHub(state.taskDetail);
       renderTaskPreview(state.taskDetail);
+      renderTaskStageBoard(state.taskDetail);
     }
 
     scheduleTaskPreviewPoll();
@@ -4924,78 +4995,34 @@ function renderTaskPreview(detail) {
 }
 
 function renderTaskPreviewReadiness(detail) {
-  if (!elements.taskPreviewReadinessList || !elements.taskPreviewReadinessSummary || !elements.taskPreviewReadinessBadge) {
+  if (
+    !elements.taskPreviewReadinessList
+    || !elements.taskPreviewReadinessSummary
+    || !elements.taskPreviewReadinessBadge
+    || !elements.taskPreviewReadinessBlocker
+  ) {
     return;
   }
 
-  const preview = state.taskPreview ?? null;
-  const previewTargets = Array.isArray(preview?.targets) ? preview.targets : [];
-  const appRoots = Array.isArray(preview?.appRoots) ? preview.appRoots : [];
-  const previewSession = preview?.session ?? null;
-  const workflow = detail?.board?.workflow ?? { manualAttentionCount: 0 };
-  const latestIntegrationRun = detail?.integration?.latestRun ?? null;
-  const subTasks = detail?.subTasks ?? [];
-  const reviewSettled = subTasks.length > 0 && subTasks.every((subTask) => !["BLOCKED", "PENDING", "READY", "REVIEW_PENDING", "RUNNING"].includes(subTask.status));
-  const items = [
-    {
-      done: previewTargets.length > 0,
-      hint: previewTargets.length > 0
-        ? t("previewReadinessHintTargetsReady", {
-            label: preview?.recommendation?.label ?? previewTargets[0]?.label ?? t("workspaceHubPreviewTargetFallback"),
-          })
-        : t("previewReadinessHintTargets"),
-      label: t("previewReadinessItemTargets"),
-    },
-    {
-      done: appRoots.length > 0,
-      hint: appRoots.length > 0
-        ? t("previewReadinessHintAppRootsReady", {
-            label: appRoots[0]?.label ?? appRoots[0]?.path ?? ".",
-          })
-        : t("previewReadinessHintAppRoots"),
-      label: t("previewReadinessItemAppRoots"),
-    },
-    {
-      done: (workflow.manualAttentionCount ?? 0) === 0,
-      hint: (workflow.manualAttentionCount ?? 0) === 0
-        ? t("previewReadinessHintManualReady")
-        : t("previewReadinessHintManual"),
-      label: t("previewReadinessItemManual"),
-    },
-    {
-      done: reviewSettled,
-      hint: reviewSettled ? t("previewReadinessHintReviewReady") : t("previewReadinessHintReview"),
-      label: t("previewReadinessItemReview"),
-    },
-    {
-      done: Boolean(latestIntegrationRun) || ["MERGING", "COMPLETED"].includes(detail?.task?.status),
-      hint: Boolean(latestIntegrationRun) || ["MERGING", "COMPLETED"].includes(detail?.task?.status)
-        ? t("previewReadinessHintMergeReady", {
-            status: latestIntegrationRun ? buildIntegrationRunStatusLabel(latestIntegrationRun.status) : buildTaskDisplayStatusLabel(detail?.task),
-          })
-        : t("previewReadinessHintMerge"),
-      label: t("previewReadinessItemMerge"),
-    },
-    {
-      done: previewSession?.status === "RUNNING",
-      hint: previewSession?.status === "RUNNING"
-        ? t("previewReadinessHintRunningReady", {
-            status: buildPreviewSessionStatusLabel(previewSession.status),
-          })
-        : t("previewReadinessHintRunning"),
-      label: t("previewReadinessItemRunning"),
-    },
-  ];
-  const doneCount = items.filter((item) => item.done).length;
+  const acceptanceModel = buildTaskAcceptanceModel(detail, state.taskPreview);
+  const doneCount = acceptanceModel.doneCount;
+  const items = acceptanceModel.items;
 
   elements.taskPreviewReadinessBadge.textContent = t("previewReadinessProgress", {
     done: doneCount,
     total: items.length,
   });
   elements.taskPreviewReadinessBadge.className = `badge ${doneCount === items.length ? "badge--clean" : doneCount >= 3 ? "badge--accent-soft" : "badge--outline"}`;
-  elements.taskPreviewReadinessSummary.textContent = doneCount === items.length
+  elements.taskPreviewReadinessBlocker.textContent = acceptanceModel.previewRunning
+    ? t("previewReadinessBlockedReady", { label: t("taskDecisionTitleLive") })
+    : acceptanceModel.acceptanceReady
+      ? t("previewReadinessBlockedReady", { label: t("taskDecisionTitleReady") })
+      : acceptanceModel.firstBlockingItem
+        ? t("previewReadinessBlockedBy", { label: acceptanceModel.firstBlockingItem.label })
+        : t("previewReadinessBlockedWaiting");
+  elements.taskPreviewReadinessSummary.textContent = acceptanceModel.previewRunning || acceptanceModel.acceptanceReady
     ? t("previewReadinessReady")
-    : t("previewReadinessPending", { count: items.length - doneCount });
+    : acceptanceModel.firstBlockingItem?.hint ?? t("previewReadinessPending", { count: items.length - doneCount });
 
   elements.taskPreviewReadinessList.replaceChildren(...items.map((item) => {
     const card = document.createElement("article");
@@ -5011,6 +5038,172 @@ function renderTaskPreviewReadiness(detail) {
       </div>
     `;
     return card;
+  }));
+}
+
+function buildTaskAcceptanceModel(detail, preview) {
+  const previewModel = preview ?? null;
+  const previewTargets = Array.isArray(previewModel?.targets) ? previewModel.targets : [];
+  const appRoots = Array.isArray(previewModel?.appRoots) ? previewModel.appRoots : [];
+  const previewSession = previewModel?.session ?? null;
+  const workflow = detail?.board?.workflow ?? { manualAttentionCount: 0, systemAttentionCount: 0 };
+  const latestIntegrationRun = detail?.integration?.latestRun ?? null;
+  const subTasks = detail?.subTasks ?? [];
+  const reviewSettled = subTasks.length > 0 && subTasks.every((subTask) => !["BLOCKED", "PENDING", "READY", "REVIEW_PENDING", "RUNNING"].includes(subTask.status));
+  const mergeTracked = Boolean(latestIntegrationRun) || ["MERGING", "COMPLETED"].includes(detail?.task?.status);
+  const previewRunning = previewSession?.status === "RUNNING";
+  const items = [
+    {
+      done: previewTargets.length > 0,
+      hint: previewTargets.length > 0
+        ? t("previewReadinessHintTargetsReady", {
+            label: previewModel?.recommendation?.label ?? previewTargets[0]?.label ?? t("workspaceHubPreviewTargetFallback"),
+          })
+        : t("previewReadinessHintTargets"),
+      key: "targets",
+      label: t("previewReadinessItemTargets"),
+    },
+    {
+      done: appRoots.length > 0,
+      hint: appRoots.length > 0
+        ? t("previewReadinessHintAppRootsReady", {
+            label: appRoots[0]?.label ?? appRoots[0]?.path ?? ".",
+          })
+        : t("previewReadinessHintAppRoots"),
+      key: "appRoots",
+      label: t("previewReadinessItemAppRoots"),
+    },
+    {
+      done: (workflow.manualAttentionCount ?? 0) === 0,
+      hint: (workflow.manualAttentionCount ?? 0) === 0
+        ? t("previewReadinessHintManualReady")
+        : t("previewReadinessHintManual"),
+      key: "manual",
+      label: t("previewReadinessItemManual"),
+    },
+    {
+      done: reviewSettled,
+      hint: reviewSettled ? t("previewReadinessHintReviewReady") : t("previewReadinessHintReview"),
+      key: "review",
+      label: t("previewReadinessItemReview"),
+    },
+    {
+      done: mergeTracked,
+      hint: mergeTracked
+        ? t("previewReadinessHintMergeReady", {
+            status: latestIntegrationRun ? buildIntegrationRunStatusLabel(latestIntegrationRun.status) : buildTaskDisplayStatusLabel(detail?.task),
+          })
+        : t("previewReadinessHintMerge"),
+      key: "merge",
+      label: t("previewReadinessItemMerge"),
+    },
+    {
+      done: previewRunning,
+      hint: previewRunning
+        ? t("previewReadinessHintRunningReady", {
+            status: buildPreviewSessionStatusLabel(previewSession.status),
+          })
+        : t("previewReadinessHintRunning"),
+      key: "running",
+      label: t("previewReadinessItemRunning"),
+    },
+  ];
+  const doneCount = items.filter((item) => item.done).length;
+  const acceptanceReady = (workflow.manualAttentionCount ?? 0) === 0
+    && reviewSettled
+    && previewTargets.length > 0
+    && appRoots.length > 0;
+  const firstBlockingItem = items.find((item) => !item.done && item.key !== "running")
+    ?? items.find((item) => !item.done)
+    ?? null;
+
+  return {
+    acceptanceReady,
+    appRoots,
+    doneCount,
+    firstBlockingItem,
+    items,
+    mergeTracked,
+    previewRunning,
+    previewSession,
+    previewTargets,
+    reviewSettled,
+    workflow,
+  };
+}
+
+function buildTaskDecisionModel(detail, preview) {
+  const acceptanceModel = buildTaskAcceptanceModel(detail, preview);
+  const manualAttentionCount = acceptanceModel.workflow.manualAttentionCount ?? 0;
+  const systemAttentionCount = acceptanceModel.workflow.systemAttentionCount ?? 0;
+  let title = t("taskDecisionTitleIdle");
+  let summary = t("taskDecisionSummaryIdle");
+  let badgeLabel = t("taskDecisionBadgeIdle");
+  let badgeClass = "badge--outline";
+
+  if (acceptanceModel.previewRunning) {
+    title = t("taskDecisionTitleLive");
+    summary = t("taskDecisionSummaryLive");
+    badgeLabel = t("taskDecisionBadgeLive");
+    badgeClass = "badge--clean";
+  } else if (manualAttentionCount > 0) {
+    title = t("taskDecisionTitleBlocked");
+    summary = t("taskDecisionSummaryBlocked", { count: manualAttentionCount });
+    badgeLabel = t("taskDecisionBadgeBlocked");
+    badgeClass = "badge--dirty";
+  } else if (acceptanceModel.acceptanceReady) {
+    title = t("taskDecisionTitleReady");
+    summary = t("taskDecisionSummaryReady");
+    badgeLabel = t("taskDecisionBadgeReady");
+    badgeClass = "badge--clean";
+  } else if (detail?.task?.status && detail.task.status !== "DRAFT") {
+    title = t("taskDecisionTitleConverging");
+    summary = t("taskDecisionSummaryConverging");
+    badgeLabel = t("taskDecisionBadgeConverging");
+    badgeClass = "badge--accent-soft";
+  }
+
+  return {
+    ...acceptanceModel,
+    badgeClass,
+    badgeLabel,
+    pills: [
+      t("taskDecisionPillManual", { count: manualAttentionCount }),
+      t("taskDecisionPillSystem", { count: systemAttentionCount }),
+      t("taskDecisionPillPreview", {
+        status: acceptanceModel.previewTargets.length > 0 ? t("automationStateDone") : t("automationStateWaiting"),
+      }),
+      t("taskDecisionPillReview", {
+        status: acceptanceModel.reviewSettled ? t("automationStateDone") : t("automationStateWaiting"),
+      }),
+      t("taskDecisionPillRuntime", {
+        status: acceptanceModel.previewRunning
+          ? t("automationStateActive")
+          : acceptanceModel.acceptanceReady
+            ? t("automationStateReady")
+            : t("automationStateWaiting"),
+      }),
+    ],
+    summary,
+    title,
+  };
+}
+
+function renderTaskDecisionCard(detail) {
+  if (!elements.taskDecisionTitle || !elements.taskDecisionSummary || !elements.taskDecisionBadge || !elements.taskDecisionPillList) {
+    return;
+  }
+
+  const decisionModel = buildTaskDecisionModel(detail, state.taskPreview);
+  elements.taskDecisionTitle.textContent = decisionModel.title;
+  elements.taskDecisionSummary.textContent = decisionModel.summary;
+  elements.taskDecisionBadge.textContent = decisionModel.badgeLabel;
+  elements.taskDecisionBadge.className = `badge ${decisionModel.badgeClass}`;
+  elements.taskDecisionPillList.replaceChildren(...decisionModel.pills.map((pill) => {
+    const item = document.createElement("span");
+    item.className = "workspace-meta-pill workspace-meta-pill--soft";
+    item.textContent = pill;
+    return item;
   }));
 }
 
@@ -6561,6 +6754,7 @@ function buildTaskOperationsBoard(detail, sessionsBySubTaskId) {
   const subTasks = detail.subTasks ?? [];
   const mailboxMessages = detail.mailboxMessages ?? [];
   const messages = detail.messages ?? [];
+  const subTaskById = new Map(subTasks.map((subTask) => [subTask.id, subTask]));
   const launchFailures = messages
     .map(parseLaunchFailureMessageFromDetail)
     .filter(Boolean);
@@ -6570,7 +6764,10 @@ function buildTaskOperationsBoard(detail, sessionsBySubTaskId) {
     reviewPending: subTasks.filter((subTask) => subTask.status === "REVIEW_PENDING").length,
     running: subTasks.filter((subTask) => subTask.status === "RUNNING").length,
   };
-  const actionRequiredItems = buildTaskOperationActionItems(detail, launchFailures);
+  const actionRequiredItems = buildTaskOperationActionItems(detail, launchFailures).map((item) => ({
+    ...item,
+    contextLabel: resolveOperationsActionContextLabel(item, subTaskById),
+  }));
   const workflow = buildTaskOperationsWorkflow(detail, summary, actionRequiredItems);
 
   return {
@@ -6682,17 +6879,13 @@ function buildTaskOperationsWorkflow(detail, summary, actionRequiredItems) {
   const subTasks = detail.subTasks ?? [];
   const completed = subTasks.filter((subTask) => ["ACCEPTED", "CANCELLED", "DISCARDED", "MERGED"].includes(subTask.status)).length;
   const manualAttentionCount = actionRequiredItems.filter((item) => item.owner === "USER").length;
-  const userStageLabel = manualAttentionCount > 0
-    ? t("operationsSummaryAttention")
-    : detail.task?.status === "COMPLETED"
-      ? t("operationsSummaryFinalReview")
-      : t("operationsSummaryNoAction");
+  const systemAttentionCount = actionRequiredItems.filter((item) => item.owner !== "USER").length;
 
   return {
     completed,
     manualAttentionCount,
+    systemAttentionCount,
     total: subTasks.length,
-    userStageLabel,
     waiting: summary.blocked + summary.pending + summary.reviewPending,
   };
 }
@@ -7048,9 +7241,8 @@ function renderTaskOperationsSummary(boardSnapshot) {
     ["operationsSummaryRunning", boardSnapshot.summary.running],
     ["operationsSummaryWaiting", boardSnapshot.workflow.waiting],
     ["operationsSummaryCompleted", `${boardSnapshot.workflow.completed}/${boardSnapshot.workflow.total}`],
-    ["operationsSummaryUserStage", boardSnapshot.workflow.manualAttentionCount > 0
-      ? String(boardSnapshot.workflow.manualAttentionCount)
-      : boardSnapshot.workflow.userStageLabel],
+    ["operationsSummaryManual", boardSnapshot.workflow.manualAttentionCount],
+    ["operationsSummarySystem", boardSnapshot.workflow.systemAttentionCount ?? 0],
   ];
 
   elements.taskExecutionSummaryList.replaceChildren();
@@ -7127,6 +7319,8 @@ function renderOperationsMetaList(element, entries) {
 
 function renderTaskOperationsActionQueue(boardSnapshot) {
   const manualAttentionCount = boardSnapshot.actionRequiredItems.filter((item) => item.owner === "USER").length;
+  const manualItems = boardSnapshot.actionRequiredItems.filter((item) => item.owner === "USER");
+  const systemItems = boardSnapshot.actionRequiredItems.filter((item) => item.owner !== "USER");
   const queueTitle = manualAttentionCount > 0
     ? t("operationsQueueManualTitle")
     : t("operationsQueueAutoTitle");
@@ -7143,29 +7337,79 @@ function renderTaskOperationsActionQueue(boardSnapshot) {
   elements.taskExecutionActionEmpty.hidden = boardSnapshot.actionRequiredItems.length > 0;
   elements.taskExecutionActionEmpty.textContent = queueSummary;
 
-  for (const item of boardSnapshot.actionRequiredItems) {
-    const card = document.createElement("article");
-    card.className = "operations-action-card";
-    const buttonLabel = item.owner === "USER"
-      ? (item.label ?? buildOperationsActionButtonLabel(item.primaryAction))
-      : t("operationsActionOpenButton");
-    card.innerHTML = `
-      <div class="operations-action-card__header">
-        <div>
-          <div class="operations-action-card__title-row">
-            <p class="operations-action-card__title">${escapeHtml(buildOperationsActionTitle(item.kind))}</p>
-            <span class="badge ${item.owner === "USER" ? "badge--dirty" : "badge--outline"}">${escapeHtml(buildOperationsActionOwnerLabel(item.owner))}</span>
-          </div>
-          <p class="operations-action-card__summary">${escapeHtml(item.summary ?? "")}</p>
-        </div>
-        <button class="button button--secondary" type="button">${escapeHtml(buttonLabel)}</button>
-      </div>
-    `;
-    card.querySelector("button")?.addEventListener("click", () => {
-      void onTaskOperationsAction(item);
-    });
-    elements.taskExecutionActionList.append(card);
+  if (boardSnapshot.actionRequiredItems.length === 0) {
+    return;
   }
+
+  renderOperationsActionGroup(
+    elements.taskExecutionActionList,
+    manualItems,
+    t("operationsQueueManualGroupTitle"),
+    t("operationsQueueManualGroupEmpty"),
+    "badge--dirty",
+  );
+  renderOperationsActionGroup(
+    elements.taskExecutionActionList,
+    systemItems,
+    t("operationsQueueSystemGroupTitle"),
+    t("operationsQueueSystemGroupEmpty"),
+    "badge--outline",
+  );
+}
+
+function renderOperationsActionGroup(container, items, title, emptyLabel, badgeClass) {
+  const section = document.createElement("section");
+  section.className = "operations-action-group";
+  section.innerHTML = `
+    <div class="operations-action-group__header">
+      <h5 class="operations-action-group__title">${escapeHtml(title)}</h5>
+      <span class="badge ${badgeClass}">${escapeHtml(String(items.length))}</span>
+    </div>
+  `;
+
+  if (items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "operations-action-group__empty";
+    empty.textContent = emptyLabel;
+    section.append(empty);
+    container.append(section);
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "operations-action-list";
+
+  for (const item of items) {
+    list.append(buildOperationsActionCard(item));
+  }
+
+  section.append(list);
+  container.append(section);
+}
+
+function buildOperationsActionCard(item) {
+  const card = document.createElement("article");
+  card.className = "operations-action-card";
+  const buttonLabel = item.owner === "USER"
+    ? (item.label ?? buildOperationsActionButtonLabel(item.primaryAction))
+    : t("operationsActionViewContext");
+  card.innerHTML = `
+    <div class="operations-action-card__header">
+      <div>
+        <div class="operations-action-card__title-row">
+          <p class="operations-action-card__title">${escapeHtml(buildOperationsActionTitle(item.kind))}</p>
+          <span class="badge ${item.owner === "USER" ? "badge--dirty" : "badge--outline"}">${escapeHtml(buildOperationsActionOwnerLabel(item.owner))}</span>
+        </div>
+        <p class="operations-action-card__meta">${escapeHtml(item.contextLabel ?? t("operationsActionContextTask"))}</p>
+        <p class="operations-action-card__summary">${escapeHtml(item.summary ?? "")}</p>
+      </div>
+      <button class="button button--secondary" type="button">${escapeHtml(buttonLabel)}</button>
+    </div>
+  `;
+  card.querySelector("button")?.addEventListener("click", () => {
+    void onTaskOperationsAction(item);
+  });
+  return card;
 }
 
 async function onTaskOperationsAction(item) {
@@ -7206,6 +7450,18 @@ function buildOperationsActionOwnerLabel(owner) {
     default:
       return t("operationsOwnerSystem");
   }
+}
+
+function resolveOperationsActionContextLabel(item, subTaskById) {
+  if (item.subTaskId && subTaskById.has(item.subTaskId)) {
+    return subTaskById.get(item.subTaskId)?.displayName ?? subTaskById.get(item.subTaskId)?.title ?? item.subTaskId;
+  }
+
+  if (item.kind === "TASK_RESUME_MERGE" || item.kind === "INTEGRATION_ATTENTION") {
+    return t("operationsActionContextTask");
+  }
+
+  return t("operationsActionContextLead");
 }
 
 function renderTaskOperationsGraph(boardSnapshot) {
@@ -7960,6 +8216,22 @@ function clearTaskDetail() {
   elements.taskExecutionPriorityBadge.textContent = t("operationsPriorityAutoBadge");
   elements.taskExecutionPriorityBadge.className = "badge badge--outline";
   elements.taskExecutionPriorityCaption.textContent = t("operationsPriorityAutoCaption");
+  if (elements.taskDecisionTitle) {
+    elements.taskDecisionTitle.textContent = t("taskDecisionTitleIdle");
+  }
+  if (elements.taskDecisionSummary) {
+    elements.taskDecisionSummary.textContent = t("taskDecisionSummaryIdle");
+  }
+  if (elements.taskDecisionBadge) {
+    elements.taskDecisionBadge.textContent = t("taskDecisionBadgeIdle");
+    elements.taskDecisionBadge.className = "badge badge--outline";
+  }
+  if (elements.taskDecisionPillList) {
+    elements.taskDecisionPillList.replaceChildren();
+  }
+  if (elements.taskPreviewReadinessBlocker) {
+    elements.taskPreviewReadinessBlocker.textContent = t("previewReadinessBlockedWaiting");
+  }
   if (elements.dashboardTeamList) {
     elements.dashboardTeamList.replaceChildren();
   }
@@ -8492,25 +8764,23 @@ function buildTaskStatusBadgeClass(taskOrStatus) {
 function buildTaskAutomationLoop(detail, preview) {
   const task = detail?.task ?? null;
   const subTasks = detail?.subTasks ?? [];
+  const acceptanceModel = buildTaskAcceptanceModel(detail, preview);
   const workflow = detail?.board?.workflow ?? {
+    ...acceptanceModel.workflow,
     completed: 0,
-    manualAttentionCount: 0,
     total: subTasks.length,
     waiting: 0,
   };
   const latestIntegrationRun = detail?.integration?.latestRun ?? null;
   const parsedPlan = parseCurrentPlanJson(task?.currentPlanJson);
   const planNodeCount = getPlanNodes(parsedPlan).length;
-  const previewTargets = Array.isArray(preview?.targets) ? preview.targets : [];
-  const appRoots = Array.isArray(preview?.appRoots) ? preview.appRoots : [];
-  const previewSession = preview?.session ?? null;
-  const reviewSettled = subTasks.length > 0 && subTasks.every((subTask) => !["BLOCKED", "PENDING", "READY", "REVIEW_PENDING", "RUNNING"].includes(subTask.status));
-  const mergeTracked = Boolean(latestIntegrationRun) || ["MERGING", "COMPLETED"].includes(task?.status);
+  const previewTargets = acceptanceModel.previewTargets;
+  const appRoots = acceptanceModel.appRoots;
+  const previewSession = acceptanceModel.previewSession;
+  const reviewSettled = acceptanceModel.reviewSettled;
+  const mergeTracked = acceptanceModel.mergeTracked;
   const deliveryAutoRunning = task?.status === "EXECUTING" || ((detail?.board?.summary?.running ?? 0) > 0);
-  const acceptanceReady = workflow.manualAttentionCount === 0
-    && reviewSettled
-    && previewTargets.length > 0
-    && appRoots.length > 0;
+  const acceptanceReady = acceptanceModel.acceptanceReady;
   const steps = [
     {
       label: t("automationStepIntake"),
@@ -8662,9 +8932,9 @@ function buildTaskAutomationLoop(detail, preview) {
 }
 
 function buildTaskStagePrimaryAction(detail, automationModel, fallbackMeta) {
-  const preview = state.taskPreview;
-  const previewTargets = Array.isArray(preview?.targets) ? preview.targets : [];
-  const previewSession = preview?.session ?? null;
+  const acceptanceModel = buildTaskAcceptanceModel(detail, state.taskPreview);
+  const previewTargets = acceptanceModel.previewTargets;
+  const previewSession = acceptanceModel.previewSession;
 
   if (previewSession?.status === "RUNNING") {
     return {
@@ -8672,18 +8942,18 @@ function buildTaskStagePrimaryAction(detail, automationModel, fallbackMeta) {
       badgeClass: "badge--clean",
       buttonAction: "preview",
       buttonLabel: t("workspaceHubPreviewButton"),
-      summary: automationModel.summary,
+      summary: t("taskDecisionSummaryLive"),
       title: t("workspaceHubPreviewTitleRunning"),
     };
   }
 
-  if (previewTargets.length > 0 && detail?.board?.workflow?.manualAttentionCount === 0 && ["MERGING", "COMPLETED"].includes(detail?.task?.status)) {
+  if (acceptanceModel.acceptanceReady && previewTargets.length > 0) {
     return {
       ...fallbackMeta,
       badgeClass: "badge--clean",
       buttonAction: "preview",
       buttonLabel: t("workspaceHubPreviewButton"),
-      summary: automationModel.summary,
+      summary: t("taskDecisionSummaryReady"),
       title: t("workspaceHubPreviewTitleIdle"),
     };
   }
@@ -8713,13 +8983,14 @@ function renderTaskStageBoard(detail) {
     return;
   }
 
-  const meta = buildTaskStagePrimaryAction(detail, buildTaskAutomationLoop(detail, state.taskPreview), buildTaskStageMeta(task));
   const automationModel = buildTaskAutomationLoop(detail, state.taskPreview);
+  const meta = buildTaskStagePrimaryAction(detail, automationModel, buildTaskStageMeta(task));
+  const decisionModel = buildTaskDecisionModel(detail, state.taskPreview);
 
   elements.taskStageRail.hidden = false;
   elements.taskStageRail.replaceChildren(...automationModel.steps.map((step, index) => {
     const item = document.createElement("div");
-    item.className = `task-stage-step task-stage-step--${step.state === "ready" ? "next" : step.state}`;
+    item.className = `task-stage-step task-stage-step--${step.state === "ready" ? "next" : step.state}${["done", "waiting"].includes(step.state) ? " is-muted" : ""}`;
     item.innerHTML = `
       <span class="task-stage-step__index">${escapeHtml(String(index + 1))}</span>
       <div class="task-stage-step__copy">
@@ -8732,7 +9003,7 @@ function renderTaskStageBoard(detail) {
   }));
 
   elements.taskNextActionTitle.textContent = meta.title;
-  elements.taskNextActionSummary.textContent = `${automationModel.summary} ${t("previewReadinessProgress", {
+  elements.taskNextActionSummary.textContent = `${meta.summary ?? decisionModel.summary ?? automationModel.summary} ${t("previewReadinessProgress", {
     done: automationModel.completedCount,
     total: automationModel.totalSteps,
   })}`;
@@ -8741,6 +9012,7 @@ function renderTaskStageBoard(detail) {
   elements.taskNextActionButton.textContent = meta.buttonLabel;
   elements.taskNextActionButton.dataset.action = meta.buttonAction;
   elements.taskNextActionButton.hidden = false;
+  renderTaskDecisionCard(detail);
 }
 
 async function onTaskNextAction() {

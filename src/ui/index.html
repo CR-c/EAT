@@ -674,6 +674,19 @@
                           开始澄清
                         </button>
                       </div>
+                      <section class="task-decision-card" aria-labelledby="task-decision-title">
+                        <div class="task-decision-card__header">
+                          <div>
+                            <p class="panel__eyebrow" data-i18n="taskDecisionEyebrow">当前决策</p>
+                            <h4 id="task-decision-title" class="plan-history__title" data-i18n="taskDecisionTitleIdle">等待自动推进</h4>
+                          </div>
+                          <span id="task-decision-badge" class="badge badge--outline" data-i18n="taskDecisionBadgeIdle">等待中</span>
+                        </div>
+                        <p id="task-decision-summary" class="task-decision-card__summary" data-i18n="taskDecisionSummaryIdle">
+                          系统会在条件满足时继续推进，你只需要盯住阻塞和最终验收。
+                        </p>
+                        <div id="task-decision-pill-list" class="task-decision-card__pill-list" aria-label="当前决策摘要"></div>
+                      </section>
                       <div id="task-stage-rail" class="task-stage-rail" aria-label="自动化回路"></div>
                       <div class="workspace-hero__actions-row">
                         <div id="task-workspace-actions" class="workspace-hero__actions" hidden>
@@ -890,6 +903,9 @@
                     </div>
                     <span id="task-preview-readiness-badge" class="badge badge--outline">0/0</span>
                   </div>
+                  <p id="task-preview-readiness-blocker" class="preview-studio__readiness-blocker" data-i18n="previewReadinessBlockedWaiting">
+                    当前仍在等待验收前置条件收敛。
+                  </p>
                   <p id="task-preview-readiness-summary" class="preview-studio__readiness-summary" data-i18n="previewReadinessSummary">
                     系统会把预览目标、评审收敛和集成状态压缩成验收清单，方便你判断是否可以进入最终验收。
                   </p>
