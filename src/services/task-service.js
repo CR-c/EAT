@@ -98,6 +98,8 @@ const CLEANUP_WARNING_MESSAGE_PREFIX = "Cleanup warning: ";
 const LAUNCH_FAILURE_MESSAGE_PREFIX = "Launch failure: ";
 const DEFAULT_INTEGRATION_GATE_TYPES = ["TEST"];
 const TASK_PAUSED_REASON_PREFIX = "Paused by operator from ";
+const CLEANUP_RETRY_ATTEMPTS = 4;
+const CLEANUP_RETRY_DELAY_MS = 250;
 
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
 const DOCUMENT_EXTENSIONS = new Set([".md", ".pdf", ".txt"]);
@@ -2334,7 +2336,7 @@ export class TaskService {
             continue;
           }
 
-          const cleanupResult = await removeWorktree(project.path, subTask.worktreePath);
+          const cleanupResult = await this.#removeWorktreeWithRetries(project.path, subTask.worktreePath);
 
           if (!cleanupResult.ok) {
             const reason = buildCleanupFailureReason(cleanupResult);
@@ -5029,7 +5031,7 @@ export class TaskService {
           continue;
         }
 
-        const cleanupResult = await removeWorktree(project.path, worktreePath);
+        const cleanupResult = await this.#removeWorktreeWithRetries(project.path, worktreePath);
 
         if (!cleanupResult.ok) {
           failures.push({
@@ -5049,7 +5051,7 @@ export class TaskService {
       ]);
 
       for (const branchName of branchNames) {
-        const deletionResult = await deleteBranch(project.path, branchName);
+        const deletionResult = await this.#deleteBranchWithRetries(project.path, branchName);
 
         if (!deletionResult.ok) {
           failures.push({
@@ -5108,6 +5110,22 @@ export class TaskService {
       this.cancelledLeadSessionIds.delete(session.id);
       this.cancelledWorkerSessionIds.delete(session.id);
     }
+  }
+
+  async #removeWorktreeWithRetries(repoPath, worktreePath) {
+    return retryCleanupOperation(
+      () => removeWorktree(repoPath, worktreePath),
+      CLEANUP_RETRY_ATTEMPTS,
+      CLEANUP_RETRY_DELAY_MS,
+    );
+  }
+
+  async #deleteBranchWithRetries(repoPath, branchName) {
+    return retryCleanupOperation(
+      () => deleteBranch(repoPath, branchName),
+      CLEANUP_RETRY_ATTEMPTS,
+      CLEANUP_RETRY_DELAY_MS,
+    );
   }
 
   close() {
@@ -6017,6 +6035,10 @@ function classifyLaunchFailure(message) {
 }
 
 function buildCleanupFailureReason(cleanupResult) {
+  if (cleanupResult?.timedOut === true) {
+    return "Worktree cleanup timed out while waiting for the worktree to be released.";
+  }
+
   const details = [cleanupResult?.stderr, cleanupResult?.stdout].filter(Boolean).join("\n").trim();
 
   if (details.length > 0) {
@@ -6554,6 +6576,34 @@ function isAgentChangeEligible(task, subTask) {
 
 function uniqueStrings(values) {
   return [...new Set((values ?? []).filter(Boolean))];
+}
+
+async function retryCleanupOperation(operation, attempts, delayMs) {
+  let lastResult = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    lastResult = await operation();
+
+    if (lastResult?.ok) {
+      return lastResult;
+    }
+
+    if (attempt < attempts - 1) {
+      await sleep(delayMs);
+    }
+  }
+
+  return lastResult ?? {
+    ok: false,
+    stderr: "",
+    stdout: "",
+  };
+}
+
+function sleep(delayMs) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
 }
 
 function buildEmptyTaskCleanupResult() {

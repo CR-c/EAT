@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 import { createApp } from "../src/server/app.js";
@@ -3203,6 +3203,120 @@ test("persists cleanup warnings and keeps completed tasks terminal when worktree
   }
 });
 
+test("deletes a paused task with branch cleanup after the worker releases its worktree shortly after pause", async () => {
+  const fixture = await makeTempDir("eat-delete-paused-cleanup-retry-");
+
+  try {
+    const databasePath = path.join(fixture.path, "data", "eat.db");
+    const eventBus = new TaskEventBus();
+    const { agentService } = createDelayedCleanupReleaseAgentService({
+      plan: {
+        subtasks: [
+          {
+            title: "Delayed cleanup release",
+            description: "Hold the worktree briefly after pause before releasing it.",
+            recommended_agent: "worker-agent",
+            branch_suffix: "delayed-cleanup-release",
+          },
+        ],
+      },
+    });
+    const server = await startServer({
+      agentService,
+      databasePath,
+      eventBus,
+    });
+
+    try {
+      const repo = await createRepository(fixture.path, "delete-paused-cleanup-retry-repo");
+      const registerResponse = await requestJson(server, "/api/projects", {
+        body: { path: repo.repoPath },
+        method: "POST",
+      });
+      const taskResponse = await requestJson(server, "/api/tasks", {
+        body: {
+          baseBranch: "main",
+          description: "Pause the task and immediately delete it with branch cleanup enabled.",
+          leadAgentType: "healthy-lead",
+          projectId: registerResponse.body.project.id,
+          title: "Delete paused task after delayed cleanup release",
+        },
+        method: "POST",
+      });
+      const taskId = taskResponse.body.task.id;
+      const events = [];
+      const unsubscribe = eventBus.subscribe(taskId, (event) => {
+        events.push(event);
+      });
+
+      try {
+        await moveTaskToPlanReview(server, taskId, events);
+        const approvalResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/approve-plan`,
+          { method: "POST" },
+        );
+        assert.equal(approvalResponse.status, 200);
+
+        await nextEvent(events, (event) => event.eventName === "session:started");
+
+        let taskDetailResponse = null;
+        await waitFor(async () => {
+          taskDetailResponse = await requestJson(server, `/api/tasks/${encodeURIComponent(taskId)}`);
+          return (
+            taskDetailResponse.status === 200
+            && taskDetailResponse.body.task.status === "EXECUTING"
+            && taskDetailResponse.body.subTasks[0].status === "RUNNING"
+          );
+        }, 200);
+        assert.equal(taskDetailResponse.status, 200);
+        const subTaskBranchName = taskDetailResponse.body.subTasks[0].branchName;
+        const taskBranchName = taskDetailResponse.body.task.taskBranchName;
+
+        const pauseResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}/pause`,
+          { method: "POST" },
+        );
+        assert.equal(pauseResponse.status, 200);
+        assert.equal(pauseResponse.body.task.status, "ACTION_REQUIRED");
+
+        const deleteResponse = await requestJson(
+          server,
+          `/api/tasks/${encodeURIComponent(taskId)}`,
+          {
+            body: { deleteBranches: true },
+            method: "DELETE",
+          },
+        );
+        assert.equal(deleteResponse.status, 200);
+        assert.equal(deleteResponse.body.branchCleanup.cleanedBranches.includes(taskBranchName), true);
+        assert.equal(deleteResponse.body.branchCleanup.cleanedBranches.includes(subTaskBranchName), true);
+
+        const afterDeleteResponse = await requestJson(
+          server,
+          `/api/projects/${encodeURIComponent(registerResponse.body.project.id)}/tasks?includeArchived=1`,
+        );
+        assert.equal(afterDeleteResponse.status, 200);
+        assert.deepEqual(afterDeleteResponse.body.tasks, []);
+
+        await assert.rejects(
+          git(repo.repoPath, ["rev-parse", `${taskBranchName}^{commit}`]),
+        );
+        await assert.rejects(
+          git(repo.repoPath, ["rev-parse", `${subTaskBranchName}^{commit}`]),
+        );
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      await stopServer(server);
+    }
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 test("records merge conflicts, supports rebase retry, and resumes merge flow after the branch is updated", async () => {
   const fixture = await makeTempDir("eat-phase12-rebase-retry-");
 
@@ -3620,6 +3734,143 @@ function createPhase08AgentService(options) {
   return {
     agentService: new AgentService({ agentRegistry: registry }),
     stats,
+  };
+}
+
+function createDelayedCleanupReleaseAgentService(options) {
+  const registry = new AgentRegistry();
+  const plan = options.plan;
+
+  registry.register({
+    capabilities: {
+      canExecute: true,
+      canOrchestrate: true,
+      description: "Lead adapter for delayed cleanup release tests.",
+      supportedSandboxTypes: [SESSION_SANDBOX_TYPES.HOST],
+      supportsInteractiveInput: true,
+      supportsVision: true,
+    },
+    async healthCheck() {
+      return {
+        available: true,
+        version: "1.0.0-test",
+      };
+    },
+    name: "healthy-lead",
+    async spawnSession(config) {
+      const outputListeners = new Set();
+      const exitListeners = new Set();
+
+      setTimeout(() => {
+        for (const listener of outputListeners) {
+          listener("Confirm the task, then I will emit the plan.\n");
+        }
+      }, 0);
+
+      return {
+        containerId: null,
+        pid: 7100,
+        sessionId: "lead-session-delayed-cleanup",
+        async kill() {
+          for (const listener of exitListeners) {
+            listener(0);
+          }
+        },
+        onExit(callback) {
+          exitListeners.add(callback);
+        },
+        onOutput(callback) {
+          outputListeners.add(callback);
+        },
+        async sendInput(message) {
+          if (message.includes("Generate the execution plan as JSON only")) {
+            for (const listener of outputListeners) {
+              listener(`${JSON.stringify(plan, null, 2)}\n`);
+            }
+            return;
+          }
+
+          for (const listener of outputListeners) {
+            listener(`Confirmed: ${message}\n`);
+          }
+        },
+        async stop() {},
+      };
+    },
+  });
+
+  registry.register({
+    capabilities: {
+      canExecute: true,
+      canOrchestrate: false,
+      description: "Worker adapter that lingers in the worktree briefly after kill.",
+      supportedSandboxTypes: [SESSION_SANDBOX_TYPES.DOCKER],
+      supportsInteractiveInput: true,
+      supportsVision: false,
+    },
+    async healthCheck() {
+      return {
+        available: true,
+        version: "1.0.0-test",
+      };
+    },
+    name: "worker-agent",
+    async spawnSession(config) {
+      const outputListeners = new Set();
+      const exitListeners = new Set();
+      const child = spawn(
+        "bash",
+        [
+          "-lc",
+          "trap 'sleep 1.2; exit 0' TERM; printf 'worker running\\n'; while true; do sleep 0.1; done",
+        ],
+        {
+          cwd: config.workDir,
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+
+      const emitOutput = (chunk) => {
+        const text = typeof chunk === "string" ? chunk : chunk?.toString("utf8");
+
+        if (!text) {
+          return;
+        }
+
+        for (const listener of outputListeners) {
+          listener(text);
+        }
+      };
+
+      child.stdout?.on("data", emitOutput);
+      child.stderr?.on("data", emitOutput);
+      child.on("exit", (exitCode) => {
+        for (const listener of exitListeners) {
+          listener(exitCode ?? 0);
+        }
+      });
+
+      return {
+        containerId: `container-${path.basename(config.workDir)}`,
+        pid: child.pid ?? null,
+        sessionId: `worker-${path.basename(config.workDir)}`,
+        async kill() {
+          child.kill("SIGTERM");
+        },
+        onExit(callback) {
+          exitListeners.add(callback);
+        },
+        onOutput(callback) {
+          outputListeners.add(callback);
+        },
+        async sendInput() {},
+        async stop() {},
+      };
+    },
+  });
+
+  return {
+    agentService: new AgentService({ agentRegistry: registry }),
   };
 }
 
