@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const WORKTREE_REMOVE_TIMEOUT_MS = 1_000;
 
 export function computeDeterministicBranchName(taskId, branchSuffix) {
   return `eat/${taskId}/${branchSuffix}`;
@@ -119,7 +120,11 @@ export async function removeWorktree(repoPath, worktreePath) {
     return { ok: true };
   }
 
-  const removalResult = await runGitCapture(repoPath, ["worktree", "remove", "--force", worktreePath]);
+  const removalResult = await runGitCapture(
+    repoPath,
+    ["worktree", "remove", "--force", worktreePath],
+    { timeoutMs: WORKTREE_REMOVE_TIMEOUT_MS },
+  );
 
   if (removalResult.ok) {
     await pruneWorktrees(repoPath);
@@ -210,11 +215,16 @@ async function runGitString(repoPath, args) {
   return stdout.trim();
 }
 
-async function runGitCapture(repoPath, args) {
+async function runGitCapture(repoPath, args, options = {}) {
+  const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+    ? Math.trunc(options.timeoutMs)
+    : 0;
+
   try {
     const { stderr, stdout } = await execFileAsync("git", ["-C", repoPath, ...args], {
       encoding: "utf8",
       maxBuffer: 1024 * 1024,
+      ...(timeoutMs > 0 ? { killSignal: "SIGKILL", timeout: timeoutMs } : {}),
     });
 
     return {
@@ -226,6 +236,7 @@ async function runGitCapture(repoPath, args) {
     return {
       ok: false,
       code: typeof error?.code === "number" ? error.code : null,
+      timedOut: timeoutMs > 0 && error?.killed === true,
       stderr: String(error?.stderr ?? "").trim(),
       stdout: String(error?.stdout ?? "").trim(),
     };
