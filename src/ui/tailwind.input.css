@@ -1167,7 +1167,14 @@
   .workspace-intel {
     grid-template-rows: auto auto minmax(0, 1fr);
     align-content: start;
-    overflow: hidden;
+    overflow: visible;
+  }
+
+  @screen lg {
+    .workspace-shell {
+      grid-template-columns: minmax(24rem, 1fr) minmax(22rem, 30rem);
+      column-gap: 0.625rem;
+    }
   }
 
   @screen xl {
@@ -3262,7 +3269,7 @@
   /* ── Workspace Header Bar ── */
 
   .workspace-header-bar {
-    @apply flex items-center gap-2 rounded-[0.85rem] border border-primary/10 bg-white/80 px-3 py-2 text-left shadow-soft;
+    @apply relative z-10 flex flex-wrap items-center gap-1.5 rounded-[0.85rem] border border-primary/10 bg-white/80 px-2.5 py-1.5 text-left shadow-soft;
     backdrop-filter: blur(16px) saturate(1.15);
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(246, 249, 255, 0.78)),
@@ -3270,19 +3277,19 @@
   }
 
   .workspace-header-bar__left {
-    @apply flex min-w-0 flex-1 items-center gap-2;
+    @apply flex min-w-0 flex-1 items-center gap-1.5;
   }
 
   .workspace-header-bar__title {
-    @apply m-0 min-w-0 truncate text-sm font-semibold text-on-surface;
+    @apply m-0 min-w-0 truncate text-[13px] font-semibold text-on-surface;
   }
 
   .workspace-header-bar__right {
-    @apply flex shrink-0 items-center gap-1.5;
+    @apply flex shrink-0 items-center gap-1;
   }
 
   .workspace-header-bar__action {
-    @apply min-h-[32px] rounded-full px-3.5 text-xs;
+    @apply min-h-[28px] max-w-[10rem] truncate rounded-full px-3 text-[11px];
   }
 
   /* ── Workspace Phase Dots ── */
@@ -3324,7 +3331,7 @@
   /* ── Workspace Overflow Menu ── */
 
   .workspace-header-bar__overflow {
-    @apply relative;
+    @apply relative z-40;
   }
 
   .workspace-header-bar__overflow-btn {
@@ -3338,7 +3345,7 @@
   }
 
   .workspace-overflow-menu {
-    @apply absolute right-0 top-full z-30 mt-1 grid min-w-[14rem] gap-0.5 rounded-[0.9rem] border border-primary/10 bg-white p-1.5 shadow-glass;
+    @apply absolute right-0 top-full z-50 mt-1 grid min-w-[14rem] gap-0.5 rounded-[0.9rem] border border-primary/10 bg-white p-1.5 shadow-glass;
   }
 
   .workspace-overflow-menu__item {
@@ -3363,12 +3370,19 @@
   /* ── Workspace Tabs ── */
 
   .workspace-tabs {
-    @apply flex gap-0.5 rounded-[0.9rem] border border-primary/10 bg-white/70 p-1;
+    @apply flex gap-0.5 rounded-[0.9rem] border border-primary/10 bg-white/70 p-0.5;
     backdrop-filter: blur(12px);
+    overflow: hidden;
   }
 
   .workspace-tabs__tab {
-    @apply relative flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[0.7rem] border-0 bg-transparent px-3 py-2 text-[13px] font-medium text-on-surface-variant transition duration-200;
+    @apply relative flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-[0.65rem] border-0 bg-transparent px-2 py-1.5 text-[12px] font-medium text-on-surface-variant transition duration-200;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .workspace-tabs__label {
+    @apply truncate;
   }
 
   .workspace-tabs__tab:hover {
@@ -3394,7 +3408,7 @@
   /* ── Workspace Tab Panels ── */
 
   .workspace-tabpanel {
-    @apply grid gap-2.5 overflow-y-auto overflow-x-hidden;
+    @apply relative z-0 grid gap-2.5 overflow-y-auto overflow-x-hidden;
     min-height: 0;
     padding-right: 0.2rem;
   }
@@ -3426,7 +3440,8 @@
   /* ── Preview Studio Overlay ── */
 
   .preview-studio-overlay {
-    @apply fixed inset-0 z-50 m-0 h-full max-h-none w-full max-w-none border-0 bg-transparent p-0;
+    @apply fixed inset-4 z-50 m-auto h-auto max-h-[calc(100vh-2rem)] w-auto max-w-[calc(100vw-2rem)] rounded-[1.2rem] border border-primary/10 bg-transparent p-0 shadow-glass;
+    overflow: hidden;
   }
 
   .preview-studio-overlay::backdrop {
@@ -3439,8 +3454,9 @@
   }
 
   .preview-studio-overlay__shell {
-    @apply grid h-full gap-3 overflow-auto bg-white p-4;
+    @apply grid h-full gap-3 overflow-auto bg-white p-5;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
+    border-radius: inherit;
   }
 
   .preview-studio-overlay__header {
