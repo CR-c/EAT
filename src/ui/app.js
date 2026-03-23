@@ -9075,13 +9075,16 @@ function renderTaskStageBoard(detail) {
   elements.taskStageRail.hidden = false;
   elements.taskStageRail.replaceChildren(...automationModel.steps.map((step, index) => {
     const item = document.createElement("div");
+    const stepLabel = step.label ?? "";
+    const stepStateLabel = buildAutomationStepStateLabel(step.state);
+    const stepNote = step.note ?? automationModel.summary ?? "";
     item.className = `task-stage-step task-stage-step--${step.state === "ready" ? "next" : step.state}${["done", "waiting"].includes(step.state) ? " is-muted" : ""}`;
     item.innerHTML = `
       <span class="task-stage-step__index">${escapeHtml(String(index + 1))}</span>
       <div class="task-stage-step__copy">
-        <p class="task-stage-step__label">${escapeHtml(step.label)}</p>
-        <span class="task-stage-step__state">${escapeHtml(buildAutomationStepStateLabel(step.state))}</span>
-        <p class="task-stage-step__note">${escapeHtml(step.note ?? automationModel.summary)}</p>
+        <p class="task-stage-step__label" title="${escapeHtmlAttribute(stepLabel)}">${escapeHtml(stepLabel)}</p>
+        <span class="task-stage-step__state">${escapeHtml(stepStateLabel)}</span>
+        <p class="task-stage-step__note" title="${escapeHtmlAttribute(stepNote)}">${escapeHtml(stepNote)}</p>
       </div>
     `;
     return item;

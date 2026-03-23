@@ -569,6 +569,7 @@
   .task-journey__rail,
   .task-stage-rail {
     @apply grid gap-2;
+    grid-auto-rows: minmax(8.75rem, auto);
   }
 
   .task-journey__rail {
@@ -577,13 +578,13 @@
 
   .task-journey-step,
   .task-stage-step {
-    @apply flex items-start gap-3 rounded-[1.15rem] px-3.5 py-3;
+    @apply flex h-full min-h-[8.75rem] items-start gap-3 rounded-[1.15rem] px-3.5 py-3;
     background: rgba(255, 255, 255, 0.76);
     border: 1px solid rgba(116, 119, 127, 0.08);
   }
 
   .task-stage-step.is-muted {
-    @apply opacity-75;
+    opacity: 1;
   }
 
   .task-journey-step--current,
@@ -613,12 +614,17 @@
 
   .task-journey-step__copy,
   .task-stage-step__copy {
-    @apply grid gap-1;
+    @apply grid min-w-0 flex-1 content-start gap-1;
+    grid-template-rows: auto auto minmax(0, 1fr);
   }
 
   .task-journey-step__label,
   .task-stage-step__label {
     @apply m-0 text-sm font-semibold text-on-surface;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   .task-journey-step__state,
@@ -627,8 +633,18 @@
     @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-on-surface-variant;
   }
 
+  .task-stage-step__state {
+    @apply inline-flex w-fit items-center rounded-full px-2 py-1;
+    background: rgba(15, 23, 42, 0.05);
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.18);
+  }
+
   .task-stage-step__note {
     @apply m-0 text-xs leading-5 text-on-surface-variant;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
   }
 
   .guided-flow__intro,
@@ -2268,11 +2284,11 @@
 
   .task-stage-board .panel__eyebrow,
   .task-stage-step__state {
-    color: rgba(191, 219, 254, 0.82);
+    color: rgba(219, 234, 254, 0.92);
   }
 
   .task-stage-step__note {
-    color: rgba(226, 232, 240, 0.82);
+    color: rgba(226, 232, 240, 0.9);
   }
 
   .task-stage-rail {
@@ -2282,6 +2298,18 @@
   .task-stage-step {
     background: rgba(255, 255, 255, 0.06);
     border-color: rgba(148, 163, 184, 0.12);
+  }
+
+  .task-stage-step.is-muted .task-stage-step__label {
+    color: rgba(241, 245, 249, 0.96);
+  }
+
+  .task-stage-step.is-muted .task-stage-step__state {
+    color: rgba(191, 219, 254, 0.88);
+  }
+
+  .task-stage-step.is-muted .task-stage-step__note {
+    color: rgba(226, 232, 240, 0.8);
   }
 
   .task-stage-step__index {
@@ -2711,15 +2739,15 @@
   }
 
   .agent-team-card__pilot-deck {
-    @apply grid flex-1 gap-2 sm:grid-cols-2;
+    @apply grid min-w-0 flex-1 gap-2 sm:grid-cols-2;
   }
 
   .agent-team-card__facts {
-    @apply grid min-w-[220px] gap-2;
+    @apply grid min-w-0 flex-1 gap-2 sm:min-w-[220px];
   }
 
   .agent-team-card__facts div {
-    @apply grid gap-1 rounded-2xl px-3 py-2;
+    @apply grid min-w-0 gap-1 rounded-2xl px-3 py-2;
     background: rgba(255, 255, 255, 0.04);
   }
 
@@ -2734,7 +2762,7 @@
   }
 
   .agent-figure {
-    @apply flex items-center gap-2.5 rounded-[1rem] px-2.5 py-1.5 text-left transition duration-200 ease-out hover:-translate-y-0.5;
+    @apply flex min-w-0 items-center gap-2.5 rounded-[1rem] px-2.5 py-1.5 text-left transition duration-200 ease-out hover:-translate-y-0.5;
     background: rgba(255, 255, 255, 0.05);
   }
 
@@ -2757,8 +2785,51 @@
   }
 
   .agent-figure__label {
-    @apply text-[12px] font-medium leading-5;
+    @apply min-w-0 text-[12px] font-medium leading-4;
     color: #f5fff9;
+    display: -webkit-box;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .agent-team-card__header {
+    @apply items-start justify-between gap-3;
+  }
+
+  .agent-team-card__header > div,
+  .agent-team-card__topline,
+  .agent-team-card__hud,
+  .agent-team-card__workspace-list,
+  .agent-team-card__branch-list {
+    min-width: 0;
+  }
+
+  .agent-team-card__header > div {
+    @apply grid flex-1 gap-1.5;
+  }
+
+  .agent-team-card__topline {
+    @apply items-start justify-between gap-2;
+  }
+
+  .agent-team-card__title,
+  .agent-team-card__meta,
+  .agent-team-card__summary,
+  .agent-team-card__chip,
+  .agent-team-card__facts dd {
+    overflow-wrap: anywhere;
+  }
+
+  .agent-team-card .badge {
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .agent-team-card__hud {
+    @apply items-stretch gap-3;
   }
 
   .agent-figure--working {
