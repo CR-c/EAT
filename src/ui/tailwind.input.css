@@ -635,6 +635,10 @@
 
   .task-stage-step__state {
     @apply inline-flex w-fit items-center rounded-full px-2 py-1;
+  }
+
+  .task-stage-step__state {
+    @apply inline-flex w-fit items-center rounded-full px-2 py-1;
     background: rgba(15, 23, 42, 0.05);
     box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.18);
   }
@@ -2273,8 +2277,7 @@
   .task-stage-board .panel__eyebrow,
   .task-stage-board__intro h3,
   .task-next-action__summary,
-  .task-stage-step__label,
-  .task-stage-step__state {
+  .task-stage-step__label {
     color: #f8fafc;
   }
 
@@ -2296,8 +2299,9 @@
   }
 
   .task-stage-step {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(148, 163, 184, 0.12);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(148, 163, 184, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
   }
 
   .task-stage-step.is-muted .task-stage-step__label {
@@ -2317,19 +2321,51 @@
     color: #f8fafc;
   }
 
+  .task-stage-step__state {
+    background: rgba(15, 23, 42, 0.44);
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.26);
+  }
+
   .task-stage-step--done {
     background: rgba(16, 185, 129, 0.12);
     border-color: rgba(16, 185, 129, 0.18);
   }
 
+  .task-stage-step--done .task-stage-step__state {
+    color: #d1fae5;
+    background: rgba(16, 185, 129, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(110, 231, 183, 0.2);
+  }
+
   .task-stage-step--current {
     background: rgba(59, 130, 246, 0.16);
     border-color: rgba(96, 165, 250, 0.24);
+    box-shadow:
+      inset 0 0 0 1px rgba(147, 197, 253, 0.14),
+      0 18px 38px rgba(37, 99, 235, 0.16);
+  }
+
+  .task-stage-step--current .task-stage-step__state,
+  .task-stage-step--next .task-stage-step__state {
+    color: #eff6ff;
+    background: rgba(59, 130, 246, 0.24);
+    box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.24);
   }
 
   .task-stage-step--attention {
     background: rgba(249, 115, 22, 0.14);
     border-color: rgba(251, 146, 60, 0.22);
+  }
+
+  .task-stage-step--attention .task-stage-step__state {
+    color: #ffedd5;
+    background: rgba(249, 115, 22, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(253, 186, 116, 0.24);
+  }
+
+  .task-stage-step--waiting {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 163, 184, 0.2);
   }
 
   .task-next-action {
@@ -2739,11 +2775,13 @@
   }
 
   .agent-team-card__pilot-deck {
-    @apply grid min-w-0 flex-1 gap-2 sm:grid-cols-2;
+    @apply grid min-w-0 flex-1 gap-2;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   }
 
   .agent-team-card__facts {
-    @apply grid min-w-0 flex-1 gap-2 sm:min-w-[220px];
+    @apply grid min-w-0 gap-2;
+    flex: 0 1 16rem;
   }
 
   .agent-team-card__facts div {
@@ -2762,7 +2800,7 @@
   }
 
   .agent-figure {
-    @apply flex min-w-0 items-center gap-2.5 rounded-[1rem] px-2.5 py-1.5 text-left transition duration-200 ease-out hover:-translate-y-0.5;
+    @apply flex min-w-0 items-start gap-2.5 rounded-[1rem] px-2.5 py-1.5 text-left transition duration-200 ease-out hover:-translate-y-0.5;
     background: rgba(255, 255, 255, 0.05);
   }
 
@@ -2812,6 +2850,10 @@
 
   .agent-team-card__topline {
     @apply items-start justify-between gap-2;
+  }
+
+  .agent-team-card__topline .badge {
+    @apply shrink-0;
   }
 
   .agent-team-card__title,
