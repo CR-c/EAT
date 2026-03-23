@@ -1984,6 +1984,7 @@ const state = {
   agentHealth: {},
   agents: [],
   currentView: "dashboard",
+  focusWorkspaceStageOnNextRender: false,
   executionDrafts: new Map(),
   healthCheckedAt: null,
   leadCandidates: [],
@@ -2165,18 +2166,21 @@ const elements = {
   taskIntegrationStartButton: document.querySelector("#task-integration-start-button"),
   taskIntegrationStatusBadge: document.querySelector("#task-integration-status-badge"),
   taskHubDeliveryBadge: document.querySelector("#task-hub-delivery-badge"),
+  taskHubDeliveryCard: document.querySelector("#task-hub-delivery-card"),
   taskHubDeliveryCount: document.querySelector("#task-hub-delivery-count"),
   taskHubDeliveryNote: document.querySelector("#task-hub-delivery-note"),
   taskHubDeliveryOpenButton: document.querySelector("#task-hub-delivery-open-button"),
   taskHubDeliverySummary: document.querySelector("#task-hub-delivery-summary"),
   taskHubDeliveryTitle: document.querySelector("#task-hub-delivery-title"),
   taskHubPlanBadge: document.querySelector("#task-hub-plan-badge"),
+  taskHubPlanCard: document.querySelector("#task-hub-plan-card"),
   taskHubPlanCount: document.querySelector("#task-hub-plan-count"),
   taskHubPlanNote: document.querySelector("#task-hub-plan-note"),
   taskHubPlanOpenButton: document.querySelector("#task-hub-plan-open-button"),
   taskHubPlanSummary: document.querySelector("#task-hub-plan-summary"),
   taskHubPlanTitle: document.querySelector("#task-hub-plan-title"),
   taskHubPreviewBadge: document.querySelector("#task-hub-preview-badge"),
+  taskHubPreviewCard: document.querySelector("#task-hub-preview-card"),
   taskHubPreviewFocusButton: document.querySelector("#task-hub-preview-focus-button"),
   taskHubPreviewNote: document.querySelector("#task-hub-preview-note"),
   taskHubPreviewSummary: document.querySelector("#task-hub-preview-summary"),
@@ -2683,7 +2687,9 @@ function switchView(viewId) {
   if (!VIEW_IDS.includes(viewId)) {
     viewId = "dashboard";
   }
+  const previousView = state.currentView;
   state.currentView = viewId;
+  state.focusWorkspaceStageOnNextRender = viewId === "workspace" && previousView !== "workspace";
   for (const id of VIEW_IDS) {
     const el = elements.views[id];
     if (el) {
@@ -2694,6 +2700,12 @@ function switchView(viewId) {
     tab.classList.toggle("is-active", tab.dataset.view === viewId);
   }
   window.location.hash = viewId;
+
+  if (viewId === "workspace" && state.taskDetail?.task) {
+    window.requestAnimationFrame(() => {
+      focusActiveWorkspaceStageCard();
+    });
+  }
 }
 
 for (const tab of elements.topnavTabs) {
@@ -4654,6 +4666,11 @@ function renderTaskDetail() {
 
   renderTaskMessageComposer(detail);
   renderWorkspaceTaskActions(detail.task);
+  if (state.focusWorkspaceStageOnNextRender) {
+    window.requestAnimationFrame(() => {
+      focusActiveWorkspaceStageCard();
+    });
+  }
   const canConfirmRequirements = detail.task.status === "CLARIFYING";
 
   elements.startClarificationButton.hidden = true;
@@ -4713,6 +4730,7 @@ function renderTaskWorkspaceHub(detail) {
   const board = detail.board ?? null;
   const latestIntegrationRun = detail.integration?.latestRun ?? null;
   const previewSession = state.taskPreview?.session ?? null;
+  const activeStage = buildWorkspaceHubActiveStage(detail, state.taskPreview);
 
   if (elements.taskHubPlanBadge) {
     elements.taskHubPlanBadge.textContent = buildTaskDisplayStatusLabel(detail.task);
@@ -4800,6 +4818,73 @@ function renderTaskWorkspaceHub(detail) {
   if (elements.taskHubPreviewTarget) {
     elements.taskHubPreviewTarget.textContent = `${t("workspaceHubPreviewTargetLabel")} · ${previewSession?.targetLabel ?? state.taskPreview?.recommendation?.label ?? t("workspaceHubPreviewTargetFallback")}`;
   }
+
+  toggleWorkspaceHubStageCard(elements.taskHubPlanCard, activeStage === "plan");
+  toggleWorkspaceHubStageCard(elements.taskHubDeliveryCard, activeStage === "delivery");
+  toggleWorkspaceHubStageCard(elements.taskHubPreviewCard, activeStage === "preview");
+}
+
+function buildWorkspaceHubActiveStage(detail, preview) {
+  const taskStatus = detail?.task?.status ?? "DRAFT";
+  const acceptanceModel = buildTaskAcceptanceModel(detail, preview);
+
+  if (
+    acceptanceModel.previewRunning
+    || acceptanceModel.acceptanceReady
+    || ["COMPLETED", "FAILED", "CANCELLED"].includes(taskStatus)
+  ) {
+    return "preview";
+  }
+
+  if (["DRAFT", "CLARIFYING", "PLANNING", "PLAN_REVIEW"].includes(taskStatus)) {
+    return "plan";
+  }
+
+  return "delivery";
+}
+
+function toggleWorkspaceHubStageCard(element, isCurrent) {
+  if (!element) {
+    return;
+  }
+
+  element.classList.toggle("is-current", isCurrent);
+  element.setAttribute("aria-current", isCurrent ? "step" : "false");
+}
+
+function resolveActiveWorkspaceStageCard() {
+  const detail = state.taskDetail;
+
+  if (!detail?.task) {
+    return null;
+  }
+
+  const activeStage = buildWorkspaceHubActiveStage(detail, state.taskPreview);
+
+  if (activeStage === "plan") {
+    return elements.taskHubPlanCard;
+  }
+
+  if (activeStage === "preview") {
+    return elements.taskHubPreviewCard;
+  }
+
+  return elements.taskHubDeliveryCard;
+}
+
+function focusActiveWorkspaceStageCard() {
+  if (state.currentView !== "workspace") {
+    return;
+  }
+
+  const card = resolveActiveWorkspaceStageCard();
+
+  if (!card) {
+    return;
+  }
+
+  card.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+  state.focusWorkspaceStageOnNextRender = false;
 }
 
 function resetTaskPreviewUi() {
