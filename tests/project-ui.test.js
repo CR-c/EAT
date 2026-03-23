@@ -51,6 +51,7 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /起始分支/);
     assert.match(rootResponse.body, /task-create-branch-summary/);
     assert.match(rootResponse.body, /id="project-registration-dialog"/);
+    assert.match(rootResponse.body, /id="project-unregister-dialog"/);
     assert.match(rootResponse.body, /选择项目路径/);
     assert.match(rootResponse.body, /系统文件树/);
     assert.match(rootResponse.body, /直接输入路径/);
@@ -61,9 +62,9 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /id="view-workspace"/);
     assert.match(rootResponse.body, /id="workspace-picker-dialog"/);
     assert.match(rootResponse.body, /id="workspace-picker-search-input"/);
-    assert.match(rootResponse.body, /workspace-command-center/);
+    assert.match(rootResponse.body, /workspace-tabs/);
     assert.match(rootResponse.body, /最终成品 Web 预览/);
-    assert.match(rootResponse.body, /最终验收就绪度/);
+    assert.match(rootResponse.body, /验收就绪度/);
     assert.match(rootResponse.body, /id="task-preview-readiness-blocker"/);
     assert.match(rootResponse.body, /id="task-preview-readiness-list"/);
     assert.match(rootResponse.body, /id="task-preview-form"/);
@@ -78,7 +79,7 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /task-workspace-delete-button/);
     assert.match(rootResponse.body, /task-action-dialog-delete-branches-field/);
     assert.match(rootResponse.body, /Alt\+Enter/);
-    assert.match(rootResponse.body, /当前阶段与下一步/);
+    assert.match(rootResponse.body, /workspace-header-bar/);
     assert.match(rootResponse.body, /task-next-action-button/);
     assert.match(rootResponse.body, /id="task-decision-title"/);
     assert.match(rootResponse.body, /id="task-decision-pill-list"/);
@@ -116,7 +117,7 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(rootResponse.body, /Rebase 并重试/);
     assert.match(rootResponse.body, /恢复合并/);
     assert.match(rootResponse.body, /清理警告/);
-    assert.match(rootResponse.body, /Leader 编排/);
+    assert.match(rootResponse.body, /执行态势/);
     assert.match(rootResponse.body, /重新派发成员/);
     assert.match(rootResponse.body, /取消成员/);
     assert.match(rootResponse.body, /替换 worker/);
@@ -143,10 +144,11 @@ test("serves the orchestration UI shell and static assets", async () => {
     assert.match(cssResponse.body, /task-stage-board/);
     assert.match(cssResponse.body, /workspace-chat__queue-list/);
     assert.match(cssResponse.body, /workspace-chat__status-strip/);
-    assert.match(cssResponse.body, /workspace-hero__actions/);
-    assert.match(cssResponse.body, /workspace-command-center/);
-    assert.match(cssResponse.body, /preview-studio__frame/);
-    assert.match(cssResponse.body, /preview-studio__logs/);
+    assert.match(cssResponse.body, /workspace-header-bar/);
+    assert.match(cssResponse.body, /workspace-tabs__tab/);
+    assert.match(cssResponse.body, /sidebar__project-remove/);
+    assert.match(cssResponse.body, /preview-studio-overlay__frame/);
+    assert.match(cssResponse.body, /preview-studio-overlay__logs-toggle/);
     assert.match(cssResponse.body, /preview-readiness-item/);
     assert.match(cssResponse.body, /task-decision-card/);
     assert.match(cssResponse.body, /operations-action-group/);
@@ -187,6 +189,13 @@ test("formats project, task, agent health, and attachment UI messages", () => {
       code: "PATH_ACCESS_DENIED",
     }),
     "没有权限读取所选目录，请改用可访问的路径。",
+  );
+
+  assert.equal(
+    buildProjectErrorMessage({
+      code: "PROJECT_UNREGISTER_REQUIRES_TASK_CLEANUP",
+    }),
+    "该项目仍有任务挂在 EAT 中。请先清理这些任务和相关分支，再取消注册。",
   );
 
   assert.equal(

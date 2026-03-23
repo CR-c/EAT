@@ -841,6 +841,14 @@ const UI_MESSAGES = {
     sidebarTitle: "项目",
     sidebarActiveAgents: "{count} Agent",
     sidebarRegisterButton: "注册项目",
+    sidebarProjectUnregisterLabel: "取消注册项目 {name}",
+    projectUnregisterDialogEyebrow: "项目注册",
+    projectUnregisterDialogTitle: "取消注册项目",
+    projectUnregisterDialogSummary: "项目 {name} 将从 EAT 中移除，但不会删除仓库目录、代码或其他实际文件内容。",
+    projectUnregisterDialogHint: "只有先清理该项目挂在 EAT 中的任务后，才能取消注册。",
+    projectUnregisterConfirmButton: "确认取消注册",
+    projectUnregisterSuccess: "已取消注册项目 {name}。",
+    unregisteringProject: "取消注册中...",
     brandName: "EAT Agent Workbench",
     navStatusIdle: "就绪",
     collapseNavButton: "收起顶部导航",
@@ -1765,6 +1773,14 @@ const UI_MESSAGES = {
     sidebarTitle: "Projects",
     sidebarActiveAgents: "{count} Agents",
     sidebarRegisterButton: "Register Project",
+    sidebarProjectUnregisterLabel: "Unregister project {name}",
+    projectUnregisterDialogEyebrow: "Project registry",
+    projectUnregisterDialogTitle: "Unregister project",
+    projectUnregisterDialogSummary: "Project {name} will be removed from EAT, but the repository directory, code, and other real files will stay untouched.",
+    projectUnregisterDialogHint: "You must clean up any EAT tasks attached to this project before unregistering it.",
+    projectUnregisterConfirmButton: "Confirm unregister",
+    projectUnregisterSuccess: "Project {name} was unregistered.",
+    unregisteringProject: "Unregistering...",
     brandName: "EAT Agent Workbench",
     navStatusIdle: "Ready",
     collapseNavButton: "Collapse top navigation",
@@ -2019,6 +2035,7 @@ const state = {
   selectedGuidedTemplateId: null,
   selectedLeadAgentName: null,
   selectedProjectId: readStorage(STORAGE_KEYS.selectedProjectId),
+  selectedProjectUnregisterId: null,
   selectedTaskId: readStorage(STORAGE_KEYS.selectedTaskId),
   showArchivedTasks: false,
   sidebarCollapsed: readBooleanStorage(STORAGE_KEYS.sidebarCollapsed, true),
@@ -2036,6 +2053,7 @@ const state = {
   taskOperationsView: "graph",
   tasks: [],
   taskStream: null,
+  activeWorkspaceTab: "overview",
   workerCandidates: [],
 };
 
@@ -2165,27 +2183,6 @@ const elements = {
   taskIntegrationShell: document.querySelector("#task-integration-shell"),
   taskIntegrationStartButton: document.querySelector("#task-integration-start-button"),
   taskIntegrationStatusBadge: document.querySelector("#task-integration-status-badge"),
-  taskHubDeliveryBadge: document.querySelector("#task-hub-delivery-badge"),
-  taskHubDeliveryCard: document.querySelector("#task-hub-delivery-card"),
-  taskHubDeliveryCount: document.querySelector("#task-hub-delivery-count"),
-  taskHubDeliveryNote: document.querySelector("#task-hub-delivery-note"),
-  taskHubDeliveryOpenButton: document.querySelector("#task-hub-delivery-open-button"),
-  taskHubDeliverySummary: document.querySelector("#task-hub-delivery-summary"),
-  taskHubDeliveryTitle: document.querySelector("#task-hub-delivery-title"),
-  taskHubPlanBadge: document.querySelector("#task-hub-plan-badge"),
-  taskHubPlanCard: document.querySelector("#task-hub-plan-card"),
-  taskHubPlanCount: document.querySelector("#task-hub-plan-count"),
-  taskHubPlanNote: document.querySelector("#task-hub-plan-note"),
-  taskHubPlanOpenButton: document.querySelector("#task-hub-plan-open-button"),
-  taskHubPlanSummary: document.querySelector("#task-hub-plan-summary"),
-  taskHubPlanTitle: document.querySelector("#task-hub-plan-title"),
-  taskHubPreviewBadge: document.querySelector("#task-hub-preview-badge"),
-  taskHubPreviewCard: document.querySelector("#task-hub-preview-card"),
-  taskHubPreviewFocusButton: document.querySelector("#task-hub-preview-focus-button"),
-  taskHubPreviewNote: document.querySelector("#task-hub-preview-note"),
-  taskHubPreviewSummary: document.querySelector("#task-hub-preview-summary"),
-  taskHubPreviewTarget: document.querySelector("#task-hub-preview-target"),
-  taskHubPreviewTitle: document.querySelector("#task-hub-preview-title"),
   taskExecutionAgentField: document.querySelector("#task-execution-agent-field"),
   taskExecutionAgentSelect: document.querySelector("#task-execution-agent-select"),
   taskExecutionChangeAgentButton: document.querySelector("#task-execution-change-agent-button"),
@@ -2260,19 +2257,14 @@ const elements = {
   taskDocumentBadge: document.querySelector("#task-document-badge"),
   taskDocumentCount: document.querySelector("#task-document-count"),
   taskDocumentEmpty: document.querySelector("#task-document-empty"),
-  taskDocumentEyebrow: document.querySelector("#task-document-eyebrow"),
-  taskDocumentGuide: document.querySelector("#task-document-guide"),
   taskDocumentList: document.querySelector("#task-document-list"),
   taskDocumentLoading: document.querySelector("#task-document-loading"),
   taskDocumentLoadingLabel: document.querySelector("#task-document-loading-label"),
-  taskDocumentPanel: document.querySelector("#task-document-panel"),
   taskDocumentSummary: document.querySelector("#task-document-summary"),
   taskDocumentTitle: document.querySelector("#task-document-title"),
   taskLeaderPlanBadge: document.querySelector("#task-leader-plan-badge"),
   taskLeaderPlanCount: document.querySelector("#task-leader-plan-count"),
   taskLeaderPlanEmpty: document.querySelector("#task-leader-plan-empty"),
-  taskLeaderPlanEyebrow: document.querySelector("#task-leader-plan-eyebrow"),
-  taskLeaderPlanGuide: document.querySelector("#task-leader-plan-guide"),
   taskLeaderPlanList: document.querySelector("#task-leader-plan-list"),
   taskLeaderPlanLoading: document.querySelector("#task-leader-plan-loading"),
   taskLeaderPlanLoadingLabel: document.querySelector("#task-leader-plan-loading-label"),
@@ -2343,7 +2335,6 @@ const elements = {
   taskMessageQueueList: document.querySelector("#task-message-queue-list"),
   taskMessageQueueStatus: document.querySelector("#task-message-queue-status"),
   taskMessageStopButton: document.querySelector("#task-message-stop-button"),
-  taskWorkspaceActions: document.querySelector("#task-workspace-actions"),
   taskWorkspaceDeleteButton: document.querySelector("#task-workspace-delete-button"),
   taskWorkspacePauseButton: document.querySelector("#task-workspace-pause-button"),
   taskPlanDetail: document.querySelector("#task-plan-detail"),
@@ -2367,10 +2358,8 @@ const elements = {
   taskPlanSummary: document.querySelector("#task-plan-summary"),
   taskPlanTemplateSelect: document.querySelector("#task-plan-template-select"),
   taskPlanVersion: document.querySelector("#task-plan-version"),
-  taskPreviewAppBadge: document.querySelector("#task-preview-app-badge"),
   taskPreviewAppRootSelect: document.querySelector("#task-preview-app-root-select"),
   taskPreviewCommandInput: document.querySelector("#task-preview-command-input"),
-  taskPreviewDetected: document.querySelector("#task-preview-detected"),
   taskPreviewEmpty: document.querySelector("#task-preview-empty"),
   taskPreviewFeedback: document.querySelector("#task-preview-feedback"),
   taskPreviewForm: document.querySelector("#task-preview-form"),
@@ -2388,11 +2377,7 @@ const elements = {
   taskPreviewStartButton: document.querySelector("#task-preview-start-button"),
   taskPreviewStatusBadge: document.querySelector("#task-preview-status-badge"),
   taskPreviewStopButton: document.querySelector("#task-preview-stop-button"),
-  taskPreviewStudio: document.querySelector("#task-preview-studio"),
-  taskPreviewSummary: document.querySelector("#task-preview-summary"),
-  taskPreviewTargetBadge: document.querySelector("#task-preview-target-badge"),
   taskPreviewTargetSelect: document.querySelector("#task-preview-target-select"),
-  taskPreviewUrlBadge: document.querySelector("#task-preview-url-badge"),
   taskNextActionBadge: document.querySelector("#task-next-action-badge"),
   taskNextActionButton: document.querySelector("#task-next-action-button"),
   taskNextActionSummary: document.querySelector("#task-next-action-summary"),
@@ -2402,18 +2387,43 @@ const elements = {
   taskDecisionSummary: document.querySelector("#task-decision-summary"),
   taskDecisionTitle: document.querySelector("#task-decision-title"),
   taskSessionStatus: document.querySelector("#task-session-status"),
-  taskStageRail: document.querySelector("#task-stage-rail"),
   taskStatusBadge: document.querySelector("#task-status-badge"),
   taskTitleInput: document.querySelector("#task-title-input"),
   taskTranscript: document.querySelector("#task-transcript"),
   taskTranscriptEmpty: document.querySelector("#task-transcript-empty"),
   taskAttachmentsInput: document.querySelector("#task-attachments-input"),
+  // Workspace redesign elements
+  taskPhaseDots: document.querySelector("#task-phase-dots"),
+  workspaceOverflowToggle: document.querySelector("#workspace-overflow-toggle"),
+  workspaceOverflowMenu: document.querySelector("#workspace-overflow-menu"),
+  openPreviewStudioButton: document.querySelector("#open-preview-studio-button"),
+  previewStudioDialog: document.querySelector("#preview-studio-dialog"),
+  previewStudioCloseButton: document.querySelector("#preview-studio-close-button"),
+  workspaceTabOverview: document.querySelector("#workspace-tab-overview"),
+  workspaceTabDocument: document.querySelector("#workspace-tab-document"),
+  workspaceTabPlan: document.querySelector("#workspace-tab-plan"),
+  workspaceTabTeam: document.querySelector("#workspace-tab-team"),
+  workspaceTabpanelOverview: document.querySelector("#workspace-tabpanel-overview"),
+  workspaceTabpanelDocument: document.querySelector("#workspace-tabpanel-document"),
+  workspaceTabpanelPlan: document.querySelector("#workspace-tabpanel-plan"),
+  workspaceTabpanelTeam: document.querySelector("#workspace-tabpanel-team"),
+  workspaceTabOverviewBadge: document.querySelector("#workspace-tab-overview-badge"),
+  workspaceTabDocumentBadge: document.querySelector("#workspace-tab-document-badge"),
+  workspaceTabPlanBadge: document.querySelector("#workspace-tab-plan-badge"),
+  workspaceTabTeamBadge: document.querySelector("#workspace-tab-team-badge"),
   // Sidebar elements
   sidebarAgentCount: document.querySelector("#sidebar-agent-count"),
   sidebarCollapseIcon: document.querySelector("#sidebar-collapse-icon"),
   sidebarCollapseToggle: document.querySelector("#sidebar-collapse-toggle"),
   sidebarProjectList: document.querySelector("#sidebar-project-list"),
   sidebarProjectEmpty: document.querySelector("#sidebar-project-empty"),
+  sidebarProjectUnregisterCancelButton: document.querySelector("#project-unregister-dialog-cancel-button"),
+  sidebarProjectUnregisterConfirmButton: document.querySelector("#project-unregister-dialog-confirm-button"),
+  sidebarProjectUnregisterDialog: document.querySelector("#project-unregister-dialog"),
+  sidebarProjectUnregisterEyebrow: document.querySelector("#project-unregister-dialog-eyebrow"),
+  sidebarProjectUnregisterFeedback: document.querySelector("#project-unregister-dialog-feedback"),
+  sidebarProjectUnregisterSummary: document.querySelector("#project-unregister-dialog-summary"),
+  sidebarProjectUnregisterTitle: document.querySelector("#project-unregister-dialog-title"),
   sidebarRegisterToggle: document.querySelector("#sidebar-register-toggle"),
   // TopNav elements
   topnavCollapseIcon: document.querySelector("#topnav-collapse-icon"),
@@ -2441,6 +2451,14 @@ elements.refreshAgentHealthButton.addEventListener("click", () => {
   void loadAgents({ force: true });
 });
 elements.languageToggle?.addEventListener("click", onToggleLanguage);
+elements.sidebarProjectUnregisterCancelButton?.addEventListener("click", closeProjectUnregisterDialog);
+elements.sidebarProjectUnregisterConfirmButton?.addEventListener("click", () => {
+  void onConfirmProjectUnregister();
+});
+elements.sidebarProjectUnregisterDialog?.addEventListener("close", () => {
+  state.selectedProjectUnregisterId = null;
+  clearFeedback(elements.sidebarProjectUnregisterFeedback);
+});
 elements.topnavCollapseToggle?.addEventListener("click", () => {
   state.navCollapsed = !state.navCollapsed;
   writeStorage(STORAGE_KEYS.navCollapsed, String(state.navCollapsed));
@@ -2652,15 +2670,22 @@ elements.taskExecutionReworkButton.addEventListener("click", onReworkSubTask);
 elements.taskExecutionResumeMergeButton.addEventListener("click", onResumeTaskMerge);
 elements.taskExecutionReworkDescription.addEventListener("input", onExecutionDraftDescriptionInput);
 elements.taskExecutionMailboxForm.addEventListener("submit", onSendMailboxMessage);
-elements.taskHubPlanOpenButton?.addEventListener("click", () => {
-  focusTaskPlanPreview();
+// Tab switching
+for (const tab of document.querySelectorAll(".workspace-tabs__tab")) {
+  tab.addEventListener("click", () => switchWorkspaceTab(tab.dataset.tab));
+}
+// Overflow menu
+elements.workspaceOverflowToggle?.addEventListener("click", toggleOverflowMenu);
+document.addEventListener("click", (e) => {
+  if (elements.workspaceOverflowMenu && !elements.workspaceOverflowMenu.contains(e.target) &&
+      !elements.workspaceOverflowToggle?.contains(e.target)) {
+    elements.workspaceOverflowMenu.hidden = true;
+    elements.workspaceOverflowToggle?.setAttribute("aria-expanded", "false");
+  }
 });
-elements.taskHubDeliveryOpenButton?.addEventListener("click", () => {
-  focusTaskDeliveryOverview();
-});
-elements.taskHubPreviewFocusButton?.addEventListener("click", () => {
-  focusTaskPreviewStudio();
-});
+// Preview overlay
+elements.previewStudioCloseButton?.addEventListener("click", closePreviewStudioOverlay);
+elements.openPreviewStudioButton?.addEventListener("click", () => { toggleOverflowMenu(); openPreviewStudioOverlay(); });
 elements.taskPreviewTargetSelect?.addEventListener("change", onTaskPreviewPresetChange);
 elements.taskPreviewAppRootSelect?.addEventListener("change", onTaskPreviewPresetChange);
 elements.taskPreviewCommandInput?.addEventListener("input", () => {
@@ -2689,7 +2714,7 @@ function switchView(viewId) {
   }
   const previousView = state.currentView;
   state.currentView = viewId;
-  state.focusWorkspaceStageOnNextRender = viewId === "workspace" && previousView !== "workspace";
+  state.focusWorkspaceStageOnNextRender = false;
   for (const id of VIEW_IDS) {
     const el = elements.views[id];
     if (el) {
@@ -2701,9 +2726,11 @@ function switchView(viewId) {
   }
   window.location.hash = viewId;
 
-  if (viewId === "workspace" && state.taskDetail?.task) {
+  if (viewId === "workspace" && previousView !== "workspace") {
     window.requestAnimationFrame(() => {
-      focusActiveWorkspaceStageCard();
+      if (elements.taskDetail) {
+        elements.taskDetail.scrollTop = 0;
+      }
     });
   }
 }
@@ -3161,6 +3188,62 @@ function openTaskActionDialog(action, task) {
   openDialog(elements.taskActionDialog);
 }
 
+function openProjectUnregisterDialog(projectId) {
+  if (!elements.sidebarProjectUnregisterDialog) {
+    return;
+  }
+
+  state.selectedProjectUnregisterId = projectId;
+  clearFeedback(elements.sidebarProjectUnregisterFeedback);
+  renderProjectUnregisterDialog();
+  openDialog(elements.sidebarProjectUnregisterDialog);
+}
+
+function closeProjectUnregisterDialog() {
+  const dialog = elements.sidebarProjectUnregisterDialog;
+
+  if (dialog?.open) {
+    if (typeof dialog.close === "function") {
+      dialog.close();
+    } else {
+      dialog.removeAttribute("open");
+    }
+  }
+
+  clearFeedback(elements.sidebarProjectUnregisterFeedback);
+  state.selectedProjectUnregisterId = null;
+}
+
+function renderProjectUnregisterDialog() {
+  const project = state.projects.find((entry) => entry.id === state.selectedProjectUnregisterId) ?? null;
+
+  if (!project) {
+    return;
+  }
+
+  if (elements.sidebarProjectUnregisterEyebrow) {
+    elements.sidebarProjectUnregisterEyebrow.textContent = t("projectUnregisterDialogEyebrow");
+  }
+
+  if (elements.sidebarProjectUnregisterTitle) {
+    elements.sidebarProjectUnregisterTitle.textContent = `${t("projectUnregisterDialogTitle")} · ${project.name}`;
+  }
+
+  if (elements.sidebarProjectUnregisterSummary) {
+    elements.sidebarProjectUnregisterSummary.textContent = `${t("projectUnregisterDialogSummary", {
+      name: project.name,
+    })} ${t("projectUnregisterDialogHint")}`;
+  }
+
+  if (elements.sidebarProjectUnregisterConfirmButton) {
+    elements.sidebarProjectUnregisterConfirmButton.textContent = t("projectUnregisterConfirmButton");
+  }
+
+  if (elements.sidebarProjectUnregisterCancelButton) {
+    elements.sidebarProjectUnregisterCancelButton.textContent = t("projectPickerCancelButton");
+  }
+}
+
 function closeTaskActionDialog() {
   const dialog = elements.taskActionDialog;
 
@@ -3300,6 +3383,44 @@ async function onConfirmTaskAction() {
   }
 }
 
+async function onConfirmProjectUnregister() {
+  const project = state.projects.find((entry) => entry.id === state.selectedProjectUnregisterId) ?? null;
+
+  if (!project) {
+    closeProjectUnregisterDialog();
+    return;
+  }
+
+  clearFeedback(elements.sidebarProjectUnregisterFeedback);
+  setButtonBusy(
+    elements.sidebarProjectUnregisterConfirmButton,
+    true,
+    t("unregisteringProject"),
+  );
+
+  try {
+    await fetchJson(`/api/projects/${encodeURIComponent(project.id)}`, {
+      method: "DELETE",
+    });
+
+    closeProjectUnregisterDialog();
+    await loadProjects();
+    showFeedback(
+      elements.projectDetailFeedback,
+      "success",
+      t("projectUnregisterSuccess", { name: project.name }),
+    );
+  } catch (error) {
+    showFeedback(elements.sidebarProjectUnregisterFeedback, "error", buildProjectErrorMessage(error));
+  } finally {
+    setButtonBusy(
+      elements.sidebarProjectUnregisterConfirmButton,
+      false,
+      t("projectUnregisterConfirmButton"),
+    );
+  }
+}
+
 function resolveProjectRootLabel(kind) {
   switch (kind) {
     case "home":
@@ -3371,18 +3492,36 @@ function renderSidebarProjects() {
     const isSelected = project.id === state.selectedProjectId;
     const glyph = buildProjectGlyph(project.name);
     const projectTitle = String(project.name ?? "").trim() || project.path || t("sidebarTitle");
-    return `<button class="sidebar__project${isSelected ? " is-selected" : ""}" type="button" data-project-id="${escapeHtmlAttribute(project.id)}" title="${escapeHtmlAttribute(projectTitle)}" aria-label="${escapeHtmlAttribute(projectTitle)}">
-      <span class="sidebar__project-glyph" aria-hidden="true">${escapeHtml(glyph)}</span>
-      <span class="sidebar__project-meta">
-        <div class="sidebar__project-name">${escapeHtml(project.name)}</div>
-        <div class="sidebar__project-path">${escapeHtml(project.path)}</div>
-      </span>
-    </button>`;
+    return `<div class="sidebar__project-card${isSelected ? " is-selected" : ""}">
+      <button class="sidebar__project${isSelected ? " is-selected" : ""}" type="button" data-project-id="${escapeHtmlAttribute(project.id)}" title="${escapeHtmlAttribute(projectTitle)}" aria-label="${escapeHtmlAttribute(projectTitle)}">
+        <span class="sidebar__project-glyph" aria-hidden="true">${escapeHtml(glyph)}</span>
+        <span class="sidebar__project-meta">
+          <div class="sidebar__project-name">${escapeHtml(project.name)}</div>
+          <div class="sidebar__project-path">${escapeHtml(project.path)}</div>
+        </span>
+      </button>
+      <button
+        class="sidebar__project-remove"
+        type="button"
+        data-project-unregister-id="${escapeHtmlAttribute(project.id)}"
+        aria-label="${escapeHtmlAttribute(t("sidebarProjectUnregisterLabel", { name: projectTitle }))}"
+        title="${escapeHtmlAttribute(t("sidebarProjectUnregisterLabel", { name: projectTitle }))}"
+      >
+        <span aria-hidden="true">close</span>
+      </button>
+    </div>`;
   }).join("");
 
   container.querySelectorAll(".sidebar__project").forEach((button) => {
     button.addEventListener("click", () => {
       void selectProject(button.dataset.projectId, { preserveTask: true });
+    });
+  });
+
+  container.querySelectorAll("[data-project-unregister-id]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openProjectUnregisterDialog(button.getAttribute("data-project-unregister-id"));
     });
   });
 }
@@ -3891,6 +4030,7 @@ async function loadTaskDetail(taskId, options = {}) {
       fetchJson(`/api/tasks/${encodeURIComponent(taskId)}/preview`).catch(() => ({ preview: null })),
     ]);
     closeLeaderPlanDetailDialog();
+    const isNewTaskSelection = state.selectedTaskId !== taskId;
     state.selectedTaskId = taskId;
     state.taskDetail = response;
     state.taskPreview = previewResponse?.preview ?? null;
@@ -3898,6 +4038,7 @@ async function loadTaskDetail(taskId, options = {}) {
     writeStorage(STORAGE_KEYS.selectedTaskId, taskId);
     renderTaskList();
     renderTaskDetail();
+    if (isNewTaskSelection) selectPhaseAwareTab(response);
     scheduleTaskPreviewPoll();
 
     if (options.preserveStream !== true) {
@@ -3923,9 +4064,10 @@ async function refreshTaskPreview(taskId, options = {}) {
     state.taskPreview = response?.preview ?? null;
 
     if (options.render !== false && state.taskDetail?.task?.id === taskId) {
-      renderTaskWorkspaceHub(state.taskDetail);
       renderTaskPreview(state.taskDetail);
       renderTaskStageBoard(state.taskDetail);
+      renderPhaseDots(state.taskDetail);
+      updateTabBadges(state.taskDetail);
     }
 
     scheduleTaskPreviewPoll();
@@ -4652,7 +4794,6 @@ function renderTaskDetail() {
   renderLeaderConversation(detail);
   renderTaskDocumentPreview(detail);
   renderLeaderPlanPreview(detail);
-  renderTaskWorkspaceHub(detail);
   renderTaskPreview(detail);
   syncEditablePlanDraft(detail);
   renderDashboardTeamOverview(detail);
@@ -4663,14 +4804,11 @@ function renderTaskDetail() {
   renderSubTaskExecution(detail);
   renderTaskIntegration(detail);
   renderTranscript(detail.messages ?? []);
+  renderPhaseDots(detail);
+  updateTabBadges(detail);
 
   renderTaskMessageComposer(detail);
   renderWorkspaceTaskActions(detail.task);
-  if (state.focusWorkspaceStageOnNextRender) {
-    window.requestAnimationFrame(() => {
-      focusActiveWorkspaceStageCard();
-    });
-  }
   const canConfirmRequirements = detail.task.status === "CLARIFYING";
 
   elements.startClarificationButton.hidden = true;
@@ -4707,14 +4845,12 @@ function renderWorkspaceOverview(detail, latestSession) {
 }
 
 function renderWorkspaceTaskActions(task) {
-  if (!elements.taskWorkspaceActions || !elements.taskWorkspacePauseButton || !elements.taskWorkspaceDeleteButton) {
+  if (!elements.taskWorkspacePauseButton || !elements.taskWorkspaceDeleteButton) {
     return;
   }
 
-  const showActions = Boolean(task) && !task.archivedAt;
   const deleteAllowed = canDeleteTask(task);
 
-  elements.taskWorkspaceActions.hidden = !showActions;
   elements.taskWorkspacePauseButton.hidden = !canPauseTask(task);
   elements.taskWorkspacePauseButton.disabled = !canPauseTask(task);
   elements.taskWorkspacePauseButton.textContent = t("taskPauseButton");
@@ -4723,168 +4859,81 @@ function renderWorkspaceTaskActions(task) {
   elements.taskWorkspaceDeleteButton.textContent = t("taskDeleteButton");
 }
 
-function renderTaskWorkspaceHub(detail) {
-  const parsedPlan = parseCurrentPlanJson(detail.task.currentPlanJson);
-  const planNodeCount = getPlanNodes(parsedPlan).length;
-  const subTasks = detail.subTasks ?? [];
-  const board = detail.board ?? null;
-  const latestIntegrationRun = detail.integration?.latestRun ?? null;
-  const previewSession = state.taskPreview?.session ?? null;
-  const activeStage = buildWorkspaceHubActiveStage(detail, state.taskPreview);
-
-  if (elements.taskHubPlanBadge) {
-    elements.taskHubPlanBadge.textContent = buildTaskDisplayStatusLabel(detail.task);
-    elements.taskHubPlanBadge.className = `badge ${buildTaskStatusBadgeClass(detail.task)}`;
+function switchWorkspaceTab(tabId) {
+  const tabs = ["overview", "document", "plan", "team"];
+  const tabEls = {
+    overview: elements.workspaceTabOverview,
+    document: elements.workspaceTabDocument,
+    plan: elements.workspaceTabPlan,
+    team: elements.workspaceTabTeam,
+  };
+  const panelEls = {
+    overview: elements.workspaceTabpanelOverview,
+    document: elements.workspaceTabpanelDocument,
+    plan: elements.workspaceTabpanelPlan,
+    team: elements.workspaceTabpanelTeam,
+  };
+  for (const id of tabs) {
+    const isActive = id === tabId;
+    tabEls[id]?.classList.toggle("is-active", isActive);
+    tabEls[id]?.setAttribute("aria-selected", String(isActive));
+    if (panelEls[id]) panelEls[id].hidden = !isActive;
   }
-  if (elements.taskHubPlanTitle) {
-    elements.taskHubPlanTitle.textContent = detail.task.status === "PLAN_REVIEW"
-      ? t("workspaceHubPlanTitleReview")
-      : detail.task.status === "PLANNING"
-        ? t("workspaceHubPlanTitlePlanning")
-        : planNodeCount > 0
-          ? t("workspaceHubPlanTitleReady")
-          : t("workspaceHubPlanTitleIdle");
-  }
-  if (elements.taskHubPlanSummary) {
-    elements.taskHubPlanSummary.textContent = detail.task.status === "PLAN_REVIEW"
-      ? t("workspaceHubPlanSummaryReview")
-      : detail.task.status === "PLANNING"
-        ? t("workspaceHubPlanSummaryPlanning")
-        : planNodeCount > 0
-          ? t("workspaceHubPlanSummaryReady")
-          : t("workspaceHubPlanSummaryIdle");
-  }
-  if (elements.taskHubPlanCount) {
-    elements.taskHubPlanCount.textContent = t("workspaceHubPlanCount", { count: planNodeCount });
-  }
-
-  if (elements.taskHubDeliveryBadge) {
-    const tone = detail.task.status === "ACTION_REQUIRED"
-      ? "badge--dirty"
-      : latestIntegrationRun?.status === "COMPLETED" || detail.task.status === "COMPLETED"
-        ? "badge--clean"
-        : subTasks.length > 0
-          ? "badge--accent-soft"
-          : "badge--outline";
-    elements.taskHubDeliveryBadge.textContent = latestIntegrationRun
-      ? buildIntegrationRunStatusLabel(latestIntegrationRun.status)
-      : buildTaskDisplayStatusLabel(detail.task);
-    elements.taskHubDeliveryBadge.className = `badge ${tone}`;
-  }
-  if (elements.taskHubDeliveryTitle) {
-    elements.taskHubDeliveryTitle.textContent = detail.task.status === "COMPLETED"
-      ? t("workspaceHubDeliveryTitleCompleted")
-      : subTasks.length > 0
-        ? t("workspaceHubDeliveryTitleActive")
-        : t("workspaceHubDeliveryTitleIdle");
-  }
-  if (elements.taskHubDeliverySummary) {
-    const waiting = board?.workflow?.waiting ?? 0;
-    const running = board?.summary?.running ?? 0;
-    const manualAttention = board?.workflow?.manualAttentionCount ?? 0;
-    elements.taskHubDeliverySummary.textContent = subTasks.length === 0
-      ? t("workspaceHubDeliverySummaryIdle")
-      : manualAttention > 0
-        ? t("workspaceHubDeliverySummaryAttention", { count: manualAttention })
-        : t("workspaceHubDeliverySummaryActive", {
-            running,
-            waiting,
-            completed: board?.workflow?.completed ?? 0,
-            total: board?.workflow?.total ?? subTasks.length,
-          });
-  }
-  if (elements.taskHubDeliveryCount) {
-    elements.taskHubDeliveryCount.textContent = t("workspaceHubDeliveryCount", { count: subTasks.length });
-  }
-
-  if (elements.taskHubPreviewBadge) {
-    elements.taskHubPreviewBadge.textContent = buildPreviewSessionStatusLabel(previewSession?.status);
-    elements.taskHubPreviewBadge.className = `badge ${buildPreviewSessionBadgeClass(previewSession?.status)}`;
-  }
-  if (elements.taskHubPreviewTitle) {
-    elements.taskHubPreviewTitle.textContent = previewSession?.status === "RUNNING"
-      ? t("workspaceHubPreviewTitleRunning")
-      : previewSession?.status === "STARTING"
-        ? t("workspaceHubPreviewTitleStarting")
-        : t("workspaceHubPreviewTitleIdle");
-  }
-  if (elements.taskHubPreviewSummary) {
-    elements.taskHubPreviewSummary.textContent = previewSession?.status === "RUNNING"
-      ? (previewSession.note || t("workspaceHubPreviewSummaryRunning"))
-      : previewSession?.status === "STARTING"
-        ? t("workspaceHubPreviewSummaryStarting")
-        : t("workspaceHubPreviewSummaryIdle");
-  }
-  if (elements.taskHubPreviewTarget) {
-    elements.taskHubPreviewTarget.textContent = `${t("workspaceHubPreviewTargetLabel")} · ${previewSession?.targetLabel ?? state.taskPreview?.recommendation?.label ?? t("workspaceHubPreviewTargetFallback")}`;
-  }
-
-  toggleWorkspaceHubStageCard(elements.taskHubPlanCard, activeStage === "plan");
-  toggleWorkspaceHubStageCard(elements.taskHubDeliveryCard, activeStage === "delivery");
-  toggleWorkspaceHubStageCard(elements.taskHubPreviewCard, activeStage === "preview");
+  state.activeWorkspaceTab = tabId;
 }
 
-function buildWorkspaceHubActiveStage(detail, preview) {
-  const taskStatus = detail?.task?.status ?? "DRAFT";
-  const acceptanceModel = buildTaskAcceptanceModel(detail, preview);
-
-  if (
-    acceptanceModel.previewRunning
-    || acceptanceModel.acceptanceReady
-    || ["COMPLETED", "FAILED", "CANCELLED"].includes(taskStatus)
-  ) {
-    return "preview";
-  }
-
-  if (["DRAFT", "CLARIFYING", "PLANNING", "PLAN_REVIEW"].includes(taskStatus)) {
-    return "plan";
-  }
-
-  return "delivery";
+function selectPhaseAwareTab(detail) {
+  const status = detail?.task?.status ?? "DRAFT";
+  if (["DRAFT", "CLARIFYING"].includes(status)) switchWorkspaceTab("document");
+  else if (["PLANNING", "PLAN_REVIEW"].includes(status)) switchWorkspaceTab("plan");
+  else if (["EXECUTING", "REVIEWING", "MERGING", "ACTION_REQUIRED"].includes(status)) switchWorkspaceTab("team");
+  else switchWorkspaceTab("overview");
 }
 
-function toggleWorkspaceHubStageCard(element, isCurrent) {
-  if (!element) {
-    return;
-  }
-
-  element.classList.toggle("is-current", isCurrent);
-  element.setAttribute("aria-current", isCurrent ? "step" : "false");
+function renderPhaseDots(detail) {
+  if (!elements.taskPhaseDots) return;
+  const model = buildTaskAutomationLoop(detail, state.taskPreview);
+  elements.taskPhaseDots.replaceChildren(
+    ...model.steps.map((step) => {
+      const dot = document.createElement("span");
+      dot.className = "workspace-phase-dot workspace-phase-dot--" + step.state;
+      dot.title = step.label + " \u00B7 " + step.note;
+      return dot;
+    }),
+  );
 }
 
-function resolveActiveWorkspaceStageCard() {
-  const detail = state.taskDetail;
-
-  if (!detail?.task) {
-    return null;
-  }
-
-  const activeStage = buildWorkspaceHubActiveStage(detail, state.taskPreview);
-
-  if (activeStage === "plan") {
-    return elements.taskHubPlanCard;
-  }
-
-  if (activeStage === "preview") {
-    return elements.taskHubPreviewCard;
-  }
-
-  return elements.taskHubDeliveryCard;
+function updateTabBadges(detail) {
+  const docCount = elements.taskDocumentCount?.textContent?.match(/\d+/)?.[0] ?? "0";
+  const planCount = elements.taskLeaderPlanCount?.textContent?.match(/\d+/)?.[0] ?? "0";
+  const teamCount = elements.taskTeamMemberCount?.textContent?.match(/\d+/)?.[0] ?? "0";
+  setTabBadge(elements.workspaceTabDocumentBadge, docCount !== "0" ? docCount : null);
+  setTabBadge(elements.workspaceTabPlanBadge, planCount !== "0" ? planCount : null);
+  setTabBadge(elements.workspaceTabTeamBadge, teamCount !== "0" ? teamCount : null);
 }
 
-function focusActiveWorkspaceStageCard() {
-  if (state.currentView !== "workspace") {
-    return;
-  }
+function setTabBadge(el, value) {
+  if (!el) return;
+  if (value) { el.textContent = value; el.hidden = false; }
+  else el.hidden = true;
+}
 
-  const card = resolveActiveWorkspaceStageCard();
+function openPreviewStudioOverlay() {
+  elements.previewStudioDialog?.showModal();
+  if (state.taskDetail) renderTaskPreview(state.taskDetail);
+}
 
-  if (!card) {
-    return;
-  }
+function closePreviewStudioOverlay() {
+  elements.previewStudioDialog?.close();
+}
 
-  card.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
-  state.focusWorkspaceStageOnNextRender = false;
+function toggleOverflowMenu() {
+  const menu = elements.workspaceOverflowMenu;
+  const toggle = elements.workspaceOverflowToggle;
+  if (!menu || !toggle) return;
+  const open = !menu.hidden;
+  menu.hidden = open;
+  toggle.setAttribute("aria-expanded", String(!open));
 }
 
 function resetTaskPreviewUi() {
@@ -4904,24 +4953,9 @@ function resetTaskPreviewUi() {
   if (elements.taskPreviewPathInput) {
     elements.taskPreviewPathInput.value = "/";
   }
-  if (elements.taskPreviewDetected) {
-    elements.taskPreviewDetected.textContent = t("previewDetectedEmpty");
-  }
   if (elements.taskPreviewStatusBadge) {
     elements.taskPreviewStatusBadge.textContent = t("previewStatusIdle");
     elements.taskPreviewStatusBadge.className = "badge badge--outline";
-  }
-  if (elements.taskPreviewSummary) {
-    elements.taskPreviewSummary.textContent = t("previewStudioSummary");
-  }
-  if (elements.taskPreviewTargetBadge) {
-    elements.taskPreviewTargetBadge.textContent = `${t("previewTargetBadgeLabel")} · -`;
-  }
-  if (elements.taskPreviewAppBadge) {
-    elements.taskPreviewAppBadge.textContent = `${t("previewAppBadgeLabel")} · -`;
-  }
-  if (elements.taskPreviewUrlBadge) {
-    elements.taskPreviewUrlBadge.textContent = `${t("previewUrlBadgeLabel")} · -`;
   }
   if (elements.taskPreviewOpenLink) {
     elements.taskPreviewOpenLink.hidden = true;
@@ -5002,33 +5036,9 @@ function renderTaskPreview(detail) {
     elements.taskPreviewPathInput.dataset.autoFilled = "true";
   }
 
-  if (elements.taskPreviewDetected) {
-    elements.taskPreviewDetected.textContent = activeAppRoot
-      ? t("previewDetectedSummary", {
-          framework: activeAppRoot.framework ?? t("unknown"),
-          path: activeAppRoot.path ?? ".",
-          packageManager: activeAppRoot.packageManager ?? t("unknown"),
-        })
-      : t("previewDetectedEmpty");
-  }
-
   if (elements.taskPreviewStatusBadge) {
     elements.taskPreviewStatusBadge.textContent = buildPreviewSessionStatusLabel(session?.status);
     elements.taskPreviewStatusBadge.className = `badge ${buildPreviewSessionBadgeClass(session?.status)}`;
-  }
-  if (elements.taskPreviewSummary) {
-    elements.taskPreviewSummary.textContent = session?.note
-      ?? activeTarget?.description
-      ?? t("previewStudioSummary");
-  }
-  if (elements.taskPreviewTargetBadge) {
-    elements.taskPreviewTargetBadge.textContent = `${t("previewTargetBadgeLabel")} · ${session?.targetLabel ?? activeTarget?.label ?? t("workspaceHubPreviewTargetFallback")}`;
-  }
-  if (elements.taskPreviewAppBadge) {
-    elements.taskPreviewAppBadge.textContent = `${t("previewAppBadgeLabel")} · ${session?.appRoot ?? activeAppRoot?.path ?? "-"}`;
-  }
-  if (elements.taskPreviewUrlBadge) {
-    elements.taskPreviewUrlBadge.textContent = `${t("previewUrlBadgeLabel")} · ${session?.url ?? "-"}`;
   }
   if (elements.taskPreviewOpenLink) {
     elements.taskPreviewOpenLink.hidden = !session?.url;
@@ -5336,13 +5346,12 @@ function buildPreviewSessionBadgeClass(status) {
 }
 
 function focusTaskPreviewStudio() {
-  switchView("workspace");
-  elements.taskPreviewStudio?.scrollIntoView({ behavior: "smooth", block: "start" });
-  elements.taskPreviewTargetSelect?.focus();
+  openPreviewStudioOverlay();
 }
 
 function focusTaskPlanPreview() {
   switchView("workspace");
+  switchWorkspaceTab("plan");
 
   const detail = state.taskDetail;
   const parsedPlan = parseCurrentPlanJson(detail?.task?.currentPlanJson);
@@ -5350,17 +5359,12 @@ function focusTaskPlanPreview() {
 
   if (detail && nodes.length > 0) {
     openLeaderPlanDetailDialog(0, nodes[0]);
-    return;
   }
-
-  elements.taskLeaderPlanTitle?.scrollIntoView({ behavior: "smooth", block: "start" });
-  elements.taskLeaderPlanList?.querySelector("button")?.focus();
 }
 
 function focusTaskDeliveryOverview() {
   switchView("workspace");
-  document.querySelector("#task-team-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  elements.taskTeamMemberList?.querySelector("button, [tabindex], a")?.focus();
+  switchWorkspaceTab("team");
 }
 
 function renderLeaderConversation(detail) {
@@ -5418,9 +5422,6 @@ function renderTaskDocumentPreview(detail) {
   const isConfirmedDocument = !["DRAFT", "CLARIFYING"].includes(taskStatus);
   const shouldShowLoading = sections.length === 0 && ["CLARIFYING", "PLANNING"].includes(taskStatus);
 
-  if (elements.taskDocumentEyebrow) {
-    elements.taskDocumentEyebrow.textContent = t("taskDocEyebrow");
-  }
   if (elements.taskDocumentTitle) {
     elements.taskDocumentTitle.textContent = t("taskDocTitle");
   }
@@ -5441,11 +5442,6 @@ function renderTaskDocumentPreview(detail) {
       : t("taskDocSummaryDraft");
   if (elements.taskDocumentCount) {
     elements.taskDocumentCount.textContent = t("workspacePreviewCountDocument", { count: sections.length });
-  }
-  if (elements.taskDocumentGuide) {
-    elements.taskDocumentGuide.textContent = isConfirmedDocument
-      ? t("workspacePreviewGuideTaskDocConfirmed")
-      : t("workspacePreviewGuideTaskDoc");
   }
   elements.taskDocumentBadge.textContent = taskStatus === "CLARIFYING"
     ? t("taskDocBadgeReady")
@@ -5470,9 +5466,6 @@ function renderExecutionPlanPreview(detail, nodes = buildLeaderPlanNodes(detail)
   const awaitingTaskDocument = ["DRAFT", "CLARIFYING"].includes(taskStatus);
   const shouldShowLoading = nodes.length === 0 && !awaitingTaskDocument && taskStatus === "PLANNING";
 
-  if (elements.taskLeaderPlanEyebrow) {
-    elements.taskLeaderPlanEyebrow.textContent = t("executionPlanEyebrow");
-  }
   if (elements.taskLeaderPlanTitle) {
     elements.taskLeaderPlanTitle.textContent = t("executionPlanTitle");
   }
@@ -5493,13 +5486,6 @@ function renderExecutionPlanPreview(detail, nodes = buildLeaderPlanNodes(detail)
       : t("executionPlanSummaryGenerating");
   if (elements.taskLeaderPlanCount) {
     elements.taskLeaderPlanCount.textContent = t("workspacePreviewCountPlan", { count: nodes.length });
-  }
-  if (elements.taskLeaderPlanGuide) {
-    elements.taskLeaderPlanGuide.textContent = nodes.length > 0
-      ? t("workspacePreviewGuideExecutionPlan")
-      : awaitingTaskDocument
-        ? t("taskDocConfirmHint")
-        : t("workspacePreviewGuideExecutionPlanPending");
   }
   elements.taskLeaderPlanBadge.textContent = nodes.length > 0
     ? t("executionPlanReadyBadge")
@@ -8255,6 +8241,8 @@ function clearTaskList() {
 }
 
 function clearTaskDetail() {
+  switchWorkspaceTab("overview");
+  closePreviewStudioOverlay();
   resetTaskMessageQueueState({ clearInput: true });
   clearTaskPreviewPoll();
   state.executionDrafts = new Map();
@@ -8360,9 +8348,6 @@ function clearTaskDetail() {
     elements.taskLeaderPlanBadge.textContent = t("executionPlanWaitingBadge");
     elements.taskLeaderPlanBadge.className = "badge badge--outline";
   }
-  if (elements.taskLeaderPlanEyebrow) {
-    elements.taskLeaderPlanEyebrow.textContent = t("executionPlanEyebrow");
-  }
   if (elements.taskLeaderPlanTitle) {
     elements.taskLeaderPlanTitle.textContent = t("executionPlanTitle");
   }
@@ -8385,15 +8370,9 @@ function clearTaskDetail() {
   if (elements.taskLeaderPlanCount) {
     elements.taskLeaderPlanCount.textContent = t("workspacePreviewCountPlan", { count: 0 });
   }
-  if (elements.taskLeaderPlanGuide) {
-    elements.taskLeaderPlanGuide.textContent = t("workspacePreviewGuideExecutionPlanPending");
-  }
   if (elements.taskDocumentBadge) {
     elements.taskDocumentBadge.textContent = t("taskDocBadgeDraft");
     elements.taskDocumentBadge.className = "badge badge--outline";
-  }
-  if (elements.taskDocumentEyebrow) {
-    elements.taskDocumentEyebrow.textContent = t("taskDocEyebrow");
   }
   if (elements.taskDocumentTitle) {
     elements.taskDocumentTitle.textContent = t("taskDocTitle");
@@ -8417,13 +8396,7 @@ function clearTaskDetail() {
   if (elements.taskDocumentCount) {
     elements.taskDocumentCount.textContent = t("workspacePreviewCountDocument", { count: 0 });
   }
-  if (elements.taskDocumentGuide) {
-    elements.taskDocumentGuide.textContent = t("workspacePreviewGuideTaskDoc");
-  }
   elements.taskTeamMemberCount.textContent = countLabel(0, "teamMemberCountOne", "teamMemberCountOther");
-  if (elements.taskStageRail) {
-    elements.taskStageRail.replaceChildren();
-  }
   if (elements.taskNextActionTitle) {
     elements.taskNextActionTitle.textContent = t("taskNextDraftTitle");
   }
@@ -8469,9 +8442,6 @@ function clearTaskDetail() {
   }
   if (elements.taskMessageForm) {
     elements.taskMessageForm.hidden = true;
-  }
-  if (elements.taskWorkspaceActions) {
-    elements.taskWorkspaceActions.hidden = true;
   }
   if (elements.taskWorkspacePauseButton) {
     elements.taskWorkspacePauseButton.hidden = true;
@@ -9064,31 +9034,13 @@ function buildAutomationStepStateLabel(state) {
 function renderTaskStageBoard(detail) {
   const task = detail?.task;
 
-  if (!task || !elements.taskStageRail) {
+  if (!task) {
     return;
   }
 
   const automationModel = buildTaskAutomationLoop(detail, state.taskPreview);
   const meta = buildTaskStagePrimaryAction(detail, automationModel, buildTaskStageMeta(task));
   const decisionModel = buildTaskDecisionModel(detail, state.taskPreview);
-
-  elements.taskStageRail.hidden = false;
-  elements.taskStageRail.replaceChildren(...automationModel.steps.map((step, index) => {
-    const item = document.createElement("div");
-    const stepLabel = step.label ?? "";
-    const stepStateLabel = buildAutomationStepStateLabel(step.state);
-    const stepNote = step.note ?? automationModel.summary ?? "";
-    item.className = `task-stage-step task-stage-step--${step.state === "ready" ? "next" : step.state}${["done", "waiting"].includes(step.state) ? " is-muted" : ""}`;
-    item.innerHTML = `
-      <span class="task-stage-step__index">${escapeHtml(String(index + 1))}</span>
-      <div class="task-stage-step__copy">
-        <p class="task-stage-step__label" title="${escapeHtmlAttribute(stepLabel)}">${escapeHtml(stepLabel)}</p>
-        <span class="task-stage-step__state">${escapeHtml(stepStateLabel)}</span>
-        <p class="task-stage-step__note" title="${escapeHtmlAttribute(stepNote)}">${escapeHtml(stepNote)}</p>
-      </div>
-    `;
-    return item;
-  }));
 
   elements.taskNextActionTitle.textContent = meta.title;
   elements.taskNextActionSummary.textContent = `${meta.summary ?? decisionModel.summary ?? automationModel.summary} ${t("previewReadinessProgress", {
@@ -9101,6 +9053,7 @@ function renderTaskStageBoard(detail) {
   elements.taskNextActionButton.dataset.action = meta.buttonAction;
   elements.taskNextActionButton.hidden = false;
   renderTaskDecisionCard(detail);
+  renderPhaseDots(detail);
 }
 
 async function onTaskNextAction() {
@@ -9148,18 +9101,18 @@ async function onTaskNextAction() {
 
   if (action === "plan") {
     switchView("workspace");
-    elements.taskHubPlanOpenButton?.scrollIntoView({ behavior: "smooth", block: "center" });
+    switchWorkspaceTab("plan");
     return;
   }
 
   if (action === "ops") {
     switchView("workspace");
-    elements.taskHubDeliveryOpenButton?.scrollIntoView({ behavior: "smooth", block: "center" });
+    switchWorkspaceTab("team");
     return;
   }
 
   if (action === "preview") {
-    focusTaskPreviewStudio();
+    openPreviewStudioOverlay();
     return;
   }
 
@@ -10222,6 +10175,10 @@ function onToggleLanguage() {
 
   if (state.taskActionDialogState) {
     renderTaskActionDialog();
+  }
+
+  if (state.selectedProjectUnregisterId) {
+    renderProjectUnregisterDialog();
   }
 }
 

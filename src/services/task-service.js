@@ -57,6 +57,7 @@ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_FINAL_REVIEW_DIFF_BYTES = 32_768;
 const MAX_FINAL_REVIEW_LOG_BYTES = 32_768;
 const MAX_INCREMENTAL_REVIEW_LOG_BYTES = 32_768;
+const MAX_AUTO_REWORK_RETRIES = 2;
 const MAX_MAILBOX_PROMPT_MESSAGE_BYTES = 1_024;
 const FINAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
 const INCREMENTAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
@@ -453,6 +454,56 @@ export class TaskService {
       ok: true,
       branchCleanup,
       task: deletedTask,
+    };
+  }
+
+  async deleteProjectTasks(projectId, input = {}) {
+    const project = await this.projectRepository.findProjectById(projectId);
+
+    if (!project) {
+      return failure(TASK_SERVICE_ERROR_CODES.PROJECT_NOT_FOUND, "Project not found.", { projectId });
+    }
+
+    const tasks = await this.taskRepository.listTasksByProjectId(projectId, { includeArchived: true });
+    const deleteBranches = input?.deleteBranches === true;
+    const deletedTasks = [];
+    const cleanedBranches = [];
+    const cleanedWorktrees = [];
+
+    for (const task of tasks) {
+      const [subTasks, sessions] = await Promise.all([
+        this.taskRepository.listSubTasksByTaskId(task.id),
+        this.taskRepository.listSessionsByTaskId(task.id),
+      ]);
+
+      await this.#stopTaskSessions(task, subTasks, { persistCancellation: true });
+
+      const branchCleanup = deleteBranches
+        ? await this.#cleanupTaskBranches(task, subTasks)
+        : buildEmptyTaskCleanupResult();
+
+      if (!branchCleanup.ok) {
+        return branchCleanup;
+      }
+
+      const deletedTask = await this.taskRepository.deleteTask(task.id);
+      await rm(path.join(this.uploadRootPath, task.id), { force: true, recursive: true }).catch(() => null);
+      this.#clearTaskRuntimeState(task.id, subTasks, sessions);
+
+      if (deletedTask) {
+        deletedTasks.push(deletedTask);
+      }
+
+      cleanedBranches.push(...(branchCleanup.cleanedBranches ?? []));
+      cleanedWorktrees.push(...(branchCleanup.cleanedWorktrees ?? []));
+    }
+
+    return {
+      ok: true,
+      cleanedBranches,
+      cleanedWorktrees,
+      deletedTasks,
+      projectId,
     };
   }
 
@@ -3586,7 +3637,27 @@ export class TaskService {
     }
 
     if (exitCode === 0) {
-      await this.#runIncrementalReview(taskId, subTaskId, sessionId);
+      const reviewResult = await this.#runIncrementalReview(taskId, subTaskId, sessionId);
+      const decision = reviewResult?.decision;
+
+      if (decision === "REWORK") {
+        const subTask = await this.taskRepository.findSubTaskById(subTaskId);
+
+        if (subTask && (subTask.retryCount ?? 0) < MAX_AUTO_REWORK_RETRIES) {
+          await this.#autoReworkSubTask(taskId, subTaskId, subTask);
+        }
+
+        await this.#progressDependencySchedule(taskId);
+        await this.#maybeStartFinalReview(taskId);
+        return;
+      }
+
+      if (decision === "REJECTED") {
+        await this.#progressDependencySchedule(taskId);
+        await this.#maybeStartFinalReview(taskId);
+        return;
+      }
+
       const syncResult = await this.#syncSubTaskIntoTaskMainline(taskId, subTaskId);
 
       if (!syncResult.ok) {
@@ -3792,14 +3863,17 @@ export class TaskService {
       subTaskId,
       summary: parsedReview.review.summary,
     });
+
+    const nextStatus = mapIncrementalReviewDecisionToSubTaskStatus(persistedReview.decision);
     const reviewedSubTask = await this.taskRepository.updateSubTask(subTaskId, {
       latestReviewDecision: persistedReview.decision,
       latestReviewPhase: persistedReview.phase,
       latestReviewSummary: persistedReview.summary,
+      ...(nextStatus ? { status: nextStatus } : {}),
     });
 
     if (!reviewedSubTask) {
-      return;
+      return { decision: null };
     }
 
     this.#publish(taskId, "subtask:review", {
@@ -3809,6 +3883,37 @@ export class TaskService {
       subtaskId: reviewedSubTask.id,
       taskId,
     });
+
+    if (nextStatus) {
+      this.#publishSubTaskStatus(taskId, reviewedSubTask);
+    }
+
+    return { decision: persistedReview.decision };
+  }
+
+  async #autoReworkSubTask(taskId, subTaskId, subTask) {
+    if (this.closed) {
+      return;
+    }
+
+    if (await this.#hasLiveWorkerSession(subTaskId)) {
+      return;
+    }
+
+    const pendingSubTask = await this.taskRepository.updateSubTask(subTaskId, {
+      lastError: null,
+      retryCount: (subTask.retryCount ?? 0) + 1,
+      status: SUBTASK_STATUS.PENDING,
+    });
+
+    this.#publish(taskId, "subtask:rework", {
+      description: subTask.description,
+      subtaskId: subTaskId,
+      taskId,
+    });
+    this.#publishSubTaskStatus(taskId, pendingSubTask);
+
+    await this.#launchSubTask(taskId, subTaskId);
   }
 
   async #maybeStartFinalReview(taskId) {
@@ -5953,6 +6058,19 @@ function mapFinalReviewDecisionToSubTaskStatus(decision) {
       return SUBTASK_STATUS.DISCARD_PENDING;
     default:
       return SUBTASK_STATUS.REVIEW_PENDING;
+  }
+}
+
+function mapIncrementalReviewDecisionToSubTaskStatus(decision) {
+  switch (decision) {
+    case "REWORK":
+      return SUBTASK_STATUS.REWORK_REQUIRED;
+    case "REJECTED":
+      return SUBTASK_STATUS.REWORK_REQUIRED;
+    case "ACCEPTED":
+      return null;
+    default:
+      return null;
   }
 }
 
