@@ -174,6 +174,14 @@ export async function pruneWorktrees(repoPath) {
   return runGitCapture(repoPath, ["worktree", "prune", "--expire", "now"]);
 }
 
+export async function stageAllFiles(repoPath) {
+  return runGitCapture(repoPath, ["add", "--all"]);
+}
+
+export async function commitMerge(repoPath, message) {
+  return runGitCapture(repoPath, ["commit", "--no-edit", "-m", message]);
+}
+
 async function branchExists(repoPath, branchName) {
   try {
     await runGit(repoPath, ["show-ref", "--verify", "--quiet", `refs/heads/${branchName}`]);

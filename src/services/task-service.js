@@ -22,6 +22,8 @@ import {
   resolveRevision,
   resolveUniqueBranchName,
   resolveWorktreePath,
+  stageAllFiles,
+  commitMerge,
 } from "./git-workspace-service.js";
 import { resolveBranchHeadCommit } from "./repo-validation-service.js";
 import {
@@ -103,6 +105,11 @@ const TASK_PAUSED_REASON_PREFIX = "Paused by operator from ";
 const CLEANUP_RETRY_ATTEMPTS = 4;
 const CLEANUP_RETRY_DELAY_MS = 250;
 const SESSION_STOP_WAIT_TIMEOUT_MS = 7_000;
+const WATCHDOG_INTERVAL_MS = 60_000;
+const WORKER_IDLE_THRESHOLD_MS = 5 * 60_000;
+const WORKER_HARD_TIMEOUT_MS = 30 * 60_000;
+const MAX_CONFLICT_RESOLUTION_ATTEMPTS = 1;
+const MAX_CONFLICT_FILE_BYTES = 16_384;
 
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
 const DOCUMENT_EXTENSIONS = new Set([".md", ".pdf", ".txt"]);
@@ -233,6 +240,8 @@ export class TaskService {
     this.pendingProjectGitLocks = new Map();
     this.integrationGateRunner = options.integrationGateRunner ?? defaultIntegrationGateRunner;
     this.closed = false;
+    this.watchdogTimer = null;
+    this.#startWatchdog();
   }
 
   async createTask(input) {
@@ -2610,14 +2619,45 @@ export class TaskService {
         }
 
         if (!mergeResult.ok) {
+          const autoResolved = await this.#attemptAutoResolveConflict(
+            project.path, task, subTask, "integration-merge",
+          );
+
+          if (autoResolved.ok) {
+            const mergedCommitSha = await resolveRevision(project.path, "HEAD").catch(() => null);
+            await this.taskRepository.createMergeRecord({
+              completedAt: new Date().toISOString(),
+              operation: MERGE_OPERATION.MERGE,
+              resultCommitSha: mergedCommitSha,
+              sourceBranch: subTask.branchName,
+              status: MERGE_STATUS.SUCCEEDED,
+              subTaskId: subTask.id,
+              targetBranch: integrationRun.integrationBranch,
+            });
+            await this.taskRepository.updateIntegrationQueueItem(queueItem.id, {
+              mergedCommitSha,
+              status: INTEGRATION_QUEUE_ITEM_STATUS.MERGED,
+            });
+            this.#publish(task.id, "merge:auto-resolved", {
+              subtaskId: subTask.id,
+              taskId: task.id,
+            });
+            await this.taskRepository.createMessage({
+              content: `Auto-resolved merge conflict for ${subTask.title} during integration.`,
+              role: MESSAGE_ROLE.SYSTEM,
+              taskId: task.id,
+            });
+            continue;
+          }
+
+          await abortMerge(project.path).catch(() => null);
+
           const conflictSummary = await this.#buildMergeConflictSummary(
             project.path,
             subTask,
             { baseBranch: integrationRun.integrationBranch },
             mergeResult,
           );
-
-          await abortMerge(project.path).catch(() => null);
           await this.taskRepository.createMergeRecord({
             completedAt: new Date().toISOString(),
             conflictSummary,
@@ -3326,6 +3366,9 @@ export class TaskService {
           exitPromise: createDeferredPromise(),
           runtime,
           sessionId: runningSession.id,
+          taskId: task.id,
+          startedAt: Date.now(),
+          lastOutputAt: Date.now(),
         });
 
         runtime.onOutput((chunk) => {
@@ -3582,6 +3625,11 @@ export class TaskService {
       return;
     }
 
+    const watchdogEntry = this.runningWorkerSessions.get(subTaskId);
+    if (watchdogEntry) {
+      watchdogEntry.lastOutputAt = Date.now();
+    }
+
     const normalizedChunk = normalizeOutputChunk(chunk);
 
     if (!normalizedChunk) {
@@ -3730,14 +3778,31 @@ export class TaskService {
           return { ok: true };
         }
 
+        const autoResolved = await this.#attemptAutoResolveConflict(
+          project.path, task, subTask, "mainline-sync",
+        );
+
+        if (autoResolved.ok) {
+          await this.taskRepository.createMessage({
+            content: `Task mainline updated: auto-resolved conflict merging ${subTask.branchName} into ${taskBranchName}.`,
+            role: MESSAGE_ROLE.SYSTEM,
+            taskId,
+          });
+          this.#publish(taskId, "merge:auto-resolved", {
+            subtaskId: subTask.id,
+            taskId,
+          });
+          return { ok: true };
+        }
+
+        await abortMerge(project.path).catch(() => null);
+
         const conflictSummary = await this.#buildMergeConflictSummary(
           project.path,
           subTask,
           { baseBranch: taskBranchName },
           mergeResult,
         );
-
-        await abortMerge(project.path).catch(() => null);
         await this.taskRepository.createMergeRecord({
           completedAt: new Date().toISOString(),
           conflictSummary,
@@ -5269,7 +5334,183 @@ export class TaskService {
     );
   }
 
+  async #attemptAutoResolveConflict(repoPath, task, subTask, conflictType) {
+    const conflictFiles = await listConflictPaths(repoPath);
+
+    if (conflictFiles.length === 0) {
+      return { ok: false };
+    }
+
+    const fileContents = [];
+
+    for (const filePath of conflictFiles.slice(0, 10)) {
+      try {
+        const fullPath = path.join(repoPath, filePath);
+        const content = await readFile(fullPath, "utf8");
+        fileContents.push({
+          path: filePath,
+          content: content.length > MAX_CONFLICT_FILE_BYTES
+            ? content.slice(0, MAX_CONFLICT_FILE_BYTES) + "\n... (truncated)"
+            : content,
+        });
+      } catch {
+        /* skip unreadable */
+      }
+    }
+
+    if (fileContents.length === 0) {
+      return { ok: false };
+    }
+
+    const agentFactory = this.agentService.agentRegistry.get(task.leadAgentType);
+
+    if (!agentFactory?.capabilities?.canOrchestrate || agentFactory.runtimeMode !== "REAL") {
+      return { ok: false };
+    }
+
+    const health = await this.agentService.getHealth({ force: true });
+
+    if (!health.agents?.[task.leadAgentType]?.available) {
+      return { ok: false };
+    }
+
+    const prompt = buildConflictResolutionPrompt(task, subTask, conflictType, fileContents);
+
+    try {
+      const runtime = await agentFactory.spawnSession({
+        attachments: [],
+        branchName: task.baseBranch,
+        prompt,
+        sandbox: {
+          type: selectLeadSandboxType(agentFactory.capabilities.supportedSandboxTypes),
+        },
+        sessionType: SESSION_TYPE.LEAD,
+        workDir: repoPath,
+      });
+
+      const RESOLVE_TIMEOUT_MS = 90_000;
+      let timedOut = false;
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        runtime.kill?.().catch(() => null);
+      }, RESOLVE_TIMEOUT_MS);
+
+      try {
+        await collectAgentResponse(runtime);
+      } catch {
+        /* agent exited with non-zero or was killed — treat as failure */
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      if (timedOut) {
+        return { ok: false };
+      }
+    } catch {
+      return { ok: false };
+    }
+
+    const remainingConflicts = await listConflictPaths(repoPath);
+
+    if (remainingConflicts.length > 0) {
+      return { ok: false };
+    }
+
+    const stageResult = await stageAllFiles(repoPath);
+
+    if (!stageResult.ok) {
+      return { ok: false };
+    }
+
+    const commitResult = await commitMerge(
+      repoPath,
+      `Merge ${subTask.branchName}: auto-resolved by leader agent`,
+    );
+
+    return { ok: commitResult.ok };
+  }
+
+  #startWatchdog() {
+    this.watchdogTimer = setInterval(() => void this.#runWatchdogScan(), WATCHDOG_INTERVAL_MS);
+    if (this.watchdogTimer.unref) {
+      this.watchdogTimer.unref();
+    }
+  }
+
+  #stopWatchdog() {
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
+  }
+
+  async #runWatchdogScan() {
+    if (this.closed) {
+      return;
+    }
+
+    const now = Date.now();
+
+    for (const [subTaskId, entry] of this.runningWorkerSessions) {
+      const idleMs = now - entry.lastOutputAt;
+      const totalMs = now - entry.startedAt;
+
+      if (totalMs >= WORKER_HARD_TIMEOUT_MS) {
+        await this.#killAndRetryWorker(subTaskId, entry, `Worker hard timeout after ${Math.round(totalMs / 60_000)}m.`);
+        continue;
+      }
+
+      if (idleMs >= WORKER_IDLE_THRESHOLD_MS) {
+        await this.#killAndRetryWorker(subTaskId, entry, `Worker idle for ${Math.round(idleMs / 60_000)}m with no output.`);
+        continue;
+      }
+    }
+  }
+
+  async #killAndRetryWorker(subTaskId, entry, reason) {
+    if (this.closed) {
+      return;
+    }
+
+    this.cancelledWorkerSessionIds.add(entry.sessionId);
+
+    await entry.runtime?.kill?.().catch(() => null);
+    this.runningWorkerSessions.delete(subTaskId);
+
+    await this.taskRepository.updateSession(entry.sessionId, {
+      endedAt: new Date().toISOString(),
+      exitCode: null,
+      status: SESSION_STATUS.FAILED,
+    });
+
+    await this.taskRepository.createMessage({
+      content: `Watchdog: ${reason}`,
+      role: MESSAGE_ROLE.SYSTEM,
+      taskId: entry.taskId,
+    });
+
+    this.#publish(entry.taskId, "watchdog:timeout", {
+      reason,
+      subtaskId: subTaskId,
+      taskId: entry.taskId,
+    });
+
+    const subTask = await this.taskRepository.findSubTaskById(subTaskId);
+
+    if (subTask && (subTask.retryCount ?? 0) < MAX_AUTO_REWORK_RETRIES) {
+      await this.#autoReworkSubTask(entry.taskId, subTaskId, subTask);
+    } else {
+      await this.taskRepository.updateSubTask(subTaskId, {
+        lastError: reason,
+        status: SUBTASK_STATUS.FAILED,
+      });
+      await this.#progressDependencySchedule(entry.taskId);
+      await this.#maybeStartFinalReview(entry.taskId);
+    }
+  }
+
   close() {
+    this.#stopWatchdog();
     this.closed = true;
     for (const activeSession of this.runningLeadSessions.values()) {
       void activeSession.runtime?.kill?.().catch(() => null);
@@ -5658,6 +5899,30 @@ function buildWorkerPrompt(task, subTask, context = {}) {
     "6. Do not claim completion unless the deliverable, changed files, and validation evidence all align.",
     "Use the supplied attachments when relevant.",
   ].filter(Boolean).join("\n");
+}
+
+function buildConflictResolutionPrompt(task, subTask, conflictType, fileContents) {
+  const filesSection = fileContents.map((f) =>
+    `--- ${f.path} ---\n${f.content}`
+  ).join("\n\n");
+
+  return [
+    "You are the lead agent resolving a merge conflict in an EAT task.",
+    "This is a conflict resolution session.",
+    `Task: ${task.title}`,
+    `Subtask being merged: ${subTask.title} (branch: ${subTask.branchName})`,
+    `Conflict type: ${conflictType}`,
+    "",
+    "The following files have merge conflicts with standard conflict markers (<<<<<<< ======= >>>>>>>):",
+    filesSection,
+    "",
+    "Instructions:",
+    "1. Edit EACH conflicted file to resolve the conflicts. Remove ALL conflict markers.",
+    "2. Keep the intent of BOTH sides where possible. Prefer the incoming (subtask) changes when they add new functionality.",
+    "3. Ensure the resolved code is syntactically valid.",
+    "4. Do NOT create new files or modify non-conflicted files.",
+    "5. After editing, the system will stage and commit automatically.",
+  ].join("\n");
 }
 
 function formatWorkerPromptMailboxNotes(mailboxMessages = [], subTasks = []) {
