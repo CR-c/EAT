@@ -6,10 +6,10 @@ Add a minimal task-scoped mailbox so upstream context can flow to downstream sub
 
 ## PRD Coverage
 
-- `4.1 MVP In Scope`
-- `4.3 MVP Guardrails`
-- `6.2 Dependency Model`
-- `6.9 Agent Mailbox And Handoff Model`
+- `10.7 Structured Mailbox And Handoff`
+- `4.5 审查与合并历史必须 append-only`
+- `8.3 MailboxMessage 关键字段`
+- `10.6 Team Lifecycle And Worker Execution`
 
 ## Preconditions
 

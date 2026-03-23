@@ -1,51 +1,52 @@
 # Phase 19 - Structured Mailbox, Contracts And Artifact Handoff
 
-## 目标
+## Goal
 
-把 phase 16 的基础 mailbox 扩展成真正可支撑 team 协作的结构化 handoff 层。
+把 phase `16` 的基础 mailbox 升级为结构化、可追踪、可注入 prompt 的 handoff 层，用于真实 team 协作。
 
-这一阶段完成后，agent 之间传递的不应只是自由文本，还应包括：
+## PRD Coverage
 
-- 合同信息
-- 交付物引用
-- 接口说明
-- 阻塞与请求
-- 结果确认
+本阶段主要落实：
 
-## 为什么需要这一阶段
+- typed mailbox / handoff
+- append-only mailbox history
+- `artifactRefs` / `fileRefs` / `branchRef` / `schemaJson` / `requiresAck`
+- subtask -> lead 与 subtask -> subtask 协作
+- prompt 注入按类型裁剪
 
-当前 mailbox 已经能做：
+## Preconditions
 
-- lead -> subtask note
-- upstream -> downstream 自动 note
+- phase `16` 已提供 task-scoped mailbox 主干
+- phase `17` 和 `18` 已提供 team members 与 role-aware DAG
 
-但对于真实全栈任务还不够，因为下游常常需要的是结构化信息，例如：
+## Deliverables
 
-- API endpoint contract
-- env / migration requirements
-- test commands
-- file locations
-- branch references
+- 扩展后的 mailbox message schema
+- contract-aware mailbox API
+- inbox / outbox / contracts / blockers UI
+- worker prompt 的 handoff 注入策略
+- artifact reference rendering
 
-如果继续只靠自由文本，复杂任务很快会变成 prompt 垃圾堆。
+## Suggested Execution Order
 
-## 范围
+1. 扩展 mailbox message 持久化结构。
+2. 支持 typed message 的发送、读取和分组。
+3. 升级 prompt 注入逻辑。
+4. 在执行界面提供 contracts / blockers / outbox 视图。
+5. 增加手动发送结构化消息的表单和测试。
 
-本阶段内：
+## Schema And Persistence
 
-- 扩展 mailbox 消息类型
-- 支持 artifact / contract 引用
-- 支持 subtask -> lead
-- 支持 subtask -> subtask 主动发信
-- 在 worker prompt 中按类型注入 handoff
+本阶段应使用或引入这些字段：
 
-本阶段外：
+- `messageType`
+- `artifactRefs`
+- `fileRefs`
+- `branchRef`
+- `schemaJson`
+- `requiresAck`
 
-- 跨 task 消息
-- 跨项目共享知识库
-- 多用户权限体系
-
-## 建议消息类型
+消息类型至少包括：
 
 - `NOTE`
 - `BLOCKER`
@@ -55,80 +56,67 @@
 - `TEST_REQUEST`
 - `REVIEW_REQUEST`
 
-## 建议 payload 扩展
+约束：
 
-除原有字段外，增加：
+- mailbox 继续 append-only
+- 必须保留 sender、target、type 和引用上下文
 
-- `messageType`
-- `artifactRefs[]`
-- `branchRef?`
-- `fileRefs[]`
-- `schemaJson?`
-- `requiresAck`
+## API And Event Surface
 
-## 产品决策
+建议或要求具备：
 
-### 1. mailbox 仍然 append-only
+- `POST /api/tasks/:taskId/mailbox`
+- task detail / board 读取中包含 mailbox messages
 
-不引入“编辑历史覆盖”。
+推荐事件：
 
-需要保留：
+- `mailbox:message`
+- `team:updated`
 
-- 谁发的
-- 发给谁
-- 当时引用了什么 artifact
+## Backend Tasks
 
-### 2. prompt 注入要按类型裁剪
+- 为 mailbox 增加 typed payload 的校验和规范化。
+- 支持 lead、subtask、system 三类 sender。
+- 支持 lead 与 subtask 两类 target。
+- 按消息类型生成 prompt-ready handoff 摘要，而不是盲目拼接全文。
+- 保持 mailbox 记录可以在 task reload 后完整恢复。
 
-worker prompt 中不应简单拼接所有消息，而应：
+## UI Tasks
 
-- 优先注入最新合同
-- 其次注入 blocker / deliverable_ready
-- 保留少量摘要文本
-
-### 3. handoff 可见性必须强
-
-在 Web 中，用户必须能看见：
-
-- 一个节点收到了哪些合同
-- 它又向谁发了哪些交付物
-
-否则监督会失效。
-
-## 交付物
-
-- mailbox schema 扩展
-- contract-aware API
-- handoff timeline UI
-- artifact reference rendering
-- prompt 注入策略升级
-
-## UI 任务
-
-- 在 focused execution panel 中区分：
+- 在 execution panel 中分开展示：
   - inbox
   - outbox
-  - blockers
   - contracts
-- 支持手动发送结构化消息
-- 支持查看 artifact 引用和 file refs
+  - blockers / requests
+- 提供手动发送结构化消息表单。
+- 支持 artifact refs、file refs、branch ref 和 schema 的查看。
 
-## 测试与验收
+## Integration Tasks
 
-验收标准：
+- structured mailbox 必须和 board 中的 blocker 聚合联动。
+- downstream worker 获取的 handoff 内容应与其 target 身份一致。
 
-- subtask 可以主动给 lead 发消息
-- 下游可收到结构化合同而非纯文本
-- worker prompt 注入按类型裁剪后仍然完整可用
-- Web 中可追踪 handoff 链路
+## Edge Cases
 
-建议测试：
+- subtasks 不能给自己发消息。
+- schemaJson 非法时必须阻止提交。
+- 非执行态 task 不应开放 mailbox 写入口。
+- 大量 mailbox 文本不应直接全部进入 worker prompt。
 
-- mailbox typed payload persistence
-- API contract handoff -> downstream prompt injection
-- subtask -> lead blocker flow
-- artifact refs reload correctness
+## Acceptance Checklist
 
-## 输出给下一阶段
+- subtask 可以给 lead 发结构化消息。
+- subtask 可以给其他 subtask 发结构化消息。
+- downstream prompt 能收到按类型裁剪的 handoff。
+- Web 中可追踪 handoff 链路和 artifact 引用。
 
-phase 20 将以这些结构化消息为输入，构建真正可监督的 live operations board。
+## Suggested Tests
+
+- typed mailbox payload persistence 测试。
+- API contract handoff -> downstream prompt injection 测试。
+- subtask -> lead blocker 流程测试。
+- artifact refs / file refs reload correctness 测试。
+
+## Outputs For Next Phase
+
+完成后，phase `20` 可以把 mailbox、review、session 和 dependency 状态统一汇聚到 live operations board。

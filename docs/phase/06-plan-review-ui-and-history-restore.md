@@ -6,8 +6,10 @@ Give the user a safe editing surface for the current plan, including the ability
 
 ## PRD Coverage
 
-- `FR-PL-04`
-- `FR-PL-05` pre-approval edit surface
+- `4.4 计划与执行分离`
+- `4.5 审查与合并历史必须 append-only`
+- `10.5 Role-Aware DAG Planning`
+- `12.1 Web-first`
 - `task:restore-plan-snapshot`
 - `task:plan-restored`
 
@@ -80,7 +82,7 @@ Give the user a safe editing surface for the current plan, including the ability
 
 - User edits must not increment `planVersion`.
 - Restored plans become the current draft; they are not automatically approved.
-- Avoid coupling UI array order to execution order beyond stable display; MVP still has no subtask dependency graph.
+- Avoid coupling UI array order to execution order beyond stable display; dependency graph editing is introduced later in phase 15.
 
 ## Edge Cases
 

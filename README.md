@@ -2,7 +2,7 @@
 
 EAT，`Engineering Agent Team`，是一个面向本地 Git 仓库的监督式多 Agent 编排面板。它不是“全自动黑盒写代码系统”，而是一个让操作者通过 Web 界面把任务交给 Leader Agent，再由系统在受控沙箱里调度 Worker Agent 执行、审阅、集成和合并的本地优先工具。
 
-当前仓库的实现已经覆盖 `docs/phase/` 定义的 MVP 主线，并继续向 `docs/v1.1/` 的 Web-first Leader Orchestration 方向推进。代码里已经落地了真实 Codex CLI 接入、任务模板、团队视图、运行看板、结构化 mailbox、integration run，以及任务主线分支模型。
+当前仓库的实现已经覆盖 `docs/phase/` 定义的基础主干阶段，并继续向 `docs/v1.1/` 的扩展编排阶段推进。代码里已经落地了真实 Codex CLI 接入、任务模板、团队视图、运行看板、结构化 mailbox、integration run，以及任务主线分支模型。
 
 ## 项目定位
 
@@ -216,7 +216,7 @@ EAT 借鉴的是：
 
 ```text
 .
-├── docs/                  # PRD、phase 文档、v1.1 路线
+├── docs/                  # PRD、基础 phase、扩展 phase 与使用说明
 ├── prisma/                # schema 与 SQL migration
 ├── src/
 │   ├── agents/            # Agent contract、registry、built-in adapters
@@ -445,16 +445,20 @@ curl -k -i -s --resolve eat.735678.xyz:443:127.0.0.1 https://eat.735678.xyz/
 
 如果你要继续开发这个项目，建议按这个顺序读文档：
 
-1. [`docs/PRD.md`](/home/code/EAT/docs/PRD.md)
-2. [`docs/phase/README.md`](/home/code/EAT/docs/phase/README.md)
-3. [`docs/phase/PRISMA-MIGRATIONS.md`](/home/code/EAT/docs/phase/PRISMA-MIGRATIONS.md)
-4. [`docs/phase/API-EVENT-EXAMPLES.md`](/home/code/EAT/docs/phase/API-EVENT-EXAMPLES.md)
-5. [`docs/phase/CHECKLISTS.md`](/home/code/EAT/docs/phase/CHECKLISTS.md)
-6. 当前正在处理的具体 phase 文档
-7. [`docs/v1.1/README.md`](/home/code/EAT/docs/v1.1/README.md)
+1. [`AGENTS.md`](/home/code/EAT/AGENTS.md)
+2. [`docs/README.md`](/home/code/EAT/docs/README.md)
+3. [`docs/PRD.md`](/home/code/EAT/docs/PRD.md)
+4. [`docs/phase/README.md`](/home/code/EAT/docs/phase/README.md)
+5. [`docs/phase/PRISMA-MIGRATIONS.md`](/home/code/EAT/docs/phase/PRISMA-MIGRATIONS.md)
+6. [`docs/phase/API-EVENT-EXAMPLES.md`](/home/code/EAT/docs/phase/API-EVENT-EXAMPLES.md)
+7. [`docs/phase/CHECKLISTS.md`](/home/code/EAT/docs/phase/CHECKLISTS.md)
+8. 当前正在处理的具体 phase 文档
+9. [`docs/v1.1/README.md`](/home/code/EAT/docs/v1.1/README.md)
 
 如果你要理解“这个仓库现在大概已经实现到了哪里”，优先看：
 
+- [`docs/ARCHITECTURE.md`](/home/code/EAT/docs/ARCHITECTURE.md)
+- [`docs/README.md`](/home/code/EAT/docs/README.md)
 - [`docs/v1.1/README.md`](/home/code/EAT/docs/v1.1/README.md)
 - [`docs/v1.1/IMPLEMENTATION-ORDER.md`](/home/code/EAT/docs/v1.1/IMPLEMENTATION-ORDER.md)
 - 最近的数据库 migration
@@ -475,7 +479,7 @@ curl -k -i -s --resolve eat.735678.xyz:443:127.0.0.1 https://eat.735678.xyz/
 
 基于当前代码、迁移、测试和 UI 资源，可以把仓库理解为：
 
-- 底层 MVP 主线已经成型
+- 基础主干 phase 已经成型
 - Web-first 的 Leader orchestration 体验已经具备骨架
 - 真实 Codex 执行链路已经接入
 - integration run、团队看板、模板引导、任务主线分支已经进入可用状态
@@ -483,8 +487,9 @@ curl -k -i -s --resolve eat.735678.xyz:443:127.0.0.1 https://eat.735678.xyz/
 
 ## 相关文件
 
-- 产品说明：[docs/PRD.md](/home/code/EAT/docs/PRD.md)
-- MVP phase 索引：[docs/phase/README.md](/home/code/EAT/docs/phase/README.md)
-- v1.1 路线：[docs/v1.1/README.md](/home/code/EAT/docs/v1.1/README.md)
-- 当前服务器部署说明：[agent.md](/home/code/EAT/agent.md)
+- 文档入口：[docs/README.md](/home/code/EAT/docs/README.md)
 - Agent 规范：[AGENTS.md](/home/code/EAT/AGENTS.md)
+- 产品说明：[docs/PRD.md](/home/code/EAT/docs/PRD.md)
+- 基础 phase 索引：[docs/phase/README.md](/home/code/EAT/docs/phase/README.md)
+- 扩展 phase 索引：[docs/v1.1/README.md](/home/code/EAT/docs/v1.1/README.md)
+- 当前服务器部署说明：[agent.md](/home/code/EAT/agent.md)

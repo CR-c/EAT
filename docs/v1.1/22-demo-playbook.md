@@ -2,7 +2,7 @@
 
 ## 目标
 
-提供一条稳定、可复现、可讲解的 `v1.1` 演示路径，突出：
+提供一条稳定、可复现、可讲解的扩展阶段演示路径，突出：
 
 - Web-first orchestration
 - real Codex CLI multi-agent execution

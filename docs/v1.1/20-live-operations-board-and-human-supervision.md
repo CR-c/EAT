@@ -1,110 +1,116 @@
 # Phase 20 - Live Operations Board And Human Supervision
 
-## 目标
+## Goal
 
-把当前 task detail 扩展成真正的运行看板，让用户在 Web 中持续监督整个 agent team，而不是只盯着某一个 subtask。
+把执行态主界面提升为真正的 live operations board，让操作者持续监督整个 agent team，而不是只盯单个 subtask 或 transcript。
 
-## 这一阶段解决的问题
+## PRD Coverage
 
-当前 UI 已有 execution board，但还偏“详情页”思维，不是真正的运营面板：
+本阶段主要落实：
 
-- 缺少 team 级总览
-- 缺少 blocker 聚合
-- 缺少 handoff 热点视图
-- 缺少可视化依赖图运行状态
-- 缺少批量干预入口
+- 执行阶段 board-first
+- live operations board
+- action-required 聚合
+- team、mailbox、review、merge 风险统一可见
 
-真实使用中，用户需要的是：
+## Preconditions
 
-- 谁在跑
-- 谁卡住了
-- 谁在等谁
-- 哪些 handoff 没闭环
-- 现在最值得干预的点是什么
+- phase `17` 已有 team / member 骨架
+- phase `18` 已有 role-aware DAG
+- phase `19` 已有结构化 mailbox
 
-## 范围
+## Deliverables
 
-本阶段内：
+- task 内 live board 视图
+- graph / list / activity 三类运行视图
+- action-required queue
+- blocker、review、merge 风险聚合
+- operator controls 的统一入口
 
-- team health board
-- DAG live 状态着色
-- blocker 聚合区
-- mailbox / review / merge 风险聚合
-- 批量 operator action
+## Suggested Execution Order
 
-本阶段外：
+1. 统一构建 board snapshot 读取模型。
+2. 聚合 sessions、subtasks、mailbox、reviews、integration 风险。
+3. 提供 graph / list / activity 多视图 UI。
+4. 提供 action-required queue 和 operator controls。
+5. 增加排序、过滤和 mixed-state 测试。
 
-- 跨 task portfolio board
-- 多项目运营中心
+## Schema And Persistence
 
-## 交付物
+本阶段原则上不新增核心实体。  
+重点是复用并聚合已有对象：
 
-- task 内的 live board 视图
-- graph mode / list mode / activity mode
-- blocking edges 高亮
-- 待用户决策区
-- agent health / runtime health / sandbox health 聚合展示
+- `Task`
+- `SubTask`
+- `AgentSession`
+- `MailboxMessage`
+- `ReviewRecord`
+- `IntegrationRun`
+- `IntegrationQueueItem`
+- `GateResult`
 
-## 关键 UI 区块
+## API And Event Surface
 
-### 1. Team graph
+建议或要求具备：
 
-- 节点显示 role、状态、agent、最近事件
-- 边显示依赖、handoff、阻塞
+- `GET /api/tasks/:taskId/board`
+- `GET /api/tasks/:taskId/team`
+- `GET /api/tasks/:taskId/events`
 
-### 2. Action required queue
+推荐事件：
 
-集中展示：
+- `task:status`
+- `subtask:status`
+- `session:started`
+- `session:ended`
+- `mailbox:message`
+- `merge:*`
+- `integration:*`
 
-- rework required
-- discard pending
-- merge conflict
-- failed launch
-- unresolved blocker
+## Backend Tasks
 
-### 3. Activity stream
+- 提供稳定的 board snapshot，而不是让前端自行拉平所有记录。
+- 聚合出当前最值得干预的 action-required 项。
+- 为 mixed-state task 生成一致的排序和 summary 结果。
 
-集中展示：
+## UI Tasks
 
-- session started / ended
-- mailbox 事件
-- review 事件
-- merge 事件
+- 默认执行界面从 transcript-first 切到 board-first。
+- graph mode 显示节点、边、依赖和阻塞。
+- list mode 显示成员清单、状态和最近摘要。
+- activity mode 显示 session、mailbox、review、merge、integration 事件流。
+- action-required queue 要优先露出：
+  - `REWORK_REQUIRED`
+  - `DISCARD_PENDING`
+  - merge conflict
+  - failed launch
+  - unresolved blocker
 
-### 4. Operator controls
+## Integration Tasks
 
-- rerun
-- replace agent
-- send note
-- approve / discard
-- resume merge
+- board 中的 operator actions 应直接调用已有任务 / subtask API。
+- mailbox 和 review 状态必须能在 board 中联动显示。
 
-## 产品决策
+## Edge Cases
 
-### 1. 默认是 board first，不再是 transcript first
+- 没有运行中成员时，board 仍需可解释地显示 idle 或 waiting 状态。
+- mixed-state task 中，排序不能让真正需要处理的项被埋掉。
+- clarification 阶段保留 transcript-first，不应强行套用 board-first。
 
-clarification transcript 仍保留，但执行阶段的主界面应该切换成 board first。
+## Acceptance Checklist
 
-### 2. 必须突出“需要人处理的事”
+- 用户能在一个界面识别 team 当前运行态。
+- action-required 项集中可见。
+- DAG 状态和 mailbox / review 活动联动。
+- operator 可从 board 执行主要干预动作。
 
-EAT 的核心不是全自动，而是监督式编排。  
-所以 UI 首屏必须优先突出需要 operator 决策的项，而不是纯粹展示日志。
+## Suggested Tests
 
-## 测试与验收
+- board snapshot 渲染测试。
+- mixed-state task 的 UI 快照测试。
+- action-required 排序测试。
+- activity stream 事件聚合测试。
 
-验收标准：
+## Outputs For Next Phase
 
-- 用户能在一个界面识别 team 当前运行状态
-- action-required 项集中可见
-- DAG 状态和 mailbox 活动能够联动
-- operator 可以直接从 board 做主要干预动作
-
-建议测试：
-
-- board 状态渲染测试
-- mixed-state task 的 UI 快照测试
-- action-required 队列排序测试
-
-## 输出给下一阶段
-
-phase 21 将围绕集成与最终交付，把 board 中“执行完成”推进到“可稳定集成发布”。
+完成后，phase `21` 可以在 board 的收口视图上继续推进 integration branch、queue 和 release gate。

@@ -31,14 +31,15 @@
 固定阅读顺序：
 
 1. `AGENTS.md`
-2. `docs/PRD.md`
-3. `docs/phase/README.md`
-4. `docs/phase/PRISMA-MIGRATIONS.md`
-5. `docs/phase/API-EVENT-EXAMPLES.md`
-6. `docs/phase/CHECKLISTS.md`
-7. 当前 phase 文档
-8. 当前父任务 issue 描述
-9. 当前父任务文档中的内部顺序说明
+2. `docs/README.md`
+3. `docs/PRD.md`
+4. `docs/phase/README.md`
+5. `docs/phase/PRISMA-MIGRATIONS.md`
+6. `docs/phase/API-EVENT-EXAMPLES.md`
+7. `docs/phase/CHECKLISTS.md`
+8. 当前 phase 文档
+9. 当前父任务 issue 描述
+10. 当前父任务文档中的内部顺序说明
 
 执行顺序：
 

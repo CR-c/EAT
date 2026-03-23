@@ -13,9 +13,9 @@ Make execution observable in real time without overwhelming the user or the brow
 
 ## PRD Coverage
 
-- `FR-EX-06`
-- `13.1 Performance`
-- `14.2 Required UX Signals` related to summary-first execution view
+- `10.6 Team Lifecycle And Worker Execution`
+- `12.3 可解释性`
+- `12.4 安全可见性`
 
 ## Preconditions
 

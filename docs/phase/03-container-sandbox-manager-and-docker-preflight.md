@@ -6,10 +6,10 @@ Introduce the mandatory worker sandbox boundary so later execution phases never 
 
 ## PRD Coverage
 
-- `6.7 Runtime Model`
-- `6.8 Execution Isolation Model`
-- `FR-EX-05`
-- `13.3 Security`
+- `4.3 Worker 必须继续 Docker 沙箱化`
+- `10.2 Agent Directory And Runtime`
+- `11.1 运行时形态`
+- `12.4 安全可见性`
 
 ## Preconditions
 

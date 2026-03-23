@@ -5,9 +5,9 @@
 如果你只是想知道一句话版本：
 
 - 父任务用来管阶段
-- 子任务用来实际开发
-- 默认一个子任务对应一个 workspace
-- 不要一上来就在父任务里直接写一整阶段的代码
+- 子任务只保留为历史拆分参考
+- 默认一个 phase 只开一个父任务 workspace
+- 不要再从子任务直接创建默认开发 workspace
 
 ## 先理解三层对象
 
@@ -22,9 +22,9 @@
 
 - 看这个阶段到底做什么
 - 管理这个阶段是否完成
-- 在所有子任务完成后做阶段联调、补洞、验收
+- 在同一个 workspace 中完成该 phase 的实现、联调、补洞、验收
 
-父任务不应该作为默认开发入口。
+父任务就是默认开发入口。
 
 ### 2. 子任务
 
@@ -34,19 +34,19 @@
 
 子任务的作用：
 
-- 创建 workspace
-- 交给 AI 实现
-- 做 review、测试、合并
+- 保留早期拆分思路
+- 辅助理解内部实现顺序
+- 在需要时回看更细粒度范围边界
 
 默认规则：
 
-- 一个子任务 = 一个开发 workspace
+- 子任务不再作为默认 workspace 入口
 
 ### 3. Workspace
 
 Workspace 是 Vibe Kanban 里真正让 AI 干活的地方。
 
-你应该优先从子任务创建 workspace，而不是从父任务创建。
+你应该优先从父任务创建 workspace，而不是从子任务创建。
 
 ## 你在 Vibe Kanban 里的标准操作顺序
 
@@ -54,54 +54,36 @@ Workspace 是 Vibe Kanban 里真正让 AI 干活的地方。
 
 1. 打开父任务。
 2. 阅读父任务内容，确认这一阶段的目标和边界。
-3. 找到这个父任务下面第一个未完成的子任务。
-4. 从这个子任务创建 workspace。
+3. 阅读标准文档和该 phase 对应文档。
+4. 从父任务创建一个 workspace。
 5. 基准分支选择当前最新的 `main`。
-6. 把 AI 提示词发进去，只让它完成这个子任务。
-7. 等 AI 改完后，你 review、测试、验收。
-8. 验收通过后合并回 `main`。
-9. 回到看板，把这个子任务标记完成。
-10. 再处理下一个子任务。
-11. 当这个父任务下所有子任务都完成后，如果需要，再从父任务创建一个“收尾 workspace”做联调、补测试、补文档、补小问题。
-12. 父任务验收通过后，再进入下一个父任务。
+6. 把 AI 提示词发进去，让它在这个父任务 workspace 内完成整个 phase。
+7. 按文档规定的内部顺序逐段实现，并在同一分支持续提交非空 commit。
+8. 全部内部步骤完成后，在同一分支完成联调、测试、验收和小范围修正。
+9. 验收通过后把父任务分支合并回 `main`。
+10. 删除父任务分支，更新远端 `main`。
+11. 再进入下一个父任务。
 
 ## 父任务什么时候创建 workspace
 
-只有下面两种情况才建议从父任务创建 workspace：
+现在默认总是从父任务创建 workspace。
 
-### 情况 A：阶段收尾
+一个 phase 的标准执行模型是：
 
-这个阶段下面的子任务都已经完成了，但你还需要：
+- 一个父任务
+- 一个 workspace
+- 一个工作分支
+- 该 phase 的完整实现、联调、验收都在这个分支完成
 
-- 联调
-- 补集成测试
-- 补小修复
-- 收敛阶段验收项
+## 子任务什么时候还需要看
 
-这时可以从父任务创建一个 workspace。
+子任务现在只在下面场景里还有价值：
 
-### 情况 B：跨子任务的小整合
+- 回看早期拆分时的内部实现顺序
+- 检查某个小范围切片最初想解决什么
+- 对照历史 scope，避免 phase 内遗漏
 
-有时候几个子任务分别完成了，但最后会出现一点点跨边界的小修正，例如：
-
-- 前端字段名对不上后端返回
-- 事件名统一调整
-- 文档描述和实现不一致
-
-这种也可以用父任务 workspace 收尾。
-
-除此之外，不建议在父任务 workspace 里直接展开大规模开发。
-
-## 子任务什么时候创建 workspace
-
-默认都应该从子任务创建 workspace。
-
-只要这个子任务满足下面两个条件，就应该直接从它开工：
-
-- 边界清楚
-- 可以独立 review 和合并
-
-目前你已经拆好的前 8 个 phase 子任务，基本都满足这个条件。
+但它们不再是默认创建 workspace 的入口。
 
 ## 你应该按什么顺序推进
 
@@ -126,7 +108,9 @@ Workspace 是 Vibe Kanban 里真正让 AI 干活的地方。
 
 不要跳 phase。
 
-## 第二层顺序：前 8 个 phase 的子任务顺序
+## 第二层顺序：历史子任务拆分顺序
+
+下面这些子任务顺序只作为历史参考，帮助你理解父任务内部可以怎样分段推进；它们不再代表默认的 workspace 创建入口。
 
 ### Phase 01
 
@@ -186,19 +170,8 @@ Workspace 是 Vibe Kanban 里真正让 AI 干活的地方。
 
 ## 你现在最推荐的开工点
 
-直接从下面这个顺序开始：
-
-1. `CRC-22`
-2. `CRC-23`
-3. `CRC-24`
-4. `CRC-25`
-
-这正好就是 Phase 01 的最佳落地顺序：
-
-- 先 schema
-- 再 repo probe service
-- 再 API
-- 再 UI
+直接从当前最早未完成的父任务开始。  
+如果只是看内部实现顺序，再回看该父任务对应的历史子任务拆分。
 
 ## 哪些情况可以并行
 
@@ -245,23 +218,38 @@ Workspace 是 Vibe Kanban 里真正让 AI 干活的地方。
 
 - issue 描述 + PRD + phase docs 一起用
 
-## 每次创建子任务 workspace 后，AI 应该先读什么
+## 每次创建父任务 workspace 后，AI 应该先读什么
 
 固定顺序如下：
 
 1. `AGENTS.md`
-2. `docs/PRD.md`
-3. `docs/phase/README.md`
-4. `docs/phase/PRISMA-MIGRATIONS.md`
-5. `docs/phase/API-EVENT-EXAMPLES.md`
-6. `docs/phase/CHECKLISTS.md`
-7. 对应的 phase 文档
-8. 父任务 issue 描述
-9. 当前子任务 issue 描述
+2. `docs/README.md`
+3. `docs/PRD.md`
+4. `docs/phase/README.md`
+5. `docs/phase/PRISMA-MIGRATIONS.md`
+6. `docs/phase/API-EVENT-EXAMPLES.md`
+7. `docs/phase/CHECKLISTS.md`
+8. 对应的 phase 文档
+9. 父任务 issue 描述
+10. 对应的 `/docs/me` phase 文档
 
-## 你可以直接复制给 AI 的子任务提示词模板
+下文凡写“标准文档”，默认指：
 
-把下面内容复制进子任务 workspace 的对话里，把占位符替换掉即可。
+1. `AGENTS.md`
+2. `docs/README.md`
+3. `docs/PRD.md`
+4. `docs/phase/README.md`
+5. `docs/phase/PRISMA-MIGRATIONS.md`
+6. `docs/phase/API-EVENT-EXAMPLES.md`
+7. `docs/phase/CHECKLISTS.md`
+8. 对应的 phase 文档
+
+如果你在后面的历史示例里看到旧阅读顺序，也以这里这套顺序为准。
+
+## 历史子任务提示词模板
+
+下面这个模板只保留作历史拆分参考，不再是默认执行入口。  
+如果你只是正常推进 phase，请优先使用父任务 workspace 模式。
 
 ```text
 实现 EAT 项目的子任务 {子任务ID}。
@@ -273,14 +261,15 @@ Workspace 是 Vibe Kanban 里真正让 AI 干活的地方。
 
 开始编码前，请按下面顺序阅读：
 1. AGENTS.md
-2. docs/PRD.md
-3. docs/phase/README.md
-4. docs/phase/PRISMA-MIGRATIONS.md
-5. docs/phase/API-EVENT-EXAMPLES.md
-6. docs/phase/CHECKLISTS.md
-7. {阶段文档路径}
-8. 父任务 issue 描述
-9. 子任务 issue 描述
+2. docs/README.md
+3. docs/PRD.md
+4. docs/phase/README.md
+5. docs/phase/PRISMA-MIGRATIONS.md
+6. docs/phase/API-EVENT-EXAMPLES.md
+7. docs/phase/CHECKLISTS.md
+8. {阶段文档路径}
+9. 父任务 issue 描述
+10. 子任务 issue 描述
 
 执行要求：
 - 只实现这个子任务的范围，不要顺手实现后续 phase。
@@ -306,38 +295,54 @@ Workspace 是 Vibe Kanban 里真正让 AI 干活的地方。
 - 下一个兄弟子任务是否已经解锁
 ```
 
-## 你可以直接复制给 AI 的父任务收尾提示词模板
+## 你可以直接复制给 AI 的父任务提示词模板
 
-这个模板只在某个父任务下面所有子任务都完成之后使用。
+这个模板是当前默认执行方式。
 
 ```text
-对 EAT 项目的父任务 {父任务ID} {父任务标题} 做阶段收尾、联调和验收。
+实现 EAT 项目的父任务 {父任务ID} {父任务标题}，在一个 workspace 内完成整个 phase。
 
 仓库路径：/home/code/EAT
 阶段文档：{阶段文档路径}
+父任务：{父任务ID} {父任务标题}
 
 开始前请阅读：
 1. AGENTS.md
-2. docs/PRD.md
-3. docs/phase/README.md
-4. docs/phase/PRISMA-MIGRATIONS.md
-5. docs/phase/API-EVENT-EXAMPLES.md
-6. docs/phase/CHECKLISTS.md
-7. {阶段文档路径}
-8. 父任务 issue 描述
-9. 该父任务下已经完成的所有子任务 issue
+2. docs/README.md
+3. docs/PRD.md
+4. docs/phase/README.md
+5. docs/phase/PRISMA-MIGRATIONS.md
+6. docs/phase/API-EVENT-EXAMPLES.md
+7. docs/phase/CHECKLISTS.md
+8. {阶段文档路径}
+9. 父任务 issue 描述
+10. 对应的 /docs/me phase 文档
 
-目标：
-- 做该阶段的联调与验收
-- 修正少量跨子任务的小问题
-- 补齐 phase checklist 中遗漏但仍属于本阶段范围的内容
-- 不要提前进入下一阶段的大功能
+执行要求：
+- 在这个父任务 workspace 内完成整个 phase，不要创建子任务 workspace。
+- 按文档规定的内部顺序逐段实现。
+- 每完成一个内部步骤，在同一父任务分支提交一个非空 commit。
+- 联调、补洞、验收和小范围修正也在同一分支完成。
+- 不要提前实现后续 phase，除非当前 phase 明确需要该依赖。
+- 必须遵守 PRD 中的命名、状态机、字段名、事件名。
+- 如果涉及 schema，优先采用 additive migration。
+- 不要破坏文档中要求的 Docker sandbox worker 模型。
+
+开始实现前，请先总结：
+- 这个 phase 的目标
+- 明确的范围边界
+- 需要的 schema 变更
+- 需要的 API / event 变更
+- 需要的 UI 变更
+- 需要的测试
+- 内部实现顺序
 
 完成后请输出：
-- 已完成的收尾项
-- 剩余未完成 checklist
+- 已完成内容
+- 修改的文件
+- 在父任务分支上创建的 commits
 - 测试结果
-- 阻塞项
+- 剩余风险 / 假设
 - 是否可以进入下一 phase
 ```
 

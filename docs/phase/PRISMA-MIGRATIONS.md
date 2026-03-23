@@ -1,398 +1,347 @@
-# EAT Prisma Migration Plan
+# EAT Foundation Phase Schema Rollout Notes
 
-This document maps schema work to delivery phases. It is intentionally conservative: prefer landing schema slightly earlier than the phase that first consumes it if that reduces migration churn.
+## 文档定位
 
-## Migration Strategy
+这个文件说明基础阶段 `01` 到 `16` 的数据层 rollout 策略。  
+它沿用历史命名 `PRISMA-MIGRATIONS.md`，但当前仓库运行时并不是 Prisma Client。
 
-- Use additive migrations first. Avoid destructive renames unless the codebase already depends on the replacement field.
-- Backfill nullable-to-required transitions only after server code can write the new field reliably.
-- If multiple phases need the same table, migrate it at the earliest phase that makes the table unavoidable.
-- Keep append-only history tables append-only in both schema design and application logic.
+当前实际情况：
+
+- 运行时数据库访问使用 `node:sqlite`
+- schema rollout 依赖 `prisma/migrations/` 中的 SQL migration
+- `prisma/schema.prisma` 是参考性描述，不是唯一运行时真相
+- 当 `schema.prisma` 与 repository / SQL migrations 冲突时，以运行时 repository 和已落地 migration 为准
+
+## Rollout Principles
+
+- 优先 additive migration
+- 字段只有在服务端已能稳定写入后再从 nullable 收紧为 required
+- 多个 phase 会共用的表，应在最早不可避免的阶段一次性引入
+- append-only history 不应用 mutable 覆盖字段代替
 
 ## Phase 01
 
-### New Or Changed Models
+### Target Objects
 
 - `Project`
 
-### Fields
+### Expected Fields
 
 - `id`
 - `name`
-- `path @unique`
-- `defaultBranch`
-- `createdAt`
-- `updatedAt`
-
-### Notes
-
-- If path normalization is not fully settled, still enforce one canonical stored path before writing rows.
+- `path`
+- `default_branch`
+- `created_at`
+- `updated_at`
 
 ## Phase 02
 
-### New Or Changed Models
+### Target Objects
 
-- No Prisma migration required by default
+- None required
 
 ### Notes
 
-- Agent registry can remain in-process configuration.
-- If you later choose to persist health snapshots, add that as a separate optional migration, not a hidden requirement of phase 02.
+- agent registry 可以继续是 in-process 配置
+- health snapshot 若未来要持久化，应作为单独扩展而不是 phase `02` 隐含要求
 
 ## Phase 03
 
-### New Or Changed Models
+### Target Objects
 
-- `AgentSession` staged fields, if you want sandbox data available before lead-session work lands
+- `AgentSession` staged fields, optional
 
-### Fields
+### Expected Fields
 
-- `sandboxType`
-- `containerId`
+- `sandbox_type`
+- `container_id`
 
 ### Notes
 
-- If `AgentSession` table is introduced only in phase 04, move these fields into that initial session migration instead of creating a separate migration now.
+- 如果 `AgentSession` 在 phase `04` 才正式引入，这两个字段可以合并进 phase `04` 的初始 migration
 
 ## Phase 04
 
-### New Models
+### Target Objects
 
 - `Task`
 - `Message`
 - `Attachment`
 - `AgentSession`
 
-### Key Fields
+### Expected Fields
 
 #### `Task`
 
-- `projectId`
+- `project_id`
 - `title`
 - `description`
-- `leadAgentType`
-- `baseBranch`
-- `baseCommitSha`
+- `lead_agent_type`
+- `base_branch`
+- `base_commit_sha`
 - `status`
-- `createdAt`
-- `updatedAt`
+- `created_at`
+- `updated_at`
 
 #### `Message`
 
-- `taskId`
-- `subTaskId?`
+- `task_id`
+- `sub_task_id`
 - `role`
 - `content`
-- `createdAt`
+- `created_at`
 
 #### `Attachment`
 
-- `taskId`
-- `fileName`
-- `filePath`
-- `fileType`
-- `mimeType`
+- `task_id`
+- `file_name`
+- `file_path`
+- `file_type`
+- `mime_type`
 - `size`
-- `createdAt`
+- `created_at`
 
 #### `AgentSession`
 
-- `taskId`
-- `subTaskId?`
-- `agentType`
-- `sessionType`
-- `sandboxType`
-- `containerId?`
+- `task_id`
+- `sub_task_id`
+- `agent_type`
+- `session_type`
+- `sandbox_type`
+- `container_id`
 - `status`
-- `pid?`
-- `startedAt?`
-- `endedAt?`
-- `exitCode?`
-- `logPath?`
-- `outputBuffer`
-- `outputBufferMaxBytes`
-- `createdAt`
-- `updatedAt`
-
-### Notes
-
-- `baseCommitSha` should be required from the start if the server can always snapshot it at task creation.
+- `pid`
+- `started_at`
+- `ended_at`
+- `exit_code`
+- `log_path`
+- `output_buffer`
+- `output_buffer_max_bytes`
+- `created_at`
+- `updated_at`
 
 ## Phase 05
 
-### New Or Changed Models
+### Target Objects
 
 - `Task`
 - `PlanSnapshot`
 
-### Fields
+### Expected Fields
 
 #### `Task`
 
-- `planVersion @default(0)`
-- `currentPlanJson?`
+- `plan_version`
+- `current_plan_json`
 
 #### `PlanSnapshot`
 
-- `id`
-- `taskId`
+- `task_id`
 - `version`
 - `source`
 - `payload`
-- `createdAt`
-
-### Notes
-
-- If `planVersion` was not introduced in phase 04, add it here.
-- `PlanSnapshot` should be append-only.
+- `created_at`
 
 ## Phase 06
 
-### New Or Changed Models
+### Target Objects
 
 - No required new tables
 
-### Optional Fields
-
-- None, unless audit requirements require explicit restore markers beyond `PlanSnapshot.source`
-
 ### Notes
 
-- `RESTORED_FROM_HISTORY` is a value-level change in `PlanSnapshotSource`, not necessarily a structural migration if the enum already exists and can be extended safely.
+- `RESTORED_FROM_HISTORY` 优先作为 `PlanSnapshot.source` 的值扩展，而不是单独新增结构
 
 ## Phase 07
 
-### New Or Changed Models
+### Target Objects
 
 - `Task`
 - `SubTask`
 
-### Fields
+### Expected Fields
 
 #### `Task`
 
-- `approvedPlanJson?`
-- `taskBranchName?`
+- `approved_plan_json`
+- `task_branch_name`
 
 #### `SubTask`
 
-- `id`
-- `taskId`
+- `task_id`
 - `title`
 - `description`
-- `branchSuffix`
-- `branchName?`
-- `worktreePath?`
-- `agentType`
+- `branch_suffix`
+- `branch_name`
+- `worktree_path`
+- `agent_type`
 - `status`
-- `autoAssigned`
-- `retryCount @default(0)`
-- `lastError?`
-- `createdAt`
-- `updatedAt`
+- `auto_assigned`
+- `retry_count`
+- `last_error`
+- `created_at`
+- `updated_at`
 
 ### Notes
 
-- Keep `branchName` and `worktreePath` nullable until branch/worktree setup succeeds in phase 08.
-- `taskBranchName` should point to the task-mainline branch reserved for execution.
+- `branch_name` 与 `worktree_path` 在 setup 成功前可为空
+- `task_branch_name` 指向 task mainline branch
 
 ## Phase 08
 
-### New Or Changed Models
+### Target Objects
 
 - `SubTask`
 - `AgentSession`
 
-### Fields
+### Optional / Confirmed Fields
 
 #### `SubTask`
 
-- Ensure these fields exist before execution starts:
-  - `branchName?`
-  - `startCommitSha?`
-  - `worktreePath?`
-  - `retryCount`
+- `branch_name`
+- `worktree_path`
+- `retry_count`
 
 #### `AgentSession`
 
-- Ensure worker-session fields are present:
-  - `subTaskId?`
-  - `logPath?`
-  - `outputBuffer`
-  - `outputBufferMaxBytes`
+- `sub_task_id`
+- `log_path`
+- `output_buffer`
+- `output_buffer_max_bytes`
 
 ### Notes
 
-- This phase often needs no new migration if the model was created comprehensively in phase 04 and 07.
+- 如果 phase `04` 和 `07` 已把这些字段一次性建完，本阶段可能不需要新增 migration
 
 ## Phase 09
 
-### New Or Changed Models
+### Target Objects
 
-- Usually no new migration
-
-### Notes
-
-- `logPath`, `outputBuffer`, and `outputBufferMaxBytes` should already exist by now.
-- Avoid adding per-chunk log tables unless absolutely necessary; the PRD prefers filesystem logs plus tail buffer.
-
-## Phase 15
-
-### New Or Changed Models
-
-- `SubTask`
-
-### Fields
-
-#### `SubTask`
-
-- `dependencyBranchSuffixesJson @default('[]')`
+- Usually none
 
 ### Notes
 
-- Keep dependency metadata additive and append-only friendly.
-- For MVP, storing dependency branch suffixes as JSON is sufficient; a normalized edge table can wait until later if needed.
-
-## Phase 16
-
-### New Or Changed Models
-
-- `MailboxMessage`
-
-### Fields
-
-#### `MailboxMessage`
-
-- `taskId`
-- `senderType`
-- `senderSubTaskId?`
-- `targetType`
-- `targetSubTaskId?`
-- `content`
-- `createdAt`
-
-### Notes
-
-- Keep mailbox records append-only.
-- A single mailbox table is sufficient for MVP; read-state tracking can wait.
+- 避免为了流式输出过早引入逐块日志表
+- 优先使用 filesystem log + tail buffer
 
 ## Phase 10
 
-### New Or Changed Models
+### Target Objects
 
 - `ReviewRecord`
 - `SubTask`
-- `AgentSession` relation to reviews
 
-### Fields
+### Expected Fields
 
 #### `ReviewRecord`
 
-- `id`
-- `subTaskId`
-- `sessionId?`
+- `sub_task_id`
+- `session_id`
 - `phase`
 - `decision`
 - `summary`
-- `createdAt`
+- `created_at`
 
 #### `SubTask`
 
-- `latestReviewDecision`
-- `latestReviewPhase?`
-- `latestReviewSummary?`
-
-### Notes
-
-- Land `ReviewRecord` as append-only.
-- Do not try to compress incremental and final review into one mutable row.
+- `latest_review_decision`
+- `latest_review_phase`
+- `latest_review_summary`
 
 ## Phase 11
 
-### New Or Changed Models
+### Target Objects
 
-- No new tables required if `ReviewRecord` and `SubTask` review convenience fields already exist
+- Usually none beyond phase `10`
 
 ### Notes
 
-- This phase is mostly orchestrator logic using the phase 10 schema.
+- phase `11` 重点是使用 final review，不一定需要额外 migration
 
 ## Phase 12
 
-### New Or Changed Models
+### Target Objects
 
 - `MergeRecord`
-- `SubTask` relation to merge history
 
-### Fields
+### Expected Fields
 
-#### `MergeRecord`
-
-- `id`
-- `subTaskId`
-- `attemptNumber`
+- `sub_task_id`
+- `attempt_number`
 - `operation`
-- `sourceBranch`
-- `targetBranch`
+- `source_branch`
+- `target_branch`
 - `status`
-- `resultCommitSha?`
-- `conflictSummary?`
-- `completedAt?`
-- `createdAt`
-- `updatedAt`
-
-### Notes
-
-- Keep `SubTask -> MergeRecord` one-to-many.
-- Do not use a unique constraint on `subTaskId`.
-- Use additive enum values:
-  - `MergeStatus`: `PENDING`, `SUCCEEDED`, `CONFLICT`, `ABORTED`
-  - `MergeOperation`: `MERGE`, `REBASE`
+- `result_commit_sha`
+- `conflict_summary`
+- `completed_at`
+- `created_at`
+- `updated_at`
 
 ## Phase 13
 
-### New Or Changed Models
+### Target Objects
 
-- No required migration by default
+- Usually none
 
 ### Notes
 
-- Cleanup warnings can remain in task logs and emitted events unless structured warning persistence becomes necessary.
+- cleanup warning 优先通过 task log / message 体系表达
+- 不强制新增 cleanup 历史表
 
 ## Phase 14
 
-### New Or Changed Models
+### Target Objects
 
-- Prefer no new migration
-
-### Optional Additions
-
-- Only add derived counters if query-based metrics prove too expensive or ambiguous
+- Usually none
 
 ### Notes
 
-- MVP metric export should read existing persisted state rather than creating a second analytics schema.
+- 指标优先通过 query 持久化数据得出，不额外引入 analytics pipeline
 
-## Recommended Consolidation Plan
+## Phase 15
 
-If starting from an empty database and wanting fewer migrations, a pragmatic grouping is:
+### Target Objects
 
-1. `001_projects_and_core_tasks`
-   - `Project`
-   - `Task`
-   - `Message`
-   - `Attachment`
-   - `AgentSession`
-2. `002_planning_and_subtasks`
-   - `PlanSnapshot`
-   - `Task.planVersion`
-   - `Task.currentPlanJson`
-   - `Task.approvedPlanJson`
-   - `SubTask`
-3. `003_review_history`
-   - `ReviewRecord`
-   - `SubTask.latestReview*`
-4. `004_merge_history`
-   - `MergeRecord`
+- `SubTask`
 
-Use the phase mapping above for rollout order even if the physical migrations are grouped this way.
+### Expected Fields
+
+- `dependency_branch_suffixes_json`
+
+### Notes
+
+- 对基础阶段，JSON 持久化依赖关系已足够
+- 规范化 edge table 可留给后续扩展
+
+## Phase 16
+
+### Target Objects
+
+- `MailboxMessage`
+
+### Expected Fields
+
+- `task_id`
+- `sender_type`
+- `sender_sub_task_id`
+- `target_type`
+- `target_sub_task_id`
+- `content`
+- `created_at`
+
+### Notes
+
+- 基础阶段 mailbox 可先保持最小模型
+- typed mailbox 字段由扩展阶段 `19` 继续补齐
+
+## Maintenance Rule
+
+每次基础阶段涉及 schema 讨论时，按以下顺序核对：
+
+1. `docs/PRD.md`
+2. `src/repositories/*`
+3. `prisma/migrations/*`
+4. `prisma/schema.prisma`
+
+不要反过来只看 `schema.prisma` 就推导新 migration。

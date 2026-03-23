@@ -13,9 +13,9 @@ Add fast post-run feedback for each completed subtask and unlock the efficiency 
 
 ## PRD Coverage
 
-- `FR-RV-01`
-- `FR-RV-02`
-- `FR-RV-06` partial overlap for rework path
+- `10.8 Review And Rework`
+- `4.1 人类监督优先`
+- `4.5 审查与合并历史必须 append-only`
 - `subtask:rework`
 - `subtask:change-agent`
 

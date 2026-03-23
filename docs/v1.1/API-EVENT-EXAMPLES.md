@@ -1,13 +1,13 @@
-# EAT v1.1 API And Event Examples
+# EAT Extended Phase API And Event Examples
 
-本文件给出 v1.1 路线下建议的 API / SSE 事件示例。  
-这些 payload 是设计合同示例，不代表路径已经在当前代码中存在。
+本文件给出扩展阶段 `17` 到 `22` 的 API / SSE 事件示例。  
+这些示例以当前代码已存在或已明确落地的路径和字段命名为基础，不再保留与现有实现明显不一致的“想象接口”。
 
 ## Conventions
 
 - REST 示例使用 `/api/...`
-- realtime 事件默认沿用 SSE
-- 示例强调字段命名与状态表达，不追求完整 payload
+- realtime 事件沿用 task-scoped SSE
+- 示例强调对象层和字段命名，不追求完整响应体
 
 ## Phase 17 - Team View And Lifecycle
 
@@ -19,39 +19,43 @@ GET /api/tasks/task_123/team
 
 ```json
 {
-  "task": {
-    "id": "task_123",
-    "status": "EXECUTING",
-    "title": "Build full-stack Todo app"
-  },
-  "lead": {
-    "agentType": "codex-cli",
-    "status": "RUNNING"
-  },
-  "members": [
-    {
-      "subtaskId": "sub_architect",
-      "role": "architect",
-      "displayName": "Architecture Lead",
-      "agentType": "codex-cli",
-      "status": "ACCEPTED",
-      "branchName": "eat/task_123/architect",
-      "worktreePath": "/tmp/eat/task_123/architect"
+  "ok": true,
+  "team": {
+    "task": {
+      "id": "task_123",
+      "status": "EXECUTING",
+      "taskBranchName": "eat-task-123-mainline",
+      "title": "Build full-stack Todo app"
     },
-    {
-      "subtaskId": "sub_frontend",
-      "role": "frontend",
-      "displayName": "Frontend Worker",
+    "lead": {
       "agentType": "codex-cli",
+      "sessionId": "sess_lead_001",
       "status": "RUNNING",
-      "branchName": "eat/task_123/frontend",
-      "worktreePath": "/tmp/eat/task_123/frontend"
-    }
-  ]
+      "lastError": null
+    },
+    "members": [
+      {
+        "subtaskId": "sub_architect",
+        "taskId": "task_123",
+        "title": "Design system boundary and contracts",
+        "displayName": "Architecture Lead",
+        "role": "architect",
+        "agentType": "codex-cli",
+        "status": "ACCEPTED",
+        "branchSuffix": "architect",
+        "branchName": "eat/task_123/architect",
+        "worktreePath": "/tmp/.eat-worktrees/task_123/architect",
+        "executionOrder": 1,
+        "latestSessionId": "sess_worker_001",
+        "latestSessionStatus": "COMPLETED",
+        "runSummary": "Accepted for integration."
+      }
+    ]
+  }
 }
 ```
 
-### Reassign Worker
+### Reassign Member
 
 ```http
 POST /api/subtasks/sub_frontend/reassign
@@ -77,9 +81,9 @@ Content-Type: application/json
 }
 ```
 
-## Phase 18 - DAG Planning
+## Phase 18 - Role-Aware DAG Planning
 
-### Lead-Generated DAG Draft
+### Plan Generated Event
 
 ```json
 {
@@ -88,20 +92,23 @@ Content-Type: application/json
     "taskId": "task_123",
     "planVersion": 3,
     "currentPlan": {
-      "nodes": [
+      "subtasks": [
         {
           "title": "Design API and delivery contracts",
+          "description": "Define the API contract and shared implementation baseline.",
           "role": "architect",
           "recommended_agent": "codex-cli",
           "branch_suffix": "architect",
-          "deliverable": "REST API contract and repo plan",
+          "deliverable": "REST API contract and delivery plan",
           "acceptance_criteria": [
             "Auth routes documented",
             "Todo CRUD contract documented"
-          ]
+          ],
+          "template_hint": "api-contract"
         },
         {
           "title": "Implement React frontend",
+          "description": "Implement the authenticated Todo experience in the web app.",
           "role": "frontend",
           "recommended_agent": "codex-cli",
           "branch_suffix": "frontend",
@@ -110,7 +117,8 @@ Content-Type: application/json
           "acceptance_criteria": [
             "Build passes",
             "Auth flow integrated"
-          ]
+          ],
+          "template_hint": "react-feature"
         }
       ],
       "notes": "Architect defines contracts before implementation workers start."
@@ -119,17 +127,41 @@ Content-Type: application/json
 }
 ```
 
-### Seed From Template
+### Apply Plan Seed
 
 ```http
-POST /api/task-templates/full-stack-web-app/seed
+POST /api/tasks/task_123/plan-seed
 Content-Type: application/json
 ```
 
 ```json
 {
-  "title": "Build full-stack Todo app",
-  "description": "React frontend, auth, SQLite/Postgres, tests."
+  "templateId": "full-stack-web-app"
+}
+```
+
+### Plan Seeded Event
+
+```json
+{
+  "event": "task:plan-seeded",
+  "data": {
+    "taskId": "task_123",
+    "templateId": "full-stack-web-app"
+  }
+}
+```
+
+### Restore Plan Snapshot
+
+```http
+POST /api/tasks/task_123/restore-plan-snapshot
+Content-Type: application/json
+```
+
+```json
+{
+  "snapshotId": "snap_001"
 }
 ```
 
@@ -148,7 +180,12 @@ Content-Type: application/json
   "targetSubTaskId": "sub_backend",
   "messageType": "API_CONTRACT",
   "branchRef": "eat/task_123/architect",
+  "artifactRefs": ["auth-contract-v1"],
   "fileRefs": ["docs/contracts/auth-api.md"],
+  "schemaJson": {
+    "route": "POST /api/auth/login"
+  },
+  "requiresAck": true,
   "content": "Use POST /api/auth/login and keep JWT payload shape unchanged."
 }
 ```
@@ -164,7 +201,12 @@ Content-Type: application/json
     "targetSubTaskId": "sub_backend",
     "messageType": "API_CONTRACT",
     "branchRef": "eat/task_123/architect",
+    "artifactRefs": ["auth-contract-v1"],
     "fileRefs": ["docs/contracts/auth-api.md"],
+    "schemaJson": {
+      "route": "POST /api/auth/login"
+    },
+    "requiresAck": true,
     "content": "Use POST /api/auth/login and keep JWT payload shape unchanged.",
     "createdAt": "2026-03-20T09:00:00.000Z"
   }
@@ -182,7 +224,8 @@ Content-Type: application/json
       "id": "mail_123",
       "messageType": "API_CONTRACT",
       "senderType": "SUBTASK",
-      "targetSubTaskId": "sub_backend"
+      "targetSubTaskId": "sub_backend",
+      "requiresAck": true
     }
   }
 }
@@ -198,30 +241,53 @@ GET /api/tasks/task_123/board
 
 ```json
 {
-  "taskId": "task_123",
-  "summary": {
-    "running": 2,
-    "blocked": 1,
-    "actionRequired": 1,
-    "accepted": 2
-  },
-  "actionRequiredItems": [
-    {
-      "kind": "BLOCKER",
-      "subtaskId": "sub_tester",
-      "summary": "Waiting for backend auth contract handoff."
-    }
-  ],
-  "graph": {
-    "nodes": [
-      { "subtaskId": "sub_architect", "status": "ACCEPTED" },
-      { "subtaskId": "sub_backend", "status": "RUNNING" },
-      { "subtaskId": "sub_tester", "status": "BLOCKED" }
+  "ok": true,
+  "board": {
+    "summary": {
+      "running": 2,
+      "blocked": 1,
+      "actionRequired": 1,
+      "accepted": 2
+    },
+    "riskSummary": {
+      "failedLaunches": 0,
+      "mailboxBlockers": 1,
+      "mergeConflicts": 0,
+      "integrationFailures": 0,
+      "reviewRequired": 1,
+      "requiresAck": 1
+    },
+    "actionRequiredItems": [
+      {
+        "kind": "MAILBOX_MESSAGE",
+        "subTaskId": "sub_tester",
+        "summary": "Waiting for backend test request response."
+      }
     ],
-    "edges": [
-      { "from": "sub_architect", "to": "sub_backend", "state": "SATISFIED" },
-      { "from": "sub_backend", "to": "sub_tester", "state": "BLOCKING" }
-    ]
+    "graph": {
+      "nodes": [
+        {
+          "subtaskId": "sub_architect",
+          "role": "architect",
+          "status": "ACCEPTED"
+        },
+        {
+          "subtaskId": "sub_backend",
+          "role": "backend",
+          "status": "RUNNING"
+        }
+      ],
+      "edges": [
+        {
+          "from": "sub_architect",
+          "to": "sub_backend",
+          "state": "HANDOFF_READY",
+          "handoffCount": 1,
+          "isBlocking": false,
+          "unresolvedBlockerCount": 0
+        }
+      ]
+    }
   }
 }
 ```
@@ -250,10 +316,26 @@ POST /api/tasks/task_123/integration-runs
 
 ```json
 {
+  "ok": true,
   "integrationRun": {
     "id": "int_001",
     "taskId": "task_123",
     "integrationBranch": "eat/task_123/integration-1",
+    "status": "QUEUED",
+    "startedAt": null,
+    "endedAt": null
+  }
+}
+```
+
+### Integration Started Event
+
+```json
+{
+  "event": "integration:started",
+  "data": {
+    "taskId": "task_123",
+    "integrationRunId": "int_001",
     "status": "RUNNING"
   }
 }
@@ -274,7 +356,25 @@ POST /api/tasks/task_123/integration-runs
 }
 ```
 
-## Phase 22 - Guided Flow And Templates
+### Retry Integration Run
+
+```http
+POST /api/integration-runs/int_001/retry
+```
+
+### Roll Back Integration Run
+
+```http
+POST /api/integration-runs/int_001/rollback
+```
+
+### Dequeue Queue Item
+
+```http
+POST /api/integration-queue-items/queue_001/dequeue
+```
+
+## Phase 22 - Guided Flow, Templates And Preview
 
 ### List Built-In Templates
 
@@ -284,22 +384,23 @@ GET /api/task-templates
 
 ```json
 {
+  "ok": true,
   "templates": [
     {
       "id": "full-stack-web-app",
-      "label": "Full-stack web app",
-      "description": "Architect, backend, database, frontend, tester, integration."
+      "roles": ["architect", "backend", "database", "frontend", "tester", "integration"],
+      "nodeCount": 6
     },
     {
       "id": "backend-api",
-      "label": "Backend API",
-      "description": "Contract, implementation, tests, release verification."
+      "roles": ["architect", "backend", "database", "tester", "integration"],
+      "nodeCount": 5
     }
   ]
 }
 ```
 
-### Guided Task Creation Example
+### Guided Task Creation
 
 ```http
 POST /api/guided-tasks
@@ -314,5 +415,45 @@ Content-Type: application/json
   "projectId": "proj_123",
   "baseBranch": "main",
   "leadAgentType": "codex-cli"
+}
+```
+
+### Get Preview Recommendation
+
+```http
+GET /api/tasks/task_123/preview
+```
+
+```json
+{
+  "ok": true,
+  "preview": {
+    "available": true,
+    "defaults": {
+      "targetId": "task-mainline",
+      "targetType": "TASK_MAINLINE",
+      "appRoot": "web",
+      "command": "npm run dev -- --host 0.0.0.0 --port 4173",
+      "port": 4173,
+      "path": "/"
+    }
+  }
+}
+```
+
+### Start Preview
+
+```http
+POST /api/tasks/task_123/preview/start
+Content-Type: application/json
+```
+
+```json
+{
+  "targetId": "task-mainline",
+  "appRoot": "web",
+  "command": "npm run dev -- --host 0.0.0.0 --port 4173",
+  "port": 4173,
+  "path": "/"
 }
 ```

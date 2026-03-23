@@ -14,12 +14,10 @@ Merge accepted subtasks deterministically, preserve merge-attempt history, and r
 
 ## PRD Coverage
 
-- `FR-MG-01`
-- `FR-MG-02`
-- `FR-MG-03`
-- `FR-MG-04`
-- `FR-MG-05`
-- `FR-MG-06`
+- `10.9 Integration, Queue And Release Gates`
+- `4.5 审查与合并历史必须 append-only`
+- `9.2 SubTask 状态`
+- `9.4 IntegrationRun 状态`
 - `subtask:rebase-retry`
 
 ## Preconditions

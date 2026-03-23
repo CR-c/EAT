@@ -13,11 +13,10 @@ Implement the task-level final review that converts advisory incremental signals
 
 ## PRD Coverage
 
-- `FR-RV-03`
-- `FR-RV-04`
-- `FR-RV-05`
-- `FR-RV-07`
-- `FR-RV-08`
+- `10.8 Review And Rework`
+- `9.1 Task 状态`
+- `9.2 SubTask 状态`
+- `4.5 审查与合并历史必须 append-only`
 
 ## Preconditions
 

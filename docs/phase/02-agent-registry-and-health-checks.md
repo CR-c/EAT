@@ -6,9 +6,9 @@ Create a stable adapter registry so the app knows which agents can orchestrate, 
 
 ## PRD Coverage
 
-- Section 9
-- `FR-TC-02` prerequisite validation
-- Agent health UI requirement
+- `10.2 Agent Directory And Runtime`
+- `7.1 当前产品内 / Agent 目录与运行时`
+- `12.4 安全可见性`
 
 ## Preconditions
 

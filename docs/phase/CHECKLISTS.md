@@ -1,227 +1,230 @@
-# EAT Phase Checklists
+# EAT Foundation Phase Checklists
 
-This document turns the 14 phase plans into execution checklists. Each phase should be considered complete only when all required items are checked and the phase-level acceptance criteria in the source phase doc are still true.
+本文件是基础阶段 `01` 到 `16` 的执行 checklist。  
+只有当对应 phase 文档中的验收标准与本文件中的核对项同时满足时，该阶段才算完成。
+
+使用规则：
+
+- 本文件不替代 `docs/PRD.md`
+- 本文件不替代具体 phase 文档
+- 若 checklist 与 `PRD v4.0` 冲突，以 `PRD v4.0` 为准
 
 ## Phase 01 Checklist
 
-- [ ] Add `Project` persistence and unique path constraint
-- [ ] Implement absolute-path and git-repo validation
-- [ ] Normalize project paths before persistence
-- [ ] Read default branch, current branch, cleanliness, and recent branches
-- [ ] Add project registration endpoint
-- [ ] Add project list endpoint
-- [ ] Add project detail or repo-status endpoint
-- [ ] Build project list UI
-- [ ] Build project detail UI
-- [ ] Show dirty working tree warning
-- [ ] Prevent duplicate project registration
-- [ ] Verify invalid-path and non-git cases
+- [ ] 持久化 `Project`
+- [ ] 路径规范化与唯一约束
+- [ ] Git 仓库校验
+- [ ] 读取默认分支、当前分支、dirty 状态、最近分支
+- [ ] `POST /api/projects`
+- [ ] `GET /api/projects`
+- [ ] `GET /api/projects/:id` 或 `repo-status`
+- [ ] 项目列表 UI
+- [ ] 项目详情 UI
+- [ ] dirty working tree warning
+- [ ] 重复项目注册保护
+- [ ] 非法路径与非 Git 目录负路径验证
 
 ## Phase 02 Checklist
 
-- [ ] Define adapter capability contract
-- [ ] Implement `AgentRegistry`
-- [ ] Support lead-candidate filtering
-- [ ] Support worker-candidate filtering
-- [ ] Implement structured health checks
-- [ ] Normalize health failure reasons
-- [ ] Add agents listing endpoint
-- [ ] Add health endpoint or event
-- [ ] Build agent health UI
-- [ ] Show sandbox support in capability display
-- [ ] Block unhealthy lead-agent selection in task creation
+- [ ] 定义 adapter capability contract
+- [ ] 实现 `AgentRegistry`
+- [ ] 支持 lead candidate 过滤
+- [ ] 支持 worker candidate 过滤
+- [ ] 结构化 health checks
+- [ ] 规范化 health failure reasons
+- [ ] `GET /api/agents`
+- [ ] `GET /api/agents/health`
+- [ ] agent health UI
+- [ ] capability 中显示 sandbox support
+- [ ] 阻止选择不健康的 lead agent
 
 ## Phase 03 Checklist
 
-- [ ] Define sandbox config type and validation rules
-- [ ] Implement Docker daemon preflight check
-- [ ] Validate image/runtime availability strategy
-- [ ] Implement mount allowlist enforcement
-- [ ] Block home directory and `.ssh` mounts by default
-- [ ] Enforce non-root worker execution
-- [ ] Reject privileged container mode
-- [ ] Implement container create/start/stop/remove helpers
-- [ ] Persist `sandboxType` and `containerId` shape in session model or staged schema
-- [ ] Expose Docker health to the app
-- [ ] Verify sandbox failures fail closed
+- [ ] 定义 sandbox config 与校验规则
+- [ ] Docker daemon preflight
+- [ ] image / runtime availability 校验
+- [ ] mount allowlist enforcement
+- [ ] 默认阻止 home 与 `.ssh` 挂载
+- [ ] 默认非 root Worker
+- [ ] 拒绝 privileged container
+- [ ] container create / start / stop / remove helpers
+- [ ] session 持久化中可容纳 `sandboxType` / `containerId`
+- [ ] `GET /api/system/docker-health`
+- [ ] `GET /api/system/sandbox-policy`
+- [ ] sandbox failure fail closed
 
 ## Phase 04 Checklist
 
-- [ ] Add `Task` persistence
-- [ ] Add `Message` persistence
-- [ ] Add `Attachment` persistence
-- [ ] Add minimal `AgentSession` persistence for lead sessions
-- [ ] Snapshot `baseCommitSha` during task creation
-- [ ] Persist task attachments under task-scoped upload directory
-- [ ] Validate attachment metadata and size/type limits
-- [ ] Implement `task:start-clarification`
-- [ ] Implement `task:message`
-- [ ] Implement `task:confirm-requirements`
-- [ ] Spawn lead session
-- [ ] Persist full clarification transcript
-- [ ] Build task creation UI
-- [ ] Build clarification chat UI
-- [ ] Verify reload persistence and unhealthy lead-agent handling
+- [ ] 持久化 `Task`
+- [ ] 持久化 `Message`
+- [ ] 持久化 `Attachment`
+- [ ] 持久化 lead `AgentSession`
+- [ ] task 创建时记录 `baseCommitSha`
+- [ ] task-scoped 附件目录持久化
+- [ ] 附件类型、大小和元数据校验
+- [ ] `POST /api/tasks`
+- [ ] `POST /api/tasks/:id/start-clarification`
+- [ ] `POST /api/tasks/:id/messages`
+- [ ] `POST /api/tasks/:id/confirm-requirements`
+- [ ] clarification chat UI
+- [ ] reload 后 transcript 与 lead session 可恢复
 
 ## Phase 05 Checklist
 
-- [ ] Add `currentPlanJson` to task persistence
-- [ ] Add `planVersion` semantics with initial `0`
-- [ ] Add `PlanSnapshot` persistence
-- [ ] Trigger planning prompt after requirements confirmation
-- [ ] Parse lead-agent JSON safely
-- [ ] Validate plan structure and agent health
-- [ ] Validate unique slug-safe `branch_suffix`
-- [ ] Persist valid `currentPlanJson`
-- [ ] Append `LEAD_GENERATED` snapshot
-- [ ] Emit `task:plan-generated`
-- [ ] Handle regeneration on invalid plan
-- [ ] Verify versioning and snapshot history
+- [ ] `Task.currentPlanJson`
+- [ ] `Task.planVersion`
+- [ ] `PlanSnapshot`
+- [ ] requirements confirmation 后自动进入 planning
+- [ ] 安全解析 lead 计划 JSON
+- [ ] 校验 plan 结构与 agent 合法性
+- [ ] 校验唯一 `branch_suffix`
+- [ ] 合法计划持久化到 `currentPlanJson`
+- [ ] 追加 `LEAD_GENERATED` snapshot
+- [ ] `task:plan-generated`
+- [ ] 非法计划再生成逻辑
+- [ ] version 与 snapshot history 验证
 
 ## Phase 06 Checklist
 
-- [ ] Build plan review editing UI
-- [ ] Support add/remove/edit subtask operations
-- [ ] Support worker-agent reassignment in draft
-- [ ] Support branch suffix editing in draft
-- [ ] Revalidate edited current plan before approval
-- [ ] Implement `task:restore-plan-snapshot`
-- [ ] Emit `task:plan-restored`
-- [ ] Restore historical snapshot into `currentPlanJson`
-- [ ] Optionally append `RESTORED_FROM_HISTORY` snapshot
-- [ ] Prevent approval of invalid edited drafts
+- [ ] plan review 编辑 UI
+- [ ] add / remove / edit subtask
+- [ ] 编辑推荐 agent
+- [ ] 编辑 `branch_suffix`
+- [ ] 批准前重新校验 draft
+- [ ] `POST /api/tasks/:id/restore-plan-snapshot`
+- [ ] `task:plan-restored`
+- [ ] 历史 snapshot 恢复到 `currentPlanJson`
+- [ ] 需要时追加 `RESTORED_FROM_HISTORY`
+- [ ] 阻止批准非法草稿
 
 ## Phase 07 Checklist
 
-- [ ] Add full `SubTask` persistence if not already migrated
-- [ ] Implement approval transaction boundary
-- [ ] Copy `currentPlanJson` to `approvedPlanJson`
-- [ ] Append `APPROVED` `PlanSnapshot`
-- [ ] Materialize one `SubTask` per approved item
-- [ ] Initialize `SubTask` status as `PENDING`
-- [ ] Leave `branchName` and `worktreePath` null before setup
-- [ ] Emit task/subtask state after approval
-- [ ] Prevent duplicate approval from creating duplicate subtasks
+- [ ] 持久化 `SubTask`
+- [ ] approval transaction boundary
+- [ ] `currentPlanJson -> approvedPlanJson`
+- [ ] 追加 `APPROVED` snapshot
+- [ ] 一对一物化 approved plan items
+- [ ] 初始 `SubTask.status = PENDING`
+- [ ] setup 前 `branchName` / `worktreePath` 为空
+- [ ] approval 后发布 task / subtask 状态
+- [ ] 阻止重复批准重复物化
 
 ## Phase 08 Checklist
 
-- [ ] Compute deterministic branch names from `taskId` and `branchSuffix`
-- [ ] Resolve branch collisions with numeric suffixes
-- [ ] Persist resolved `branchName`
-- [ ] Emit `branch:renamed`
-- [ ] Create one worktree per subtask from `baseCommitSha`
-- [ ] Persist `worktreePath`
-- [ ] Create worker `AgentSession` rows
-- [ ] Spawn worker sessions through sandbox manager
-- [ ] Filter attachments per worker capability at launch time
-- [ ] Persist or expose included/excluded attachment metadata
-- [ ] Transition subtask `PENDING -> READY -> RUNNING`
-- [ ] Implement `subtask:retry`
-- [ ] Increment `retryCount` on retry/rework run
-- [ ] Route branch/setup failures to `ACTION_REQUIRED`
-- [ ] Verify concurrent sessions of same adapter type
+- [ ] 基于 `taskId + branchSuffix` 生成稳定 branch name
+- [ ] 分支名冲突自动加数字后缀
+- [ ] 持久化 resolved `branchName`
+- [ ] `branch:renamed`
+- [ ] 基于 `baseCommitSha` 创建独立 worktree
+- [ ] 持久化 `worktreePath`
+- [ ] 创建 worker `AgentSession`
+- [ ] 通过 sandbox manager 启动 worker
+- [ ] 启动时按 capability 过滤附件
+- [ ] included / excluded attachment metadata 可见
+- [ ] `PENDING -> READY -> RUNNING`
+- [ ] `POST /api/subtasks/:id/retry`
+- [ ] retry / rework 增加 `retryCount`
+- [ ] branch / worktree setup 失败转 `ACTION_REQUIRED`
 
 ## Phase 09 Checklist
 
-- [ ] Persist full session logs to `logPath`
-- [ ] Maintain bounded `outputBuffer`
-- [ ] Stream `session:output` by `sessionId`
-- [ ] Emit `session:started` and `session:ended`
-- [ ] Build summary cards for all subtasks
-- [ ] Show tail preview from `outputBuffer`
-- [ ] Mount only one focused terminal surface by default
-- [ ] Keep ANSI rendering in focused terminal
-- [ ] Verify routing correctness under concurrent noisy output
-- [ ] Verify UI remains responsive with several active workers
+- [ ] session logs 持久化到 `logPath`
+- [ ] bounded `outputBuffer`
+- [ ] `session:output` 按 `sessionId` 路由
+- [ ] `session:started`
+- [ ] `session:ended`
+- [ ] 所有 subtasks 都有 summary cards
+- [ ] 从 `outputBuffer` 显示 tail preview
+- [ ] 默认只挂载一个 focused terminal surface
+- [ ] focused terminal 保持 ANSI-safe rendering
+- [ ] 高并发输出下路由正确
 
 ## Phase 10 Checklist
 
-- [ ] Add `ReviewRecord` persistence if not already migrated
-- [ ] Add `latestReviewDecision`, `latestReviewPhase`, `latestReviewSummary`
-- [ ] Trigger incremental review when a successful worker run completes
-- [ ] Persist `INCREMENTAL` review records
-- [ ] Emit `subtask:review`
-- [ ] Show incremental review summary in UI
-- [ ] Enable `Rework Now` only for actionable incremental `REWORK` or `REJECTED`
-- [ ] Support optional description edit before relaunch
-- [ ] Support optional `subtask:change-agent` before relaunch
-- [ ] Keep task in `EXECUTING` during early rework flow
-- [ ] Verify early rework does not bypass final review later
+- [ ] `ReviewRecord`
+- [ ] `latestReviewDecision`
+- [ ] `latestReviewPhase`
+- [ ] `latestReviewSummary`
+- [ ] 成功 worker run 后触发 incremental review
+- [ ] 持久化 `INCREMENTAL` review
+- [ ] `subtask:review`
+- [ ] UI 中显示 incremental review summary
+- [ ] 对可操作的 `REWORK` / `REJECTED` 开启 `Rework Now`
+- [ ] relaunch 前支持编辑描述
+- [ ] relaunch 前支持 change-agent
+- [ ] early rework 不绕过 final review
 
 ## Phase 11 Checklist
 
-- [ ] Detect task readiness for final review
-- [ ] Build final review aggregate prompt
-- [ ] Include approved plan, diffs, retries, and incremental history
-- [ ] Persist `FINAL` review records
-- [ ] Transition `REVIEW_PENDING -> ACCEPTED`
-- [ ] Transition `REVIEW_PENDING -> REWORK_REQUIRED`
-- [ ] Transition `REVIEW_PENDING -> DISCARD_PENDING`
-- [ ] Route task to `MERGING` or `ACTION_REQUIRED`
-- [ ] Implement discard confirmation flow
-- [ ] Verify mixed accepted/rework/failed/cancelled cases
+- [ ] 检测 task 何时进入 final review
+- [ ] 构建 final review aggregate prompt
+- [ ] prompt 包含 approved plan、diffs、retries、incremental history
+- [ ] 持久化 `FINAL` review
+- [ ] `REVIEW_PENDING -> ACCEPTED`
+- [ ] `REVIEW_PENDING -> REWORK_REQUIRED`
+- [ ] `REVIEW_PENDING -> DISCARD_PENDING`
+- [ ] task 正确路由到 `MERGING` 或 `ACTION_REQUIRED`
+- [ ] discard confirmation flow
+- [ ] mixed outcome task 验证
 
 ## Phase 12 Checklist
 
-- [ ] Add `MergeRecord` persistence if not already migrated
-- [ ] Merge accepted subtasks in stable creation order
-- [ ] Use `--no-ff`
-- [ ] Check target branch safety before each merge
-- [ ] Persist successful merge attempts with `SUCCEEDED`
-- [ ] Persist conflicted merge attempts with `CONFLICT`
-- [ ] Move task to `ACTION_REQUIRED` on conflict
-- [ ] Implement `subtask:rebase-retry`
-- [ ] Persist rebase attempts separately from merge attempts
-- [ ] Resume merge flow after successful rebase
-- [ ] Support dirty-target-branch recovery via `task:resume`
-- [ ] Show merge attempt history and `Rebase & Retry` UI only when valid
+- [ ] `MergeRecord`
+- [ ] accepted subtasks 按稳定顺序 merge
+- [ ] 使用 `--no-ff`
+- [ ] merge 前校验 target branch 安全性
+- [ ] `SUCCEEDED` merge attempts 持久化
+- [ ] `CONFLICT` merge attempts 持久化
+- [ ] merge conflict 转 `ACTION_REQUIRED`
+- [ ] `POST /api/subtasks/:id/rebase-retry`
+- [ ] rebase attempt 独立于 merge attempt 持久化
+- [ ] rebase 成功后恢复 merge 流程
+- [ ] dirty target branch 可通过 `task:resume` 或等价恢复入口处理
 
 ## Phase 13 Checklist
 
-- [ ] Detect terminal task transitions centrally
-- [ ] Attempt worktree cleanup for `COMPLETED`
-- [ ] Attempt worktree cleanup for `FAILED`
-- [ ] Attempt worktree cleanup for `CANCELLED`
-- [ ] Log cleanup failures without reopening task state
-- [ ] Emit `task:cleanup-warning`
-- [ ] Show cleanup warning in task UI after reload
-- [ ] Verify cleanup on missing/locked worktrees
+- [ ] 中央化检测 terminal task transitions
+- [ ] 对 `COMPLETED` 尝试 cleanup
+- [ ] 对 `FAILED` 尝试 cleanup
+- [ ] 对 `CANCELLED` 尝试 cleanup
+- [ ] cleanup 失败不重开 task
+- [ ] `task:cleanup-warning`
+- [ ] reload 后仍能看到 cleanup warning
+- [ ] 缺失 / 锁定 worktree 的 cleanup 负路径验证
 
 ## Phase 14 Checklist
 
-- [ ] Confirm all required metric inputs exist in persisted data
-- [ ] Fill missing persistence gaps only if necessary
-- [ ] Implement metrics summary queries
-- [ ] Implement export API or CLI
-- [ ] Document metric definitions near code or docs
-- [ ] Validate completion-rate calculation
-- [ ] Validate retry-to-review conversion metric
-- [ ] Validate merge-conflict and rebase-retry counters
-- [ ] Validate cleanup warning and sandbox failure counters
-- [ ] Verify metrics on seeded histories with retries, reworks, and conflicts
+- [ ] 所需 metrics 输入都来自持久化数据
+- [ ] `GET /api/metrics/summary`
+- [ ] `GET /api/metrics/export`
+- [ ] completion-rate 计算验证
+- [ ] retry-to-review conversion 计算验证
+- [ ] merge-conflict 与 rebase-retry counter 验证
+- [ ] cleanup warning / sandbox failure counter 验证
+- [ ] 带 retry / rework / conflict 的 seeded histories 验证
 
 ## Phase 15 Checklist
 
-- [ ] Extend plan payload with optional `depends_on`
-- [ ] Validate `depends_on` references and reject cycles or forward references
-- [ ] Persist subtask dependency metadata
-- [ ] Add `BLOCKED` subtask status
-- [ ] Materialize dependent subtasks as `BLOCKED`
-- [ ] Auto-release blocked subtasks when prerequisites complete
-- [ ] Auto-launch newly released subtasks without re-approving the task
-- [ ] Route unresolved blocked subtasks to `ACTION_REQUIRED`
-- [ ] Expose dependency metadata in task APIs and UI
-- [ ] Verify ordered execution on a seeded dependency chain
+- [ ] plan payload 支持 `depends_on`
+- [ ] 校验依赖引用与环
+- [ ] 持久化 subtask dependency metadata
+- [ ] 引入 `BLOCKED` subtask status
+- [ ] 依赖型 subtasks 初始为 `BLOCKED`
+- [ ] 依赖满足后自动 release
+- [ ] release 后自动 launch
+- [ ] unresolved blocked subtasks 正确转入 `ACTION_REQUIRED`
+- [ ] API 与 UI 暴露 dependency metadata
+- [ ] 有序依赖链验证
 
 ## Phase 16 Checklist
 
-- [x] Add mailbox message persistence
-- [x] Expose mailbox history in task detail APIs
-- [x] Add task-scoped mailbox posting API
-- [x] Emit realtime mailbox message events
-- [x] Auto-generate dependency handoff notes after successful upstream completion
-- [x] Inject targeted mailbox notes into worker prompts
-- [x] Build focused execution mailbox UI
-- [x] Allow lead note entry from the web UI
-- [x] Verify mailbox persistence and ordering
-- [x] Verify downstream prompt handoff on a seeded dependency chain
+- [x] `MailboxMessage`
+- [x] task detail API 暴露 mailbox history
+- [x] `POST /api/tasks/:id/mailbox`
+- [x] realtime mailbox events
+- [x] 上游成功后自动生成 handoff note
+- [x] targeted mailbox notes 注入 worker prompt
+- [x] focused execution mailbox UI
+- [x] Web 中可发送 lead mailbox note
+- [x] mailbox persistence 与 ordering 验证
+- [x] downstream prompt handoff 验证

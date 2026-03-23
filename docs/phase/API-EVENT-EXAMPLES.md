@@ -1,13 +1,13 @@
-# EAT API And Event Examples
+# EAT Foundation Phase API And Event Examples
 
-This document gives concrete request, response, and websocket payload examples by phase. The payloads are illustrative contracts, not a claim that every endpoint path is already fixed.
+本文件给出基础阶段 `01` 到 `16` 的 API / SSE 事件示例。  
+示例以当前代码已存在或已明确落地的路径和事件名为基础，不再混用 websocket 占位写法或不完整 payload。
 
 ## Conventions
 
-- REST examples use `/api/...` paths as placeholders.
-- Websocket event names follow the PRD naming.
-- IDs use readable fake values.
-- Responses omit unrelated fields for brevity.
+- REST 示例使用 `/api/...`
+- realtime 事件沿用 task-scoped SSE
+- 示例强调字段命名与状态表达，不追求完整响应体
 
 ## Phase 01 - Project APIs
 
@@ -26,6 +26,7 @@ Content-Type: application/json
 
 ```json
 {
+  "ok": true,
   "project": {
     "id": "proj_123",
     "name": "EAT",
@@ -34,6 +35,7 @@ Content-Type: application/json
   },
   "repoStatus": {
     "currentBranch": "main",
+    "defaultBranch": "main",
     "isDirty": true,
     "recentBranches": ["main", "feature/prd"]
   }
@@ -64,6 +66,7 @@ GET /api/agents
   "agents": [
     {
       "name": "codex-cli",
+      "runtimeMode": "REAL",
       "capabilities": {
         "canOrchestrate": true,
         "canExecute": true,
@@ -72,29 +75,49 @@ GET /api/agents
         "supportedSandboxTypes": ["DOCKER"]
       }
     }
+  ],
+  "leadCandidates": [
+    {
+      "agentName": "codex-cli",
+      "selectable": true
+    }
+  ],
+  "workerCandidates": [
+    {
+      "agentName": "codex-cli",
+      "selectable": true
+    }
   ]
 }
 ```
 
-### Agent Health Event
+### Health Snapshot
+
+```http
+GET /api/agents/health
+```
 
 ```json
 {
-  "event": "agent:health",
-  "data": {
-    "agents": {
-      "codex-cli": {
-        "available": true,
-        "version": "1.2.3"
-      }
+  "agents": {
+    "codex-cli": {
+      "available": true,
+      "runtimeMode": "REAL",
+      "version": "codex-cli 1.2.3",
+      "checks": [
+        {
+          "name": "binary",
+          "status": "PASS"
+        }
+      ]
     }
   }
 }
 ```
 
-## Phase 03 - Docker Health API
+## Phase 03 - Sandbox APIs
 
-### Docker Preflight
+### Docker Health
 
 ```http
 GET /api/system/docker-health
@@ -102,19 +125,26 @@ GET /api/system/docker-health
 
 ```json
 {
+  "ok": true,
   "available": true,
   "daemonReachable": true,
-  "defaultWorkerImage": "eat/worker-base:latest"
+  "defaultWorkerImage": "eat/worker-base:latest",
+  "networkProfile": "ISOLATED"
 }
 ```
 
-### Docker Failure
+### Sandbox Policy
+
+```http
+GET /api/system/sandbox-policy
+```
 
 ```json
 {
-  "available": false,
-  "daemonReachable": false,
-  "reason": "Docker daemon is not running."
+  "ok": true,
+  "defaultSandboxType": "DOCKER",
+  "defaultWorkerImage": "eat/worker-base:latest",
+  "blockedHostPaths": ["~", "~/.ssh"]
 }
 ```
 
@@ -132,15 +162,14 @@ Content-Type: application/json
   "projectId": "proj_123",
   "baseBranch": "main",
   "leadAgentType": "codex-cli",
-  "title": "Implement task orchestration MVP",
+  "title": "Implement task orchestration foundation flow",
   "description": "Build local-first multi-agent orchestration.",
   "attachments": [
     {
-      "fileName": "ui-flow.png",
-      "filePath": "/tmp/upload-ui-flow.png",
-      "mimeType": "image/png",
-      "fileType": "IMAGE",
-      "size": 120330
+      "fileName": "brief.md",
+      "filePath": "/tmp/brief.md",
+      "mimeType": "text/markdown",
+      "fileType": "DOCUMENT"
     }
   ]
 }
@@ -151,23 +180,26 @@ Content-Type: application/json
   "task": {
     "id": "task_123",
     "status": "DRAFT",
-    "baseCommitSha": "abc123def456"
+    "baseCommitSha": "abc123def456",
+    "taskBranchName": "eat-Implement-task-orchestration-foundation-flow"
   }
 }
 ```
 
 ### Start Clarification
 
+```http
+POST /api/tasks/task_123/start-clarification
+Content-Type: application/json
+```
+
 ```json
 {
-  "event": "task:start-clarification",
-  "data": {
-    "taskId": "task_123"
-  }
+  "content": "Clarify whether workers must run in parallel only."
 }
 ```
 
-### Lead Message
+### Lead Message Event
 
 ```json
 {
@@ -212,7 +244,7 @@ Content-Type: application/json
 }
 ```
 
-### Plan Validation Failure Shape
+### Plan Validation Failure
 
 ```json
 {
@@ -226,17 +258,18 @@ Content-Type: application/json
 }
 ```
 
-## Phase 06 - Plan Restore And Approval Surface
+## Phase 06 - Plan Restore
 
 ### Restore Historical Snapshot
 
+```http
+POST /api/tasks/task_123/restore-plan-snapshot
+Content-Type: application/json
+```
+
 ```json
 {
-  "event": "task:restore-plan-snapshot",
-  "data": {
-    "taskId": "task_123",
-    "snapshotId": "plan_snap_002"
-  }
+  "snapshotId": "plan_snap_002"
 }
 ```
 
@@ -260,6 +293,171 @@ Content-Type: application/json
     }
   }
 }
+```
+
+## Phase 07 - Plan Approval
+
+### Approve Plan
+
+```http
+POST /api/tasks/task_123/approve-plan
+```
+
+```json
+{
+  "ok": true,
+  "task": {
+    "id": "task_123",
+    "status": "EXECUTING"
+  },
+  "subTasks": [
+    {
+      "id": "sub_001",
+      "status": "PENDING",
+      "branchSuffix": "project-registration"
+    }
+  ]
+}
+```
+
+## Phase 08 - Worker Setup And Execution
+
+### Branch Renamed Event
+
+```json
+{
+  "event": "branch:renamed",
+  "data": {
+    "subtaskId": "sub_001",
+    "originalName": "eat/task_123/backend",
+    "resolvedName": "eat/task_123/backend-1"
+  }
+}
+```
+
+### Session Started Event
+
+```json
+{
+  "event": "session:started",
+  "data": {
+    "sessionId": "sess_worker_001",
+    "taskId": "task_123",
+    "subtaskId": "sub_001",
+    "status": "RUNNING"
+  }
+}
+```
+
+## Phase 09 - Output Streaming
+
+### Session Output Event
+
+```json
+{
+  "event": "session:output",
+  "data": {
+    "sessionId": "sess_worker_001",
+    "taskId": "task_123",
+    "subtaskId": "sub_001",
+    "chunk": "worker completed\n"
+  }
+}
+```
+
+### Session Ended Event
+
+```json
+{
+  "event": "session:ended",
+  "data": {
+    "sessionId": "sess_worker_001",
+    "taskId": "task_123",
+    "subtaskId": "sub_001",
+    "exitCode": 0,
+    "status": "COMPLETED"
+  }
+}
+```
+
+## Phase 10 - Incremental Review
+
+### Incremental Review Event
+
+```json
+{
+  "event": "subtask:review",
+  "data": {
+    "subtaskId": "sub_001",
+    "phase": "INCREMENTAL",
+    "decision": "REWORK",
+    "summary": "Retry with clearer validation handling."
+  }
+}
+```
+
+## Phase 12 - Merge And Retry
+
+### Merge Conflict Event
+
+```json
+{
+  "event": "merge:status",
+  "data": {
+    "subtaskId": "sub_001",
+    "status": "CONFLICT",
+    "summary": "Conflict in src/server/app.js."
+  }
+}
+```
+
+## Phase 13 - Cleanup Warning
+
+### Cleanup Warning Event
+
+```json
+{
+  "event": "task:cleanup-warning",
+  "data": {
+    "taskId": "task_123",
+    "worktreePath": "/tmp/.eat-worktrees/task_123/backend",
+    "reason": "Directory is locked by another process."
+  }
+}
+```
+
+## Phase 14 - Metrics
+
+### Metrics Summary
+
+```http
+GET /api/metrics/summary
+```
+
+```json
+{
+  "ok": true,
+  "metrics": {
+    "taskCompletionRate": 0.75,
+    "mergeConflictCount": 2,
+    "rebaseRetryCount": 1
+  }
+}
+```
+
+## Phase 15 - Dependency Scheduling
+
+### Dependency-Constrained Plan Item
+
+```json
+{
+  "title": "Add task UI",
+  "description": "Build the UI after the API contract exists.",
+  "recommended_agent": "codex-cli",
+  "branch_suffix": "task-ui",
+  "depends_on": ["project-registration"]
+}
+```
 
 ## Phase 16 - Mailbox And Handoff
 
@@ -283,11 +481,10 @@ Content-Type: application/json
     "id": "mail_001",
     "taskId": "task_123",
     "senderType": "LEAD",
-    "senderSubTaskId": null,
     "targetType": "SUBTASK",
     "targetSubTaskId": "subtask_frontend",
-    "content": "Use the auth endpoints from the backend branch and keep the token shape unchanged.",
-    "createdAt": "2026-03-19T05:30:00.000Z"
+    "messageType": "NOTE",
+    "content": "Use the auth endpoints from the backend branch and keep the token shape unchanged."
   }
 }
 ```
@@ -300,340 +497,11 @@ Content-Type: application/json
   "data": {
     "taskId": "task_123",
     "message": {
-      "id": "mail_002",
-      "senderType": "SUBTASK",
-      "senderSubTaskId": "subtask_backend",
-      "targetType": "SUBTASK",
+      "id": "mail_001",
+      "senderType": "LEAD",
       "targetSubTaskId": "subtask_frontend",
-      "content": "Backend contract is ready on eat/task_123/backend-contract. Auth routes are under /api/auth/*.",
-      "createdAt": "2026-03-19T05:31:00.000Z"
+      "messageType": "NOTE"
     }
   }
-}
-```
-
-## Phase 07 - Approve Plan
-
-### Approve Plan Event
-
-```json
-{
-  "event": "task:approve-plan",
-  "data": {
-    "taskId": "task_123",
-    "currentPlan": {
-      "subtasks": [
-        {
-          "title": "Build backend",
-          "description": "Implement project and task APIs.",
-          "recommended_agent": "codex-cli",
-          "branch_suffix": "backend"
-        },
-        {
-          "title": "Build UI",
-          "description": "Implement task creation and project screens.",
-          "recommended_agent": "codex-cli",
-          "branch_suffix": "ui"
-        }
-      ]
-    }
-  }
-}
-```
-
-### Initial Subtask Status Event
-
-```json
-{
-  "event": "subtask:status",
-  "data": {
-    "subtaskId": "sub_001",
-    "status": "PENDING"
-  }
-}
-```
-
-### Blocked Subtask Status Event
-
-```json
-{
-  "event": "subtask:status",
-  "data": {
-    "subtaskId": "sub_002",
-    "status": "BLOCKED",
-    "dependencyBranchSuffixes": ["project-registration"]
-  }
-}
-```
-
-## Phase 08 - Worker Execution
-
-### Branch Renamed Event
-
-```json
-{
-  "event": "branch:renamed",
-  "data": {
-    "subtaskId": "sub_001",
-    "originalName": "eat/task_123/backend",
-    "resolvedName": "eat/task_123/backend-1"
-  }
-}
-```
-
-### Session Started Event
-
-```json
-{
-  "event": "session:started",
-  "data": {
-    "sessionId": "sess_001",
-    "taskId": "task_123",
-    "subtaskId": "sub_001",
-    "pid": 4812
-  }
-}
-```
-
-### Retry Event
-
-```json
-{
-  "event": "subtask:retry",
-  "data": {
-    "subtaskId": "sub_001",
-    "description": "Retry after fixing missing API route."
-  }
-}
-```
-
-### Attachment Launch Metadata Shape
-
-```json
-{
-  "subtaskId": "sub_001",
-  "attachments": {
-    "included": [
-      {
-        "attachmentId": "att_doc_1",
-        "fileName": "requirements.md",
-        "fileType": "DOCUMENT"
-      }
-    ],
-    "excluded": [
-      {
-        "attachmentId": "att_img_1",
-        "fileName": "ui-flow.png",
-        "fileType": "IMAGE",
-        "reason": "Assigned agent does not support vision."
-      }
-    ]
-  }
-}
-```
-
-## Phase 09 - Output Streaming
-
-### Session Output Event
-
-```json
-{
-  "event": "session:output",
-  "data": {
-    "sessionId": "sess_001",
-    "taskId": "task_123",
-    "subtaskId": "sub_001",
-    "chunk": "Applying Prisma migration...\n"
-  }
-}
-```
-
-### Session Ended Event
-
-```json
-{
-  "event": "session:ended",
-  "data": {
-    "sessionId": "sess_001",
-    "taskId": "task_123",
-    "subtaskId": "sub_001",
-    "exitCode": 0,
-    "status": "COMPLETED"
-  }
-}
-```
-
-## Phase 10 - Incremental Review And Early Rework
-
-### Incremental Review Event
-
-```json
-{
-  "event": "subtask:review",
-  "data": {
-    "subtaskId": "sub_001",
-    "decision": "REWORK",
-    "summary": "API route compiles, but validation errors are not surfaced to the UI.",
-    "phase": "INCREMENTAL"
-  }
-}
-```
-
-### Early Rework Event
-
-```json
-{
-  "event": "subtask:rework",
-  "data": {
-    "subtaskId": "sub_001",
-    "description": "Add error-state handling to the project registration form."
-  }
-}
-```
-
-### Change Agent Event
-
-```json
-{
-  "event": "subtask:change-agent",
-  "data": {
-    "subtaskId": "sub_001",
-    "agentType": "claude-cli",
-    "description": "Switch to a vision-capable agent because image review is required."
-  }
-}
-```
-
-## Phase 11 - Final Review
-
-### Final Review Event
-
-```json
-{
-  "event": "subtask:review",
-  "data": {
-    "subtaskId": "sub_001",
-    "decision": "ACCEPTED",
-    "summary": "The backend changes are correct and consistent with the approved plan.",
-    "phase": "FINAL"
-  }
-}
-```
-
-### Confirm Discard Event
-
-```json
-{
-  "event": "subtask:confirm-discard",
-  "data": {
-    "subtaskId": "sub_002"
-  }
-}
-```
-
-## Phase 12 - Merge And Rebase Retry
-
-### Merge Status Event
-
-```json
-{
-  "event": "merge:status",
-  "data": {
-    "subtaskId": "sub_001",
-    "status": "SUCCEEDED",
-    "summary": "Merged into main with --no-ff."
-  }
-}
-```
-
-### Merge Conflict Status Event
-
-```json
-{
-  "event": "merge:status",
-  "data": {
-    "subtaskId": "sub_002",
-    "status": "CONFLICT",
-    "summary": "Conflict in package.json"
-  }
-}
-```
-
-### Rebase Retry Event
-
-```json
-{
-  "event": "subtask:rebase-retry",
-  "data": {
-    "subtaskId": "sub_002"
-  }
-}
-```
-
-### Generic Resume Event
-
-```json
-{
-  "event": "task:resume",
-  "data": {
-    "taskId": "task_123"
-  }
-}
-```
-
-## Phase 13 - Cleanup Warning
-
-### Cleanup Warning Event
-
-```json
-{
-  "event": "task:cleanup-warning",
-  "data": {
-    "taskId": "task_123",
-    "worktreePath": "/tmp/eat/task_123/sub_002",
-    "reason": "Directory is locked by another process."
-  }
-}
-```
-
-## Phase 14 - Metrics Export
-
-### Metrics Summary
-
-```http
-GET /api/metrics/summary
-```
-
-```json
-{
-  "summary": {
-    "tasksEnteredExecuting": 24,
-    "tasksCompleted": 19,
-    "completionRateAfterPlanApproval": 0.7917,
-    "workerCrashDetectionRate": 1.0,
-    "mergeConflictCount": 5,
-    "rebaseRetryCount": 3
-  }
-}
-```
-
-### Metrics Export
-
-```http
-GET /api/metrics/export
-```
-
-```json
-{
-  "generatedAt": "2026-03-18T12:00:00.000Z",
-  "tasks": [
-    {
-      "taskId": "task_123",
-      "status": "COMPLETED",
-      "retryCount": 2,
-      "mergeConflictCount": 1,
-      "cleanupWarningCount": 0
-    }
-  ]
 }
 ```

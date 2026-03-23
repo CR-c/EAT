@@ -1,143 +1,161 @@
-# EAT v1.1 Prisma Migration Plan
+# EAT Extended Phase Schema Rollout Notes
 
-本文件描述 v1.1 路线下建议的 schema rollout。  
-目标不是一次性把全部字段提前打满，而是给每个 phase 提供“足够但不激进”的迁移节奏。
+## 文档定位
 
-## Migration Strategy
+这个文件说明扩展阶段 `17` 到 `22` 的数据层 rollout 策略。  
+它沿用历史命名 `PRISMA-MIGRATIONS.md`，但当前仓库的真实运行时并不是 Prisma Client。
+
+当前实际情况：
+
+- 运行时数据库访问使用 `node:sqlite`
+- schema rollout 依赖 `prisma/migrations/` 中的 SQL migration
+- `prisma/schema.prisma` 主要是参考性 schema 描述，不应被视为唯一运行时真相
+- 当 `schema.prisma` 与 repository / SQL migrations 冲突时，以运行时 repository 和已落地 migration 为准
+
+## Rollout Principles
 
 - 优先 additive migration
-- 尽量复用现有 `Task` / `SubTask` / `AgentSession` 结构
-- 需要 append-only 历史时，不要用 mutable 覆盖字段替代历史表
-- 如果字段暂时只用于 UI 展示，可先允许 nullable，再在后续 phase 收紧
+- 能复用现有对象时，不额外发明顶层实体
+- append-only history 不应用可变覆盖字段替代
+- 如果字段只为展示层服务，可以先 nullable，再在稳定后收紧
+- 若扩展阶段文档描述的对象已经进入仓库实现，后续 migration 设计应与当前 repository 字段命名保持一致
 
 ## Phase 17
 
-### New Or Changed Models
+### Target Objects
 
 - `SubTask`
 
-### Fields
+### Expected Fields
 
-- `role?`
-- `display_name?`
-- `execution_order?`
-- `assignment_source?`
-- `run_summary?`
+- `role`
+- `display_name`
+- `execution_order`
+- `assignment_source`
+- `run_summary`
 
 ### Notes
 
-- 这一阶段不建议新增独立 `Team` 表
-- `SubTask` 继续作为执行单元，新增字段只为支撑 Web leader orchestration 视图
+- 不新增独立 `Team` 表
+- `SubTask` 继续作为执行单元和 member 持久化对象
 
 ## Phase 18
 
-### New Or Changed Models
+### Target Objects
 
 - `Task`
 - `PlanSnapshot`
 
-### Fields
+### Expected Strategy
 
-#### `Task`
+优先继续复用：
 
-- `current_plan_graph_json?`
-- `approved_plan_graph_json?`
-
-#### `PlanSnapshot`
-
-- `graph_payload?`
+- `current_plan_json`
+- `approved_plan_json`
+- `plan_snapshots.payload`
 
 ### Notes
 
-- 如果决定继续只用 `currentPlanJson` / `approvedPlanJson` 承载 graph，也可以不单独建字段
-- 但建议至少为 graph-ready payload 预留明确命名，避免 list plan 与 DAG plan 混淆
+- 当前更推荐把 role-aware DAG 继续编码在现有 plan JSON 中，而不是额外引入 `current_plan_graph_json` / `approved_plan_graph_json`
+- 只有在 plan payload 无法继续承载 graph 结构时，才考虑单独迁移字段
 
 ## Phase 19
 
-### New Or Changed Models
+### Target Objects
 
 - `MailboxMessage`
 
-### Fields
+### Expected Fields
 
 - `message_type`
-- `artifact_refs_json @default('[]')`
-- `file_refs_json @default('[]')`
-- `branch_ref?`
-- `schema_json?`
-- `requires_ack @default(false)`
+- `artifact_refs_json`
+- `file_refs_json`
+- `branch_ref`
+- `schema_json`
+- `requires_ack`
 
 ### Notes
 
-- 保持 append-only
-- typed mailbox 应优先在现有 `mailbox_messages` 表上扩展，而不是拆出多张弱表
+- typed mailbox 应优先在现有 `mailbox_messages` 表上扩展
+- 不要把 mailbox 拆成多张弱关联子表
 
 ## Phase 20
 
-### New Or Changed Models
+### Target Objects
 
 - Optional only
 
-### Optional Fields / Models
-
-- `TaskActivity` optional append-only table if query-based board rendering becomes too expensive
-
 ### Notes
 
-- 如果 board 可通过现有事件和持久化数据推导，不强制迁移
-- 不要为了 board 视图过早建立高冗余聚合表
+- board 优先通过现有 task / subtask / session / mailbox / review / integration 数据聚合得出
+- 不要为了 board 视图过早引入高冗余聚合表
+- 如果查询成本未来不可接受，再考虑 append-only `TaskActivity` 一类的派生表
 
 ## Phase 21
 
-### New Or Changed Models
+### Target Objects
 
 - `IntegrationRun`
 - `IntegrationQueueItem`
 - `GateResult`
 
-### Fields
+### Expected Fields
 
 #### `IntegrationRun`
 
-- `taskId`
-- `integrationBranch`
+- `task_id`
+- `integration_branch`
 - `status`
-- `startedAt`
-- `endedAt?`
+- `started_at`
+- `ended_at`
+- `created_at`
+- `updated_at`
 
 #### `IntegrationQueueItem`
 
-- `integrationRunId`
-- `subTaskId`
-- `queueOrder`
+- `integration_run_id`
+- `sub_task_id`
+- `queue_order`
 - `status`
+- `merged_commit_sha`
+- `created_at`
+- `updated_at`
 
 #### `GateResult`
 
-- `integrationRunId`
-- `gateType`
+- `integration_run_id`
+- `gate_type`
 - `status`
 - `summary`
-- `detailsJson?`
-- `createdAt`
+- `details_json`
+- `created_at`
 
 ### Notes
 
-- 这一阶段建议引入独立表，而不是把 integration 状态塞回 `Task`
-- merge queue 与 gate result 都是 append-only / history-sensitive 对象
+- integration run、queue item、gate result 都应保持独立对象层
+- 不要把 integration 结果塞回 `Task` 上的几个 mutable 字段
 
 ## Phase 22
 
-### New Or Changed Models
+### Target Objects
 
 - Optional only
 
-### Optional Models
-
-- `TaskTemplate`
-- `DemoScenario`
-
 ### Notes
 
-- 若模板先以内置静态配置实现，则可不做 migration
-- 若要支持模板管理 UI，再考虑持久化 `TaskTemplate`
+- built-in templates 可以继续用静态配置，不强制持久化
+- guided flow 不强制新增表
+- 只有在需要模板管理 UI、模板版本控制或 demo scenario 管理时，才考虑新增：
+  - `TaskTemplate`
+  - `DemoScenario`
+
+## Maintenance Rule
+
+每次扩展阶段涉及 schema 讨论时，按以下顺序核对：
+
+1. `docs/PRD.md`
+2. `src/repositories/*`
+3. `prisma/migrations/*`
+4. `prisma/schema.prisma`
+
+不要反过来只看 `schema.prisma` 就推导新 migration。

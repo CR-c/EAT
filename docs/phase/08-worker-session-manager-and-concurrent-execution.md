@@ -6,12 +6,11 @@ Create isolated branches and worktrees, then run multiple worker sessions concur
 
 ## PRD Coverage
 
-- `FR-EX-01`
-- `FR-EX-02`
-- `FR-EX-03`
-- `FR-EX-04`
-- `FR-EX-07`
-- Task and SubTask lifecycle rules related to execution
+- `4.3 Worker 必须继续 Docker 沙箱化`
+- `10.6 Team Lifecycle And Worker Execution`
+- `11.1 运行时形态`
+- `12.4 安全可见性`
+- task / subtask execution lifecycle rules
 
 ## Preconditions
 

@@ -6,9 +6,11 @@ Freeze the approved plan, create executable `SubTask` records from it, and prepa
 
 ## PRD Coverage
 
-- `FR-PL-05`
-- `6.4 Plan Materialization Model`
-- `Task` / `SubTask` data-model semantics
+- `4.4 计划与执行分离`
+- `10.5 Role-Aware DAG Planning`
+- `10.6 Team Lifecycle And Worker Execution`
+- `8.1 Task 关键字段`
+- `8.2 SubTask 关键字段`
 
 ## Preconditions
 

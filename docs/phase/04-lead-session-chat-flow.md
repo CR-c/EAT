@@ -6,9 +6,9 @@ Implement the first end-to-end task slice: create a task, start clarification wi
 
 ## PRD Coverage
 
-- `FR-TC-01`
-- `FR-TC-02`
-- `FR-TC-03`
+- `10.3 Task Creation And Guided Flow`
+- `10.4 Clarification And Task Document`
+- `4.1 人类监督优先`
 - `task:start-clarification`
 - `task:message`
 - `task:confirm-requirements`

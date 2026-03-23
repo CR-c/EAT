@@ -13,8 +13,9 @@ Finish the task lifecycle cleanly by attempting worktree cleanup on terminal sta
 
 ## PRD Coverage
 
-- `6.9 Worktree Cleanup Model`
-- `FR-MG-06`
+- `9.1 Task 状态`
+- `10.6 Team Lifecycle And Worker Execution`
+- `11.1 运行时形态`
 - `task:cleanup-warning`
 
 ## Preconditions

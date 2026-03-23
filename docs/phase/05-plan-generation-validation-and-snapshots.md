@@ -6,11 +6,10 @@ Turn clarification output into a valid editable plan draft, validate it rigorous
 
 ## PRD Coverage
 
-- `FR-PL-01`
-- `FR-PL-02`
-- `FR-PL-03`
-- `6.4 Plan Materialization Model`
-- `6.11 Plan Version and Snapshot Semantics`
+- `4.4 计划与执行分离`
+- `4.5 审查与合并历史必须 append-only`
+- `10.5 Role-Aware DAG Planning`
+- `8.1 Task 关键字段`
 
 ## Preconditions
 

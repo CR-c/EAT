@@ -1,141 +1,112 @@
 # Phase 18 - DAG Planning, Role Assignment And Template Seeding
 
-## 目标
+## Goal
 
-让 lead agent 生成的不再只是“子任务列表”，而是一个真正可编辑的 team execution DAG。
+把计划从“可执行子任务列表”升级为“可审阅、可编辑、带角色语义和依赖图的 team execution DAG”。
 
-这一阶段完成后，用户在 Web 中应当可以看到并编辑：
+## PRD Coverage
 
-- role
-- owner agent
-- dependency DAG
-- deliverable
-- acceptance criteria
-- 推荐模板种子
+本阶段主要落实：
 
-## 这阶段解决什么问题
+- role-aware DAG planning
+- `currentPlanJson` / `approvedPlanJson` 的 plan contract 扩展
+- template seed 与 guided flow 的计划层入口
+- plan validation 中对 role、deliverable、acceptance criteria 的约束
 
-当前 plan 已经支持 `depends_on`，但还不够像一个可操作的 team plan：
+## Preconditions
 
-- 只有 subtask 层，没有 role 语义
-- 缺少交付物定义
-- 缺少验收标准
-- 缺少模板化脚手架
-- 缺少 DAG 级可视化编辑
+- phase `05` 和 `06` 已提供 plan generation / review / snapshot
+- phase `17` 已提供 team member 骨架
 
-这导致 lead 虽然能拆任务，但对用户来说还不像“一个可以在 Web 中审阅和调整的编排图”。
+## Deliverables
 
-## 范围
+- 扩展后的 plan node schema
+- lead 输出 role-aware DAG 的约束
+- graph/list 双视图 plan review
+- template seed 系统
+- 更严格的 plan validation 规则
 
-本阶段内：
+## Suggested Execution Order
 
-- 将 plan 草案升级为 DAG draft
-- 为每个节点增加 role / deliverable / acceptance 字段
-- 提供 DAG 编辑 UI
-- 为常见任务提供 plan seed/template
+1. 扩展 plan node schema 和校验逻辑。
+2. 升级 lead planning prompt 输出契约。
+3. 接入 template seed 与 guided flow 的计划骨架。
+4. 实现 graph/list 双视图 plan review。
+5. 校验 approval 后的 materialized subtasks 与 DAG 一致。
 
-本阶段外：
+## Schema And Persistence
 
-- 富合同 handoff
-- 多任务看板
-- 集成分支和 merge queue
+每个 plan node 至少应支持：
 
-## 借鉴 ClawTeam 的点
-
-可借鉴：
-
-- leader 先生成角色化分工
-- 再基于依赖图派发 specialist
-- 对常见任务提供 team 模板感知
-
-不直接照搬：
-
-- 不把模板当成黑盒自动执行器
-- 模板只能作为 planning seed，最终仍由用户审阅批准
-
-## 交付物
-
-- DAG plan schema
-- lead prompt 升级：要求输出 role-aware DAG
-- Web DAG 编辑器
-- 模板种子系统
-- 计划验证规则扩展
-
-## 建议 schema 扩展
-
-对每个 plan item / subtask 增加：
-
+- `title`
+- `description`
+- `recommended_agent`
+- `branch_suffix`
 - `role`
 - `deliverable`
 - `acceptance_criteria`
-- `estimated_scope`
+- `depends_on`
 - `template_hint`
 
-建议保留：
+可选字段可继续扩展，但不得削弱上面这些字段的必填要求。
 
-- `branch_suffix`
-- `recommended_agent`
-- `depends_on`
+## API And Event Surface
 
-## 模板策略
+建议或要求具备：
 
-模板不应直接等于固定计划，而应分为两层：
+- `PUT /api/tasks/:taskId/current-plan`
+- `POST /api/tasks/:taskId/plan-seed`
+- `POST /api/tasks/:taskId/approve-plan`
+- `POST /api/tasks/:taskId/restore-plan-snapshot`
 
-### 1. Task template
+推荐事件：
 
-例如：
+- `task:plan-generated`
+- `task:plan-restored`
+- `task:status`
 
-- full-stack web app
-- backend API service
-- frontend refactor
-- bugfix hotpatch
-- docs / release task
+## Backend Tasks
 
-### 2. Plan seed
+- 扩展 plan parser 和 validator，覆盖 DAG 语义。
+- 对 `role`、`deliverable`、`acceptance_criteria` 增加非空校验。
+- 对 `depends_on` 进行环检测。
+- 在 approval 时把 plan node 正确映射为 `SubTask` 字段。
+- 保留 `planVersion` 与 `PlanSnapshot` 语义不变。
 
-模板只提供默认 DAG 骨架，例如：
+## UI Tasks
 
-- architect
-- backend
-- database
-- frontend
-- tester
+- plan review 不再只停留在列表编辑。
+- 提供 graph/list 双视图。
+- 允许编辑 role、deliverable、acceptance criteria、dependency。
+- 支持从模板初始化 plan seed。
+- 清楚区分 lead 生成内容与 operator 编辑内容。
 
-lead agent 仍需要基于用户输入细化每个节点内容。
+## Integration Tasks
 
-## UI 任务
+- guided task creation 进入计划阶段时，应直接落到统一 plan schema。
+- team view 中的 member role 应与 approved plan 一致。
 
-- plan review 区从 list 进化为 graph/list 双视图
-- 支持拖拽调整依赖
-- 支持编辑 role / deliverable / acceptance
-- 支持从模板初始化 plan seed
-- 清楚标注哪些字段是 lead 生成、哪些字段是用户改过的
+## Edge Cases
 
-## 验证规则
+- 模板只能作为 seed，不能绕过审批。
+- 单节点 plan 仍然合法，但必须满足 role 和 deliverable 要求。
+- 编辑后若形成依赖环，系统必须阻止批准。
+- 历史 plan snapshot 恢复后，不得污染 `approvedPlanJson`。
 
-除现有规则外，增加：
+## Acceptance Checklist
 
-- role 不能为空
-- deliverable 不能为空
-- acceptance 不能为空
-- 依赖不得形成环
-- 叶子节点必须可被验证或审查
+- lead 能生成包含 role 和 DAG 的计划。
+- operator 可在 Web 中编辑依赖和角色字段。
+- template seed 能作为起点，但不会绕过 `PLAN_REVIEW`。
+- approved plan 与 materialized subtasks 保持一致。
 
-## 测试与验收
+## Suggested Tests
 
-验收标准：
+- DAG 解析与环检测测试。
+- template seed -> lead refine -> approval 全链路测试。
+- UI graph 编辑后的再校验测试。
+- approval 后 subtask 字段映射测试。
 
-- lead 能生成包含角色与 DAG 的 plan
-- 用户可在 Web 中调整角色和依赖
-- 模板可作为起点，但不绕过审批
-- plan 审批后 materialized subtasks 与 DAG draft 保持一致
+## Outputs For Next Phase
 
-建议测试：
-
-- DAG 解析与环检测
-- 模板 seed -> lead refine -> approval 全链路
-- UI graph 编辑后的再校验
-
-## 输出给下一阶段
-
-phase 19 将基于 role-aware DAG，把 handoff 从“文本 note”升级为“结构化协作合同”。
+完成后，phase `19` 可以在 role-aware DAG 的基础上，为节点之间引入结构化协作合同和 artifact handoff。

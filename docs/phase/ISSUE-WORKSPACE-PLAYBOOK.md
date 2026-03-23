@@ -8,13 +8,15 @@ The project now uses a parent-issue-only execution model for active development.
 
 Use each parent issue together with:
 
-1. `docs/PRD.md`
-2. `docs/phase/README.md`
-3. `docs/phase/PRISMA-MIGRATIONS.md`
-4. `docs/phase/API-EVENT-EXAMPLES.md`
-5. `docs/phase/CHECKLISTS.md`
-6. The matching phase doc
-7. The matching `/docs/me/CRC-*-phase-*.md` operator note
+1. `AGENTS.md`
+2. `docs/README.md`
+3. `docs/PRD.md`
+4. `docs/phase/README.md`
+5. `docs/phase/PRISMA-MIGRATIONS.md`
+6. `docs/phase/API-EVENT-EXAMPLES.md`
+7. `docs/phase/CHECKLISTS.md`
+8. The matching phase doc
+9. The matching `/docs/me/CRC-*-phase-*.md` operator note
 
 Reason:
 
@@ -132,14 +134,15 @@ Safe bias:
 Always read in this order:
 
 1. `AGENTS.md`
-2. `docs/PRD.md`
-3. `docs/phase/README.md`
-4. `docs/phase/PRISMA-MIGRATIONS.md`
-5. `docs/phase/API-EVENT-EXAMPLES.md`
-6. `docs/phase/CHECKLISTS.md`
-7. the matching phase doc
-8. the parent issue description
-9. the matching `/docs/me` phase note
+2. `docs/README.md`
+3. `docs/PRD.md`
+4. `docs/phase/README.md`
+5. `docs/phase/PRISMA-MIGRATIONS.md`
+6. `docs/phase/API-EVENT-EXAMPLES.md`
+7. `docs/phase/CHECKLISTS.md`
+8. the matching phase doc
+9. the parent issue description
+10. the matching `/docs/me` phase note
 
 ## Parent Issue Prompt Template
 
@@ -154,14 +157,15 @@ Phase doc: {PHASE_DOC_PATH}
 
 Before coding, read in this order:
 1. AGENTS.md
-2. docs/PRD.md
-3. docs/phase/README.md
-4. docs/phase/PRISMA-MIGRATIONS.md
-5. docs/phase/API-EVENT-EXAMPLES.md
-6. docs/phase/CHECKLISTS.md
-7. {PHASE_DOC_PATH}
-8. the parent issue description
-9. the matching /docs/me phase note
+2. docs/README.md
+3. docs/PRD.md
+4. docs/phase/README.md
+5. docs/phase/PRISMA-MIGRATIONS.md
+6. docs/phase/API-EVENT-EXAMPLES.md
+7. docs/phase/CHECKLISTS.md
+8. {PHASE_DOC_PATH}
+9. the parent issue description
+10. the matching /docs/me phase note
 
 Execution rules:
 - Implement the full phase in this parent workspace only.

@@ -1,12 +1,46 @@
 # EAT Development Phases
 
-This folder breaks [PRD.md](/home/code/EAT/docs/PRD.md) into implementation phases. Each phase is intentionally narrow and maps to one step in the MVP delivery sequence.
+本目录承载 EAT 基础交付阶段，也就是 phase `01` 到 `16`。  
+从 `PRD v4.0` 的角度看，这些阶段定义的是产品主干能力的落地顺序，而不是一份独立于当前产品定义之外的旧路线。
 
-## Ordering Rules
+统一文档入口见 [docs/README.md](/home/code/EAT/docs/README.md)，实现规则见 [AGENTS.md](/home/code/EAT/AGENTS.md)。
 
-- Build phases in order unless a later phase explicitly says it can start in parallel.
-- Do not skip schema or protocol work in earlier phases and "patch it in later".
-- Treat each phase document as a delivery contract: code, tests, and operator-visible behavior must all be updated together.
+## 这组文档在整体文档体系中的位置
+
+当前文档分层应这样理解：
+
+1. `docs/PRD.md`
+2. `docs/phase/` phase `01` 到 `16`
+3. `docs/v1.1/` phase `17` 到 `22`
+
+也就是说：
+
+- `docs/PRD.md` 是唯一顶层产品定义
+- `docs/phase/` 负责基础主干阶段
+- `docs/v1.1/` 负责扩展阶段，不再被视为另一个并行 PRD
+
+## 这 16 个 phase 覆盖什么
+
+phase `01` 到 `16` 主要覆盖：
+
+- 项目注册与仓库校验
+- agent registry 与健康检查
+- Docker sandbox manager
+- lead clarification
+- plan generation / review / snapshot
+- approved plan materialization
+- worker execution / output streaming
+- incremental review / final review
+- merge flow / rebase retry
+- metrics
+- dependency scheduling
+- mailbox 的基础形态
+
+这些阶段是后续 Web-first orchestration、team board、integration queue、guided flow 的基础。
+
+## 阶段顺序
+
+除非某个阶段文档明确说明可以并行，否则应按顺序实现。
 
 ## Phase List
 
@@ -27,6 +61,10 @@ This folder breaks [PRD.md](/home/code/EAT/docs/PRD.md) into implementation phas
 15. [15-dependent-subtask-scheduling.md](/home/code/EAT/docs/phase/15-dependent-subtask-scheduling.md)
 16. [16-agent-mailbox-and-web-handoff.md](/home/code/EAT/docs/phase/16-agent-mailbox-and-web-handoff.md)
 
+扩展阶段入口：
+
+- [docs/v1.1/README.md](/home/code/EAT/docs/v1.1/README.md)
+
 ## Supplementary Delivery Docs
 
 - [CHECKLISTS.md](/home/code/EAT/docs/phase/CHECKLISTS.md)
@@ -45,7 +83,7 @@ This folder breaks [PRD.md](/home/code/EAT/docs/PRD.md) into implementation phas
 
 ## Standard Phase Structure
 
-Every phase document should be detailed enough for an engineer to start implementation without re-deriving scope from the PRD. The expected sections are:
+每个 phase 文档至少应包含：
 
 - Goal
 - PRD Coverage
@@ -60,7 +98,7 @@ Every phase document should be detailed enough for an engineer to start implemen
 - Acceptance checklist
 - Suggested tests
 
-If a phase has no schema or API changes, the document should say that explicitly instead of leaving the section implicit.
+如果某个阶段没有 schema 或 API 变化，应明确写出，而不是留空。
 
 ## Recommended Delivery Style
 
@@ -71,7 +109,7 @@ If a phase has no schema or API changes, the document should say that explicitly
 
 ## Recommended Tracking Fields
 
-When executing a phase, track at least:
+执行 phase 时，至少跟踪：
 
 - owner
 - start date
@@ -87,3 +125,4 @@ When executing a phase, track at least:
 - Session output must always remain scoped by `sessionId`.
 - Keep plan drafts separate from executable subtasks.
 - Keep merge and review history append-only wherever the PRD requires history preservation.
+- If a later phase extends an earlier phase, the later document should explicitly say which earlier contract it refines rather than silently redefining terms.

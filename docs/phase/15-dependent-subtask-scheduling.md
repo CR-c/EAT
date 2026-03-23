@@ -6,9 +6,9 @@ Allow one approved plan to contain lightweight subtask dependencies so downstrea
 
 ## PRD Coverage
 
-- `4.1 MVP In Scope`
-- `4.3 MVP Guardrails`
-- `6.2 Dependency Model`
+- `10.5 Role-Aware DAG Planning`
+- `10.6 Team Lifecycle And Worker Execution`
+- `9.2 SubTask 状态`
 
 ## Preconditions
 

@@ -1,76 +1,66 @@
 # Phase 21 - Integration Branch, Merge Queue And Release Gates
 
-## 目标
+## Goal
 
-让多 agent 任务的结果从“多个 accepted branches”升级到“可审计、可验证、可回退的集成流程”。
+把任务结果从“多个 accepted subtasks”推进为“可审计、可验证、可回滚的集成流程”。
 
-## 为什么是下一步
+## PRD Coverage
 
-当 v1.1 前几阶段完成后，用户真正会开始把复杂项目交给 lead orchestrate。  
-这时新的瓶颈就不是“能否派发”，而是“最后怎么安全集成”。
+本阶段主要落实：
 
-当前 merge 流已经满足 MVP，但对于多 agent Web 编排还不够：
+- integration branch
+- integration run
+- integration queue
+- release gate
+- retry / rollback / dequeue
 
-- 缺少 integration branch
-- 缺少 merge queue 可视化
-- 缺少集中验证 gate
-- 缺少 release-ready 判断
+## Preconditions
 
-## 范围
+- phase `11` 和 `12` 已提供 review 与 merge 主干
+- phase `20` 已提供 board 与 action-required 汇聚
 
-本阶段内：
-
-- integration branch 模式
-- merge queue 可视化
-- pre-merge verification gate
-- release gate 结果可见
-
-本阶段外：
-
-- 自动修冲突
-- 跨仓库 release orchestration
-
-## 关键产品决策
-
-### 1. 先集成到 integration branch，再进入 base branch
-
-建议把当前“accepted subtask -> base branch”升级为：
-
-1. accepted branches
-2. integration branch
-3. integration verification
-4. base branch merge
-
-这样更适合多 worker 复杂任务的收敛。
-
-### 2. merge queue 是显式对象
-
-用户必须能看到：
-
-- 哪些 branch 正待集成
-- 当前集成顺序
-- 哪个 gate 挡住了发布
-
-### 3. release gate 不等于 final review
-
-final review 是语义审查；  
-release gate 是技术性放行检查，例如：
-
-- tests
-- lint
-- build
-- migrations
-
-这两者要分开表达。
-
-## 交付物
+## Deliverables
 
 - integration branch 生命周期
-- merge queue UI
-- release gate 结果面板
-- gate failure -> action required 流
+- `IntegrationRun`
+- `IntegrationQueueItem`
+- `GateResult`
+- queue / gate / result UI
+- integration failure -> action required 恢复流
 
-## API / 事件建议
+## Suggested Execution Order
+
+1. 落地 integration run 及其状态机。
+2. 落地 integration queue item。
+3. 落地 gate result 持久化。
+4. 在 task 收口阶段接入 queue / gate 逻辑。
+5. 提供 retry、rollback、dequeue 操作入口。
+
+## Schema And Persistence
+
+本阶段应使用或引入：
+
+- `IntegrationRun`
+- `IntegrationQueueItem`
+- `GateResult`
+- `integrationBranch`
+
+约束：
+
+- queue 必须是显式对象，不能只存在内存顺序
+- gate 结果必须持久化
+- integration 历史必须 append-only
+
+## API And Event Surface
+
+建议或要求具备：
+
+- `POST /api/tasks/:taskId/integration-runs`
+- `POST /api/integration-runs/:integrationRunId/retry`
+- `POST /api/integration-runs/:integrationRunId/rollback`
+- `POST /api/integration-queue-items/:integrationQueueItemId/dequeue`
+
+推荐事件：
 
 - `integration:queued`
 - `integration:started`
@@ -78,21 +68,46 @@ release gate 是技术性放行检查，例如：
 - `integration:completed`
 - `integration:failed`
 
-## 测试与验收
+## Backend Tasks
 
-验收标准：
+- accepted subtasks 进入 integration queue，而不是直接隐式合并。
+- integration branch 作为技术收口面，而不是替代 task mainline。
+- final review 与 release gate 分离表达。
+- gate 失败时把 task 转入 `ACTION_REQUIRED`。
 
-- accepted subtasks 可先进入 integration branch
-- integration gate 失败不会污染 base branch
-- Web 中可见 queue、gate、结果
-- 用户可重试 integration gate 或回退队列项
+## UI Tasks
 
-建议测试：
+- 显示 integration runs 列表和当前 run。
+- 显示 queue 顺序、queue item 状态和 merged commit。
+- 显示 gate 结果、失败摘要和恢复操作。
+- 在 board 中让 integration 风险成为可见的操作项。
 
-- merge queue 顺序测试
-- gate fail / retry 测试
-- integration branch 完成后再入 base branch 流程测试
+## Integration Tasks
 
-## 输出给下一阶段
+- integration branch 通过后，再进入 base branch 的最终收口。
+- rollback、retry、dequeue 语义必须与 task status 联动。
 
-phase 22 将把整个能力打磨成可以对外演示、可快速复用的黄金路径产品体验。
+## Edge Cases
+
+- gate 失败不能污染 base branch。
+- 已完成部分 queue item 后失败，必须支持部分成功状态。
+- actionable queue item 被 dequeue 后，需要在 UI 中留下清晰痕迹。
+- final review 通过不代表 release gate 自动通过。
+
+## Acceptance Checklist
+
+- accepted subtasks 可进入 integration branch 与 queue。
+- gate 失败不会污染 base branch。
+- Web 中可见 queue、gate 和 result。
+- 用户可 retry、rollback 或 dequeue。
+
+## Suggested Tests
+
+- merge queue 顺序测试。
+- gate fail / retry 测试。
+- rollback 流程测试。
+- integration branch -> base branch 收口测试。
+
+## Outputs For Next Phase
+
+完成后，phase `22` 可以围绕模板、guided flow、demo scenario 和 operator polish 打磨黄金路径。

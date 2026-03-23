@@ -6,15 +6,15 @@ Ship the minimum project-management slice that lets the app register a local git
 
 ## PRD Coverage
 
-- `FR-PM-01`
-- `FR-PM-02`
-- `FR-PM-03`
-- `FR-PM-04`
+- `10.1 Project Management`
+- `7.1 当前产品内 / 项目与仓库`
+- `11.1 运行时形态`
+- `12.4 安全可见性`
 
 ## Preconditions
 
 - App shell can run a persistent local Node.js server.
-- SQLite and Prisma are available in the project.
+- `node:sqlite` runtime access and SQL migrations are available in the project.
 
 ## Deliverables
 

@@ -13,8 +13,9 @@ Close the loop on reliability and product feedback by making task/session metric
 
 ## PRD Coverage
 
-- `13.4 Observability`
-- Section 16 Success Metrics
+- `10.10 Preview, Metrics And Archive`
+- `11.3 持久化要求`
+- `13. 成功标准`
 
 ## Preconditions
 
