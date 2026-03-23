@@ -6160,6 +6160,13 @@ body.layout--sidebar-collapsed .main-content {
   color: rgb(44 51 61 / var(--tw-text-opacity, 1));
 }
 
+.workspace-tabpanel__actions {
+  margin-top: 0.25rem;
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+}
+
 /* ── Preview Studio Overlay ── */
 
 .preview-studio-overlay {

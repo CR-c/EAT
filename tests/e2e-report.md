@@ -1,234 +1,198 @@
-# EAT Agent Workbench — 真实流程 E2E 测试报告
+# EAT Agent Workbench — E2E 测试报告
 
-> 测试时间：2026-03-23 | 测试项目：evat（记账应用）| 任务：实现 Todo List 功能
+> 自动生成于 2026-03-23T16:11:29.644Z
 
-## 1. 测试概述
-
-本次测试使用 **真实的 codex-cli Agent** 完成了一个完整的软件开发任务流程。从注册项目、创建任务、与 Leader Agent 对话澄清需求、确认任务文档、生成执行计划、批准计划到 7 个 Worker Agent 并行执行，全部在 EAT 系统中自动完成。
-
-### 测试环境
+## 测试环境
 
 | 项目 | 值 |
-|------|------|
+|------|----|
 | 系统 | Linux 6.8.0-101-generic |
 | Node.js | v22.22.0 |
-| Agent | codex-cli 0.116.0（REAL 模式） |
-| 目标仓库 | /home/code/evat（React+Express 记账应用） |
-| 任务分支 | eat-实现-Todo-List-功能-1 |
-| 代码产出 | 10 个文件，+888 行代码 |
+| 浏览器 | Chromium (Playwright Headless) |
+| 视口 | 1920×1080 (默认) |
+| 目标项目 | /home/code/evat |
+| 总耗时 | 37.9s |
 
----
+## 测试结果摘要
 
-## 2. 完整流程时间线
-
-| 时间 | 阶段 | 操作 | 结果 |
-|------|------|------|------|
-| T+0s | 注册项目 | `POST /api/projects` | ✅ 项目 ID: 38611158... |
-| T+2s | 创建任务 | `POST /api/tasks` | ✅ DRAFT，分支已创建 |
-| T+5s | 开始澄清 | `POST /api/tasks/{id}/start-clarification` | ✅ CLARIFYING，Leader 会话启动 |
-| T+20s | Leader 回复 | Leader 分析项目结构 | ✅ 识别到 React+Vite 前端、Express+PG 后端 |
-| T+25s | Leader 提问 | 生成任务文档草稿 | ✅ 提出 3 个澄清问题 |
-| T+30s | 用户回复 | `POST /api/tasks/{id}/messages` | ✅ 回答 3 个问题 |
-| T+50s | Leader 确认 | 文档定稿 | ✅ 完整的交付合同 |
-| T+55s | 确认需求 | `POST /api/tasks/{id}/confirm-requirements` | ✅ PLANNING |
-| T+70s | 计划生成 | Leader 自动生成 DAG | ✅ PLAN_REVIEW，7 个子任务 |
-| T+75s | 批准计划 | `POST /api/tasks/{id}/approve-plan` | ✅ EXECUTING，Worker 开始 |
-| T+5min | 执行完成 | 7 个 Worker 并行执行 | ✅ 全部 REVIEW_PENDING |
-| T+7min | Leader 审查 | 自动 Code Review | ⚠️ REWORK/REJECTED（沙箱提交限制） |
-| T+8min | 集成合并 | todo-integration 合并到主线 | ✅ 888 行代码合并 |
-
----
-
-## 3. Leader 对话记录
-
-### 3.1 用户发送初始需求
-
-> 我需要在 evat 项目中实现一个 Todo List 功能。这是一个记账应用，我想加一个待办事项模块。请先看一下项目的现有结构，然后帮我理清需求。前端在 web/ 目录下是 React+Vite，后端在 api/ 目录下是 Express+PostgreSQL。
-
-### 3.2 Leader 分析项目并回复
-
-Leader 自动：
-1. 浏览了 `web/` 和 `api/` 目录结构
-2. 发现路由页结构（总览/记账/分类/统计）
-3. 分析了现有导航壳子 `AppShell.jsx`
-4. 确认了 Express 集中路由模式
-5. 生成了完整的**任务文档草稿**：
-
-**目标结果**：在 evat 中新增完整 Todo List 模块
-
-**交付范围**：
-- 前端新增独立页面 `/todos`
-- 支持新增、编辑、删除、标记完成
-- 支持三种筛选：全部/未完成/已完成
-- 后端 RESTful API + PostgreSQL
-
-**暂不纳入**：多用户权限、提醒、优先级、拖拽排序
-
-**API 合同**：
-- `GET /api/todos`
-- `POST /api/todos`
-- `PATCH /api/todos/:id`
-- `DELETE /api/todos/:id`
-
-### 3.3 Leader 提出澄清问题
-
-1. Todo 是否必须做成独立页面 `/todos`？
-2. 字段是否只保留 `title + completed`？
-3. 是否有分支约束？
-
-### 3.4 用户回复确认
-
-> 1. 做成独立页面 /todos，加到导航里作为第五个模块。
-> 2. 最小模型就好，title + completed 足够。
-> 3. 没有特殊分支约束，基于当前 master 就行。
-
-### 3.5 Leader 定稿任务文档
-
-Leader 整合所有信息，输出最终确认版任务文档，包含完整的目标、范围、数据模型、API 合同、影响区域和验收标准。
-
----
-
-## 4. 执行计划（7 个子任务）
-
-| # | 子任务 | 角色 | 分支 | 依赖 |
-|---|--------|------|------|------|
-| 1 | Define Todo UX Contract | ux-architect | todo-ux-contract | 无 |
-| 2 | Build Todo Schema and REST API | backend-architect | todo-api | 无 |
-| 3 | Implement Todo Page and Client Wiring | frontend-developer | todo-web | 1, 2 |
-| 4 | Close Integration Gaps | senior-developer | todo-integration | 2, 3 |
-| 5 | Add Verification and Local Check Flow | devops-automator | todo-checks | 4 |
-| 6 | Review for Correctness and Regression Risk | code-reviewer | todo-review | 5 |
-| 7 | Run Final Smoke Validation and Readiness Gate | reality-checker | todo-smoke | 6 |
-
----
-
-## 5. 代码产出
-
-任务主线分支 `eat-实现-Todo-List-功能-1` 相比 `master` 新增/修改了 **10 个文件，+888 行代码**：
-
-| 文件 | 变化 | 说明 |
-|------|------|------|
-| `api/migrations/004_add_todos.sql` | +16 | 数据库表创建 + 索引 |
-| `api/src/server.js` | +190 | CRUD API 路由、验证、错误处理 |
-| `web/src/pages/TodoPage.jsx` | +416 | 完整的 Todo 页面组件 |
-| `web/src/App.jsx` | +2 | 路由注册 |
-| `web/src/components/AppShell.jsx` | +2 | 导航菜单接入 |
-| `web/src/index.css` | +176 | Todo 相关样式 |
-| `web/src/lib/api.js` | +70/-8 | API 调用封装 |
-| `web/src/pages/HomePage.jsx` | +5/-1 | 首页微调 |
-| `web/src/pages/StatsPage.jsx` | +51/-40 | 统计页微调 |
-| `README.md` | +11/-2 | 文档更新 |
-
-### 代码质量亮点
-
-**数据库层**：
-- UUID 主键
-- 非空约束 + CHECK 约束（标题不能为空白）
-- 复合索引优化查询
-- `completed_at` 时间戳追踪
-
-**API 层**：
-- Zod schema 验证（`todoWriteSchema`）
-- 合理的 HTTP 状态码（201/404/400）
-- 默认排序：未完成优先 → 按创建时间倒序
-- 中文错误消息
-
-**前端层**：
-- React Query 数据获取
-- 搜索参数驱动筛选（URL 可分享）
-- HeadlessUI Dialog 模态框
-- 统计指标（总数/完成/未完成/完成率）
-- Apple 风格 UI
-
----
-
-## 6. 工作区界面截图
-
-### 6.1 工作区全貌 — 对话 + 标签面板
-
-![工作区全貌](e2e-screenshots/30-real-task-workspace.png)
-
-左侧为 Leader 对话聊天记录，右侧为重新设计的标签式上下文面板。
-
-### 6.2 概览标签 — 任务状态总览
-
-![概览标签](e2e-screenshots/31-real-tab-overview.png)
-
-显示任务描述、下一步操作、决策卡片和验收就绪度。
-
-### 6.3 文档标签 — 任务文档
-
-![文档标签](e2e-screenshots/31-real-tab-document.png)
-
-展示 Leader 整理的任务文档，包含目标、范围、约束、上下文等结构化信息。
-
-### 6.4 方案标签 — 执行计划
-
-![方案标签](e2e-screenshots/31-real-tab-plan.png)
-
-展示 7 个子任务的执行方案，每个子任务包含标题、角色、依赖关系等。
-
-### 6.5 团队标签 — 执行态势
-
-![团队标签](e2e-screenshots/31-real-tab-team.png)
-
-展示 Lead 会话状态和 Worker 成员列表，每个成员显示其执行状态和审查结果。
-
----
-
-## 7. 发现的问题
-
-### 7.1 Worker 沙箱提交限制（⚠️ 中等）
-
-**现象**：Worker 在 `--sandbox read-only` 模式下执行时，代码修改没有正确提交到各自的 git 分支。所有子任务分支与 master 指向同一 commit。
-
-**影响**：Leader 审查时发现分支为空，标记为 REWORK/REJECTED。但 `todo-integration` Worker 在集成时成功将所有代码合并到主线分支。
-
-**建议**：考虑调整 Worker 沙箱策略，允许 HOST 模式写入，或在 Worker 完成后自动提交 worktree 变更到分支。
-
-### 7.2 Leader 审查后返工未自动触发（⚠️ 低）
-
-**现象**：Leader 给出 REWORK 决定后，子任务状态仍停留在 REVIEW_PENDING，Worker 没有自动重新执行。
-
-**建议**：验证 Leader 审查决定是否正确触发了状态转换和 Worker 重新调度。
-
-### 7.3 任务主线上有实际交付物（✅ 好消息）
-
-尽管子分支为空，`todo-integration` Worker 的合并操作确实把 +888 行代码成功合入了任务主线分支，代码质量较高。
-
----
-
-## 8. 测试结论
-
-| 指标 | 结果 |
+| 状态 | 数量 |
 |------|------|
-| 项目注册 | ✅ 成功 |
-| 任务创建 | ✅ 成功，分支自动创建 |
-| Leader 澄清对话 | ✅ 成功，Leader 自主分析项目结构并生成任务文档 |
-| 需求确认 | ✅ 成功，Leader 提出合理问题并定稿文档 |
-| 计划生成 | ✅ 成功，7 个子任务 DAG 合理 |
-| 计划批准 | ✅ 成功，子任务自动创建并分配 |
-| Worker 执行 | ✅ 7 个 Worker 全部完成 |
-| Leader 审查 | ✅ 自动执行 Code Review |
-| 代码集成 | ✅ 888 行代码合并到主线 |
-| 工作区 UI | ✅ 重设计后的标签式布局正常工作 |
-| **总体评价** | **系统核心流程可用，真正实现了 AI Agent 编排开发** |
+| ✅ 通过 | 22 |
+| ⚠️ 警告 | 1 |
+| ⏭️ 跳过 | 2 |
+| ❌ 失败 | 0 |
+| **合计** | **25** |
+
+## 详细测试结果
+
+| # | 测试名称 | 状态 | 详情 | 耗时 |
+|---|----------|------|------|------|
+| 1 | 首页加载 | ✅ PASS | 标题: EAT Agent Workbench, 导航标签: 7 个 | 2.4s |
+| 2 | 注册 evat 项目 | ✅ PASS | 项目名: EV
+        
+          evat
+          /home/code/evat | 5.0s |
+| 3 | 选择项目仪表盘 | ✅ PASS | 默认分支: master | 6.0s |
+| 4 | 任务创建视图 | ✅ PASS | 表单已渲染 | 6.7s |
+| 5 | 创建 Todo List 任务 | ✅ PASS | 反馈: 已创建任务 实现 Todo List 功能。准备好后即可开始澄清。 | 9.0s |
+| 6 | 工作区布局验证 | ✅ PASS | 紧凑头栏 ✓, 标签栏 ✓, 聊天面板 ✓ | 11.8s |
+| 7 | 标签页切换 | ✅ PASS | overview: ✓, document: ✓, plan: ✓, team: ✓ | 13.8s |
+| 8 | 溢出菜单 | ✅ PASS | 菜单项: 删除, 刷新; 点击外部关闭: ✓ | 14.6s |
+| 9 | 预览弹层 | ✅ PASS | 表单元素: 预览目标选择器, 启动命令输入, 端口输入 | 16.2s |
+| 10 | 重复注册项目 | ✅ PASS | 反馈: 该仓库已注册在 /home/code/evat。 | 18.9s |
+| 11 | 无效路径注册 | ✅ PASS | 错误提示: 该路径不存在，请检查后重试。 | 21.4s |
+| 12 | 空表单提交 | ✅ PASS | HTML5 表单验证阻止提交 | 23.6s |
+| 13 | 工作区空状态 | ✅ PASS | 已有任务选中 | 24.6s |
+| 14 | 多视图导航 | ✅ PASS | 控制台: ✓, 任务创建: ✓, 工作区: ✓, 指标: ✓ | 26.8s |
+| 15 | 侧边栏折叠 | ✅ PASS | 折叠状态切换: ✓ | 27.7s |
+| 16 | 顶部导航折叠 | ✅ PASS | 导航折叠切换: ✓ | 28.5s |
+| 17 | API 创建任务 | ⚠️ WARN | HTTP 400: {"code":"LEAD_AGENT_INVALID","message":"Lead agent must be a registered orchestrator.","details":{"leadAgentTy | 28.6s |
+| 18 | 紧凑头栏验证 | ⏭️ SKIP | 无任务选中 | 28.6s |
+| 19 | 聊天面板 | ⏭️ SKIP | 聊天面板不可见 | 28.6s |
+| 20 | 响应式布局 | ✅ PASS | desktop 1920x1080, laptop 1366x768, tablet 1024x768 | 30.7s |
+| 21 | 语言切换 | ✅ PASS | 切换前: English → 切换后: 中文 | 32.1s |
+| 22 | 计划审阅视图 | ✅ PASS | 视图已加载 | 33.1s |
+| 23 | 运行看板视图 | ✅ PASS | 视图已加载 | 34.1s |
+| 24 | 指标视图 | ✅ PASS | 视图已加载 | 35.2s |
+| 25 | 完整页面截图 | ✅ PASS | 仪表盘 + 任务创建 + 工作区 | 37.9s |
+
+## 测试截图
+
+以下截图记录了测试过程中每个关键步骤的页面状态。
+
+### 首页 — 控制台初始状态
+
+![首页 — 控制台初始状态](e2e-screenshots/01-homepage.png)
+
+### 项目注册 — 对话框打开
+
+![项目注册 — 对话框打开](e2e-screenshots/02-register-dialog.png)
+
+### 项目注册 — 输入项目路径
+
+![项目注册 — 输入项目路径](e2e-screenshots/03-register-path-input.png)
+
+### 项目注册 — 注册成功，侧边栏显示项目
+
+![项目注册 — 注册成功，侧边栏显示项目](e2e-screenshots/04-project-registered.png)
+
+### 仪表盘 — 选择项目后显示详情
+
+![仪表盘 — 选择项目后显示详情](e2e-screenshots/05-project-selected.png)
+
+### 任务创建 — 表单视图
+
+![任务创建 — 表单视图](e2e-screenshots/06-task-create-view.png)
+
+### 任务创建 — 填写 Todo List 任务
+
+![任务创建 — 填写 Todo List 任务](e2e-screenshots/07-task-form-filled.png)
+
+### 任务创建 — 提交后跳转
+
+![任务创建 — 提交后跳转](e2e-screenshots/08-task-created-workspace.png)
+
+### 工作区 — 重设计后的布局
+
+![工作区 — 重设计后的布局](e2e-screenshots/09-workspace-view.png)
+
+### 工作区 — 文档标签页
+
+![工作区 — 文档标签页](e2e-screenshots/10-tab-document.png)
+
+### 工作区 — 概览标签页
+
+![工作区 — 概览标签页](e2e-screenshots/10-tab-overview.png)
+
+### 工作区 — 方案标签页
+
+![工作区 — 方案标签页](e2e-screenshots/10-tab-plan.png)
+
+### 工作区 — 团队标签页
+
+![工作区 — 团队标签页](e2e-screenshots/10-tab-team.png)
+
+### 工作区 — 溢出菜单
+
+![工作区 — 溢出菜单](e2e-screenshots/13-overflow-menu.png)
+
+### 预览工作室 — 全屏弹层
+
+![预览工作室 — 全屏弹层](e2e-screenshots/14-preview-overlay.png)
+
+### 错误处理 — 重复注册项目
+
+![错误处理 — 重复注册项目](e2e-screenshots/15-error-duplicate-project.png)
+
+### 错误处理 — 无效路径注册
+
+![错误处理 — 无效路径注册](e2e-screenshots/16-error-invalid-path.png)
+
+### 错误处理 — 空表单提交
+
+![错误处理 — 空表单提交](e2e-screenshots/17-error-empty-form.png)
+
+### 响应式 — 桌面 1920×1080
+
+![响应式 — 桌面 1920×1080](e2e-screenshots/21-responsive-desktop.png)
+
+### 响应式 — 笔记本 1366×768
+
+![响应式 — 笔记本 1366×768](e2e-screenshots/21-responsive-laptop.png)
+
+### 响应式 — 平板 1024×768
+
+![响应式 — 平板 1024×768](e2e-screenshots/21-responsive-tablet.png)
+
+### 语言切换 — English 模式
+
+![语言切换 — English 模式](e2e-screenshots/22-language-toggled.png)
+
+### 计划审阅视图
+
+![计划审阅视图](e2e-screenshots/23-plan-review-view.png)
+
+### 运行看板视图
+
+![运行看板视图](e2e-screenshots/24-ops-board-view.png)
+
+### 指标视图
+
+![指标视图](e2e-screenshots/25-metrics-view.png)
+
+### 完整截图 — 仪表盘
+
+![完整截图 — 仪表盘](e2e-screenshots/26-full-dashboard.png)
+
+### 完整截图 — 任务创建
+
+![完整截图 — 任务创建](e2e-screenshots/27-full-task-create.png)
+
+### 完整截图 — 工作区
+
+![完整截图 — 工作区](e2e-screenshots/28-full-workspace.png)
+
+## 发现与建议
+
+### ⚠️ 需要关注
+
+- **API 创建任务**: HTTP 400: {"code":"LEAD_AGENT_INVALID","message":"Lead agent must be a registered orchestrator.","details":{"leadAgentType":"codex"}}
+
+### ⏭️ 跳过的测试
+
+- **紧凑头栏验证**: 无任务选中
+- **聊天面板**: 聊天面板不可见
+
+### 工作区重设计验证
+
+本次测试重点验证了工作区页面的重设计效果：
+
+1. **紧凑头栏** — 替换了原来约 100 行的英雄面板，显示标题 + 状态 + 阶段圆点 + 主操作按钮
+2. **标签式上下文面板** — 概览/文档/方案/团队 四个标签页，替换了 4 个堆叠区块
+3. **溢出菜单** — 暂停/删除/刷新等操作收纳到 ⋮ 菜单中
+4. **预览工作室弹层** — 从内联区块改为全屏 dialog 弹层
+5. **指挥中心移除** — 3 张阶段卡片已删除，功能合并到标签页和操作按钮
 
 ---
 
-## 9. 附录：API 调用序列
-
-```
-POST /api/projects                          → 注册项目
-POST /api/tasks                             → 创建任务 (DRAFT)
-POST /api/tasks/{id}/start-clarification    → 开始澄清 (CLARIFYING)
-POST /api/tasks/{id}/messages               → 用户回复
-POST /api/tasks/{id}/confirm-requirements   → 确认需求 (PLANNING → PLAN_REVIEW)
-POST /api/tasks/{id}/approve-plan           → 批准计划 (EXECUTING)
-GET  /api/tasks/{id}                        → 查询状态
-GET  /api/tasks/{id}/board                  → 查询看板
-```
-
----
-
-*本报告基于真实 codex-cli Agent 执行结果自动生成*
+*报告由 Playwright 自动化测试生成*

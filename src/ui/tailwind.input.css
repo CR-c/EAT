@@ -3437,6 +3437,10 @@
     @apply m-0 text-sm font-semibold text-on-surface;
   }
 
+  .workspace-tabpanel__actions {
+    @apply flex gap-2 pt-3 mt-1;
+  }
+
   /* ── Preview Studio Overlay ── */
 
   .preview-studio-overlay {
