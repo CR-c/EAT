@@ -397,6 +397,12 @@ type RebaseRetrySubTaskResult struct {
 	Task        *Task    `json:"task"`
 }
 
+type dependencyScheduleResult struct {
+	ReleasedSessions []Session
+	ReleasedSubTasks []SubTask
+	Task             *Task
+}
+
 func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*CreateTaskResult, *Error) {
 	projectID := normalizeRequiredString(input.ProjectID)
 	title := normalizeRequiredString(input.Title)
@@ -1555,6 +1561,24 @@ func (s *Service) CancelSubTask(ctx context.Context, subTaskID string) (*SubTask
 		"taskId":    taskRecord.ID,
 	})
 	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
+	scheduleResult, scheduleError := s.progressDependencySchedule(ctx, taskRecord.ID)
+	if scheduleError != nil {
+		return nil, scheduleError
+	}
+	if scheduleResult != nil {
+		for _, releasedSubTask := range scheduleResult.ReleasedSubTasks {
+			releasedSubTaskCopy := releasedSubTask
+			s.publishSubTaskStatus(taskRecord.ID, &releasedSubTaskCopy)
+		}
+		for _, releasedSession := range scheduleResult.ReleasedSessions {
+			releasedSessionCopy := releasedSession
+			s.publishSession(taskRecord.ID, "session:started", &releasedSessionCopy)
+		}
+		if scheduleResult.Task != nil && result.Task != nil && scheduleResult.Task.Status != result.Task.Status {
+			s.publishTaskStatus(scheduleResult.Task.ID, scheduleResult.Task.Status, scheduleResult.Task.LastError)
+			result.Task = scheduleResult.Task
+		}
+	}
 	s.publishTeamUpdated(taskRecord.ID)
 	return &result, nil
 }
@@ -2350,6 +2374,107 @@ func (s *Service) createIntegrationRun(ctx context.Context, taskRecord *Task, su
 	})
 	if txErr != nil {
 		return nil, failure("INTEGRATION_RUN_CREATE_FAILED", txErr.Error(), nil)
+	}
+	return result, nil
+}
+
+func (s *Service) progressDependencySchedule(ctx context.Context, taskID string) (*dependencyScheduleResult, *Error) {
+	result := &dependencyScheduleResult{}
+	txErr := s.repository.RunInTransaction(ctx, func(repository *Repository) error {
+		taskRecord, err := repository.FindTaskByID(ctx, taskID)
+		if err != nil {
+			return err
+		}
+		if taskRecord == nil {
+			return serviceFailure{payload: failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})}
+		}
+		result.Task = taskRecord
+
+		if taskRecord.Status != taskStatusExecuting && taskRecord.Status != taskStatusActionRequired {
+			return nil
+		}
+
+		subTasks, err := repository.ListSubTasksByTaskID(ctx, taskID)
+		if err != nil {
+			return err
+		}
+
+		attentionBlockedSubTasks := make([]SubTask, 0)
+		for _, subTask := range subTasks {
+			if subTask.Status != subTaskStatusBlocked {
+				continue
+			}
+
+			if areSubTaskDependenciesSatisfied(&subTask, subTasks) {
+				nextStatus := subTaskStatusPending
+				runSummary := buildDerivedRunSummary(SubTask{
+					Status:                   nextStatus,
+					DependencyBranchSuffixes: subTask.DependencyBranchSuffixes,
+					WorktreePath:             subTask.WorktreePath,
+				})
+				updatedSubTask, updateErr := repository.UpdateSubTask(ctx, subTask.ID, UpdateSubTaskInput{
+					Status:        &nextStatus,
+					LastError:     nil,
+					SetLastError:  true,
+					RunSummary:    &runSummary,
+					SetRunSummary: true,
+				})
+				if updateErr != nil {
+					return updateErr
+				}
+				result.ReleasedSubTasks = append(result.ReleasedSubTasks, *updatedSubTask)
+
+				if taskRecord.Status == taskStatusExecuting {
+					sessionRecord, sessionErr := repository.CreateSession(ctx, CreateSessionInput{
+						TaskID:               taskID,
+						SubTaskID:            &updatedSubTask.ID,
+						AgentType:            updatedSubTask.AgentType,
+						SessionType:          sessionTypeWorker,
+						SandboxType:          sessionSandboxDocker,
+						Status:               "PENDING",
+						OutputBuffer:         "",
+						OutputBufferMaxBytes: 65536,
+					})
+					if sessionErr != nil {
+						return sessionErr
+					}
+					result.ReleasedSessions = append(result.ReleasedSessions, *sessionRecord)
+				}
+				continue
+			}
+
+			if isBlockedDependencyAttentionRequired(&subTask, subTasks) {
+				attentionBlockedSubTasks = append(attentionBlockedSubTasks, subTask)
+			}
+		}
+
+		if len(attentionBlockedSubTasks) == 0 {
+			return nil
+		}
+
+		lastError := buildBlockedDependencyReason(attentionBlockedSubTasks, subTasks)
+		if taskRecord.Status == taskStatusActionRequired && derefString(taskRecord.LastError) == lastError {
+			return nil
+		}
+
+		nextStatus := taskStatusActionRequired
+		updatedTask, updateErr := repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+			Status:       &nextStatus,
+			LastError:    &lastError,
+			SetLastError: true,
+		})
+		if updateErr != nil {
+			return updateErr
+		}
+		result.Task = updatedTask
+		return nil
+	})
+	if txErr != nil {
+		var opErr serviceFailure
+		if errors.As(txErr, &opErr) {
+			return nil, opErr.payload
+		}
+		return nil, failure("DEPENDENCY_SCHEDULE_FAILED", txErr.Error(), map[string]any{"taskId": taskID})
 	}
 	return result, nil
 }
@@ -3670,6 +3795,49 @@ func areSubTaskDependenciesSatisfied(subTask *SubTask, siblingSubTasks []SubTask
 		}
 	}
 	return true
+}
+
+func isBlockedDependencyAttentionRequired(subTask *SubTask, siblingSubTasks []SubTask) bool {
+	if subTask == nil || len(subTask.DependencyBranchSuffixes) == 0 {
+		return false
+	}
+
+	statusByBranchSuffix := make(map[string]string, len(siblingSubTasks))
+	for _, sibling := range siblingSubTasks {
+		statusByBranchSuffix[sibling.BranchSuffix] = sibling.Status
+	}
+
+	for _, dependency := range subTask.DependencyBranchSuffixes {
+		switch statusByBranchSuffix[dependency] {
+		case "CANCELLED", "DISCARDED", "DISCARD_PENDING", "FAILED", "REWORK_REQUIRED", "":
+			return true
+		}
+	}
+
+	return false
+}
+
+func buildBlockedDependencyReason(blockedSubTasks []SubTask, allSubTasks []SubTask) string {
+	subTaskByBranchSuffix := make(map[string]SubTask, len(allSubTasks))
+	for _, subTask := range allSubTasks {
+		subTaskByBranchSuffix[subTask.BranchSuffix] = subTask
+	}
+
+	summaries := make([]string, 0, len(blockedSubTasks))
+	for _, subTask := range blockedSubTasks {
+		blockers := make([]string, 0, len(subTask.DependencyBranchSuffixes))
+		for _, branchSuffix := range subTask.DependencyBranchSuffixes {
+			dependencySubTask, ok := subTaskByBranchSuffix[branchSuffix]
+			if !ok {
+				blockers = append(blockers, branchSuffix+" (missing)")
+				continue
+			}
+			blockers = append(blockers, branchSuffix+" ("+dependencySubTask.Status+")")
+		}
+		summaries = append(summaries, subTask.Title+" is blocked by "+strings.Join(blockers, ", ")+".")
+	}
+
+	return strings.Join(summaries, " ")
 }
 
 func filterIntegrationEligibleSubTasks(subTasks []SubTask) []SubTask {

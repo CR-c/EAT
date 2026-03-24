@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"eat/backend/internal/eventbus"
@@ -230,6 +231,66 @@ func TestCancelSubTaskEndpointCancelsLatestLiveWorkerSession(t *testing.T) {
 	}
 	if payload["session"].(map[string]any)["status"] != "CANCELLED" || payload["session"].(map[string]any)["endedAt"] == nil {
 		t.Fatalf("unexpected cancelled session payload: %#v", payload["session"])
+	}
+}
+
+func TestCancelSubTaskEndpointRoutesTaskToActionRequiredWhenBlockedDependentsNeedAttention(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	insertProjectTaskRecord(t, db, "project-cancel-blocked", "task-cancel-blocked", "EXECUTING", 1, `{"subtasks":[{"title":"Backend contract","description":"Original","recommended_agent":"codex-cli","branch_suffix":"backend-contract"},{"title":"Frontend consumer","description":"Waits on backend.","recommended_agent":"codex-cli","branch_suffix":"frontend-consumer","depends_on":["backend-contract"]}]}`)
+	insertSubTaskRecord(t, db, subTaskFixture{
+		ID:               "subtask-cancel-upstream",
+		TaskID:           "task-cancel-blocked",
+		Title:            "Backend contract",
+		Description:      "Running worker.",
+		BranchSuffix:     "backend-contract",
+		AgentType:        "codex-cli",
+		Status:           "RUNNING",
+		AssignmentSource: "LEAD",
+		AutoAssigned:     true,
+		ExecutionOrder:   1,
+		CreatedAt:        "2026-03-24T00:01:05Z",
+	})
+	insertSubTaskRecord(t, db, subTaskFixture{
+		ID:                          "subtask-cancel-downstream",
+		TaskID:                      "task-cancel-blocked",
+		Title:                       "Frontend consumer",
+		Description:                 "Blocked on backend.",
+		BranchSuffix:                "frontend-consumer",
+		DependencyBranchSuffixesRaw: `["backend-contract"]`,
+		AgentType:                   "codex-cli",
+		Status:                      "BLOCKED",
+		AssignmentSource:            "LEAD",
+		AutoAssigned:                true,
+		ExecutionOrder:              2,
+		CreatedAt:                   "2026-03-24T00:01:06Z",
+	})
+	insertWorkerSessionRecord(t, db, "worker-session-cancel-blocked", "task-cancel-blocked", "subtask-cancel-upstream", "RUNNING")
+
+	router := NewRouter(NewHandler(Dependencies{
+		DB:  db,
+		Bus: eventbus.New(),
+	}))
+
+	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-cancel-upstream/cancel", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("unexpected cancel status: %d body=%s", response.Code, response.Body.String())
+	}
+
+	payload := decodeJSONMap(t, response.Body.Bytes())
+	taskPayload := payload["task"].(map[string]any)
+	if taskPayload["status"] != "ACTION_REQUIRED" {
+		t.Fatalf("unexpected task payload: %#v", taskPayload)
+	}
+	lastError, _ := taskPayload["lastError"].(string)
+	if !strings.Contains(lastError, "Frontend consumer is blocked by backend-contract (CANCELLED).") {
+		t.Fatalf("unexpected action required reason: %#v", taskPayload["lastError"])
 	}
 }
 

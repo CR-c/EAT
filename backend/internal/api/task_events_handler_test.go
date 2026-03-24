@@ -349,6 +349,73 @@ func TestIntegrationAndMailboxEndpointsPublishRealtimeEvents(t *testing.T) {
 	}
 }
 
+func TestCancelSubTaskPublishesActionRequiredWhenBlockedDependentsRemain(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	insertProjectTaskRecord(t, db, "project-cancel-events", "task-cancel-events", "EXECUTING", 1, `{"subtasks":[{"title":"Backend contract","description":"Original","recommended_agent":"codex-cli","branch_suffix":"backend-contract"},{"title":"Frontend consumer","description":"Waits on backend.","recommended_agent":"codex-cli","branch_suffix":"frontend-consumer","depends_on":["backend-contract"]}]}`)
+	insertSubTaskRecord(t, db, subTaskFixture{
+		ID:               "subtask-cancel-events-upstream",
+		TaskID:           "task-cancel-events",
+		Title:            "Backend contract",
+		Description:      "Running worker.",
+		BranchSuffix:     "backend-contract",
+		AgentType:        "codex-cli",
+		Status:           "RUNNING",
+		AssignmentSource: "LEAD",
+		AutoAssigned:     true,
+		ExecutionOrder:   1,
+		CreatedAt:        "2026-03-24T00:40:00Z",
+	})
+	insertSubTaskRecord(t, db, subTaskFixture{
+		ID:                          "subtask-cancel-events-downstream",
+		TaskID:                      "task-cancel-events",
+		Title:                       "Frontend consumer",
+		Description:                 "Blocked on backend.",
+		BranchSuffix:                "frontend-consumer",
+		DependencyBranchSuffixesRaw: `["backend-contract"]`,
+		AgentType:                   "codex-cli",
+		Status:                      "BLOCKED",
+		AssignmentSource:            "LEAD",
+		AutoAssigned:                true,
+		ExecutionOrder:              2,
+		CreatedAt:                   "2026-03-24T00:40:01Z",
+	})
+	insertWorkerSessionRecord(t, db, "worker-session-cancel-events", "task-cancel-events", "subtask-cancel-events-upstream", "RUNNING")
+
+	bus := eventbus.New()
+	events, unsubscribe := bus.Subscribe("task:task-cancel-events", 16)
+	defer unsubscribe()
+
+	router := NewRouter(NewHandler(Dependencies{
+		DB:  db,
+		Bus: bus,
+	}))
+
+	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-cancel-events-upstream/cancel", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("unexpected cancel status: %d body=%s", response.Code, response.Body.String())
+	}
+
+	mustReadEventNamed(t, events, "session:ended")
+	mustReadEventNamed(t, events, "subtask:cancelled")
+	mustReadEventNamed(t, events, "subtask:status")
+
+	taskStatusEvent := mustReadEventNamed(t, events, "task:status")
+	taskStatusPayload := decodeEventPayload(t, taskStatusEvent)
+	if taskStatusPayload["taskId"] != "task-cancel-events" || taskStatusPayload["status"] != "ACTION_REQUIRED" {
+		t.Fatalf("unexpected task status payload: %#v", taskStatusPayload)
+	}
+	if !strings.Contains(eventPayloadString(taskStatusPayload["reason"]), "Frontend consumer is blocked by backend-contract (CANCELLED).") {
+		t.Fatalf("unexpected task status reason: %#v", taskStatusPayload["reason"])
+	}
+}
+
 func mustReadEvent(t *testing.T, events <-chan eventbus.Event) eventbus.Event {
 	t.Helper()
 
@@ -373,6 +440,16 @@ func decodeEventPayload(t *testing.T, event eventbus.Event) map[string]any {
 		t.Fatalf("decode event payload for %s: %v", event.Name, err)
 	}
 	return payload
+}
+
+func mustReadEventNamed(t *testing.T, events <-chan eventbus.Event, eventName string) eventbus.Event {
+	t.Helper()
+
+	event := mustReadEvent(t, events)
+	if event.Name != eventName {
+		t.Fatalf("unexpected event order: got %s want %s", event.Name, eventName)
+	}
+	return event
 }
 
 func eventPayloadString(value any) string {
