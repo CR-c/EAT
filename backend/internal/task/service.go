@@ -1574,7 +1574,7 @@ func (s *Service) CancelSubTask(ctx context.Context, subTaskID string) (*SubTask
 			releasedSessionCopy := releasedSession
 			s.publishSession(taskRecord.ID, "session:started", &releasedSessionCopy)
 		}
-		if scheduleResult.Task != nil && result.Task != nil && scheduleResult.Task.Status != result.Task.Status {
+		if scheduleResult.Task != nil && result.Task != nil && shouldPublishTaskStatus(result.Task, scheduleResult.Task) {
 			s.publishTaskStatus(scheduleResult.Task.ID, scheduleResult.Task.Status, scheduleResult.Task.LastError)
 			result.Task = scheduleResult.Task
 		}
@@ -1767,6 +1767,24 @@ func (s *Service) ConfirmDiscardSubTask(ctx context.Context, subTaskID string) (
 		"taskId":    taskRecord.ID,
 	})
 	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
+	scheduleResult, scheduleError := s.progressDependencySchedule(ctx, taskRecord.ID)
+	if scheduleError != nil {
+		return nil, scheduleError
+	}
+	if scheduleResult != nil {
+		for _, releasedSubTask := range scheduleResult.ReleasedSubTasks {
+			releasedSubTaskCopy := releasedSubTask
+			s.publishSubTaskStatus(taskRecord.ID, &releasedSubTaskCopy)
+		}
+		for _, releasedSession := range scheduleResult.ReleasedSessions {
+			releasedSessionCopy := releasedSession
+			s.publishSession(taskRecord.ID, "session:started", &releasedSessionCopy)
+		}
+		if scheduleResult.Task != nil && result.Task != nil && shouldPublishTaskStatus(result.Task, scheduleResult.Task) {
+			s.publishTaskStatus(scheduleResult.Task.ID, scheduleResult.Task.Status, scheduleResult.Task.LastError)
+			result.Task = scheduleResult.Task
+		}
+	}
 	if result.Task != nil && result.Task.Status != taskRecord.Status {
 		s.publishTaskStatus(result.Task.ID, result.Task.Status, nil)
 	}
@@ -3473,6 +3491,13 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func shouldPublishTaskStatus(previous, next *Task) bool {
+	if previous == nil || next == nil {
+		return previous != next
+	}
+	return previous.Status != next.Status || derefString(previous.LastError) != derefString(next.LastError)
 }
 
 type serviceFailure struct {

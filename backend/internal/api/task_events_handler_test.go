@@ -416,6 +416,71 @@ func TestCancelSubTaskPublishesActionRequiredWhenBlockedDependentsRemain(t *test
 	}
 }
 
+func TestConfirmDiscardPublishesActionRequiredWhenBlockedDependentsRemain(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	insertProjectTaskRecord(t, db, "project-discard-events", "task-discard-events", "ACTION_REQUIRED", 1, `{"subtasks":[{"title":"Backend slice","description":"Original","recommended_agent":"codex-cli","branch_suffix":"backend-slice"},{"title":"Frontend consumer","description":"Waits on backend.","recommended_agent":"codex-cli","branch_suffix":"frontend-consumer","depends_on":["backend-slice"]}]}`)
+	insertSubTaskRecord(t, db, subTaskFixture{
+		ID:               "subtask-discard-events-upstream",
+		TaskID:           "task-discard-events",
+		Title:            "Backend slice",
+		Description:      "Discard pending.",
+		BranchSuffix:     "backend-slice",
+		AgentType:        "codex-cli",
+		Status:           "DISCARD_PENDING",
+		AssignmentSource: "LEAD",
+		AutoAssigned:     true,
+		ExecutionOrder:   1,
+		CreatedAt:        "2026-03-24T00:41:00Z",
+	})
+	insertSubTaskRecord(t, db, subTaskFixture{
+		ID:                          "subtask-discard-events-downstream",
+		TaskID:                      "task-discard-events",
+		Title:                       "Frontend consumer",
+		Description:                 "Blocked on backend.",
+		BranchSuffix:                "frontend-consumer",
+		DependencyBranchSuffixesRaw: `["backend-slice"]`,
+		AgentType:                   "codex-cli",
+		Status:                      "BLOCKED",
+		AssignmentSource:            "LEAD",
+		AutoAssigned:                true,
+		ExecutionOrder:              2,
+		CreatedAt:                   "2026-03-24T00:41:01Z",
+	})
+
+	bus := eventbus.New()
+	events, unsubscribe := bus.Subscribe("task:task-discard-events", 16)
+	defer unsubscribe()
+
+	router := NewRouter(NewHandler(Dependencies{
+		DB:  db,
+		Bus: bus,
+	}))
+
+	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-discard-events-upstream/confirm-discard", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("unexpected confirm-discard status: %d body=%s", response.Code, response.Body.String())
+	}
+
+	mustReadEventNamed(t, events, "subtask:confirm-discard")
+	mustReadEventNamed(t, events, "subtask:status")
+
+	taskStatusEvent := mustReadEventNamed(t, events, "task:status")
+	taskStatusPayload := decodeEventPayload(t, taskStatusEvent)
+	if taskStatusPayload["taskId"] != "task-discard-events" || taskStatusPayload["status"] != "ACTION_REQUIRED" {
+		t.Fatalf("unexpected task status payload: %#v", taskStatusPayload)
+	}
+	if !strings.Contains(eventPayloadString(taskStatusPayload["reason"]), "Frontend consumer is blocked by backend-slice (DISCARDED).") {
+		t.Fatalf("unexpected task status reason: %#v", taskStatusPayload["reason"])
+	}
+}
+
 func mustReadEvent(t *testing.T, events <-chan eventbus.Event) eventbus.Event {
 	t.Helper()
 

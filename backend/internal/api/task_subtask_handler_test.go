@@ -334,6 +334,65 @@ func TestRebaseRetrySubTaskEndpointResumesMergingAfterConflict(t *testing.T) {
 	}
 }
 
+func TestConfirmDiscardSubTaskRoutesTaskToActionRequiredWhenBlockedDependentsRemain(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	insertProjectTaskRecord(t, db, "project-discard-blocked", "task-discard-blocked", "ACTION_REQUIRED", 1, `{"subtasks":[{"title":"Backend slice","description":"Original","recommended_agent":"codex-cli","branch_suffix":"backend-slice"},{"title":"Frontend consumer","description":"Waits on backend.","recommended_agent":"codex-cli","branch_suffix":"frontend-consumer","depends_on":["backend-slice"]}]}`)
+	insertSubTaskRecord(t, db, subTaskFixture{
+		ID:               "subtask-discard-upstream",
+		TaskID:           "task-discard-blocked",
+		Title:            "Backend slice",
+		Description:      "Discard pending.",
+		BranchSuffix:     "backend-slice",
+		AgentType:        "codex-cli",
+		Status:           "DISCARD_PENDING",
+		AssignmentSource: "LEAD",
+		AutoAssigned:     true,
+		ExecutionOrder:   1,
+		CreatedAt:        "2026-03-24T00:01:40Z",
+	})
+	insertSubTaskRecord(t, db, subTaskFixture{
+		ID:                          "subtask-discard-downstream",
+		TaskID:                      "task-discard-blocked",
+		Title:                       "Frontend consumer",
+		Description:                 "Blocked on backend.",
+		BranchSuffix:                "frontend-consumer",
+		DependencyBranchSuffixesRaw: `["backend-slice"]`,
+		AgentType:                   "codex-cli",
+		Status:                      "BLOCKED",
+		AssignmentSource:            "LEAD",
+		AutoAssigned:                true,
+		ExecutionOrder:              2,
+		CreatedAt:                   "2026-03-24T00:01:41Z",
+	})
+
+	router := NewRouter(NewHandler(Dependencies{
+		DB:  db,
+		Bus: eventbus.New(),
+	}))
+
+	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-discard-upstream/confirm-discard", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("unexpected confirm-discard status: %d body=%s", response.Code, response.Body.String())
+	}
+
+	payload := decodeJSONMap(t, response.Body.Bytes())
+	taskPayload := payload["task"].(map[string]any)
+	if taskPayload["status"] != "ACTION_REQUIRED" {
+		t.Fatalf("unexpected task payload: %#v", taskPayload)
+	}
+	lastError, _ := taskPayload["lastError"].(string)
+	if !strings.Contains(lastError, "Frontend consumer is blocked by backend-slice (DISCARDED).") {
+		t.Fatalf("unexpected action required reason: %#v", taskPayload["lastError"])
+	}
+}
+
 type subTaskFixture struct {
 	ID                          string
 	TaskID                      string

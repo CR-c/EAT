@@ -389,7 +389,7 @@ Go：
 - 已完成 `start-clarification / pause / resume / approve-plan / restore-plan-snapshot / retry / rework / cancel / reassign / change-agent / confirm-discard / rebase-retry / integration-runs / mailbox` 的实时事件发布
 - 已补齐事件级 Go API 测试，覆盖 `task:status / session:started / session:ended / subtask:assigned / subtask:status / task:plan-restored / integration:queued / mailbox:message / board:activity / team:updated`
 - 已完成 `approve-plan` 后对可立即执行的 root subtasks 自动创建占位 worker session，并持久化到 task detail
-- 已完成 blocked dependency 的首个 `ACTION_REQUIRED` 路由：当上游子任务被取消而下游仍 `BLOCKED` 时，任务会持久化阻塞原因并通过 SSE 发布 `task:status`
+- 已完成 blocked dependency 的 `ACTION_REQUIRED` 路由：当上游子任务被取消，或 discard 确认后导致下游仍 `BLOCKED` 时，任务会持久化阻塞原因并通过 SSE 发布 `task:status`
 - 已完成 subtask `retry / rework / cancel / reassign / change-agent / confirm-discard` 的 Go 持久化写接口
 - 当前实现采用“持久化状态机 + 合成 worker session 占位”策略，用于保持前端与读模型可用
 - 尚未进入真实 worker lifecycle / dependency scheduling 主链路
