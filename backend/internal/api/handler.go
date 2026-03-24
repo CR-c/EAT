@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"path/filepath"
 
@@ -75,6 +77,15 @@ func respondJSON(w http.ResponseWriter, status int, payload any) {
 func decodeJSON(r *http.Request, target any) error {
 	defer r.Body.Close()
 	return json.NewDecoder(r.Body).Decode(target)
+}
+
+func decodeOptionalJSON(r *http.Request, target any) error {
+	defer r.Body.Close()
+	err := json.NewDecoder(r.Body).Decode(target)
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	return err
 }
 
 func respondProjectError(w http.ResponseWriter, err *project.Error) {

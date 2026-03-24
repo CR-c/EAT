@@ -80,16 +80,66 @@ func (h *Handler) GetTaskBoard(w http.ResponseWriter, r *http.Request) {
 	notImplemented(w, "task board")
 }
 func (h *Handler) StartClarification(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "clarification start")
+	taskID := chi.URLParam(r, "taskId")
+
+	var input task.StartClarificationRequest
+	if err := decodeOptionalJSON(r, &input); err != nil {
+		respondTaskError(w, &task.Error{
+			Code:    "INVALID_REQUEST_BODY",
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	result, serviceError := h.taskService.StartClarification(r.Context(), taskID, input)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) SendTaskMessage(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "task messaging")
+	taskID := chi.URLParam(r, "taskId")
+
+	var input task.SendTaskMessageRequest
+	if err := decodeJSON(r, &input); err != nil {
+		respondTaskError(w, &task.Error{
+			Code:    "INVALID_REQUEST_BODY",
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	result, serviceError := h.taskService.SendTaskMessage(r.Context(), taskID, input)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, result)
 }
 func (h *Handler) StopLeadSession(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "lead session stop")
+	taskID := chi.URLParam(r, "taskId")
+
+	result, serviceError := h.taskService.StopLeadSession(r.Context(), taskID)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) ConfirmRequirements(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "requirements confirmation")
+	taskID := chi.URLParam(r, "taskId")
+
+	result, serviceError := h.taskService.ConfirmRequirements(r.Context(), taskID)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) SendMailboxMessage(w http.ResponseWriter, r *http.Request) {
 	notImplemented(w, "mailbox message")
@@ -146,17 +196,89 @@ func (h *Handler) ApprovePlan(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) ArchiveTask(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "task archive")
+	taskID := chi.URLParam(r, "taskId")
+
+	var input task.ArchiveTaskRequest
+	if err := decodeOptionalJSON(r, &input); err != nil {
+		respondTaskError(w, &task.Error{
+			Code:    "INVALID_REQUEST_BODY",
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	result, serviceError := h.taskService.ArchiveTask(r.Context(), taskID, input)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	if h.previewService != nil {
+		_, _ = h.previewService.StopTaskPreview(r.Context(), taskID)
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) UnarchiveTask(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "task unarchive")
+	taskID := chi.URLParam(r, "taskId")
+
+	result, serviceError := h.taskService.UnarchiveTask(r.Context(), taskID)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
-func (h *Handler) PauseTask(w http.ResponseWriter, r *http.Request) { notImplemented(w, "task pause") }
+func (h *Handler) PauseTask(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+
+	result, serviceError := h.taskService.PauseTask(r.Context(), taskID)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	if h.previewService != nil {
+		_, _ = h.previewService.StopTaskPreview(r.Context(), taskID)
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
 func (h *Handler) DeleteTask(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "task deletion")
+	taskID := chi.URLParam(r, "taskId")
+
+	var input task.DeleteTaskRequest
+	if err := decodeOptionalJSON(r, &input); err != nil {
+		respondTaskError(w, &task.Error{
+			Code:    "INVALID_REQUEST_BODY",
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	result, serviceError := h.taskService.DeleteTask(r.Context(), taskID, input)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	if h.previewService != nil {
+		_, _ = h.previewService.StopTaskPreview(r.Context(), taskID)
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) ResumeTask(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "task resume")
+	taskID := chi.URLParam(r, "taskId")
+
+	result, serviceError := h.taskService.ResumeTask(r.Context(), taskID)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) RestorePlanSnapshot(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")

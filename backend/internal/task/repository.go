@@ -121,6 +121,8 @@ type UpdateTaskInput struct {
 	SetApprovedPlanJSON bool
 	LastError           *string
 	SetLastError        bool
+	ArchivedAt          *string
+	SetArchivedAt       bool
 }
 
 type CreatePlanSnapshotInput struct {
@@ -128,6 +130,48 @@ type CreatePlanSnapshotInput struct {
 	Version int64
 	Source  string
 	Payload string
+}
+
+type CreateMessageInput struct {
+	ID        string
+	TaskID    string
+	SubTaskID *string
+	Role      string
+	Content   string
+	CreatedAt string
+}
+
+type CreateSessionInput struct {
+	ID                   string
+	TaskID               string
+	SubTaskID            *string
+	AgentType            string
+	SessionType          string
+	SandboxType          string
+	ContainerID          *string
+	Status               string
+	PID                  *int64
+	StartedAt            *string
+	EndedAt              *string
+	ExitCode             *int64
+	LogPath              *string
+	FirstOutputAt        *string
+	OutputBuffer         string
+	OutputBufferMaxBytes int64
+	CreatedAt            string
+	UpdatedAt            string
+}
+
+type UpdateSessionInput struct {
+	Status        *string
+	SetStatus     bool
+	EndedAt       *string
+	SetEndedAt    bool
+	ExitCode      *int64
+	SetExitCode   bool
+	OutputBuffer  *string
+	SetOutputBuff bool
+	UpdatedAt     *string
 }
 
 func NewRepository(db *sql.DB) *Repository {
@@ -388,6 +432,42 @@ func (r *Repository) ListMessagesByTaskID(ctx context.Context, taskID string) ([
 	return items, rows.Err()
 }
 
+func (r *Repository) CreateMessage(ctx context.Context, input CreateMessageInput) (*Message, error) {
+	createdAt := input.CreatedAt
+	if createdAt == "" {
+		createdAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+
+	record := &Message{
+		ID:        input.ID,
+		TaskID:    input.TaskID,
+		SubTaskID: input.SubTaskID,
+		Role:      input.Role,
+		Content:   input.Content,
+		CreatedAt: createdAt,
+	}
+	if record.ID == "" {
+		record.ID = uuid.NewString()
+	}
+
+	_, err := r.exec().ExecContext(ctx, `
+		INSERT INTO messages (id, task_id, sub_task_id, role, content, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`,
+		record.ID,
+		record.TaskID,
+		record.SubTaskID,
+		record.Role,
+		record.Content,
+		record.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return record, nil
+}
+
 func (r *Repository) ListAttachmentsByTaskID(ctx context.Context, taskID string) ([]Attachment, error) {
 	rows, err := r.exec().QueryContext(ctx, `
 		SELECT id, task_id, file_name, file_path, file_type, mime_type, size, created_at
@@ -564,6 +644,9 @@ func (r *Repository) UpdateTask(ctx context.Context, taskID string, input Update
 	if input.SetLastError {
 		nextTask.LastError = input.LastError
 	}
+	if input.SetArchivedAt {
+		nextTask.ArchivedAt = input.ArchivedAt
+	}
 
 	_, err = r.exec().ExecContext(ctx, `
 		UPDATE tasks
@@ -573,6 +656,7 @@ func (r *Repository) UpdateTask(ctx context.Context, taskID string, input Update
 			current_plan_json = ?,
 			approved_plan_json = ?,
 			last_error = ?,
+			archived_at = ?,
 			updated_at = ?,
 			version = ?
 		WHERE id = ?
@@ -582,6 +666,7 @@ func (r *Repository) UpdateTask(ctx context.Context, taskID string, input Update
 		nextTask.CurrentPlanJSON,
 		nextTask.ApprovedPlanJSON,
 		nextTask.LastError,
+		nextTask.ArchivedAt,
 		nextTask.UpdatedAt,
 		nextTask.Version,
 		taskID,
@@ -591,6 +676,19 @@ func (r *Repository) UpdateTask(ctx context.Context, taskID string, input Update
 	}
 
 	return &nextTask, nil
+}
+
+func (r *Repository) DeleteTask(ctx context.Context, taskID string) (*Task, error) {
+	currentTask, err := r.FindTaskByID(ctx, taskID)
+	if err != nil || currentTask == nil {
+		return currentTask, err
+	}
+
+	if _, err := r.exec().ExecContext(ctx, `DELETE FROM tasks WHERE id = ?`, taskID); err != nil {
+		return nil, err
+	}
+
+	return currentTask, nil
 }
 
 func (r *Repository) CreatePlanSnapshot(ctx context.Context, input CreatePlanSnapshotInput) (*PlanSnapshot, error) {
@@ -722,6 +820,189 @@ func (r *Repository) CreateSubTask(ctx context.Context, input CreateSubTaskInput
 	return record, nil
 }
 
+func (r *Repository) CreateSession(ctx context.Context, input CreateSessionInput) (*Session, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	createdAt := input.CreatedAt
+	if createdAt == "" {
+		createdAt = now
+	}
+	updatedAt := input.UpdatedAt
+	if updatedAt == "" {
+		updatedAt = createdAt
+	}
+	outputBufferMaxBytes := input.OutputBufferMaxBytes
+	if outputBufferMaxBytes == 0 {
+		outputBufferMaxBytes = 65536
+	}
+	status := input.Status
+	if status == "" {
+		status = "PENDING"
+	}
+
+	record := &Session{
+		ID:                   input.ID,
+		TaskID:               input.TaskID,
+		SubTaskID:            input.SubTaskID,
+		AgentType:            input.AgentType,
+		SessionType:          input.SessionType,
+		SandboxType:          input.SandboxType,
+		ContainerID:          input.ContainerID,
+		Status:               status,
+		PID:                  input.PID,
+		StartedAt:            input.StartedAt,
+		EndedAt:              input.EndedAt,
+		ExitCode:             input.ExitCode,
+		LogPath:              input.LogPath,
+		FirstOutputAt:        input.FirstOutputAt,
+		OutputBuffer:         input.OutputBuffer,
+		OutputBufferMaxBytes: outputBufferMaxBytes,
+		CreatedAt:            createdAt,
+		UpdatedAt:            updatedAt,
+	}
+	if record.ID == "" {
+		record.ID = uuid.NewString()
+	}
+
+	_, err := r.exec().ExecContext(ctx, `
+		INSERT INTO agent_sessions (
+			id, task_id, sub_task_id, agent_type, session_type, sandbox_type, container_id,
+			status, pid, started_at, ended_at, exit_code, log_path, first_output_at,
+			output_buffer, output_buffer_max_bytes, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		record.ID,
+		record.TaskID,
+		record.SubTaskID,
+		record.AgentType,
+		record.SessionType,
+		record.SandboxType,
+		record.ContainerID,
+		record.Status,
+		record.PID,
+		record.StartedAt,
+		record.EndedAt,
+		record.ExitCode,
+		record.LogPath,
+		record.FirstOutputAt,
+		record.OutputBuffer,
+		record.OutputBufferMaxBytes,
+		record.CreatedAt,
+		record.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return record, nil
+}
+
+func (r *Repository) FindSessionByID(ctx context.Context, sessionID string) (*Session, error) {
+	row := r.exec().QueryRowContext(ctx, `
+		SELECT
+			id, task_id, sub_task_id, agent_type, session_type, sandbox_type, container_id,
+			status, pid, started_at, ended_at, exit_code, log_path, first_output_at,
+			output_buffer, output_buffer_max_bytes, created_at, updated_at
+		FROM agent_sessions
+		WHERE id = ?
+	`, sessionID)
+
+	var session Session
+	if err := row.Scan(
+		&session.ID,
+		&session.TaskID,
+		&session.SubTaskID,
+		&session.AgentType,
+		&session.SessionType,
+		&session.SandboxType,
+		&session.ContainerID,
+		&session.Status,
+		&session.PID,
+		&session.StartedAt,
+		&session.EndedAt,
+		&session.ExitCode,
+		&session.LogPath,
+		&session.FirstOutputAt,
+		&session.OutputBuffer,
+		&session.OutputBufferMaxBytes,
+		&session.CreatedAt,
+		&session.UpdatedAt,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &session, nil
+}
+
+func (r *Repository) UpdateSession(ctx context.Context, sessionID string, input UpdateSessionInput) (*Session, error) {
+	currentSession, err := r.FindSessionByID(ctx, sessionID)
+	if err != nil || currentSession == nil {
+		return currentSession, err
+	}
+
+	nextSession := *currentSession
+	if input.SetStatus {
+		nextSession.Status = derefOr(nextSession.Status, input.Status)
+	}
+	if input.SetEndedAt {
+		nextSession.EndedAt = input.EndedAt
+	}
+	if input.SetExitCode {
+		nextSession.ExitCode = input.ExitCode
+	}
+	if input.SetOutputBuff {
+		nextSession.OutputBuffer = derefOr(nextSession.OutputBuffer, input.OutputBuffer)
+	}
+	if input.UpdatedAt != nil {
+		nextSession.UpdatedAt = *input.UpdatedAt
+	} else {
+		nextSession.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+
+	_, err = r.exec().ExecContext(ctx, `
+		UPDATE agent_sessions
+		SET
+			agent_type = ?,
+			session_type = ?,
+			sandbox_type = ?,
+			container_id = ?,
+			status = ?,
+			pid = ?,
+			started_at = ?,
+			ended_at = ?,
+			exit_code = ?,
+			log_path = ?,
+			first_output_at = ?,
+			output_buffer = ?,
+			output_buffer_max_bytes = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		nextSession.AgentType,
+		nextSession.SessionType,
+		nextSession.SandboxType,
+		nextSession.ContainerID,
+		nextSession.Status,
+		nextSession.PID,
+		nextSession.StartedAt,
+		nextSession.EndedAt,
+		nextSession.ExitCode,
+		nextSession.LogPath,
+		nextSession.FirstOutputAt,
+		nextSession.OutputBuffer,
+		nextSession.OutputBufferMaxBytes,
+		nextSession.UpdatedAt,
+		sessionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &nextSession, nil
+}
+
 func (r *Repository) FindPlanSnapshotByID(ctx context.Context, snapshotID string) (*PlanSnapshot, error) {
 	row := r.exec().QueryRowContext(ctx, `
 		SELECT id, task_id, version, source, payload, created_at
@@ -764,4 +1045,11 @@ func (r *Repository) exec() queryExecutor {
 		return r.tx
 	}
 	return r.db
+}
+
+func derefOr(current string, next *string) string {
+	if next == nil {
+		return current
+	}
+	return *next
 }

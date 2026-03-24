@@ -269,6 +269,11 @@ Go：
 当前状态：
 
 - 进行中
+- 已完成 Go 侧 `start-clarification` 的静态状态迁移、消息落库与 lead session 占位持久化
+- 已完成 Go 侧 `messages` 的静态消息写入，并对齐 `PLAN_REVIEW -> PLANNING` 的状态转换
+- 已完成 Go 侧 `archive / unarchive / pause / resume / delete` 的非编排生命周期写路径
+- 已完成 task message / session / archive / delete 所需基础仓储写能力
+- 已补齐 clarification / lifecycle / branch cleanup / resume 的 Go API 测试
 - 已完成 Go 侧 `tasks` 读模型基础仓储
 - 已完成 Go 侧 `/api/tasks` 基础创建
 - 已完成 Go 侧 `/api/projects/{projectId}/tasks`
