@@ -75,9 +75,27 @@ func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusOK, detail)
 }
-func (h *Handler) GetTaskTeam(w http.ResponseWriter, r *http.Request) { notImplemented(w, "task team") }
+func (h *Handler) GetTaskTeam(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+
+	result, serviceError := h.taskService.GetTaskTeam(r.Context(), taskID)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
 func (h *Handler) GetTaskBoard(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "task board")
+	taskID := chi.URLParam(r, "taskId")
+
+	result, serviceError := h.taskService.GetTaskBoard(r.Context(), taskID)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) StartClarification(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
@@ -142,7 +160,24 @@ func (h *Handler) ConfirmRequirements(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) SendMailboxMessage(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "mailbox message")
+	taskID := chi.URLParam(r, "taskId")
+
+	var input task.SendMailboxMessageRequest
+	if err := decodeJSON(r, &input); err != nil {
+		respondTaskError(w, &task.Error{
+			Code:    "INVALID_REQUEST_BODY",
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	result, serviceError := h.taskService.SendMailboxMessage(r.Context(), taskID, input)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, result)
 }
 func (h *Handler) UpdateCurrentPlan(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")

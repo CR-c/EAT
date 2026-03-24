@@ -269,6 +269,12 @@ Go：
 当前状态：
 
 - 进行中
+- 已完成 Go 侧 clarification / messages / archive / unarchive / pause / resume / delete 等生命周期写接口
+- 已完成 task detail 的 `team / board / mailboxMessages` 持久化读模型补齐
+- 已完成 `GET /api/tasks/{taskId}/team`
+- 已完成 `GET /api/tasks/{taskId}/board`
+- 已完成 `POST /api/tasks/{taskId}/mailbox` 的持久化写入与基础校验
+- 仍未进入真实 worker orchestrator 主链路
 - 已完成 Go 侧 `start-clarification` 的静态状态迁移、消息落库与 lead session 占位持久化
 - 已完成 Go 侧 `messages` 的静态消息写入，并对齐 `PLAN_REVIEW -> PLANNING` 的状态转换
 - 已完成 Go 侧 `archive / unarchive / pause / resume / delete` 的非编排生命周期写路径
@@ -371,7 +377,11 @@ Go：
 
 当前状态：
 
-- 未开始
+- 进行中
+- 已完成 subtask `retry / rework / cancel / reassign / change-agent / confirm-discard` 的 Go 持久化写接口
+- 当前实现采用“持久化状态机 + 合成 worker session 占位”策略，用于保持前端与读模型可用
+- 尚未进入真实 worker lifecycle / dependency scheduling / SSE 驱动的 orchestrator 主链路
+- 说明：为保证 task detail / board 读模型可用，mailbox 的持久化存储与基础 API 已提前落地；但 review / merge / integration / SSE 驱动的 mailbox 全链路仍未开始
 
 ### Phase G：审查、合并、集成与 mailbox
 
@@ -435,11 +445,11 @@ Go：
 
 当前正在执行：
 
-- Phase E
+- Phase F
 
 下一步唯一优先项：
 
-- 继续补齐 Phase E 的 clarification / messages / archive / unarchive / pause / resume / delete 等生命周期写接口，再进入 Phase F 的 orchestrator 主链路迁移
+- 继续补齐 Phase F 的剩余 operator / merge / integration 缺口，优先实现 `rebase-retry` 与 integration run / retry / rollback / dequeue，再进入真实 worker orchestrator 主链路
 
 ---
 

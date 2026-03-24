@@ -107,6 +107,70 @@ type PlanSnapshot struct {
 	CreatedAt string `json:"createdAt"`
 }
 
+type MergeRecord struct {
+	ID              string  `json:"id"`
+	SubTaskID       string  `json:"subTaskId"`
+	AttemptNumber   int64   `json:"attemptNumber"`
+	Operation       string  `json:"operation"`
+	SourceBranch    string  `json:"sourceBranch"`
+	TargetBranch    string  `json:"targetBranch"`
+	Status          string  `json:"status"`
+	ResultCommitSHA *string `json:"resultCommitSha"`
+	ConflictSummary *string `json:"conflictSummary"`
+	CompletedAt     *string `json:"completedAt"`
+	CreatedAt       string  `json:"createdAt"`
+	UpdatedAt       string  `json:"updatedAt"`
+}
+
+type MailboxMessage struct {
+	ID              string         `json:"id"`
+	TaskID          string         `json:"taskId"`
+	SenderType      string         `json:"senderType"`
+	SenderSubTaskID *string        `json:"senderSubTaskId"`
+	TargetType      string         `json:"targetType"`
+	TargetSubTaskID *string        `json:"targetSubTaskId"`
+	MessageType     string         `json:"messageType"`
+	ArtifactRefs    []string       `json:"artifactRefs"`
+	FileRefs        []string       `json:"fileRefs"`
+	BranchRef       *string        `json:"branchRef"`
+	SchemaJSON      map[string]any `json:"schemaJson"`
+	RequiresAck     bool           `json:"requiresAck"`
+	Content         string         `json:"content"`
+	CreatedAt       string         `json:"createdAt"`
+}
+
+type IntegrationRun struct {
+	ID                string  `json:"id"`
+	TaskID            string  `json:"taskId"`
+	IntegrationBranch string  `json:"integrationBranch"`
+	Status            string  `json:"status"`
+	StartedAt         *string `json:"startedAt"`
+	EndedAt           *string `json:"endedAt"`
+	CreatedAt         string  `json:"createdAt"`
+	UpdatedAt         string  `json:"updatedAt"`
+}
+
+type IntegrationQueueItem struct {
+	ID               string  `json:"id"`
+	IntegrationRunID string  `json:"integrationRunId"`
+	SubTaskID        string  `json:"subTaskId"`
+	QueueOrder       int64   `json:"queueOrder"`
+	Status           string  `json:"status"`
+	MergedCommitSHA  *string `json:"mergedCommitSha"`
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
+}
+
+type GateResult struct {
+	ID               string         `json:"id"`
+	IntegrationRunID string         `json:"integrationRunId"`
+	GateType         string         `json:"gateType"`
+	Status           string         `json:"status"`
+	Summary          string         `json:"summary"`
+	DetailsJSON      map[string]any `json:"detailsJson"`
+	CreatedAt        string         `json:"createdAt"`
+}
+
 type Repository struct {
 	db *sql.DB
 	tx *sql.Tx
@@ -172,6 +236,88 @@ type UpdateSessionInput struct {
 	OutputBuffer  *string
 	SetOutputBuff bool
 	UpdatedAt     *string
+}
+
+type CreateMailboxMessageInput struct {
+	ID              string
+	TaskID          string
+	SenderType      string
+	SenderSubTaskID *string
+	TargetType      string
+	TargetSubTaskID *string
+	MessageType     string
+	ArtifactRefs    []string
+	FileRefs        []string
+	BranchRef       *string
+	SchemaJSON      map[string]any
+	RequiresAck     bool
+	Content         string
+	CreatedAt       string
+}
+
+type UpdateSubTaskInput struct {
+	Description             *string
+	SetDescription          bool
+	BranchName              *string
+	SetBranchName           bool
+	StartCommitSHA          *string
+	SetStartCommitSHA       bool
+	WorktreePath            *string
+	SetWorktreePath         bool
+	AgentType               *string
+	Status                  *string
+	AutoAssigned            *bool
+	RetryCount              *int64
+	LastError               *string
+	SetLastError            bool
+	LatestReviewDecision    *string
+	SetLatestReviewDecision bool
+	LatestReviewPhase       *string
+	SetLatestReviewPhase    bool
+	LatestReviewSummary     *string
+	SetLatestReviewSummary  bool
+	AssignmentSource        *string
+	SetAssignmentSource     bool
+	RunSummary              *string
+	SetRunSummary           bool
+}
+
+type CreateIntegrationRunInput struct {
+	ID                string
+	TaskID            string
+	IntegrationBranch string
+	Status            string
+	StartedAt         *string
+	EndedAt           *string
+	CreatedAt         string
+	UpdatedAt         string
+}
+
+type UpdateIntegrationRunInput struct {
+	IntegrationBranch *string
+	Status            *string
+	StartedAt         *string
+	SetStartedAt      bool
+	EndedAt           *string
+	SetEndedAt        bool
+}
+
+type CreateIntegrationQueueItemInput struct {
+	ID               string
+	IntegrationRunID string
+	SubTaskID        string
+	QueueOrder       int64
+	Status           string
+	MergedCommitSHA  *string
+	CreatedAt        string
+	UpdatedAt        string
+}
+
+type UpdateIntegrationQueueItemInput struct {
+	QueueOrder      *int64
+	Status          *string
+	MergedCommitSHA *string
+	SetMergedCommit bool
 }
 
 func NewRepository(db *sql.DB) *Repository {
@@ -536,6 +682,51 @@ func (r *Repository) ListSessionsByTaskID(ctx context.Context, taskID string) ([
 	return items, rows.Err()
 }
 
+func (r *Repository) ListSessionsBySubTaskID(ctx context.Context, subTaskID string) ([]Session, error) {
+	rows, err := r.exec().QueryContext(ctx, `
+		SELECT
+			id, task_id, sub_task_id, agent_type, session_type, sandbox_type, container_id,
+			status, pid, started_at, ended_at, exit_code, log_path, first_output_at,
+			output_buffer, output_buffer_max_bytes, created_at, updated_at
+		FROM agent_sessions
+		WHERE sub_task_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, subTaskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]Session, 0)
+	for rows.Next() {
+		var item Session
+		if err := rows.Scan(
+			&item.ID,
+			&item.TaskID,
+			&item.SubTaskID,
+			&item.AgentType,
+			&item.SessionType,
+			&item.SandboxType,
+			&item.ContainerID,
+			&item.Status,
+			&item.PID,
+			&item.StartedAt,
+			&item.EndedAt,
+			&item.ExitCode,
+			&item.LogPath,
+			&item.FirstOutputAt,
+			&item.OutputBuffer,
+			&item.OutputBufferMaxBytes,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (r *Repository) ListSubTasksByTaskID(ctx context.Context, taskID string) ([]SubTask, error) {
 	rows, err := r.exec().QueryContext(ctx, `
 		SELECT
@@ -596,6 +787,182 @@ func (r *Repository) ListSubTasksByTaskID(ctx context.Context, taskID string) ([
 	return items, rows.Err()
 }
 
+func (r *Repository) FindSubTaskByID(ctx context.Context, subTaskID string) (*SubTask, error) {
+	row := r.exec().QueryRowContext(ctx, `
+		SELECT
+			id, task_id, title, description, branch_suffix, dependency_branch_suffixes_json,
+			branch_name, start_commit_sha, worktree_path, agent_type, status, auto_assigned,
+			retry_count, last_error, latest_review_decision, latest_review_phase,
+			latest_review_summary, role, display_name, execution_order, assignment_source,
+			run_summary, version, created_at, updated_at
+		FROM sub_tasks
+		WHERE id = ?
+	`, subTaskID)
+
+	var item SubTask
+	var dependencyJSON string
+	var autoAssignedInt int64
+	if err := row.Scan(
+		&item.ID,
+		&item.TaskID,
+		&item.Title,
+		&item.Description,
+		&item.BranchSuffix,
+		&dependencyJSON,
+		&item.BranchName,
+		&item.StartCommitSHA,
+		&item.WorktreePath,
+		&item.AgentType,
+		&item.Status,
+		&autoAssignedInt,
+		&item.RetryCount,
+		&item.LastError,
+		&item.LatestReviewDecision,
+		&item.LatestReviewPhase,
+		&item.LatestReviewSummary,
+		&item.Role,
+		&item.DisplayName,
+		&item.ExecutionOrder,
+		&item.AssignmentSource,
+		&item.RunSummary,
+		&item.Version,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	item.AutoAssigned = autoAssignedInt == 1
+	if dependencyJSON != "" {
+		_ = json.Unmarshal([]byte(dependencyJSON), &item.DependencyBranchSuffixes)
+	}
+
+	return &item, nil
+}
+
+func (r *Repository) UpdateSubTask(ctx context.Context, subTaskID string, input UpdateSubTaskInput) (*SubTask, error) {
+	currentSubTask, err := r.FindSubTaskByID(ctx, subTaskID)
+	if err != nil || currentSubTask == nil {
+		return currentSubTask, err
+	}
+
+	nextSubTask := *currentSubTask
+	nextSubTask.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	nextSubTask.Version++
+
+	if input.SetDescription {
+		nextSubTask.Description = derefOr(nextSubTask.Description, input.Description)
+	}
+	if input.SetBranchName {
+		nextSubTask.BranchName = input.BranchName
+	}
+	if input.SetStartCommitSHA {
+		nextSubTask.StartCommitSHA = input.StartCommitSHA
+	}
+	if input.SetWorktreePath {
+		nextSubTask.WorktreePath = input.WorktreePath
+	}
+	if input.AgentType != nil {
+		nextSubTask.AgentType = *input.AgentType
+	}
+	if input.Status != nil {
+		nextSubTask.Status = *input.Status
+	}
+	if input.AutoAssigned != nil {
+		nextSubTask.AutoAssigned = *input.AutoAssigned
+	}
+	if input.RetryCount != nil {
+		nextSubTask.RetryCount = *input.RetryCount
+	}
+	if input.SetLastError {
+		nextSubTask.LastError = input.LastError
+	}
+	if input.SetLatestReviewDecision {
+		nextSubTask.LatestReviewDecision = input.LatestReviewDecision
+	}
+	if input.SetLatestReviewPhase {
+		nextSubTask.LatestReviewPhase = input.LatestReviewPhase
+	}
+	if input.SetLatestReviewSummary {
+		nextSubTask.LatestReviewSummary = input.LatestReviewSummary
+	}
+	if input.SetAssignmentSource {
+		nextSubTask.AssignmentSource = input.AssignmentSource
+	}
+	if input.SetRunSummary {
+		nextSubTask.RunSummary = input.RunSummary
+	}
+
+	dependencyJSONBytes, err := json.Marshal(nextSubTask.DependencyBranchSuffixes)
+	if err != nil {
+		return nil, err
+	}
+
+	autoAssignedInt := int64(0)
+	if nextSubTask.AutoAssigned {
+		autoAssignedInt = 1
+	}
+
+	_, err = r.exec().ExecContext(ctx, `
+		UPDATE sub_tasks
+		SET
+			title = ?,
+			description = ?,
+			branch_suffix = ?,
+			dependency_branch_suffixes_json = ?,
+			branch_name = ?,
+			start_commit_sha = ?,
+			worktree_path = ?,
+			agent_type = ?,
+			status = ?,
+			auto_assigned = ?,
+			retry_count = ?,
+			last_error = ?,
+			latest_review_decision = ?,
+			latest_review_phase = ?,
+			latest_review_summary = ?,
+			role = ?,
+			display_name = ?,
+			execution_order = ?,
+			assignment_source = ?,
+			run_summary = ?,
+			version = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		nextSubTask.Title,
+		nextSubTask.Description,
+		nextSubTask.BranchSuffix,
+		string(dependencyJSONBytes),
+		nextSubTask.BranchName,
+		nextSubTask.StartCommitSHA,
+		nextSubTask.WorktreePath,
+		nextSubTask.AgentType,
+		nextSubTask.Status,
+		autoAssignedInt,
+		nextSubTask.RetryCount,
+		nextSubTask.LastError,
+		nextSubTask.LatestReviewDecision,
+		nextSubTask.LatestReviewPhase,
+		nextSubTask.LatestReviewSummary,
+		nextSubTask.Role,
+		nextSubTask.DisplayName,
+		nextSubTask.ExecutionOrder,
+		nextSubTask.AssignmentSource,
+		nextSubTask.RunSummary,
+		nextSubTask.Version,
+		nextSubTask.UpdatedAt,
+		subTaskID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &nextSubTask, nil
+}
+
 func (r *Repository) ListPlanSnapshotsByTaskID(ctx context.Context, taskID string) ([]PlanSnapshot, error) {
 	rows, err := r.exec().QueryContext(ctx, `
 		SELECT id, task_id, version, source, payload, created_at
@@ -612,6 +979,44 @@ func (r *Repository) ListPlanSnapshotsByTaskID(ctx context.Context, taskID strin
 	for rows.Next() {
 		var item PlanSnapshot
 		if err := rows.Scan(&item.ID, &item.TaskID, &item.Version, &item.Source, &item.Payload, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) ListMergeRecordsBySubTaskID(ctx context.Context, subTaskID string) ([]MergeRecord, error) {
+	rows, err := r.exec().QueryContext(ctx, `
+		SELECT
+			id, sub_task_id, attempt_number, operation, source_branch, target_branch, status,
+			result_commit_sha, conflict_summary, completed_at, created_at, updated_at
+		FROM merge_records
+		WHERE sub_task_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, subTaskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]MergeRecord, 0)
+	for rows.Next() {
+		var item MergeRecord
+		if err := rows.Scan(
+			&item.ID,
+			&item.SubTaskID,
+			&item.AttemptNumber,
+			&item.Operation,
+			&item.SourceBranch,
+			&item.TargetBranch,
+			&item.Status,
+			&item.ResultCommitSHA,
+			&item.ConflictSummary,
+			&item.CompletedAt,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -676,6 +1081,463 @@ func (r *Repository) UpdateTask(ctx context.Context, taskID string, input Update
 	}
 
 	return &nextTask, nil
+}
+
+func (r *Repository) CreateMailboxMessage(ctx context.Context, input CreateMailboxMessageInput) (*MailboxMessage, error) {
+	createdAt := input.CreatedAt
+	if createdAt == "" {
+		createdAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	messageType := input.MessageType
+	if messageType == "" {
+		messageType = "NOTE"
+	}
+	record := &MailboxMessage{
+		ID:              input.ID,
+		TaskID:          input.TaskID,
+		SenderType:      input.SenderType,
+		SenderSubTaskID: input.SenderSubTaskID,
+		TargetType:      input.TargetType,
+		TargetSubTaskID: input.TargetSubTaskID,
+		MessageType:     messageType,
+		ArtifactRefs:    normalizeStringSlice(input.ArtifactRefs),
+		FileRefs:        normalizeStringSlice(input.FileRefs),
+		BranchRef:       input.BranchRef,
+		SchemaJSON:      cloneJSONObject(input.SchemaJSON),
+		RequiresAck:     input.RequiresAck,
+		Content:         input.Content,
+		CreatedAt:       createdAt,
+	}
+	if record.ID == "" {
+		record.ID = uuid.NewString()
+	}
+
+	artifactRefsJSON, err := json.Marshal(record.ArtifactRefs)
+	if err != nil {
+		return nil, err
+	}
+	fileRefsJSON, err := json.Marshal(record.FileRefs)
+	if err != nil {
+		return nil, err
+	}
+	var schemaJSON *string
+	if record.SchemaJSON != nil {
+		schemaBytes, marshalErr := json.Marshal(record.SchemaJSON)
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		schemaValue := string(schemaBytes)
+		schemaJSON = &schemaValue
+	}
+
+	requiresAckInt := int64(0)
+	if record.RequiresAck {
+		requiresAckInt = 1
+	}
+
+	_, err = r.exec().ExecContext(ctx, `
+		INSERT INTO mailbox_messages (
+			id, task_id, sender_type, sender_sub_task_id, target_type, target_sub_task_id,
+			message_type, artifact_refs_json, file_refs_json, branch_ref, schema_json,
+			requires_ack, content, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		record.ID,
+		record.TaskID,
+		record.SenderType,
+		record.SenderSubTaskID,
+		record.TargetType,
+		record.TargetSubTaskID,
+		record.MessageType,
+		string(artifactRefsJSON),
+		string(fileRefsJSON),
+		record.BranchRef,
+		schemaJSON,
+		requiresAckInt,
+		record.Content,
+		record.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return record, nil
+}
+
+func (r *Repository) ListMailboxMessagesByTaskID(ctx context.Context, taskID string) ([]MailboxMessage, error) {
+	rows, err := r.exec().QueryContext(ctx, `
+		SELECT
+			id, task_id, sender_type, sender_sub_task_id, target_type, target_sub_task_id,
+			message_type, artifact_refs_json, file_refs_json, branch_ref, schema_json,
+			requires_ack, content, created_at
+		FROM mailbox_messages
+		WHERE task_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]MailboxMessage, 0)
+	for rows.Next() {
+		var item MailboxMessage
+		var artifactRefsJSON string
+		var fileRefsJSON string
+		var schemaJSONRaw *string
+		var requiresAckInt int64
+		if err := rows.Scan(
+			&item.ID,
+			&item.TaskID,
+			&item.SenderType,
+			&item.SenderSubTaskID,
+			&item.TargetType,
+			&item.TargetSubTaskID,
+			&item.MessageType,
+			&artifactRefsJSON,
+			&fileRefsJSON,
+			&item.BranchRef,
+			&schemaJSONRaw,
+			&requiresAckInt,
+			&item.Content,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.ArtifactRefs = parseStringSliceJSON(artifactRefsJSON)
+		item.FileRefs = parseStringSliceJSON(fileRefsJSON)
+		item.SchemaJSON = parseJSONObjectJSON(schemaJSONRaw)
+		item.RequiresAck = requiresAckInt == 1
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) CreateIntegrationRun(ctx context.Context, input CreateIntegrationRunInput) (*IntegrationRun, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	record := &IntegrationRun{
+		ID:                input.ID,
+		TaskID:            input.TaskID,
+		IntegrationBranch: input.IntegrationBranch,
+		Status:            input.Status,
+		StartedAt:         input.StartedAt,
+		EndedAt:           input.EndedAt,
+		CreatedAt:         input.CreatedAt,
+		UpdatedAt:         input.UpdatedAt,
+	}
+	if record.ID == "" {
+		record.ID = uuid.NewString()
+	}
+	if record.CreatedAt == "" {
+		record.CreatedAt = now
+	}
+	if record.UpdatedAt == "" {
+		record.UpdatedAt = record.CreatedAt
+	}
+
+	_, err := r.exec().ExecContext(ctx, `
+		INSERT INTO integration_runs (
+			id, task_id, integration_branch, status, started_at, ended_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		record.ID,
+		record.TaskID,
+		record.IntegrationBranch,
+		record.Status,
+		record.StartedAt,
+		record.EndedAt,
+		record.CreatedAt,
+		record.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return record, nil
+}
+
+func (r *Repository) FindIntegrationRunByID(ctx context.Context, integrationRunID string) (*IntegrationRun, error) {
+	row := r.exec().QueryRowContext(ctx, `
+		SELECT
+			id, task_id, integration_branch, status, started_at, ended_at, created_at, updated_at
+		FROM integration_runs
+		WHERE id = ?
+	`, integrationRunID)
+
+	var record IntegrationRun
+	if err := row.Scan(
+		&record.ID,
+		&record.TaskID,
+		&record.IntegrationBranch,
+		&record.Status,
+		&record.StartedAt,
+		&record.EndedAt,
+		&record.CreatedAt,
+		&record.UpdatedAt,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &record, nil
+}
+
+func (r *Repository) UpdateIntegrationRun(ctx context.Context, integrationRunID string, input UpdateIntegrationRunInput) (*IntegrationRun, error) {
+	currentRun, err := r.FindIntegrationRunByID(ctx, integrationRunID)
+	if err != nil || currentRun == nil {
+		return currentRun, err
+	}
+
+	nextRun := *currentRun
+	nextRun.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	if input.IntegrationBranch != nil {
+		nextRun.IntegrationBranch = *input.IntegrationBranch
+	}
+	if input.Status != nil {
+		nextRun.Status = *input.Status
+	}
+	if input.SetStartedAt {
+		nextRun.StartedAt = input.StartedAt
+	}
+	if input.SetEndedAt {
+		nextRun.EndedAt = input.EndedAt
+	}
+
+	_, err = r.exec().ExecContext(ctx, `
+		UPDATE integration_runs
+		SET
+			integration_branch = ?,
+			status = ?,
+			started_at = ?,
+			ended_at = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		nextRun.IntegrationBranch,
+		nextRun.Status,
+		nextRun.StartedAt,
+		nextRun.EndedAt,
+		nextRun.UpdatedAt,
+		integrationRunID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &nextRun, nil
+}
+
+func (r *Repository) ListIntegrationRunsByTaskID(ctx context.Context, taskID string) ([]IntegrationRun, error) {
+	rows, err := r.exec().QueryContext(ctx, `
+		SELECT
+			id, task_id, integration_branch, status, started_at, ended_at, created_at, updated_at
+		FROM integration_runs
+		WHERE task_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]IntegrationRun, 0)
+	for rows.Next() {
+		var item IntegrationRun
+		if err := rows.Scan(
+			&item.ID,
+			&item.TaskID,
+			&item.IntegrationBranch,
+			&item.Status,
+			&item.StartedAt,
+			&item.EndedAt,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) CreateIntegrationQueueItem(ctx context.Context, input CreateIntegrationQueueItemInput) (*IntegrationQueueItem, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	record := &IntegrationQueueItem{
+		ID:               input.ID,
+		IntegrationRunID: input.IntegrationRunID,
+		SubTaskID:        input.SubTaskID,
+		QueueOrder:       input.QueueOrder,
+		Status:           input.Status,
+		MergedCommitSHA:  input.MergedCommitSHA,
+		CreatedAt:        input.CreatedAt,
+		UpdatedAt:        input.UpdatedAt,
+	}
+	if record.ID == "" {
+		record.ID = uuid.NewString()
+	}
+	if record.CreatedAt == "" {
+		record.CreatedAt = now
+	}
+	if record.UpdatedAt == "" {
+		record.UpdatedAt = record.CreatedAt
+	}
+
+	_, err := r.exec().ExecContext(ctx, `
+		INSERT INTO integration_queue_items (
+			id, integration_run_id, sub_task_id, queue_order, status, merged_commit_sha, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		record.ID,
+		record.IntegrationRunID,
+		record.SubTaskID,
+		record.QueueOrder,
+		record.Status,
+		record.MergedCommitSHA,
+		record.CreatedAt,
+		record.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return record, nil
+}
+
+func (r *Repository) FindIntegrationQueueItemByID(ctx context.Context, integrationQueueItemID string) (*IntegrationQueueItem, error) {
+	row := r.exec().QueryRowContext(ctx, `
+		SELECT
+			id, integration_run_id, sub_task_id, queue_order, status, merged_commit_sha, created_at, updated_at
+		FROM integration_queue_items
+		WHERE id = ?
+	`, integrationQueueItemID)
+
+	var record IntegrationQueueItem
+	if err := row.Scan(
+		&record.ID,
+		&record.IntegrationRunID,
+		&record.SubTaskID,
+		&record.QueueOrder,
+		&record.Status,
+		&record.MergedCommitSHA,
+		&record.CreatedAt,
+		&record.UpdatedAt,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &record, nil
+}
+
+func (r *Repository) UpdateIntegrationQueueItem(ctx context.Context, integrationQueueItemID string, input UpdateIntegrationQueueItemInput) (*IntegrationQueueItem, error) {
+	currentItem, err := r.FindIntegrationQueueItemByID(ctx, integrationQueueItemID)
+	if err != nil || currentItem == nil {
+		return currentItem, err
+	}
+
+	nextItem := *currentItem
+	nextItem.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	if input.QueueOrder != nil {
+		nextItem.QueueOrder = *input.QueueOrder
+	}
+	if input.Status != nil {
+		nextItem.Status = *input.Status
+	}
+	if input.SetMergedCommit {
+		nextItem.MergedCommitSHA = input.MergedCommitSHA
+	}
+
+	_, err = r.exec().ExecContext(ctx, `
+		UPDATE integration_queue_items
+		SET
+			queue_order = ?,
+			status = ?,
+			merged_commit_sha = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		nextItem.QueueOrder,
+		nextItem.Status,
+		nextItem.MergedCommitSHA,
+		nextItem.UpdatedAt,
+		integrationQueueItemID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &nextItem, nil
+}
+
+func (r *Repository) ListIntegrationQueueItemsByIntegrationRunID(ctx context.Context, integrationRunID string) ([]IntegrationQueueItem, error) {
+	rows, err := r.exec().QueryContext(ctx, `
+		SELECT
+			id, integration_run_id, sub_task_id, queue_order, status, merged_commit_sha, created_at, updated_at
+		FROM integration_queue_items
+		WHERE integration_run_id = ?
+		ORDER BY queue_order ASC, created_at ASC, id ASC
+	`, integrationRunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]IntegrationQueueItem, 0)
+	for rows.Next() {
+		var item IntegrationQueueItem
+		if err := rows.Scan(
+			&item.ID,
+			&item.IntegrationRunID,
+			&item.SubTaskID,
+			&item.QueueOrder,
+			&item.Status,
+			&item.MergedCommitSHA,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) ListGateResultsByIntegrationRunID(ctx context.Context, integrationRunID string) ([]GateResult, error) {
+	rows, err := r.exec().QueryContext(ctx, `
+		SELECT
+			id, integration_run_id, gate_type, status, summary, details_json, created_at
+		FROM gate_results
+		WHERE integration_run_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, integrationRunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]GateResult, 0)
+	for rows.Next() {
+		var item GateResult
+		var detailsJSONRaw *string
+		if err := rows.Scan(
+			&item.ID,
+			&item.IntegrationRunID,
+			&item.GateType,
+			&item.Status,
+			&item.Summary,
+			&detailsJSONRaw,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.DetailsJSON = parseJSONObjectJSON(detailsJSONRaw)
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (r *Repository) DeleteTask(ctx context.Context, taskID string) (*Task, error) {
@@ -1052,4 +1914,54 @@ func derefOr(current string, next *string) string {
 		return current
 	}
 	return *next
+}
+
+func normalizeStringSlice(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := value
+		if trimmed == "" {
+			continue
+		}
+		if seen[trimmed] {
+			continue
+		}
+		seen[trimmed] = true
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+func cloneJSONObject(value map[string]any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(value))
+	for key, item := range value {
+		cloned[key] = item
+	}
+	return cloned
+}
+
+func parseStringSliceJSON(raw string) []string {
+	if raw == "" {
+		return []string{}
+	}
+	var parsed []string
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return []string{}
+	}
+	return normalizeStringSlice(parsed)
+}
+
+func parseJSONObjectJSON(raw *string) map[string]any {
+	if raw == nil || *raw == "" {
+		return nil
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(*raw), &parsed); err != nil {
+		return nil
+	}
+	return parsed
 }

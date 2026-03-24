@@ -7,6 +7,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +41,14 @@ const (
 	ErrorCodeProjectNotFound           = "PROJECT_NOT_FOUND"
 	ErrorCodeRequirementsConfirmed     = "REQUIREMENTS_ALREADY_CONFIRMED"
 	ErrorCodeSessionNotRunning         = "SESSION_NOT_RUNNING"
+	ErrorCodeSubTaskActiveSession      = "SUBTASK_ACTIVE_SESSION_EXISTS"
+	ErrorCodeSubTaskCancelNotAllowed   = "SUBTASK_CANCEL_NOT_ALLOWED"
+	ErrorCodeSubTaskChangeAgentInvalid = "SUBTASK_CHANGE_AGENT_NOT_ALLOWED"
+	ErrorCodeSubTaskDiscardNotAllowed  = "SUBTASK_DISCARD_NOT_ALLOWED"
+	ErrorCodeSubTaskNotFound           = "SUBTASK_NOT_FOUND"
+	ErrorCodeSubTaskReassignNotAllowed = "SUBTASK_REASSIGN_NOT_ALLOWED"
+	ErrorCodeSubTaskReworkNotAllowed   = "SUBTASK_REWORK_NOT_ALLOWED"
+	ErrorCodeSubTaskRetryNotAllowed    = "SUBTASK_RETRY_NOT_ALLOWED"
 	ErrorCodeTaskNotFound              = "TASK_NOT_FOUND"
 	ErrorCodeTaskBranchCleanupFailed   = "TASK_BRANCH_CLEANUP_FAILED"
 	ErrorCodeTaskDeleteRequiresPause   = "TASK_DELETE_REQUIRES_PAUSE"
@@ -65,12 +75,25 @@ const taskStatusExecuting = "EXECUTING"
 const taskStatusMerging = "MERGING"
 const taskStatusPlanning = "PLANNING"
 const taskStatusReviewing = "REVIEWING"
+const sessionSandboxDocker = "DOCKER"
 const sessionSandboxHost = "HOST"
 const sessionStatusCancelled = "CANCELLED"
 const sessionStatusRunning = "RUNNING"
 const sessionTypeLead = "LEAD"
+const sessionTypeWorker = "WORKER"
 const messageRoleSystem = "SYSTEM"
 const messageRoleUser = "USER"
+const mailboxParticipantLead = "LEAD"
+const mailboxParticipantSubTask = "SUBTASK"
+const mailboxTargetLead = "LEAD"
+const mailboxTargetSubTask = "SUBTASK"
+const mailboxMessageTypeNote = "NOTE"
+const mailboxMessageTypeBlocker = "BLOCKER"
+const mailboxMessageTypeDeliverableReady = "DELIVERABLE_READY"
+const mailboxMessageTypeTestRequest = "TEST_REQUEST"
+const mailboxMessageTypeReviewRequest = "REVIEW_REQUEST"
+const mailboxMessageTypeAPIContract = "API_CONTRACT"
+const mailboxMessageTypeDBContract = "DB_CONTRACT"
 
 type Error struct {
 	Code    string         `json:"code"`
@@ -79,17 +102,17 @@ type Error struct {
 }
 
 type Detail struct {
-	Task            *Task          `json:"task"`
-	Messages        []Message      `json:"messages"`
-	Attachments     []Attachment   `json:"attachments"`
-	PlanSnapshots   []PlanSnapshot `json:"planSnapshots"`
-	Sessions        []Session      `json:"sessions"`
-	SubTasks        []SubTask      `json:"subTasks"`
-	CleanupWarnings []string       `json:"cleanupWarnings"`
-	MailboxMessages []any          `json:"mailboxMessages"`
-	Board           map[string]any `json:"board"`
-	Integration     map[string]any `json:"integration"`
-	Team            map[string]any `json:"team"`
+	Task            *Task            `json:"task"`
+	Messages        []Message        `json:"messages"`
+	Attachments     []Attachment     `json:"attachments"`
+	PlanSnapshots   []PlanSnapshot   `json:"planSnapshots"`
+	Sessions        []Session        `json:"sessions"`
+	SubTasks        []SubTask        `json:"subTasks"`
+	CleanupWarnings []string         `json:"cleanupWarnings"`
+	MailboxMessages []MailboxMessage `json:"mailboxMessages"`
+	Board           map[string]any   `json:"board"`
+	Integration     map[string]any   `json:"integration"`
+	Team            map[string]any   `json:"team"`
 }
 
 type Service struct {
@@ -148,6 +171,16 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (*Detail, *Error) 
 	if err != nil {
 		return nil, failure("TASK_SUBTASKS_READ_FAILED", err.Error(), nil)
 	}
+	mailboxMessages, err := s.repository.ListMailboxMessagesByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_MAILBOX_MESSAGES_READ_FAILED", err.Error(), nil)
+	}
+	integrationView, errPayload := s.buildTaskIntegrationView(ctx, taskRecord, subTasks)
+	if errPayload != nil {
+		return nil, errPayload
+	}
+	team := s.buildTaskTeamView(taskRecord, sessions, subTasks)
+	board := s.buildTaskBoardSnapshot(taskRecord, sessions, subTasks, mailboxMessages, integrationView)
 
 	return &Detail{
 		Task:            taskRecord,
@@ -157,10 +190,10 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (*Detail, *Error) 
 		Sessions:        sessions,
 		SubTasks:        subTasks,
 		CleanupWarnings: []string{},
-		MailboxMessages: []any{},
-		Board:           map[string]any{},
-		Integration:     map[string]any{},
-		Team:            map[string]any{},
+		MailboxMessages: mailboxMessages,
+		Board:           board,
+		Integration:     integrationView,
+		Team:            team,
 	}, nil
 }
 
@@ -296,6 +329,67 @@ type StopLeadSessionResult struct {
 type ConfirmRequirementsResult struct {
 	Message *Message `json:"message"`
 	Task    *Task    `json:"task"`
+}
+
+type GetTaskTeamResult struct {
+	Team map[string]any `json:"team"`
+}
+
+type GetTaskBoardResult struct {
+	Board map[string]any `json:"board"`
+}
+
+type SendMailboxMessageRequest struct {
+	Content         string         `json:"content"`
+	SenderSubTaskID string         `json:"senderSubTaskId"`
+	TargetSubTaskID string         `json:"targetSubTaskId"`
+	TargetType      string         `json:"targetType"`
+	MessageType     string         `json:"messageType"`
+	ArtifactRefs    []string       `json:"artifactRefs"`
+	FileRefs        []string       `json:"fileRefs"`
+	BranchRef       string         `json:"branchRef"`
+	SchemaJSON      map[string]any `json:"schemaJson"`
+	RequiresAck     bool           `json:"requiresAck"`
+}
+
+type SendMailboxMessageResult struct {
+	Message *MailboxMessage `json:"message"`
+}
+
+type RetrySubTaskRequest struct {
+	Description string `json:"description"`
+}
+
+type ReworkSubTaskRequest struct {
+	Description string `json:"description"`
+}
+
+type ReassignSubTaskRequest struct {
+	AgentType   string `json:"agentType"`
+	Description string `json:"description"`
+}
+
+type ChangeSubTaskAgentRequest struct {
+	AgentType   string `json:"agentType"`
+	Description string `json:"description"`
+}
+
+type SubTaskMutationResult struct {
+	Session *Session `json:"session"`
+	SubTask *SubTask `json:"subTask"`
+	Task    *Task    `json:"task"`
+}
+
+type IntegrationMutationResult struct {
+	IntegrationRun       *IntegrationRun       `json:"integrationRun"`
+	IntegrationQueueItem *IntegrationQueueItem `json:"integrationQueueItem"`
+	Task                 *Task                 `json:"task"`
+}
+
+type RebaseRetrySubTaskResult struct {
+	MergeStatus string   `json:"mergeStatus"`
+	SubTask     *SubTask `json:"subTask"`
+	Task        *Task    `json:"task"`
 }
 
 func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*CreateTaskResult, *Error) {
@@ -1206,6 +1300,996 @@ func (s *Service) ConfirmRequirements(ctx context.Context, taskID string) (*Conf
 	}, nil
 }
 
+func (s *Service) RetrySubTask(ctx context.Context, subTaskID string, input RetrySubTaskRequest) (*SubTaskMutationResult, *Error) {
+	subTask, taskRecord, serviceError := s.loadSubTaskContext(ctx, subTaskID)
+	if serviceError != nil {
+		return nil, serviceError
+	}
+	if taskRecord.Status != taskStatusActionRequired && taskRecord.Status != taskStatusExecuting {
+		return nil, failure(
+			ErrorCodeSubTaskRetryNotAllowed,
+			"Subtask retry is only available while the task is executing or action is required.",
+			map[string]any{"status": taskRecord.Status, "subTaskId": subTaskID},
+		)
+	}
+	if hasLive, serviceError := s.ensureNoLiveWorkerSession(ctx, subTaskID); serviceError != nil {
+		return nil, serviceError
+	} else if hasLive {
+		return nil, failure(ErrorCodeSubTaskActiveSession, "The subtask already has a live worker session.", map[string]any{"subTaskId": subTaskID})
+	}
+
+	return s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
+		Description:       input.Description,
+		ResumeTaskStatus:  true,
+		NextStatus:        subTaskStatusPending,
+		ForceManualAssign: true,
+		ErrorCode:         "SUBTASK_RETRY_FAILED",
+	})
+}
+
+func (s *Service) ReworkSubTask(ctx context.Context, subTaskID string, input ReworkSubTaskRequest) (*SubTaskMutationResult, *Error) {
+	subTask, taskRecord, serviceError := s.loadSubTaskContext(ctx, subTaskID)
+	if serviceError != nil {
+		return nil, serviceError
+	}
+	if taskRecord.Status != taskStatusExecuting {
+		return nil, failure(
+			ErrorCodeSubTaskReworkNotAllowed,
+			"Early rework is only available while the task is executing.",
+			map[string]any{"status": taskRecord.Status, "subTaskId": subTaskID},
+		)
+	}
+	if !isEarlyReworkEligible(subTask) {
+		return nil, failure(
+			ErrorCodeSubTaskReworkNotAllowed,
+			"This subtask does not have an actionable incremental review yet.",
+			map[string]any{
+				"latestReviewDecision": derefString(subTask.LatestReviewDecision),
+				"status":               subTask.Status,
+				"subTaskId":            subTaskID,
+			},
+		)
+	}
+	if hasLive, serviceError := s.ensureNoLiveWorkerSession(ctx, subTaskID); serviceError != nil {
+		return nil, serviceError
+	} else if hasLive {
+		return nil, failure(ErrorCodeSubTaskActiveSession, "The subtask already has a live worker session.", map[string]any{"subTaskId": subTaskID})
+	}
+
+	return s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
+		Description:       input.Description,
+		NextStatus:        subTaskStatusPending,
+		ForceManualAssign: true,
+		ErrorCode:         "SUBTASK_REWORK_FAILED",
+	})
+}
+
+func (s *Service) CancelSubTask(ctx context.Context, subTaskID string) (*SubTaskMutationResult, *Error) {
+	subTask, taskRecord, serviceError := s.loadSubTaskContext(ctx, subTaskID)
+	if serviceError != nil {
+		return nil, serviceError
+	}
+	if !isSubTaskCancelEligible(taskRecord, subTask) {
+		return nil, failure(
+			ErrorCodeSubTaskCancelNotAllowed,
+			"Cancelling this member is not allowed from the current task or subtask state.",
+			map[string]any{"status": subTask.Status, "subTaskId": subTaskID, "taskStatus": taskRecord.Status},
+		)
+	}
+
+	var result SubTaskMutationResult
+	txErr := s.repository.RunInTransaction(ctx, func(repository *Repository) error {
+		sessions, err := repository.ListSessionsBySubTaskID(ctx, subTaskID)
+		if err != nil {
+			return err
+		}
+		liveSession := latestLiveWorkerSession(sessions)
+		if liveSession != nil {
+			cancelledAt := time.Now().UTC().Format(time.RFC3339Nano)
+			cancelledStatus := sessionStatusCancelled
+			updatedSession, updateErr := repository.UpdateSession(ctx, liveSession.ID, UpdateSessionInput{
+				Status:      &cancelledStatus,
+				SetStatus:   true,
+				EndedAt:     &cancelledAt,
+				SetEndedAt:  true,
+				ExitCode:    nil,
+				SetExitCode: true,
+			})
+			if updateErr != nil {
+				return updateErr
+			}
+			result.Session = updatedSession
+		}
+
+		nextStatus := "CANCELLED"
+		runSummary := "Cancelled by the operator."
+		assignmentSource := stringPointer("OPERATOR")
+		updatedSubTask, updateErr := repository.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{
+			Status:              &nextStatus,
+			LastError:           nil,
+			SetLastError:        true,
+			AssignmentSource:    assignmentSource,
+			SetAssignmentSource: true,
+			RunSummary:          &runSummary,
+			SetRunSummary:       true,
+		})
+		if updateErr != nil {
+			return updateErr
+		}
+		result.SubTask = updatedSubTask
+
+		nextTask, readErr := repository.FindTaskByID(ctx, taskRecord.ID)
+		if readErr != nil {
+			return readErr
+		}
+		result.Task = nextTask
+		return nil
+	})
+	if txErr != nil {
+		return nil, failure("SUBTASK_CANCEL_FAILED", txErr.Error(), nil)
+	}
+
+	return &result, nil
+}
+
+func (s *Service) ReassignSubTask(ctx context.Context, subTaskID string, input ReassignSubTaskRequest) (*SubTaskMutationResult, *Error) {
+	subTask, taskRecord, serviceError := s.loadSubTaskContext(ctx, subTaskID)
+	if serviceError != nil {
+		return nil, serviceError
+	}
+	if !isSubTaskReassignEligible(taskRecord, subTask) {
+		return nil, failure(
+			ErrorCodeSubTaskReassignNotAllowed,
+			"Reassigning this member is not allowed from the current task or subtask state.",
+			map[string]any{"status": subTask.Status, "subTaskId": subTaskID, "taskStatus": taskRecord.Status},
+		)
+	}
+	if hasLive, serviceError := s.ensureNoLiveWorkerSession(ctx, subTaskID); serviceError != nil {
+		return nil, serviceError
+	} else if hasLive {
+		return nil, failure(ErrorCodeSubTaskActiveSession, "The subtask already has a live worker session.", map[string]any{"subTaskId": subTaskID})
+	}
+
+	siblingSubTasks, err := s.repository.ListSubTasksByTaskID(ctx, taskRecord.ID)
+	if err != nil {
+		return nil, failure("TASK_SUBTASKS_READ_FAILED", err.Error(), nil)
+	}
+
+	nextStatus := subTaskStatusPending
+	if !areSubTaskDependenciesSatisfied(subTask, siblingSubTasks) {
+		nextStatus = subTaskStatusBlocked
+	}
+
+	return s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
+		AgentType:         input.AgentType,
+		Description:       input.Description,
+		ResumeTaskStatus:  true,
+		NextStatus:        nextStatus,
+		ForceManualAssign: true,
+		ClearAutoAssigned: true,
+		CreateSession:     nextStatus != subTaskStatusBlocked,
+		ErrorCode:         "SUBTASK_REASSIGN_FAILED",
+	})
+}
+
+func (s *Service) ChangeSubTaskAgent(ctx context.Context, subTaskID string, input ChangeSubTaskAgentRequest) (*SubTaskMutationResult, *Error) {
+	subTask, taskRecord, serviceError := s.loadSubTaskContext(ctx, subTaskID)
+	if serviceError != nil {
+		return nil, serviceError
+	}
+	if !isAgentChangeEligible(taskRecord, subTask) {
+		return nil, failure(
+			ErrorCodeSubTaskChangeAgentInvalid,
+			"Changing the assigned worker is not allowed from the current subtask state.",
+			map[string]any{"status": subTask.Status, "subTaskId": subTaskID, "taskStatus": taskRecord.Status},
+		)
+	}
+	if hasLive, serviceError := s.ensureNoLiveWorkerSession(ctx, subTaskID); serviceError != nil {
+		return nil, serviceError
+	} else if hasLive {
+		return nil, failure(ErrorCodeSubTaskActiveSession, "The subtask already has a live worker session.", map[string]any{"subTaskId": subTaskID})
+	}
+
+	nextAgentType := normalizeRequiredString(input.AgentType)
+	if nextAgentType == "" {
+		return nil, failure("AGENT_TYPE_REQUIRED", "A replacement worker agent is required before relaunch.", map[string]any{"subTaskId": subTaskID})
+	}
+	if nextAgentType == subTask.AgentType {
+		return nil, failure(
+			ErrorCodeSubTaskChangeAgentInvalid,
+			"Select a different worker agent before using Switch Agent & Relaunch.",
+			map[string]any{"agentType": nextAgentType, "subTaskId": subTaskID},
+		)
+	}
+
+	return s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
+		AgentType:         nextAgentType,
+		Description:       input.Description,
+		ResumeTaskStatus:  true,
+		NextStatus:        subTaskStatusPending,
+		ForceManualAssign: true,
+		ClearAutoAssigned: true,
+		ErrorCode:         "SUBTASK_CHANGE_AGENT_FAILED",
+	})
+}
+
+func (s *Service) ConfirmDiscardSubTask(ctx context.Context, subTaskID string) (*SubTaskMutationResult, *Error) {
+	subTask, taskRecord, serviceError := s.loadSubTaskContext(ctx, subTaskID)
+	if serviceError != nil {
+		return nil, serviceError
+	}
+	if taskRecord.Status != taskStatusActionRequired || subTask.Status != "DISCARD_PENDING" {
+		return nil, failure(
+			ErrorCodeSubTaskDiscardNotAllowed,
+			"Discard confirmation is only available for DISCARD_PENDING subtasks while the task is ACTION_REQUIRED.",
+			map[string]any{"status": subTask.Status, "subTaskId": subTaskID, "taskStatus": taskRecord.Status},
+		)
+	}
+
+	var result SubTaskMutationResult
+	txErr := s.repository.RunInTransaction(ctx, func(repository *Repository) error {
+		nextStatus := "DISCARDED"
+		runSummary := "Discarded from the merge set."
+		updatedSubTask, updateErr := repository.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{
+			Status:        &nextStatus,
+			RunSummary:    &runSummary,
+			SetRunSummary: true,
+		})
+		if updateErr != nil {
+			return updateErr
+		}
+		result.SubTask = updatedSubTask
+
+		subTasks, err := repository.ListSubTasksByTaskID(ctx, taskRecord.ID)
+		if err != nil {
+			return err
+		}
+		for index := range subTasks {
+			if subTasks[index].ID == updatedSubTask.ID {
+				subTasks[index] = *updatedSubTask
+				break
+			}
+		}
+
+		nextTask := taskRecord
+		if isMergeResumeEligible(subTasks) {
+			mergingStatus := taskStatusMerging
+			nextTask, err = repository.UpdateTask(ctx, taskRecord.ID, UpdateTaskInput{
+				Status:       &mergingStatus,
+				LastError:    nil,
+				SetLastError: true,
+			})
+			if err != nil {
+				return err
+			}
+		}
+		result.Task = nextTask
+		return nil
+	})
+	if txErr != nil {
+		return nil, failure("SUBTASK_CONFIRM_DISCARD_FAILED", txErr.Error(), nil)
+	}
+
+	return &result, nil
+}
+
+func (s *Service) RebaseRetrySubTask(ctx context.Context, subTaskID string) (*RebaseRetrySubTaskResult, *Error) {
+	subTask, taskRecord, serviceError := s.loadSubTaskContext(ctx, subTaskID)
+	if serviceError != nil {
+		return nil, serviceError
+	}
+
+	mergeRecords, err := s.repository.ListMergeRecordsBySubTaskID(ctx, subTaskID)
+	if err != nil {
+		return nil, failure("TASK_MERGE_RECORDS_READ_FAILED", err.Error(), nil)
+	}
+	latestMergeRecord := latestMergeRecord(mergeRecords)
+	if taskRecord.Status != taskStatusActionRequired || !isRebaseRetryEligibleSubTaskStatus(subTask.Status) || latestMergeRecord == nil || latestMergeRecord.Operation != "MERGE" || latestMergeRecord.Status != "CONFLICT" {
+		return nil, failure(
+			"SUBTASK_REBASE_RETRY_NOT_ALLOWED",
+			"Rebase & Retry is only available for accepted or review-pending subtasks whose latest merge attempt conflicted.",
+			map[string]any{
+				"latestMergeRecord": latestMergeRecord,
+				"status":            subTask.Status,
+				"subTaskId":         subTaskID,
+				"taskStatus":        taskRecord.Status,
+			},
+		)
+	}
+
+	mergingStatus := taskStatusMerging
+	nextTask, err := s.repository.UpdateTask(ctx, taskRecord.ID, UpdateTaskInput{
+		Status:       &mergingStatus,
+		LastError:    nil,
+		SetLastError: true,
+	})
+	if err != nil {
+		return nil, failure("SUBTASK_REBASE_RETRY_FAILED", err.Error(), nil)
+	}
+
+	return &RebaseRetrySubTaskResult{
+		MergeStatus: "SUCCEEDED",
+		SubTask:     subTask,
+		Task:        nextTask,
+	}, nil
+}
+
+func (s *Service) StartIntegrationRun(ctx context.Context, taskID string) (*IntegrationMutationResult, *Error) {
+	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})
+	}
+	if taskRecord.Status != taskStatusMerging && taskRecord.Status != taskStatusActionRequired {
+		return nil, failure(
+			"INTEGRATION_START_NOT_ALLOWED",
+			"Integration runs can only start while merging or after an integration failure requires action.",
+			map[string]any{"status": taskRecord.Status, "taskId": taskID},
+		)
+	}
+
+	subTasks, err := s.repository.ListSubTasksByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_SUBTASKS_READ_FAILED", err.Error(), nil)
+	}
+
+	return s.createIntegrationRun(ctx, taskRecord, subTasks, true)
+}
+
+func (s *Service) RetryIntegrationRun(ctx context.Context, integrationRunID string) (*IntegrationMutationResult, *Error) {
+	integrationRun, err := s.repository.FindIntegrationRunByID(ctx, integrationRunID)
+	if err != nil {
+		return nil, failure("TASK_INTEGRATION_RUN_READ_FAILED", err.Error(), nil)
+	}
+	if integrationRun == nil {
+		return nil, failure("INTEGRATION_RUN_NOT_FOUND", "Integration run not found.", map[string]any{"integrationRunId": integrationRunID})
+	}
+
+	taskRecord, err := s.repository.FindTaskByID(ctx, integrationRun.TaskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": integrationRun.TaskID})
+	}
+	if taskRecord.Status != taskStatusActionRequired || !isRetryableIntegrationStatus(integrationRun.Status) {
+		return nil, failure(
+			"INTEGRATION_RETRY_NOT_ALLOWED",
+			"Integration retry is only available after an actionable integration failure or rollback.",
+			map[string]any{"integrationRunId": integrationRunID, "integrationRunStatus": integrationRun.Status, "taskStatus": taskRecord.Status},
+		)
+	}
+
+	subTasks, err := s.repository.ListSubTasksByTaskID(ctx, taskRecord.ID)
+	if err != nil {
+		return nil, failure("TASK_SUBTASKS_READ_FAILED", err.Error(), nil)
+	}
+
+	return s.createIntegrationRun(ctx, taskRecord, subTasks, true)
+}
+
+func (s *Service) RollbackIntegrationRun(ctx context.Context, integrationRunID string) (*IntegrationMutationResult, *Error) {
+	integrationRun, err := s.repository.FindIntegrationRunByID(ctx, integrationRunID)
+	if err != nil {
+		return nil, failure("TASK_INTEGRATION_RUN_READ_FAILED", err.Error(), nil)
+	}
+	if integrationRun == nil {
+		return nil, failure("INTEGRATION_RUN_NOT_FOUND", "Integration run not found.", map[string]any{"integrationRunId": integrationRunID})
+	}
+
+	taskRecord, err := s.repository.FindTaskByID(ctx, integrationRun.TaskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": integrationRun.TaskID})
+	}
+	if taskRecord.Status != taskStatusActionRequired || !isRollbackableIntegrationStatus(integrationRun.Status) {
+		return nil, failure(
+			"INTEGRATION_ROLLBACK_NOT_ALLOWED",
+			"Integration rollback is only available after an actionable integration failure.",
+			map[string]any{"integrationRunId": integrationRunID, "integrationRunStatus": integrationRun.Status, "taskStatus": taskRecord.Status},
+		)
+	}
+
+	result := &IntegrationMutationResult{Task: taskRecord}
+	txErr := s.repository.RunInTransaction(ctx, func(repository *Repository) error {
+		endedAt := time.Now().UTC().Format(time.RFC3339Nano)
+		rolledBackStatus := "ROLLED_BACK"
+		updatedRun, updateErr := repository.UpdateIntegrationRun(ctx, integrationRunID, UpdateIntegrationRunInput{
+			Status:     &rolledBackStatus,
+			EndedAt:    &endedAt,
+			SetEndedAt: true,
+		})
+		if updateErr != nil {
+			return updateErr
+		}
+		result.IntegrationRun = updatedRun
+
+		queueItems, err := repository.ListIntegrationQueueItemsByIntegrationRunID(ctx, integrationRunID)
+		if err != nil {
+			return err
+		}
+		for _, queueItem := range queueItems {
+			nextStatus := queueItem.Status
+			if queueItem.Status != "RELEASED" {
+				nextStatus = "ROLLED_BACK"
+			}
+			if nextStatus == queueItem.Status {
+				continue
+			}
+			if _, err := repository.UpdateIntegrationQueueItem(ctx, queueItem.ID, UpdateIntegrationQueueItemInput{
+				Status: &nextStatus,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if txErr != nil {
+		return nil, failure("INTEGRATION_ROLLBACK_FAILED", txErr.Error(), nil)
+	}
+
+	return result, nil
+}
+
+func (s *Service) DequeueIntegrationQueueItem(ctx context.Context, integrationQueueItemID string) (*IntegrationMutationResult, *Error) {
+	queueItem, err := s.repository.FindIntegrationQueueItemByID(ctx, integrationQueueItemID)
+	if err != nil {
+		return nil, failure("TASK_INTEGRATION_QUEUE_ITEM_READ_FAILED", err.Error(), nil)
+	}
+	if queueItem == nil {
+		return nil, failure("INTEGRATION_QUEUE_ITEM_NOT_FOUND", "Integration queue item not found.", map[string]any{"integrationQueueItemId": integrationQueueItemID})
+	}
+
+	integrationRun, err := s.repository.FindIntegrationRunByID(ctx, queueItem.IntegrationRunID)
+	if err != nil {
+		return nil, failure("TASK_INTEGRATION_RUN_READ_FAILED", err.Error(), nil)
+	}
+	if integrationRun == nil {
+		return nil, failure("INTEGRATION_RUN_NOT_FOUND", "Integration run not found.", map[string]any{"integrationRunId": queueItem.IntegrationRunID})
+	}
+
+	taskRecord, err := s.repository.FindTaskByID(ctx, integrationRun.TaskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": integrationRun.TaskID})
+	}
+
+	if taskRecord.Status != taskStatusActionRequired || integrationRun.Status != taskStatusActionRequired || queueItem.Status == "RELEASED" || queueItem.Status == "DEQUEUED" {
+		return nil, failure(
+			"INTEGRATION_DEQUEUE_NOT_ALLOWED",
+			"Integration dequeue is only available for actionable queue items during an interrupted integration run.",
+			map[string]any{"integrationQueueItemId": integrationQueueItemID, "integrationRunStatus": integrationRun.Status, "queueItemStatus": queueItem.Status, "taskStatus": taskRecord.Status},
+		)
+	}
+
+	dequeuedStatus := "DEQUEUED"
+	updatedQueueItem, err := s.repository.UpdateIntegrationQueueItem(ctx, integrationQueueItemID, UpdateIntegrationQueueItemInput{
+		Status: &dequeuedStatus,
+	})
+	if err != nil {
+		return nil, failure("INTEGRATION_DEQUEUE_FAILED", err.Error(), nil)
+	}
+
+	return &IntegrationMutationResult{
+		IntegrationQueueItem: updatedQueueItem,
+		Task:                 taskRecord,
+	}, nil
+}
+
+func (s *Service) GetTaskTeam(ctx context.Context, taskID string) (*GetTaskTeamResult, *Error) {
+	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})
+	}
+
+	sessions, err := s.repository.ListSessionsByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_SESSIONS_READ_FAILED", err.Error(), nil)
+	}
+	subTasks, err := s.repository.ListSubTasksByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_SUBTASKS_READ_FAILED", err.Error(), nil)
+	}
+
+	return &GetTaskTeamResult{
+		Team: s.buildTaskTeamView(taskRecord, sessions, subTasks),
+	}, nil
+}
+
+func (s *Service) GetTaskBoard(ctx context.Context, taskID string) (*GetTaskBoardResult, *Error) {
+	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})
+	}
+
+	sessions, err := s.repository.ListSessionsByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_SESSIONS_READ_FAILED", err.Error(), nil)
+	}
+	subTasks, err := s.repository.ListSubTasksByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_SUBTASKS_READ_FAILED", err.Error(), nil)
+	}
+	mailboxMessages, err := s.repository.ListMailboxMessagesByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_MAILBOX_MESSAGES_READ_FAILED", err.Error(), nil)
+	}
+	integrationView, errPayload := s.buildTaskIntegrationView(ctx, taskRecord, subTasks)
+	if errPayload != nil {
+		return nil, errPayload
+	}
+
+	return &GetTaskBoardResult{
+		Board: s.buildTaskBoardSnapshot(taskRecord, sessions, subTasks, mailboxMessages, integrationView),
+	}, nil
+}
+
+func (s *Service) SendMailboxMessage(ctx context.Context, taskID string, input SendMailboxMessageRequest) (*SendMailboxMessageResult, *Error) {
+	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})
+	}
+	if !isMailboxAvailable(taskRecord.Status) {
+		return nil, failure(
+			"MAILBOX_NOT_AVAILABLE",
+			"Mailbox notes are only available after plan approval while the task is still active.",
+			map[string]any{"status": taskRecord.Status, "taskId": taskID},
+		)
+	}
+
+	content := normalizeRequiredString(input.Content)
+	if content == "" {
+		return nil, failure("MAILBOX_MESSAGE_REQUIRED", "Mailbox message content is required.", map[string]any{"taskId": taskID})
+	}
+
+	messageType, ok := normalizeMailboxMessageType(input.MessageType)
+	if !ok {
+		return nil, failure("MAILBOX_MESSAGE_TYPE_INVALID", "Mailbox messageType is invalid.", map[string]any{"taskId": taskID})
+	}
+
+	senderSubTaskID := normalizeRequiredString(input.SenderSubTaskID)
+	targetSubTaskID := normalizeRequiredString(input.TargetSubTaskID)
+	targetType := normalizeMailboxTargetType(input.TargetType)
+	if targetType == "" {
+		if targetSubTaskID != "" {
+			targetType = mailboxTargetSubTask
+		} else if senderSubTaskID != "" {
+			targetType = mailboxTargetLead
+		}
+	}
+	if targetType == "" {
+		return nil, failure("MAILBOX_TARGET_REQUIRED", "Mailbox messages must target either the lead or a subtask.", map[string]any{"taskId": taskID})
+	}
+
+	var targetSubTask *SubTask
+	if targetType == mailboxTargetSubTask {
+		if targetSubTaskID == "" {
+			return nil, failure("MAILBOX_TARGET_REQUIRED", "Mailbox messages targeting a subtask must include targetSubTaskId.", map[string]any{"taskId": taskID})
+		}
+		targetSubTask, err = s.repository.FindSubTaskByID(ctx, targetSubTaskID)
+		if err != nil {
+			return nil, failure("TASK_SUBTASK_READ_FAILED", err.Error(), nil)
+		}
+		if targetSubTask == nil || targetSubTask.TaskID != taskID {
+			return nil, failure("SUBTASK_NOT_FOUND", "Subtask not found.", map[string]any{"subTaskId": targetSubTaskID, "taskId": taskID})
+		}
+	}
+
+	senderType := mailboxParticipantLead
+	var senderSubTask *SubTask
+	if senderSubTaskID != "" {
+		senderSubTask, err = s.repository.FindSubTaskByID(ctx, senderSubTaskID)
+		if err != nil {
+			return nil, failure("TASK_SUBTASK_READ_FAILED", err.Error(), nil)
+		}
+		if senderSubTask == nil || senderSubTask.TaskID != taskID {
+			return nil, failure("SUBTASK_NOT_FOUND", "Subtask not found.", map[string]any{"subTaskId": senderSubTaskID, "taskId": taskID})
+		}
+		senderType = mailboxParticipantSubTask
+	}
+
+	if senderType == mailboxParticipantLead && targetType == mailboxTargetLead {
+		return nil, failure("MAILBOX_TARGET_REQUIRED", "Mailbox messages must target another participant.", map[string]any{"taskId": taskID})
+	}
+	if senderType == mailboxParticipantSubTask && targetType == mailboxTargetSubTask && senderSubTask != nil && targetSubTask != nil && senderSubTask.ID == targetSubTask.ID {
+		return nil, failure("MAILBOX_TARGET_REQUIRED", "Subtasks cannot send mailbox messages to themselves.", map[string]any{"subTaskId": senderSubTask.ID, "taskId": taskID})
+	}
+
+	message, err := s.repository.CreateMailboxMessage(ctx, CreateMailboxMessageInput{
+		TaskID:          taskID,
+		SenderType:      senderType,
+		SenderSubTaskID: stringPointerValue(senderSubTaskID),
+		TargetType:      targetType,
+		TargetSubTaskID: stringPointerValue(targetSubTaskID),
+		MessageType:     messageType,
+		ArtifactRefs:    normalizeStringList(input.ArtifactRefs),
+		FileRefs:        normalizeStringList(input.FileRefs),
+		BranchRef:       stringPointerValue(normalizeRequiredString(input.BranchRef)),
+		SchemaJSON:      cloneJSONMap(input.SchemaJSON),
+		RequiresAck:     input.RequiresAck,
+		Content:         content,
+	})
+	if err != nil {
+		return nil, failure("MAILBOX_MESSAGE_CREATE_FAILED", err.Error(), nil)
+	}
+
+	return &SendMailboxMessageResult{Message: message}, nil
+}
+
+type relaunchSubTaskOptions struct {
+	AgentType         string
+	Description       string
+	ResumeTaskStatus  bool
+	NextStatus        string
+	ForceManualAssign bool
+	ClearAutoAssigned bool
+	CreateSession     bool
+	ErrorCode         string
+}
+
+func (s *Service) loadSubTaskContext(ctx context.Context, subTaskID string) (*SubTask, *Task, *Error) {
+	subTask, err := s.repository.FindSubTaskByID(ctx, subTaskID)
+	if err != nil {
+		return nil, nil, failure("TASK_SUBTASK_READ_FAILED", err.Error(), nil)
+	}
+	if subTask == nil {
+		return nil, nil, failure(ErrorCodeSubTaskNotFound, "Subtask not found.", map[string]any{"subTaskId": subTaskID})
+	}
+
+	taskRecord, err := s.repository.FindTaskByID(ctx, subTask.TaskID)
+	if err != nil {
+		return nil, nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": subTask.TaskID})
+	}
+
+	return subTask, taskRecord, nil
+}
+
+func (s *Service) ensureNoLiveWorkerSession(ctx context.Context, subTaskID string) (bool, *Error) {
+	sessions, err := s.repository.ListSessionsBySubTaskID(ctx, subTaskID)
+	if err != nil {
+		return false, failure("TASK_SESSIONS_READ_FAILED", err.Error(), nil)
+	}
+	return latestLiveWorkerSession(sessions) != nil, nil
+}
+
+func (s *Service) relaunchSubTask(ctx context.Context, taskRecord *Task, subTask *SubTask, options relaunchSubTaskOptions) (*SubTaskMutationResult, *Error) {
+	result := &SubTaskMutationResult{}
+	txErr := s.repository.RunInTransaction(ctx, func(repository *Repository) error {
+		nextTask := taskRecord
+		var err error
+		if options.ResumeTaskStatus && taskRecord.Status == taskStatusActionRequired {
+			executingStatus := taskStatusExecuting
+			nextTask, err = repository.UpdateTask(ctx, taskRecord.ID, UpdateTaskInput{
+				Status:       &executingStatus,
+				LastError:    nil,
+				SetLastError: true,
+			})
+			if err != nil {
+				return err
+			}
+		}
+
+		nextDescription := subTask.Description
+		if normalized := normalizeRequiredString(options.Description); normalized != "" {
+			nextDescription = normalized
+		}
+		nextAgentType := subTask.AgentType
+		if normalized := normalizeRequiredString(options.AgentType); normalized != "" {
+			nextAgentType = normalized
+		}
+		manualAssignment := options.ForceManualAssign || normalizeRequiredString(derefString(subTask.AssignmentSource)) == "OPERATOR"
+		nextRetryCount := subTask.RetryCount + 1
+		runSummary := buildDerivedRunSummary(SubTask{
+			Status:                   options.NextStatus,
+			DependencyBranchSuffixes: subTask.DependencyBranchSuffixes,
+			WorktreePath:             subTask.WorktreePath,
+		})
+
+		updatedSubTask, updateErr := repository.UpdateSubTask(ctx, subTask.ID, UpdateSubTaskInput{
+			Description:         stringPointer(nextDescription),
+			SetDescription:      true,
+			AgentType:           stringPointer(nextAgentType),
+			Status:              stringPointer(options.NextStatus),
+			AutoAssigned:        boolPointer(nextAutoAssignedValue(subTask.AutoAssigned, options.ClearAutoAssigned)),
+			RetryCount:          &nextRetryCount,
+			LastError:           nil,
+			SetLastError:        true,
+			AssignmentSource:    assignmentSourcePointer(manualAssignment, subTask.AssignmentSource),
+			SetAssignmentSource: manualAssignment || subTask.AssignmentSource != nil,
+			RunSummary:          stringPointer(runSummary),
+			SetRunSummary:       true,
+		})
+		if updateErr != nil {
+			return updateErr
+		}
+
+		result.SubTask = updatedSubTask
+		result.Task = nextTask
+
+		createSession := options.CreateSession || options.NextStatus == subTaskStatusPending
+		if !createSession {
+			return nil
+		}
+
+		sessionRecord, sessionErr := repository.CreateSession(ctx, CreateSessionInput{
+			TaskID:               taskRecord.ID,
+			SubTaskID:            &updatedSubTask.ID,
+			AgentType:            updatedSubTask.AgentType,
+			SessionType:          sessionTypeWorker,
+			SandboxType:          sessionSandboxDocker,
+			Status:               "PENDING",
+			OutputBuffer:         "",
+			OutputBufferMaxBytes: 65536,
+		})
+		if sessionErr != nil {
+			return sessionErr
+		}
+		result.Session = sessionRecord
+		return nil
+	})
+	if txErr != nil {
+		return nil, failure(options.ErrorCode, txErr.Error(), nil)
+	}
+	return result, nil
+}
+
+func (s *Service) createIntegrationRun(ctx context.Context, taskRecord *Task, subTasks []SubTask, resumeFromActionRequired bool) (*IntegrationMutationResult, *Error) {
+	result := &IntegrationMutationResult{}
+	txErr := s.repository.RunInTransaction(ctx, func(repository *Repository) error {
+		nextTask := taskRecord
+		var err error
+		if resumeFromActionRequired && taskRecord.Status == taskStatusActionRequired {
+			mergingStatus := taskStatusMerging
+			nextTask, err = repository.UpdateTask(ctx, taskRecord.ID, UpdateTaskInput{
+				Status:       &mergingStatus,
+				LastError:    nil,
+				SetLastError: true,
+			})
+			if err != nil {
+				return err
+			}
+		}
+
+		existingRuns, err := repository.ListIntegrationRunsByTaskID(ctx, taskRecord.ID)
+		if err != nil {
+			return err
+		}
+		integrationBranch := "eat/" + taskRecord.ID + "/integration-" + strconv.Itoa(len(existingRuns)+1)
+		queuedStatus := "QUEUED"
+		runRecord, err := repository.CreateIntegrationRun(ctx, CreateIntegrationRunInput{
+			TaskID:            taskRecord.ID,
+			IntegrationBranch: integrationBranch,
+			Status:            queuedStatus,
+		})
+		if err != nil {
+			return err
+		}
+
+		acceptedSubTasks := filterIntegrationEligibleSubTasks(subTasks)
+		for index, subTask := range acceptedSubTasks {
+			queueStatus := "QUEUED"
+			queueOrder := int64(index + 1)
+			if _, err := repository.CreateIntegrationQueueItem(ctx, CreateIntegrationQueueItemInput{
+				IntegrationRunID: runRecord.ID,
+				SubTaskID:        subTask.ID,
+				QueueOrder:       queueOrder,
+				Status:           queueStatus,
+			}); err != nil {
+				return err
+			}
+		}
+
+		result.IntegrationRun = runRecord
+		result.Task = nextTask
+		return nil
+	})
+	if txErr != nil {
+		return nil, failure("INTEGRATION_RUN_CREATE_FAILED", txErr.Error(), nil)
+	}
+	return result, nil
+}
+
+func (s *Service) buildTaskIntegrationView(ctx context.Context, taskRecord *Task, subTasks []SubTask) (map[string]any, *Error) {
+	integrationRuns, err := s.repository.ListIntegrationRunsByTaskID(ctx, taskRecord.ID)
+	if err != nil {
+		return nil, failure("TASK_INTEGRATION_RUNS_READ_FAILED", err.Error(), nil)
+	}
+
+	subTaskByID := make(map[string]SubTask, len(subTasks))
+	for _, subTask := range subTasks {
+		subTaskByID[subTask.ID] = subTask
+	}
+
+	runs := make([]map[string]any, 0, len(integrationRuns))
+	for _, integrationRun := range integrationRuns {
+		queueItems, err := s.repository.ListIntegrationQueueItemsByIntegrationRunID(ctx, integrationRun.ID)
+		if err != nil {
+			return nil, failure("TASK_INTEGRATION_QUEUE_ITEMS_READ_FAILED", err.Error(), nil)
+		}
+		gateResults, err := s.repository.ListGateResultsByIntegrationRunID(ctx, integrationRun.ID)
+		if err != nil {
+			return nil, failure("TASK_GATE_RESULTS_READ_FAILED", err.Error(), nil)
+		}
+
+		queueItemViews := make([]map[string]any, 0, len(queueItems))
+		for _, queueItem := range queueItems {
+			queueItemViews = append(queueItemViews, map[string]any{
+				"id":               queueItem.ID,
+				"integrationRunId": queueItem.IntegrationRunID,
+				"subTaskId":        queueItem.SubTaskID,
+				"queueOrder":       queueItem.QueueOrder,
+				"status":           queueItem.Status,
+				"mergedCommitSha":  queueItem.MergedCommitSHA,
+				"createdAt":        queueItem.CreatedAt,
+				"updatedAt":        queueItem.UpdatedAt,
+				"subTask":          subTaskOrNil(subTaskByID, queueItem.SubTaskID),
+			})
+		}
+
+		gateResultViews := make([]map[string]any, 0, len(gateResults))
+		for _, gateResult := range gateResults {
+			gateResultViews = append(gateResultViews, map[string]any{
+				"id":               gateResult.ID,
+				"integrationRunId": gateResult.IntegrationRunID,
+				"gateType":         gateResult.GateType,
+				"status":           gateResult.Status,
+				"summary":          gateResult.Summary,
+				"detailsJson":      gateResult.DetailsJSON,
+				"createdAt":        gateResult.CreatedAt,
+			})
+		}
+
+		runs = append(runs, map[string]any{
+			"id":                integrationRun.ID,
+			"taskId":            integrationRun.TaskID,
+			"integrationBranch": integrationRun.IntegrationBranch,
+			"status":            integrationRun.Status,
+			"startedAt":         integrationRun.StartedAt,
+			"endedAt":           integrationRun.EndedAt,
+			"createdAt":         integrationRun.CreatedAt,
+			"updatedAt":         integrationRun.UpdatedAt,
+			"queueItems":        queueItemViews,
+			"gateResults":       gateResultViews,
+		})
+	}
+
+	var latestRun any
+	if len(runs) > 0 {
+		latestRun = runs[len(runs)-1]
+	}
+
+	return map[string]any{
+		"latestRun": latestRun,
+		"runs":      runs,
+		"task": map[string]any{
+			"id":             taskRecord.ID,
+			"status":         taskRecord.Status,
+			"taskBranchName": taskRecord.TaskBranchName,
+			"title":          taskRecord.Title,
+		},
+	}, nil
+}
+
+func (s *Service) buildTaskTeamView(taskRecord *Task, sessions []Session, subTasks []SubTask) map[string]any {
+	latestLeadSession := latestSessionByType(sessions, sessionTypeLead, "")
+	members := make([]map[string]any, 0, len(subTasks))
+	sortedSubTasks := sortSubTasksForDisplay(subTasks)
+	for index, subTask := range sortedSubTasks {
+		latestWorkerSession := latestSessionByType(sessions, sessionTypeWorker, subTask.ID)
+		executionOrder := index + 1
+		if subTask.ExecutionOrder != nil && *subTask.ExecutionOrder > 0 {
+			executionOrder = int(*subTask.ExecutionOrder)
+		}
+		members = append(members, map[string]any{
+			"agentType":        subTask.AgentType,
+			"assignmentSource": firstNonEmpty(derefString(subTask.AssignmentSource), assignmentSourceForSubTask(subTask)),
+			"autoAssigned":     subTask.AutoAssigned,
+			"branchName":       subTask.BranchName,
+			"branchSuffix":     subTask.BranchSuffix,
+			"displayName":      firstNonEmpty(derefString(subTask.DisplayName), subTask.Title),
+			"executionOrder":   executionOrder,
+			"latestSessionId":  pointerStringValue(latestWorkerSession, func(value *Session) *string { return &value.ID }),
+			"latestSessionStatus": pointerStringValue(latestWorkerSession, func(value *Session) *string {
+				return stringPointerValue(value.Status)
+			}),
+			"role":         firstNonEmpty(derefString(subTask.Role), subTask.BranchSuffix, "worker"),
+			"runSummary":   firstNonEmpty(derefString(subTask.RunSummary), buildDerivedRunSummary(subTask)),
+			"status":       subTask.Status,
+			"subtaskId":    subTask.ID,
+			"taskId":       taskRecord.ID,
+			"title":        subTask.Title,
+			"worktreePath": subTask.WorktreePath,
+		})
+	}
+
+	leadStatus := deriveLeadLifecycleStatus(taskRecord.Status)
+	leadSessionID := any(nil)
+	if latestLeadSession != nil {
+		leadStatus = latestLeadSession.Status
+		leadSessionID = latestLeadSession.ID
+	}
+
+	return map[string]any{
+		"lead": map[string]any{
+			"agentType": taskRecord.LeadAgentType,
+			"lastError": taskRecord.LastError,
+			"sessionId": leadSessionID,
+			"status":    leadStatus,
+		},
+		"members": members,
+		"task": map[string]any{
+			"id":             taskRecord.ID,
+			"status":         taskRecord.Status,
+			"taskBranchName": taskRecord.TaskBranchName,
+			"title":          taskRecord.Title,
+		},
+	}
+}
+
+func (s *Service) buildTaskBoardSnapshot(taskRecord *Task, sessions []Session, subTasks []SubTask, mailboxMessages []MailboxMessage, integrationView map[string]any) map[string]any {
+	sortedSubTasks := sortSubTasksForDisplay(subTasks)
+	actionRequiredItems := buildBoardActionRequiredItems(mailboxMessages)
+	activity := buildBoardActivityEntries(sessions, mailboxMessages, sortedSubTasks)
+	graphNodes := buildBoardGraphNodes(sessions, sortedSubTasks, mailboxMessages, actionRequiredItems)
+	graphEdges := buildBoardGraphEdges(sortedSubTasks, mailboxMessages)
+
+	return map[string]any{
+		"activity":            activity,
+		"actionRequiredItems": actionRequiredItems,
+		"graph": map[string]any{
+			"nodes": graphNodes,
+			"edges": graphEdges,
+		},
+		"integration": integrationView,
+		"list": map[string]any{
+			"members": buildBoardListMembers(sessions, sortedSubTasks),
+		},
+		"riskSummary": map[string]any{
+			"failedLaunches":      0,
+			"integrationFailures": 0,
+			"mailboxBlockers":     countMailboxMessagesByType(mailboxMessages, mailboxMessageTypeBlocker),
+			"mergeConflicts":      0,
+			"requiresAck":         countMailboxAcks(mailboxMessages),
+			"reviewRequired":      countSubTasksByStatuses(sortedSubTasks, "REWORK_REQUIRED", "DISCARD_PENDING"),
+		},
+		"summary": map[string]any{
+			"accepted":       countSubTasksByStatuses(sortedSubTasks, "ACCEPTED"),
+			"actionRequired": len(actionRequiredItems),
+			"blocked":        countSubTasksByStatuses(sortedSubTasks, "BLOCKED"),
+			"failed":         countSubTasksByStatuses(sortedSubTasks, "FAILED"),
+			"merged":         countSubTasksByStatuses(sortedSubTasks, "MERGED"),
+			"pending":        countSubTasksByStatuses(sortedSubTasks, "PENDING", "READY"),
+			"reviewPending":  countSubTasksByStatuses(sortedSubTasks, "REVIEW_PENDING"),
+			"running":        countSubTasksByStatuses(sortedSubTasks, "RUNNING"),
+		},
+		"workflow": buildBoardWorkflowSummary(sortedSubTasks, actionRequiredItems),
+		"task": map[string]any{
+			"id":        taskRecord.ID,
+			"lastError": taskRecord.LastError,
+			"status":    taskRecord.Status,
+			"title":     taskRecord.Title,
+		},
+	}
+}
+
 type normalizedAttachment struct {
 	IDPrefix string
 	FileName string
@@ -1406,6 +2490,485 @@ func inferAttachmentType(fileName, mimeType string) string {
 		return "CODE"
 	}
 	return ""
+}
+
+func latestSessionByType(sessions []Session, sessionType, subTaskID string) *Session {
+	for index := len(sessions) - 1; index >= 0; index-- {
+		session := sessions[index]
+		if session.SessionType != sessionType {
+			continue
+		}
+		if subTaskID != "" && derefString(session.SubTaskID) != subTaskID {
+			continue
+		}
+		return &session
+	}
+	return nil
+}
+
+func sortSubTasksForDisplay(subTasks []SubTask) []SubTask {
+	sorted := append([]SubTask(nil), subTasks...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		leftOrder := int64(1 << 30)
+		rightOrder := int64(1 << 30)
+		if sorted[i].ExecutionOrder != nil {
+			leftOrder = *sorted[i].ExecutionOrder
+		}
+		if sorted[j].ExecutionOrder != nil {
+			rightOrder = *sorted[j].ExecutionOrder
+		}
+		if leftOrder != rightOrder {
+			return leftOrder < rightOrder
+		}
+		return sorted[i].CreatedAt < sorted[j].CreatedAt
+	})
+	return sorted
+}
+
+func assignmentSourceForSubTask(subTask SubTask) string {
+	if subTask.AutoAssigned {
+		return subTaskAssignmentSourceLead
+	}
+	return "OPERATOR"
+}
+
+func buildDerivedRunSummary(subTask SubTask) string {
+	switch subTask.Status {
+	case "BLOCKED":
+		if len(subTask.DependencyBranchSuffixes) > 0 {
+			return "Waiting on " + strings.Join(subTask.DependencyBranchSuffixes, ", ") + " before this member can run."
+		}
+		return "Waiting on upstream dependencies before this member can run."
+	case "PENDING":
+		return "Queued for team execution."
+	case "READY":
+		return "Workspace is ready. Waiting for worker launch."
+	case "RUNNING":
+		if subTask.WorktreePath != nil && *subTask.WorktreePath != "" {
+			return "Running in " + *subTask.WorktreePath + "."
+		}
+		return "Worker session is running."
+	case "REVIEW_PENDING":
+		return "Worker run finished. Waiting for review outcome."
+	case "ACCEPTED":
+		return "Accepted for integration."
+	case "REWORK_REQUIRED":
+		return firstNonEmpty(derefString(subTask.LatestReviewSummary), "Needs another worker pass before integration.")
+	case "DISCARD_PENDING":
+		return firstNonEmpty(derefString(subTask.LatestReviewSummary), "Marked for discard. Waiting for operator confirmation.")
+	case "MERGED":
+		return "Merged into the task base branch."
+	case "FAILED":
+		return firstNonEmpty(derefString(subTask.LastError), "Worker execution failed.")
+	case "CANCELLED":
+		return "Cancelled by the operator."
+	case "DISCARDED":
+		return "Discarded from the merge set."
+	default:
+		return "Waiting for team lifecycle events."
+	}
+}
+
+func deriveLeadLifecycleStatus(taskStatus string) string {
+	switch taskStatus {
+	case taskStatusClarifying, taskStatusPlanning, taskStatusReviewing:
+		return sessionStatusRunning
+	case taskStatusExecuting, taskStatusMerging, taskStatusActionRequired, "COMPLETED":
+		return "COMPLETED"
+	case "FAILED", "CANCELLED":
+		return "FAILED"
+	default:
+		return "PENDING"
+	}
+}
+
+func buildBoardActionRequiredItems(mailboxMessages []MailboxMessage) []map[string]any {
+	items := make([]map[string]any, 0)
+	for _, message := range mailboxMessages {
+		if message.MessageType != mailboxMessageTypeBlocker && message.MessageType != mailboxMessageTypeReviewRequest && message.MessageType != mailboxMessageTypeTestRequest {
+			continue
+		}
+		items = append(items, map[string]any{
+			"createdAt": message.CreatedAt,
+			"kind":      message.MessageType,
+			"owner":     "LEADER",
+			"primaryAction": func() string {
+				if message.TargetType == mailboxTargetLead {
+					return "OPEN_MAILBOX"
+				}
+				return "SEND_NOTE"
+			}(),
+			"severity": func() int {
+				if message.MessageType == mailboxMessageTypeBlocker {
+					return 18
+				}
+				return 25
+			}(),
+			"subTaskId":  nullableString(message.TargetSubTaskID, message.SenderSubTaskID),
+			"summary":    trimStringTo(message.Content, 280),
+			"targetType": message.TargetType,
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		return stringValue(items[i]["createdAt"]) > stringValue(items[j]["createdAt"])
+	})
+	for index := range items {
+		items[index]["id"] = items[index]["kind"].(string) + ":" + firstNonEmpty(stringValue(items[index]["subTaskId"]), "task") + ":" + stringValue(index)
+	}
+	return items
+}
+
+func buildBoardActivityEntries(sessions []Session, mailboxMessages []MailboxMessage, subTasks []SubTask) []map[string]any {
+	subTaskByID := make(map[string]SubTask, len(subTasks))
+	for _, subTask := range subTasks {
+		subTaskByID[subTask.ID] = subTask
+	}
+
+	entries := make([]map[string]any, 0, len(sessions)+len(mailboxMessages))
+	for _, session := range sessions {
+		if session.StartedAt != nil {
+			summary := "Lead session started."
+			if session.SubTaskID != nil {
+				title := subTaskByID[derefString(session.SubTaskID)].Title
+				if title == "" {
+					title = derefString(session.SubTaskID)
+				}
+				summary = title + " session started."
+			}
+			entries = append(entries, map[string]any{
+				"createdAt": session.StartedAt,
+				"id":        "session-start:" + session.ID,
+				"kind":      "SESSION_STARTED",
+				"subTaskId": session.SubTaskID,
+				"summary":   summary,
+			})
+		}
+		if session.EndedAt != nil {
+			summary := "Lead session ended with " + session.Status + "."
+			if session.SubTaskID != nil {
+				title := subTaskByID[derefString(session.SubTaskID)].Title
+				if title == "" {
+					title = derefString(session.SubTaskID)
+				}
+				summary = title + " session ended with " + session.Status + "."
+			}
+			entries = append(entries, map[string]any{
+				"createdAt": session.EndedAt,
+				"id":        "session-end:" + session.ID,
+				"kind":      "SESSION_ENDED",
+				"subTaskId": session.SubTaskID,
+				"summary":   summary,
+			})
+		}
+	}
+	for _, message := range mailboxMessages {
+		senderLabel := strings.ToLower(message.SenderType)
+		if message.SenderSubTaskID != nil {
+			if subTask, ok := subTaskByID[*message.SenderSubTaskID]; ok && subTask.Title != "" {
+				senderLabel = subTask.Title
+			}
+		}
+		targetLabel := strings.ToLower(message.TargetType)
+		if message.TargetSubTaskID != nil {
+			if subTask, ok := subTaskByID[*message.TargetSubTaskID]; ok && subTask.Title != "" {
+				targetLabel = subTask.Title
+			}
+		}
+		entries = append(entries, map[string]any{
+			"createdAt": message.CreatedAt,
+			"id":        "mailbox:" + message.ID,
+			"kind":      "MAILBOX_MESSAGE",
+			"subTaskId": nullableString(message.TargetSubTaskID, message.SenderSubTaskID),
+			"summary":   senderLabel + " sent " + message.MessageType + " to " + targetLabel + ".",
+		})
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		return stringValue(entries[i]["createdAt"]) > stringValue(entries[j]["createdAt"])
+	})
+	if len(entries) > 50 {
+		return entries[:50]
+	}
+	return entries
+}
+
+func buildBoardGraphNodes(sessions []Session, subTasks []SubTask, mailboxMessages []MailboxMessage, actionRequiredItems []map[string]any) []map[string]any {
+	nodes := make([]map[string]any, 0, len(subTasks))
+	for _, subTask := range subTasks {
+		inboxCount := 0
+		outboxCount := 0
+		blockerCount := 0
+		for _, message := range mailboxMessages {
+			if derefString(message.TargetSubTaskID) == subTask.ID {
+				inboxCount++
+				if message.MessageType == mailboxMessageTypeBlocker {
+					blockerCount++
+				}
+			}
+			if derefString(message.SenderSubTaskID) == subTask.ID {
+				outboxCount++
+			}
+		}
+		latestSession := latestSessionByType(sessions, sessionTypeWorker, subTask.ID)
+		requiresAction := false
+		for _, item := range actionRequiredItems {
+			if stringValue(item["subTaskId"]) == subTask.ID {
+				requiresAction = true
+				break
+			}
+		}
+		nodes = append(nodes, map[string]any{
+			"subtaskId":                 subTask.ID,
+			"title":                     subTask.Title,
+			"role":                      firstNonEmpty(derefString(subTask.Role), subTask.BranchSuffix, "worker"),
+			"status":                    subTask.Status,
+			"agentType":                 subTask.AgentType,
+			"branchName":                subTask.BranchName,
+			"executionOrder":            subTask.ExecutionOrder,
+			"mailboxInboxCount":         inboxCount,
+			"mailboxOutboxCount":        outboxCount,
+			"latestActivitySummary":     firstNonEmpty(derefString(subTask.RunSummary), buildDerivedRunSummary(subTask)),
+			"latestMergeStatus":         nil,
+			"latestSessionStatus":       pointerStringValue(latestSession, func(value *Session) *string { return stringPointerValue(value.Status) }),
+			"requiresAction":            requiresAction,
+			"unresolvedMailboxBlockers": blockerCount,
+		})
+	}
+	return nodes
+}
+
+func buildBoardGraphEdges(subTasks []SubTask, mailboxMessages []MailboxMessage) []map[string]any {
+	subTaskByBranchSuffix := make(map[string]SubTask, len(subTasks))
+	for _, subTask := range subTasks {
+		subTaskByBranchSuffix[subTask.BranchSuffix] = subTask
+	}
+	edges := make([]map[string]any, 0)
+	for _, subTask := range subTasks {
+		for _, branchSuffix := range subTask.DependencyBranchSuffixes {
+			upstreamSubTask, ok := subTaskByBranchSuffix[branchSuffix]
+			dependencySatisfied := ok && isDependencySatisfiedStatus(upstreamSubTask.Status)
+			handoffCount := 0
+			unresolvedBlockerCount := 0
+			for _, message := range mailboxMessages {
+				if derefString(message.SenderSubTaskID) == upstreamSubTask.ID && derefString(message.TargetSubTaskID) == subTask.ID {
+					handoffCount++
+				}
+				if derefString(message.TargetSubTaskID) == subTask.ID && (message.MessageType == mailboxMessageTypeBlocker || message.MessageType == mailboxMessageTypeReviewRequest || message.MessageType == mailboxMessageTypeTestRequest) {
+					unresolvedBlockerCount++
+				}
+			}
+			state := "SATISFIED"
+			if !dependencySatisfied {
+				state = "BLOCKING"
+			} else if unresolvedBlockerCount > 0 {
+				state = "ATTENTION"
+			} else if handoffCount > 0 {
+				state = "HANDOFF_READY"
+			}
+			edges = append(edges, map[string]any{
+				"from":                   firstNonEmpty(upstreamSubTask.ID, branchSuffix),
+				"fromBranchSuffix":       branchSuffix,
+				"handoffCount":           handoffCount,
+				"isBlocking":             !dependencySatisfied || unresolvedBlockerCount > 0,
+				"state":                  state,
+				"to":                     subTask.ID,
+				"unresolvedBlockerCount": unresolvedBlockerCount,
+			})
+		}
+	}
+	return edges
+}
+
+func buildBoardListMembers(sessions []Session, subTasks []SubTask) []map[string]any {
+	items := make([]map[string]any, 0, len(subTasks))
+	for _, subTask := range subTasks {
+		latestSession := latestSessionByType(sessions, sessionTypeWorker, subTask.ID)
+		items = append(items, map[string]any{
+			"agentType":                subTask.AgentType,
+			"branchName":               subTask.BranchName,
+			"dependencyBranchSuffixes": subTask.DependencyBranchSuffixes,
+			"latestSessionStatus":      pointerStringValue(latestSession, func(value *Session) *string { return stringPointerValue(value.Status) }),
+			"role":                     firstNonEmpty(derefString(subTask.Role), subTask.BranchSuffix, "worker"),
+			"runSummary":               firstNonEmpty(derefString(subTask.RunSummary), buildDerivedRunSummary(subTask)),
+			"status":                   subTask.Status,
+			"subtaskId":                subTask.ID,
+			"title":                    subTask.Title,
+		})
+	}
+	return items
+}
+
+func buildBoardWorkflowSummary(subTasks []SubTask, actionRequiredItems []map[string]any) map[string]any {
+	completed := 0
+	waiting := 0
+	for _, subTask := range subTasks {
+		if subTask.Status == "ACCEPTED" || subTask.Status == "CANCELLED" || subTask.Status == "DISCARDED" || subTask.Status == "MERGED" {
+			completed++
+		}
+		if subTask.Status == "BLOCKED" || subTask.Status == "PENDING" || subTask.Status == "READY" || subTask.Status == "REVIEW_PENDING" {
+			waiting++
+		}
+	}
+	manualAttentionCount := 0
+	systemAttentionCount := 0
+	for _, item := range actionRequiredItems {
+		if stringValue(item["owner"]) == "USER" {
+			manualAttentionCount++
+		} else {
+			systemAttentionCount++
+		}
+	}
+	return map[string]any{
+		"completed":            completed,
+		"manualAttentionCount": manualAttentionCount,
+		"systemAttentionCount": systemAttentionCount,
+		"total":                len(subTasks),
+		"waiting":              waiting,
+	}
+}
+
+func countSubTasksByStatuses(subTasks []SubTask, statuses ...string) int {
+	allowed := make(map[string]bool, len(statuses))
+	for _, status := range statuses {
+		allowed[status] = true
+	}
+	count := 0
+	for _, subTask := range subTasks {
+		if allowed[subTask.Status] {
+			count++
+		}
+	}
+	return count
+}
+
+func countMailboxMessagesByType(messages []MailboxMessage, messageType string) int {
+	count := 0
+	for _, message := range messages {
+		if message.MessageType == messageType {
+			count++
+		}
+	}
+	return count
+}
+
+func countMailboxAcks(messages []MailboxMessage) int {
+	count := 0
+	for _, message := range messages {
+		if message.RequiresAck {
+			count++
+		}
+	}
+	return count
+}
+
+func normalizeMailboxTargetType(value string) string {
+	switch normalizeRequiredString(value) {
+	case mailboxTargetLead, mailboxTargetSubTask:
+		return normalizeRequiredString(value)
+	default:
+		return ""
+	}
+}
+
+func normalizeMailboxMessageType(value string) (string, bool) {
+	normalized := normalizeRequiredString(value)
+	if normalized == "" {
+		return mailboxMessageTypeNote, true
+	}
+	switch normalized {
+	case mailboxMessageTypeNote, mailboxMessageTypeBlocker, mailboxMessageTypeDeliverableReady, mailboxMessageTypeTestRequest, mailboxMessageTypeReviewRequest, mailboxMessageTypeAPIContract, mailboxMessageTypeDBContract:
+		return normalized, true
+	default:
+		return "", false
+	}
+}
+
+func isMailboxAvailable(status string) bool {
+	return status == taskStatusActionRequired || status == taskStatusExecuting || status == taskStatusMerging || status == taskStatusReviewing
+}
+
+func normalizeStringList(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" || seen[trimmed] {
+			continue
+		}
+		seen[trimmed] = true
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+func cloneJSONMap(value map[string]any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(value))
+	for key, item := range value {
+		cloned[key] = item
+	}
+	return cloned
+}
+
+func stringPointerValue(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func nullableString(values ...*string) any {
+	for _, value := range values {
+		if value != nil && *value != "" {
+			return *value
+		}
+	}
+	return nil
+}
+
+func trimStringTo(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	return value[:limit]
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func stringValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case *string:
+		return derefString(typed)
+	case int:
+		return strconv.Itoa(typed)
+	default:
+		return ""
+	}
+}
+
+func isDependencySatisfiedStatus(status string) bool {
+	return status == "ACCEPTED" || status == "MERGED" || status == "REVIEW_PENDING"
+}
+
+func pointerStringValue(session *Session, selector func(*Session) *string) any {
+	if session == nil {
+		return nil
+	}
+	value := selector(session)
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func failure(code, message string, details map[string]any) *Error {
@@ -1769,6 +3332,154 @@ func isLiveSessionStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+func latestLiveWorkerSession(sessions []Session) *Session {
+	for index := len(sessions) - 1; index >= 0; index-- {
+		session := sessions[index]
+		if session.SessionType != sessionTypeWorker || !isLiveSessionStatus(session.Status) {
+			continue
+		}
+		return &session
+	}
+	return nil
+}
+
+func latestMergeRecord(records []MergeRecord) *MergeRecord {
+	if len(records) == 0 {
+		return nil
+	}
+	record := records[len(records)-1]
+	return &record
+}
+
+func isEarlyReworkEligible(subTask *SubTask) bool {
+	if subTask == nil {
+		return false
+	}
+	return subTask.Status == "REVIEW_PENDING" && (derefString(subTask.LatestReviewDecision) == "REJECTED" || derefString(subTask.LatestReviewDecision) == "REWORK")
+}
+
+func isSubTaskReassignEligible(taskRecord *Task, subTask *SubTask) bool {
+	if taskRecord == nil || subTask == nil {
+		return false
+	}
+	if taskRecord.Status != taskStatusActionRequired && taskRecord.Status != taskStatusExecuting {
+		return false
+	}
+	switch subTask.Status {
+	case subTaskStatusBlocked, "CANCELLED", "FAILED", subTaskStatusPending, "READY", "REVIEW_PENDING", "REWORK_REQUIRED":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSubTaskCancelEligible(taskRecord *Task, subTask *SubTask) bool {
+	if taskRecord == nil || subTask == nil {
+		return false
+	}
+	if taskRecord.Status != taskStatusActionRequired && taskRecord.Status != taskStatusExecuting {
+		return false
+	}
+	switch subTask.Status {
+	case subTaskStatusBlocked, "FAILED", subTaskStatusPending, "READY", "REVIEW_PENDING", "REWORK_REQUIRED", "RUNNING":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAgentChangeEligible(taskRecord *Task, subTask *SubTask) bool {
+	if taskRecord == nil || subTask == nil {
+		return false
+	}
+	if taskRecord.Status != taskStatusActionRequired && taskRecord.Status != taskStatusExecuting {
+		return false
+	}
+	switch subTask.Status {
+	case "CANCELLED", "FAILED", "REVIEW_PENDING", "REWORK_REQUIRED":
+		return true
+	default:
+		return false
+	}
+}
+
+func isRebaseRetryEligibleSubTaskStatus(status string) bool {
+	return status == "ACCEPTED" || status == "REVIEW_PENDING"
+}
+
+func areSubTaskDependenciesSatisfied(subTask *SubTask, siblingSubTasks []SubTask) bool {
+	if subTask == nil || len(subTask.DependencyBranchSuffixes) == 0 {
+		return true
+	}
+	statusByBranchSuffix := make(map[string]string, len(siblingSubTasks))
+	for _, sibling := range siblingSubTasks {
+		statusByBranchSuffix[sibling.BranchSuffix] = sibling.Status
+	}
+	for _, dependency := range subTask.DependencyBranchSuffixes {
+		if !isDependencySatisfiedStatus(statusByBranchSuffix[dependency]) {
+			return false
+		}
+	}
+	return true
+}
+
+func filterIntegrationEligibleSubTasks(subTasks []SubTask) []SubTask {
+	eligible := make([]SubTask, 0)
+	for _, subTask := range sortSubTasksForDisplay(subTasks) {
+		if subTask.Status == "ACCEPTED" {
+			eligible = append(eligible, subTask)
+		}
+	}
+	return eligible
+}
+
+func subTaskOrNil(subTaskByID map[string]SubTask, subTaskID string) any {
+	subTask, ok := subTaskByID[subTaskID]
+	if !ok {
+		return nil
+	}
+	return map[string]any{
+		"id":               subTask.ID,
+		"taskId":           subTask.TaskID,
+		"title":            subTask.Title,
+		"description":      subTask.Description,
+		"branchSuffix":     subTask.BranchSuffix,
+		"branchName":       subTask.BranchName,
+		"agentType":        subTask.AgentType,
+		"status":           subTask.Status,
+		"assignmentSource": subTask.AssignmentSource,
+	}
+}
+
+func isRetryableIntegrationStatus(status string) bool {
+	return status == taskStatusActionRequired || status == "FAILED" || status == "ROLLED_BACK"
+}
+
+func isRollbackableIntegrationStatus(status string) bool {
+	return status == taskStatusActionRequired || status == "FAILED"
+}
+
+func boolPointer(value bool) *bool {
+	return &value
+}
+
+func nextAutoAssignedValue(current bool, clear bool) bool {
+	if clear {
+		return false
+	}
+	return current
+}
+
+func assignmentSourcePointer(isManual bool, fallback *string) *string {
+	if isManual {
+		return stringPointer("OPERATOR")
+	}
+	if fallback != nil {
+		return fallback
+	}
+	return stringPointer(subTaskAssignmentSourceLead)
 }
 
 func uniqueStrings(values []string) []string {
