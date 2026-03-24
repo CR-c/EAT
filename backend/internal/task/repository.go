@@ -1,0 +1,515 @@
+package task
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type Task struct {
+	ID               string  `json:"id"`
+	ProjectID        string  `json:"projectId"`
+	Title            string  `json:"title"`
+	Description      string  `json:"description"`
+	LeadAgentType    string  `json:"leadAgentType"`
+	BaseBranch       string  `json:"baseBranch"`
+	BaseCommitSHA    string  `json:"baseCommitSha"`
+	TaskBranchName   *string `json:"taskBranchName"`
+	Status           string  `json:"status"`
+	PlanVersion      int64   `json:"planVersion"`
+	CurrentPlanJSON  *string `json:"currentPlanJson"`
+	ApprovedPlanJSON *string `json:"approvedPlanJson"`
+	LastError        *string `json:"lastError"`
+	ArchivedAt       *string `json:"archivedAt"`
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
+	Version          int64   `json:"version"`
+}
+
+type Message struct {
+	ID        string  `json:"id"`
+	TaskID    string  `json:"taskId"`
+	SubTaskID *string `json:"subTaskId"`
+	Role      string  `json:"role"`
+	Content   string  `json:"content"`
+	CreatedAt string  `json:"createdAt"`
+}
+
+type Attachment struct {
+	ID        string `json:"id"`
+	TaskID    string `json:"taskId"`
+	FileName  string `json:"fileName"`
+	FilePath  string `json:"filePath"`
+	FileType  string `json:"fileType"`
+	MimeType  string `json:"mimeType"`
+	Size      int64  `json:"size"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type Session struct {
+	ID                   string  `json:"id"`
+	TaskID               string  `json:"taskId"`
+	SubTaskID            *string `json:"subTaskId"`
+	AgentType            string  `json:"agentType"`
+	SessionType          string  `json:"sessionType"`
+	SandboxType          string  `json:"sandboxType"`
+	ContainerID          *string `json:"containerId"`
+	Status               string  `json:"status"`
+	PID                  *int64  `json:"pid"`
+	StartedAt            *string `json:"startedAt"`
+	EndedAt              *string `json:"endedAt"`
+	ExitCode             *int64  `json:"exitCode"`
+	LogPath              *string `json:"logPath"`
+	FirstOutputAt        *string `json:"firstOutputAt"`
+	OutputBuffer         string  `json:"outputBuffer"`
+	OutputBufferMaxBytes int64   `json:"outputBufferMaxBytes"`
+	CreatedAt            string  `json:"createdAt"`
+	UpdatedAt            string  `json:"updatedAt"`
+}
+
+type SubTask struct {
+	ID                       string   `json:"id"`
+	TaskID                   string   `json:"taskId"`
+	Title                    string   `json:"title"`
+	Description              string   `json:"description"`
+	BranchSuffix             string   `json:"branchSuffix"`
+	DependencyBranchSuffixes []string `json:"dependencyBranchSuffixes"`
+	BranchName               *string  `json:"branchName"`
+	StartCommitSHA           *string  `json:"startCommitSha"`
+	WorktreePath             *string  `json:"worktreePath"`
+	AgentType                string   `json:"agentType"`
+	Status                   string   `json:"status"`
+	AutoAssigned             bool     `json:"autoAssigned"`
+	RetryCount               int64    `json:"retryCount"`
+	LastError                *string  `json:"lastError"`
+	LatestReviewDecision     *string  `json:"latestReviewDecision"`
+	LatestReviewPhase        *string  `json:"latestReviewPhase"`
+	LatestReviewSummary      *string  `json:"latestReviewSummary"`
+	Role                     *string  `json:"role"`
+	DisplayName              *string  `json:"displayName"`
+	ExecutionOrder           *int64   `json:"executionOrder"`
+	AssignmentSource         *string  `json:"assignmentSource"`
+	RunSummary               *string  `json:"runSummary"`
+	Version                  int64    `json:"version"`
+	CreatedAt                string   `json:"createdAt"`
+	UpdatedAt                string   `json:"updatedAt"`
+}
+
+type PlanSnapshot struct {
+	ID        string `json:"id"`
+	TaskID    string `json:"taskId"`
+	Version   int64  `json:"version"`
+	Source    string `json:"source"`
+	Payload   string `json:"payload"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type Repository struct {
+	db *sql.DB
+}
+
+func NewRepository(db *sql.DB) *Repository {
+	return &Repository{db: db}
+}
+
+func (r *Repository) CreateTask(ctx context.Context, input CreateTaskRecordInput) (*Task, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	taskRecord := &Task{
+		ID:               uuid.NewString(),
+		ProjectID:        input.ProjectID,
+		Title:            input.Title,
+		Description:      input.Description,
+		LeadAgentType:    input.LeadAgentType,
+		BaseBranch:       input.BaseBranch,
+		BaseCommitSHA:    input.BaseCommitSHA,
+		TaskBranchName:   input.TaskBranchName,
+		Status:           "DRAFT",
+		PlanVersion:      0,
+		CurrentPlanJSON:  nil,
+		ApprovedPlanJSON: nil,
+		LastError:        nil,
+		ArchivedAt:       nil,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		Version:          0,
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO tasks (
+			id, project_id, title, description, lead_agent_type, base_branch, base_commit_sha,
+			task_branch_name, status, plan_version, current_plan_json, approved_plan_json,
+			last_error, archived_at, created_at, updated_at, version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		taskRecord.ID,
+		taskRecord.ProjectID,
+		taskRecord.Title,
+		taskRecord.Description,
+		taskRecord.LeadAgentType,
+		taskRecord.BaseBranch,
+		taskRecord.BaseCommitSHA,
+		taskRecord.TaskBranchName,
+		taskRecord.Status,
+		taskRecord.PlanVersion,
+		taskRecord.CurrentPlanJSON,
+		taskRecord.ApprovedPlanJSON,
+		taskRecord.LastError,
+		taskRecord.ArchivedAt,
+		taskRecord.CreatedAt,
+		taskRecord.UpdatedAt,
+		taskRecord.Version,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return taskRecord, nil
+}
+
+func (r *Repository) CreateAttachment(ctx context.Context, input CreateAttachmentInput) (*Attachment, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	attachment := &Attachment{
+		ID:        input.ID,
+		TaskID:    input.TaskID,
+		FileName:  input.FileName,
+		FilePath:  input.FilePath,
+		FileType:  input.FileType,
+		MimeType:  input.MimeType,
+		Size:      input.Size,
+		CreatedAt: now,
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO attachments (
+			id, task_id, file_name, file_path, file_type, mime_type, size, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		attachment.ID,
+		attachment.TaskID,
+		attachment.FileName,
+		attachment.FilePath,
+		attachment.FileType,
+		attachment.MimeType,
+		attachment.Size,
+		attachment.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return attachment, nil
+}
+
+type CreateTaskRecordInput struct {
+	ProjectID      string
+	Title          string
+	Description    string
+	LeadAgentType  string
+	BaseBranch     string
+	BaseCommitSHA  string
+	TaskBranchName *string
+}
+
+type CreateAttachmentInput struct {
+	ID       string
+	TaskID   string
+	FileName string
+	FilePath string
+	FileType string
+	MimeType string
+	Size     int64
+}
+
+func (r *Repository) FindTaskByID(ctx context.Context, taskID string) (*Task, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT
+			id,
+			project_id,
+			title,
+			description,
+			lead_agent_type,
+			base_branch,
+			base_commit_sha,
+			task_branch_name,
+			status,
+			plan_version,
+			current_plan_json,
+			approved_plan_json,
+			last_error,
+			archived_at,
+			created_at,
+			updated_at,
+			version
+		FROM tasks
+		WHERE id = ?
+	`, taskID)
+
+	var task Task
+	if err := row.Scan(
+		&task.ID,
+		&task.ProjectID,
+		&task.Title,
+		&task.Description,
+		&task.LeadAgentType,
+		&task.BaseBranch,
+		&task.BaseCommitSHA,
+		&task.TaskBranchName,
+		&task.Status,
+		&task.PlanVersion,
+		&task.CurrentPlanJSON,
+		&task.ApprovedPlanJSON,
+		&task.LastError,
+		&task.ArchivedAt,
+		&task.CreatedAt,
+		&task.UpdatedAt,
+		&task.Version,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &task, nil
+}
+
+func (r *Repository) ListTasksByProjectID(ctx context.Context, projectID string, includeArchived bool) ([]Task, error) {
+	query := `
+		SELECT
+			id,
+			project_id,
+			title,
+			description,
+			lead_agent_type,
+			base_branch,
+			base_commit_sha,
+			task_branch_name,
+			status,
+			plan_version,
+			current_plan_json,
+			approved_plan_json,
+			last_error,
+			archived_at,
+			created_at,
+			updated_at,
+			version
+		FROM tasks
+		WHERE project_id = ?
+	`
+	if !includeArchived {
+		query += " AND archived_at IS NULL"
+	}
+	query += " ORDER BY created_at DESC, id DESC"
+
+	rows, err := r.db.QueryContext(ctx, query, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tasks := make([]Task, 0)
+	for rows.Next() {
+		var task Task
+		if err := rows.Scan(
+			&task.ID,
+			&task.ProjectID,
+			&task.Title,
+			&task.Description,
+			&task.LeadAgentType,
+			&task.BaseBranch,
+			&task.BaseCommitSHA,
+			&task.TaskBranchName,
+			&task.Status,
+			&task.PlanVersion,
+			&task.CurrentPlanJSON,
+			&task.ApprovedPlanJSON,
+			&task.LastError,
+			&task.ArchivedAt,
+			&task.CreatedAt,
+			&task.UpdatedAt,
+			&task.Version,
+		); err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+	}
+
+	return tasks, rows.Err()
+}
+
+func (r *Repository) ListMessagesByTaskID(ctx context.Context, taskID string) ([]Message, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, task_id, sub_task_id, role, content, created_at
+		FROM messages
+		WHERE task_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]Message, 0)
+	for rows.Next() {
+		var item Message
+		if err := rows.Scan(&item.ID, &item.TaskID, &item.SubTaskID, &item.Role, &item.Content, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) ListAttachmentsByTaskID(ctx context.Context, taskID string) ([]Attachment, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, task_id, file_name, file_path, file_type, mime_type, size, created_at
+		FROM attachments
+		WHERE task_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]Attachment, 0)
+	for rows.Next() {
+		var item Attachment
+		if err := rows.Scan(&item.ID, &item.TaskID, &item.FileName, &item.FilePath, &item.FileType, &item.MimeType, &item.Size, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) ListSessionsByTaskID(ctx context.Context, taskID string) ([]Session, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			id, task_id, sub_task_id, agent_type, session_type, sandbox_type, container_id,
+			status, pid, started_at, ended_at, exit_code, log_path, first_output_at,
+			output_buffer, output_buffer_max_bytes, created_at, updated_at
+		FROM agent_sessions
+		WHERE task_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]Session, 0)
+	for rows.Next() {
+		var item Session
+		if err := rows.Scan(
+			&item.ID,
+			&item.TaskID,
+			&item.SubTaskID,
+			&item.AgentType,
+			&item.SessionType,
+			&item.SandboxType,
+			&item.ContainerID,
+			&item.Status,
+			&item.PID,
+			&item.StartedAt,
+			&item.EndedAt,
+			&item.ExitCode,
+			&item.LogPath,
+			&item.FirstOutputAt,
+			&item.OutputBuffer,
+			&item.OutputBufferMaxBytes,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) ListSubTasksByTaskID(ctx context.Context, taskID string) ([]SubTask, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			id, task_id, title, description, branch_suffix, dependency_branch_suffixes_json,
+			branch_name, start_commit_sha, worktree_path, agent_type, status, auto_assigned,
+			retry_count, last_error, latest_review_decision, latest_review_phase,
+			latest_review_summary, role, display_name, execution_order, assignment_source,
+			run_summary, version, created_at, updated_at
+		FROM sub_tasks
+		WHERE task_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]SubTask, 0)
+	for rows.Next() {
+		var item SubTask
+		var dependencyJSON string
+		var autoAssignedInt int64
+		if err := rows.Scan(
+			&item.ID,
+			&item.TaskID,
+			&item.Title,
+			&item.Description,
+			&item.BranchSuffix,
+			&dependencyJSON,
+			&item.BranchName,
+			&item.StartCommitSHA,
+			&item.WorktreePath,
+			&item.AgentType,
+			&item.Status,
+			&autoAssignedInt,
+			&item.RetryCount,
+			&item.LastError,
+			&item.LatestReviewDecision,
+			&item.LatestReviewPhase,
+			&item.LatestReviewSummary,
+			&item.Role,
+			&item.DisplayName,
+			&item.ExecutionOrder,
+			&item.AssignmentSource,
+			&item.RunSummary,
+			&item.Version,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.AutoAssigned = autoAssignedInt == 1
+		if dependencyJSON != "" {
+			_ = json.Unmarshal([]byte(dependencyJSON), &item.DependencyBranchSuffixes)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) ListPlanSnapshotsByTaskID(ctx context.Context, taskID string) ([]PlanSnapshot, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, task_id, version, source, payload, created_at
+		FROM plan_snapshots
+		WHERE task_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]PlanSnapshot, 0)
+	for rows.Next() {
+		var item PlanSnapshot
+		if err := rows.Scan(&item.ID, &item.TaskID, &item.Version, &item.Source, &item.Payload, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}

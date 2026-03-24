@@ -3,7 +3,9 @@ package api
 import (
 	"net/http"
 
+	"eat/backend/internal/task"
 	"eat/backend/internal/tasktemplates"
+	"github.com/go-chi/chi/v5"
 )
 
 func (h *Handler) ListTaskTemplates(w http.ResponseWriter, r *http.Request) {
@@ -15,12 +17,49 @@ func (h *Handler) CreateGuidedTask(w http.ResponseWriter, r *http.Request) {
 	notImplemented(w, "guided task creation")
 }
 func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "task creation")
+	var input task.CreateTaskRequest
+	if err := decodeJSON(r, &input); err != nil {
+		respondTaskError(w, &task.Error{
+			Code:    "INVALID_REQUEST_BODY",
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	result, serviceError := h.taskService.CreateTask(r.Context(), input)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, result)
 }
 func (h *Handler) ListProjectTasks(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "project task listing")
+	projectID := chi.URLParam(r, "projectId")
+	tasks, err := h.taskService.ListProjectTasks(r.Context(), projectID, r.URL.Query().Get("includeArchived") == "1")
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": map[string]any{
+				"code":    "TASK_LIST_FAILED",
+				"message": err.Error(),
+			},
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"tasks": tasks,
+	})
 }
-func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request)     { notImplemented(w, "task detail") }
+func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+	detail, serviceError := h.taskService.GetTask(r.Context(), taskID)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+	respondJSON(w, http.StatusOK, detail)
+}
 func (h *Handler) GetTaskTeam(w http.ResponseWriter, r *http.Request) { notImplemented(w, "task team") }
 func (h *Handler) GetTaskBoard(w http.ResponseWriter, r *http.Request) {
 	notImplemented(w, "task board")

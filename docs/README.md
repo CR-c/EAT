@@ -66,6 +66,7 @@
 
 - [ARCHITECTURE.md](/home/code/EAT/docs/ARCHITECTURE.md)
 - [EAT-user-guide.md](/home/code/EAT/docs/EAT-user-guide.md)
+- [go-backend-refactor-plan.md](/home/code/EAT/docs/go-backend-refactor-plan.md)
 
 ## 解释规则
 

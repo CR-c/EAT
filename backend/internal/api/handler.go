@@ -3,17 +3,20 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 
 	"eat/backend/internal/agent"
 	"eat/backend/internal/eventbus"
 	"eat/backend/internal/project"
 	"eat/backend/internal/sandbox"
 	"eat/backend/internal/store"
+	"eat/backend/internal/task"
 )
 
 type Dependencies struct {
-	DB  *store.DB
-	Bus *eventbus.Bus
+	DB             *store.DB
+	Bus            *eventbus.Bus
+	UploadRootPath string
 }
 
 type Handler struct {
@@ -22,10 +25,15 @@ type Handler struct {
 	sandbox        *sandbox.Manager
 	projectService *project.Service
 	agentService   *agent.Service
+	taskService    *task.Service
 }
 
 func NewHandler(deps Dependencies) *Handler {
 	sandboxManager := sandbox.NewManager()
+	uploadRootPath := filepath.Join(".", "uploads")
+	if deps.UploadRootPath != "" {
+		uploadRootPath = deps.UploadRootPath
+	}
 
 	return &Handler{
 		db:             deps.DB,
@@ -33,6 +41,12 @@ func NewHandler(deps Dependencies) *Handler {
 		sandbox:        sandboxManager,
 		projectService: project.NewService(project.NewRepository(deps.DB.DB)),
 		agentService:   agent.NewService(sandboxManager),
+		taskService: task.NewService(task.Dependencies{
+			Repository:        task.NewRepository(deps.DB.DB),
+			ProjectRepository: project.NewRepository(deps.DB.DB),
+			AgentService:      agent.NewService(sandboxManager),
+			UploadRootPath:    uploadRootPath,
+		}),
 	}
 }
 
@@ -53,6 +67,12 @@ func respondProjectError(w http.ResponseWriter, err *project.Error) {
 	})
 }
 
+func respondTaskError(w http.ResponseWriter, err *task.Error) {
+	respondJSON(w, mapTaskErrorStatus(err.Code), map[string]any{
+		"error": err,
+	})
+}
+
 func mapProjectErrorStatus(code string) int {
 	switch code {
 	case project.ErrorCodeProjectAlreadyRegistered:
@@ -61,6 +81,15 @@ func mapProjectErrorStatus(code string) int {
 		return http.StatusNotFound
 	case project.ErrorCodePathAccessDenied:
 		return http.StatusForbidden
+	default:
+		return http.StatusBadRequest
+	}
+}
+
+func mapTaskErrorStatus(code string) int {
+	switch code {
+	case task.ErrorCodeTaskNotFound:
+		return http.StatusNotFound
 	default:
 		return http.StatusBadRequest
 	}
