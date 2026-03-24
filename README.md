@@ -306,6 +306,7 @@ EAT 借鉴的是：
 
 ### 前置要求
 
+- Go 1.22 或更高
 - Node.js 22 或更高
 - Git
 - Docker
@@ -351,6 +352,7 @@ npm start
 
 - `HOST=127.0.0.1`
 - `PORT=3000`
+- 或使用 `EAT_BACKEND_ADDR`
 
 启动后访问：
 
@@ -362,6 +364,9 @@ npm start
 
 - `HOST`
 - `PORT`
+- `EAT_BACKEND_ADDR`
+- `EAT_BACKEND_DB_PATH`
+- `EAT_UI_ROOT`
 
 ### Codex 运行时
 

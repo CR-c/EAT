@@ -3377,7 +3377,10 @@ export class TaskService {
         });
         runtime.onExit((exitCode) => {
           this.runningWorkerSessions.get(preparedSubTask.id)?.exitPromise.resolve(exitCode);
-          void this.#handleWorkerExit(task.id, preparedSubTask.id, runningSession.id, exitCode);
+          void this.#handleWorkerExit(task.id, preparedSubTask.id, runningSession.id, exitCode)
+            .catch((error) => {
+              this.#reportAsyncLifecycleError("worker-exit", error);
+            });
         });
 
         this.#publishSubTaskStatus(task.id, runningSubTask);
@@ -5155,7 +5158,10 @@ export class TaskService {
     });
     runtime.onExit((exitCode) => {
       this.runningLeadSessions.get(task.id)?.exitPromise.resolve(exitCode);
-      void this.#handleLeadExit(task.id, session.id, exitCode);
+      void this.#handleLeadExit(task.id, session.id, exitCode)
+        .catch((error) => {
+          this.#reportAsyncLifecycleError("lead-exit", error);
+        });
     });
 
     this.#publishSessionEvent(task.id, "session:started", runningSession);
@@ -5546,6 +5552,15 @@ export class TaskService {
     this.cancelledLeadSessionIds.clear();
     this.runningWorkerSessions.clear();
     this.cancelledWorkerSessionIds.clear();
+  }
+
+  #reportAsyncLifecycleError(scope, error) {
+    if (this.closed) {
+      return;
+    }
+
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    console.error(`[TaskService:${scope}]`, message);
   }
 
   async #withProjectGitLock(projectPath, operation) {

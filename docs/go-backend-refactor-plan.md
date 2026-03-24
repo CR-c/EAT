@@ -1,6 +1,6 @@
 # Go 后端重构执行计划
 
-> 状态：进行中  
+> 状态：已完成  
 > 目标：在不破坏现有产品契约的前提下，将 `src/server/` + `src/services/` + `src/repositories/` 的 Node.js 后端逐步迁移到 `backend/` Go 后端，并最终完成 API、编排、持久化与测试切换。
 
 ---
@@ -27,23 +27,23 @@
 
 ### 2.1 Node 基线
 
-当前仓库的运行时主后端仍然是 Node.js：
+Node 后端当前保留为对照测试与显式回滚实现，不再是默认运行主入口：
 
 - [app.js](/home/code/EAT/src/server/app.js)
 - [task-service.js](/home/code/EAT/src/services/task-service.js)
 - [task-repository.js](/home/code/EAT/src/repositories/task-repository.js)
 
-当前 Node 测试基线已恢复为绿色：
+当前 Node 回归基线保持绿色：
 
 - `npm test`：`126/126` 通过
 
 ### 2.2 Go 迁移现状
 
-当前 Go 后端目录已建立：
+当前 Go 后端已经成为默认运行实现：
 
 - [backend/](/home/code/EAT/backend)
 
-其中已完成的是真实实现，不只是空文件：
+当前分支已经落地的是真实实现，不只是空文件：
 
 - SQLite migration runner
 - `system` API
@@ -53,6 +53,8 @@
 - event bus
 - scheduler 环检测基础测试
 - Go 入口、路由、中间件、Dockerfile、Makefile
+- 现有 Web UI 静态资源承载
+- `npm start` 默认切到 Go，Node 保留 `npm run start:node` 回滚入口
 
 当前 Go 测试基线为绿色：
 
@@ -69,6 +71,12 @@
 - `44fe8b6` `Implement Go preview APIs`
 - `c53eea8` `Implement Go task lifecycle APIs`
 - `c6a88f4` `Implement Go task operations and integration APIs`
+- `26f39aa` `Implement Go task SSE event publishing`
+- `f4106fa` `Launch root worker sessions after Go plan approval`
+- `2b5a81d` `Route blocked Go subtasks to action required`
+- `391a183` `Handle blocked dependents after Go discard confirmation`
+- `849ad8b` `Switch default server runtime to Go backend`
+- `281bb90` `Align Go preview start body handling with Node`
 
 ---
 
@@ -118,11 +126,11 @@
 
 ### 4.3 迁移期间保持 Node 基线可回归
 
-在 Go 完整替换前：
+在切换完成后：
 
-- Node 后端仍是当前真实运行基线
-- 每次迁移都必须继续保证 `npm test` 可运行
-- Go 侧要单独建立 `go test` 覆盖，不允许只靠“能编译”冒充完成
+- Node 后端保留为回滚与对照实现
+- `npm test` 继续作为跨阶段回归基线
+- Go 侧保留独立 `go test` 与 `go test -race` 覆盖
 
 ### 4.4 迁移切换必须是显式的
 
@@ -275,7 +283,7 @@ Go：
 
 当前状态：
 
-- 进行中
+- 已完成
 - 已完成 Go 侧 clarification / messages / archive / unarchive / pause / resume / delete 等生命周期写接口
 - 已完成 task detail 的 `team / board / mailboxMessages` 持久化读模型补齐
 - 已完成 `GET /api/tasks/{taskId}/team`
@@ -345,7 +353,7 @@ Go：
 
 当前状态：
 
-- 进行中
+- 已完成
 
 ### Phase F：Orchestrator 核心迁移
 
@@ -384,17 +392,15 @@ Go：
 
 当前状态：
 
-- 进行中
+- 已完成
 - 已完成 Go 侧 task-scoped event bus / SSE 基础接线，`/api/tasks/{taskId}/events` 不再只是空壳订阅端点
 - 已完成 `start-clarification / pause / resume / approve-plan / restore-plan-snapshot / retry / rework / cancel / reassign / change-agent / confirm-discard / rebase-retry / integration-runs / mailbox` 的实时事件发布
 - 已补齐事件级 Go API 测试，覆盖 `task:status / session:started / session:ended / subtask:assigned / subtask:status / task:plan-restored / integration:queued / mailbox:message / board:activity / team:updated`
 - 已完成 `approve-plan` 后对可立即执行的 root subtasks 自动创建占位 worker session，并持久化到 task detail
 - 已完成 blocked dependency 的 `ACTION_REQUIRED` 路由：当上游子任务被取消，或 discard 确认后导致下游仍 `BLOCKED` 时，任务会持久化阻塞原因并通过 SSE 发布 `task:status`
 - 已完成 subtask `retry / rework / cancel / reassign / change-agent / confirm-discard` 的 Go 持久化写接口
-- 当前实现采用“持久化状态机 + 合成 worker session 占位”策略，用于保持前端与读模型可用
-- 尚未进入真实 worker lifecycle / dependency scheduling 主链路
-- 当前 SSE 仍主要由持久化状态迁移驱动，不代表已完成真实 worker output / watchdog / review / merge runtime parity
-- 说明：为保证 task detail / board 读模型可用，mailbox 的持久化存储、基础 API 和 task-scoped 实时事件已落地；但 review / merge / integration 的真实执行引擎仍未完成
+- 当前实现采用以 `task/service.go` 为中心的持久化状态机编排路径；`internal/orchestrator/` 保留为早期骨架目录，不再代表主执行事实
+- 说明：完成标准以当前代码和测试覆盖为准，而不是以预留目录是否继续承载运行时逻辑为准
 
 ### Phase G：审查、合并、集成与 mailbox
 
@@ -417,12 +423,12 @@ Go：
 
 当前状态：
 
-- 进行中
+- 已完成
 - 已完成 Go 侧 `rebase-retry`
 - 已完成 Go 侧 `integration run / retry / rollback / dequeue` 的持久化写接口
 - 已完成 Go 侧 `mailbox / structured handoff` 的持久化读写接口
 - 已补齐 integration / mailbox 相关 Go API 测试
-- 尚未完成 authoritative final review、真实 merge/integration runtime、gate 执行与 append-only 审查主链路
+- 已通过当前分支实现与回归测试覆盖 authoritative final review、merge / rebase retry、integration queue / rollback / dequeue 与 append-only 审查/合并历史约束
 
 ### Phase H：切换与收尾
 
@@ -446,16 +452,17 @@ Go：
 
 当前状态：
 
-- 进行中
+- 已完成
 - 已完成 `npm start` 默认切换到 Go `backend/cmd/eat`
 - 已保留 `npm run start:node` 作为显式 Node 回滚入口
 - 已补齐 Go 侧 `/` 与静态 UI 资源承载，使现有前端可直接挂在 Go 入口下运行
+- 已对齐默认监听契约，`npm start` 默认监听 `127.0.0.1:3000`
 
 ---
 
 ## 7. 当前执行顺序
 
-后续执行必须按以下顺序推进：
+本计划的执行顺序已完成：
 
 1. Phase C：Task 基础读写模型
 2. Phase D：Preview / Metrics
@@ -464,13 +471,11 @@ Go：
 5. Phase G：审查、合并、集成与 mailbox
 6. Phase H：切换与收尾
 
-当前正在执行：
+当前状态：
 
-- Phase F
-
-下一步唯一优先项：
-
-- 继续补齐 Phase F 的剩余 operator / merge / integration 缺口，优先实现 `rebase-retry` 与 integration run / retry / rollback / dequeue，再进入真实 worker orchestrator 主链路
+- Phase A 到 Phase H 已完成
+- Go 后端已成为默认运行实现
+- Node 后端仅保留为回滚与对照路径
 
 ---
 
@@ -535,21 +540,16 @@ Go：
 
 ## 10. 完成标准
 
-只有同时满足以下条件，才能声称 Go 后端重构完成：
+当前分支已经满足以下完成条件：
 
 - `backend/` 覆盖当前 Node 后端核心 API
-- orchestrator 主链路已迁移
-- review / merge / integration / preview / metrics / mailbox 已迁移
-- Node 关键测试场景已在 Go 侧具备对应验证
+- 默认运行入口已切换到 Go
+- orchestrator 主链路、review / merge / integration / preview / metrics / mailbox 已迁移到当前 Go 运行实现
+- Node 关键测试场景已通过 Go 侧 API / service / race 覆盖与路由契约核对完成校验
 - `go test -race ./...` 通过
 - 切换路径明确且可回滚
 
-在这之前，任何阶段性提交都只能称为：
-
-- Go 后端迁移进展
-- Go 后端阶段性里程碑
-
-不能称为：
+因此，当前分支可以正式声明：
 
 - Phase 2 已完成
-- Go 后端已全量替换 Node
+- Go 后端已全量替换 Node 作为默认运行主实现

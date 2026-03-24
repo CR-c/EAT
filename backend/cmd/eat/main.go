@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +17,7 @@ import (
 )
 
 func main() {
-	addr := envOrDefault("EAT_BACKEND_ADDR", ":8080")
+	addr := resolveListenAddr()
 	dbPath := envOrDefault("EAT_BACKEND_DB_PATH", filepath.Join(".eat", "eat.db"))
 	uiRootPath := os.Getenv("EAT_UI_ROOT")
 
@@ -65,4 +66,14 @@ func envOrDefault(key, fallback string) string {
 	}
 
 	return fallback
+}
+
+func resolveListenAddr() string {
+	if addr := os.Getenv("EAT_BACKEND_ADDR"); addr != "" {
+		return addr
+	}
+
+	host := envOrDefault("HOST", "127.0.0.1")
+	port := envOrDefault("PORT", "3000")
+	return fmt.Sprintf("%s:%s", host, port)
 }

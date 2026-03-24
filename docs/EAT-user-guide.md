@@ -55,7 +55,7 @@
 | 组件 | 说明 |
 |------|------|
 | Web UI | 单页应用，毛玻璃效果设计 |
-| API Server | Node.js HTTP 服务器 |
+| API Server | Go HTTP 服务器 |
 | SQLite | 任务和项目数据存储 |
 | Agent Runtime | Lead + Worker Agent 会话管理 |
 | Git Integration | 分支、Worktree 隔离执行 |
@@ -71,7 +71,7 @@ cd /path/to/EAT
 npm start
 ```
 
-服务器默认监听 `http://127.0.0.1:3000`。
+服务器默认监听 `http://127.0.0.1:3000`。如需回滚到旧 Node 实现，可使用 `npm run start:node`。
 
 ### 2. 打开浏览器
 
