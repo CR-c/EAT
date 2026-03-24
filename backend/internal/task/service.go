@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"eat/backend/internal/agent"
+	"eat/backend/internal/eventbus"
 	"eat/backend/internal/git"
 	"eat/backend/internal/project"
 	"eat/backend/internal/tasktemplates"
@@ -119,6 +120,7 @@ type Service struct {
 	repository        *Repository
 	projectRepository *project.Repository
 	agentService      *agent.Service
+	bus               *eventbus.Bus
 	uploadRootPath    string
 }
 
@@ -126,6 +128,7 @@ type Dependencies struct {
 	Repository        *Repository
 	ProjectRepository *project.Repository
 	AgentService      *agent.Service
+	Bus               *eventbus.Bus
 	UploadRootPath    string
 }
 
@@ -134,6 +137,7 @@ func NewService(deps Dependencies) *Service {
 		repository:        deps.Repository,
 		projectRepository: deps.ProjectRepository,
 		agentService:      deps.AgentService,
+		bus:               deps.Bus,
 		uploadRootPath:    deps.UploadRootPath,
 	}
 }
@@ -864,6 +868,18 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 		return nil, failure("TASK_APPROVAL_FAILED", txErr.Error(), nil)
 	}
 
+	if !result.Idempotent {
+		if result.Task != nil {
+			s.publishTaskStatus(result.Task.ID, result.Task.Status, nil)
+		}
+		for _, subTask := range result.SubTasks {
+			subTaskCopy := subTask
+			s.publishSubTaskAssigned(taskID, &subTaskCopy)
+			s.publishSubTaskStatus(taskID, &subTaskCopy)
+		}
+		s.publishTeamUpdated(taskID)
+	}
+
 	return result, nil
 }
 
@@ -916,6 +932,12 @@ func (s *Service) RestorePlanSnapshot(ctx context.Context, taskID string, input 
 		return nil, failure("PLAN_SNAPSHOT_CREATE_FAILED", err.Error(), nil)
 	}
 
+	s.publish(taskID, "task:plan-restored", map[string]any{
+		"currentPlan": currentPlan,
+		"snapshotId":  snapshotID,
+		"taskId":      taskID,
+	})
+
 	return &RestorePlanSnapshotResult{
 		CurrentPlan: *currentPlan,
 		SnapshotID:  snapshotID,
@@ -966,6 +988,9 @@ func (s *Service) StartClarification(ctx context.Context, taskID string, input S
 	}); err != nil {
 		return nil, failure("TASK_MESSAGE_CREATE_FAILED", err.Error(), nil)
 	}
+
+	s.publishTaskStatus(taskID, nextTask.Status, nil)
+	s.publishSession(taskID, "session:started", session)
 
 	return &StartClarificationResult{
 		Session: session,
@@ -1018,6 +1043,10 @@ func (s *Service) SendTaskMessage(ctx context.Context, taskID string, input Send
 	})
 	if err != nil {
 		return nil, failure("TASK_MESSAGE_CREATE_FAILED", err.Error(), nil)
+	}
+
+	if nextTask.Status != taskRecord.Status {
+		s.publishTaskStatus(taskID, nextTask.Status, nil)
 	}
 
 	return &SendTaskMessageResult{
@@ -1111,6 +1140,23 @@ func (s *Service) PauseTask(ctx context.Context, taskID string) (*PauseTaskResul
 		)
 	}
 
+	sessions, err := s.repository.ListSessionsByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_SESSIONS_READ_FAILED", err.Error(), nil)
+	}
+
+	cancelledLeadSessions := make([]Session, 0, 1)
+	cancelledAt := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, session := range sessions {
+		if session.SessionType != sessionTypeLead || !isLiveSessionStatus(session.Status) {
+			continue
+		}
+		cancelledSession := session
+		cancelledSession.Status = sessionStatusCancelled
+		cancelledSession.EndedAt = &cancelledAt
+		cancelledLeadSessions = append(cancelledLeadSessions, cancelledSession)
+	}
+
 	if err := s.cancelLeadSessions(ctx, taskID); err != nil {
 		return nil, failure("TASK_SESSION_UPDATE_FAILED", err.Error(), nil)
 	}
@@ -1133,6 +1179,11 @@ func (s *Service) PauseTask(ctx context.Context, taskID string) (*PauseTaskResul
 	}); err != nil {
 		return nil, failure("TASK_MESSAGE_CREATE_FAILED", err.Error(), nil)
 	}
+
+	for index := range cancelledLeadSessions {
+		s.publishSession(taskID, "session:ended", &cancelledLeadSessions[index])
+	}
+	s.publishTaskStatus(taskID, nextTask.Status, &lastError)
 
 	return &PauseTaskResult{Task: nextTask}, nil
 }
@@ -1220,6 +1271,8 @@ func (s *Service) ResumeTask(ctx context.Context, taskID string) (*ResumeTaskRes
 		return nil, failure("TASK_UPDATE_FAILED", err.Error(), nil)
 	}
 
+	s.publishTaskStatus(taskID, nextTask.Status, nil)
+
 	return &ResumeTaskResult{Task: nextTask}, nil
 }
 
@@ -1251,6 +1304,14 @@ func (s *Service) StopLeadSession(ctx context.Context, taskID string) (*StopLead
 
 	if err := s.cancelLeadSessions(ctx, taskID); err != nil {
 		return nil, failure("TASK_SESSION_UPDATE_FAILED", err.Error(), nil)
+	}
+
+	if activeLeadSession != nil {
+		cancelledSession := *activeLeadSession
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		cancelledSession.Status = sessionStatusCancelled
+		cancelledSession.EndedAt = &now
+		s.publishSession(taskID, "session:ended", &cancelledSession)
 	}
 
 	return &StopLeadSessionResult{Task: taskRecord}, nil
@@ -1294,6 +1355,8 @@ func (s *Service) ConfirmRequirements(ctx context.Context, taskID string) (*Conf
 		return nil, failure("TASK_MESSAGE_CREATE_FAILED", err.Error(), nil)
 	}
 
+	s.publishTaskStatus(taskID, nextTask.Status, nil)
+
 	return &ConfirmRequirementsResult{
 		Message: message,
 		Task:    nextTask,
@@ -1318,13 +1381,26 @@ func (s *Service) RetrySubTask(ctx context.Context, subTaskID string, input Retr
 		return nil, failure(ErrorCodeSubTaskActiveSession, "The subtask already has a live worker session.", map[string]any{"subTaskId": subTaskID})
 	}
 
-	return s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
+	result, serviceError := s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
 		Description:       input.Description,
 		ResumeTaskStatus:  true,
 		NextStatus:        subTaskStatusPending,
 		ForceManualAssign: true,
 		ErrorCode:         "SUBTASK_RETRY_FAILED",
 	})
+	if serviceError != nil {
+		return nil, serviceError
+	}
+
+	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
+	if result.Session != nil {
+		s.publishSession(taskRecord.ID, "session:started", result.Session)
+	}
+	if result.Task != nil && result.Task.Status != taskRecord.Status {
+		s.publishTaskStatus(result.Task.ID, result.Task.Status, nil)
+	}
+	s.publishTeamUpdated(taskRecord.ID)
+	return result, nil
 }
 
 func (s *Service) ReworkSubTask(ctx context.Context, subTaskID string, input ReworkSubTaskRequest) (*SubTaskMutationResult, *Error) {
@@ -1356,12 +1432,27 @@ func (s *Service) ReworkSubTask(ctx context.Context, subTaskID string, input Rew
 		return nil, failure(ErrorCodeSubTaskActiveSession, "The subtask already has a live worker session.", map[string]any{"subTaskId": subTaskID})
 	}
 
-	return s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
+	result, serviceError := s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
 		Description:       input.Description,
 		NextStatus:        subTaskStatusPending,
 		ForceManualAssign: true,
 		ErrorCode:         "SUBTASK_REWORK_FAILED",
 	})
+	if serviceError != nil {
+		return nil, serviceError
+	}
+
+	s.publish(taskRecord.ID, "subtask:rework", map[string]any{
+		"description": result.SubTask.Description,
+		"subtaskId":   subTaskID,
+		"taskId":      taskRecord.ID,
+	})
+	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
+	if result.Session != nil {
+		s.publishSession(taskRecord.ID, "session:started", result.Session)
+	}
+	s.publishTeamUpdated(taskRecord.ID)
+	return result, nil
 }
 
 func (s *Service) CancelSubTask(ctx context.Context, subTaskID string) (*SubTaskMutationResult, *Error) {
@@ -1429,6 +1520,16 @@ func (s *Service) CancelSubTask(ctx context.Context, subTaskID string) (*SubTask
 		return nil, failure("SUBTASK_CANCEL_FAILED", txErr.Error(), nil)
 	}
 
+	if result.Session != nil {
+		s.publishSession(taskRecord.ID, "session:ended", result.Session)
+	}
+	s.publish(taskRecord.ID, "subtask:cancelled", map[string]any{
+		"status":    result.SubTask.Status,
+		"subtaskId": subTaskID,
+		"taskId":    taskRecord.ID,
+	})
+	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
+	s.publishTeamUpdated(taskRecord.ID)
 	return &result, nil
 }
 
@@ -1460,7 +1561,7 @@ func (s *Service) ReassignSubTask(ctx context.Context, subTaskID string, input R
 		nextStatus = subTaskStatusBlocked
 	}
 
-	return s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
+	result, serviceError := s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
 		AgentType:         input.AgentType,
 		Description:       input.Description,
 		ResumeTaskStatus:  true,
@@ -1470,6 +1571,28 @@ func (s *Service) ReassignSubTask(ctx context.Context, subTaskID string, input R
 		CreateSession:     nextStatus != subTaskStatusBlocked,
 		ErrorCode:         "SUBTASK_REASSIGN_FAILED",
 	})
+	if serviceError != nil {
+		return nil, serviceError
+	}
+
+	s.publish(taskRecord.ID, "subtask:assigned", map[string]any{
+		"agentType":        result.SubTask.AgentType,
+		"assignmentSource": result.SubTask.AssignmentSource,
+		"displayName":      result.SubTask.DisplayName,
+		"role":             result.SubTask.Role,
+		"status":           result.SubTask.Status,
+		"subtaskId":        subTaskID,
+		"taskId":           taskRecord.ID,
+	})
+	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
+	if result.Session != nil {
+		s.publishSession(taskRecord.ID, "session:started", result.Session)
+	}
+	if result.Task != nil && result.Task.Status != taskRecord.Status {
+		s.publishTaskStatus(result.Task.ID, result.Task.Status, nil)
+	}
+	s.publishTeamUpdated(taskRecord.ID)
+	return result, nil
 }
 
 func (s *Service) ChangeSubTaskAgent(ctx context.Context, subTaskID string, input ChangeSubTaskAgentRequest) (*SubTaskMutationResult, *Error) {
@@ -1502,7 +1625,7 @@ func (s *Service) ChangeSubTaskAgent(ctx context.Context, subTaskID string, inpu
 		)
 	}
 
-	return s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
+	result, serviceError := s.relaunchSubTask(ctx, taskRecord, subTask, relaunchSubTaskOptions{
 		AgentType:         nextAgentType,
 		Description:       input.Description,
 		ResumeTaskStatus:  true,
@@ -1511,6 +1634,25 @@ func (s *Service) ChangeSubTaskAgent(ctx context.Context, subTaskID string, inpu
 		ClearAutoAssigned: true,
 		ErrorCode:         "SUBTASK_CHANGE_AGENT_FAILED",
 	})
+	if serviceError != nil {
+		return nil, serviceError
+	}
+
+	s.publish(taskRecord.ID, "subtask:agent-changed", map[string]any{
+		"newAgentType": nextAgentType,
+		"oldAgentType": subTask.AgentType,
+		"subtaskId":    subTaskID,
+		"taskId":       taskRecord.ID,
+	})
+	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
+	if result.Session != nil {
+		s.publishSession(taskRecord.ID, "session:started", result.Session)
+	}
+	if result.Task != nil && result.Task.Status != taskRecord.Status {
+		s.publishTaskStatus(result.Task.ID, result.Task.Status, nil)
+	}
+	s.publishTeamUpdated(taskRecord.ID)
+	return result, nil
 }
 
 func (s *Service) ConfirmDiscardSubTask(ctx context.Context, subTaskID string) (*SubTaskMutationResult, *Error) {
@@ -1570,6 +1712,15 @@ func (s *Service) ConfirmDiscardSubTask(ctx context.Context, subTaskID string) (
 		return nil, failure("SUBTASK_CONFIRM_DISCARD_FAILED", txErr.Error(), nil)
 	}
 
+	s.publish(taskRecord.ID, "subtask:confirm-discard", map[string]any{
+		"subtaskId": subTaskID,
+		"taskId":    taskRecord.ID,
+	})
+	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
+	if result.Task != nil && result.Task.Status != taskRecord.Status {
+		s.publishTaskStatus(result.Task.ID, result.Task.Status, nil)
+	}
+	s.publishTeamUpdated(taskRecord.ID)
 	return &result, nil
 }
 
@@ -1607,6 +1758,13 @@ func (s *Service) RebaseRetrySubTask(ctx context.Context, subTaskID string) (*Re
 		return nil, failure("SUBTASK_REBASE_RETRY_FAILED", err.Error(), nil)
 	}
 
+	s.publish(taskRecord.ID, "merge:status", map[string]any{
+		"mergeStatus": "SUCCEEDED",
+		"subtaskId":   subTaskID,
+		"taskId":      taskRecord.ID,
+	})
+	s.publishTaskStatus(taskRecord.ID, nextTask.Status, nil)
+
 	return &RebaseRetrySubTaskResult{
 		MergeStatus: "SUCCEEDED",
 		SubTask:     subTask,
@@ -1635,7 +1793,23 @@ func (s *Service) StartIntegrationRun(ctx context.Context, taskID string) (*Inte
 		return nil, failure("TASK_SUBTASKS_READ_FAILED", err.Error(), nil)
 	}
 
-	return s.createIntegrationRun(ctx, taskRecord, subTasks, true)
+	result, serviceError := s.createIntegrationRun(ctx, taskRecord, subTasks, true)
+	if serviceError != nil {
+		return nil, serviceError
+	}
+
+	if result.Task != nil && result.Task.Status != taskRecord.Status {
+		s.publishTaskStatus(result.Task.ID, result.Task.Status, nil)
+	}
+	if result.IntegrationRun != nil {
+		s.publish(taskID, "integration:queued", map[string]any{
+			"integrationBranch": result.IntegrationRun.IntegrationBranch,
+			"integrationRunId":  result.IntegrationRun.ID,
+			"status":            result.IntegrationRun.Status,
+			"taskId":            taskID,
+		})
+	}
+	return result, nil
 }
 
 func (s *Service) RetryIntegrationRun(ctx context.Context, integrationRunID string) (*IntegrationMutationResult, *Error) {
@@ -1667,7 +1841,23 @@ func (s *Service) RetryIntegrationRun(ctx context.Context, integrationRunID stri
 		return nil, failure("TASK_SUBTASKS_READ_FAILED", err.Error(), nil)
 	}
 
-	return s.createIntegrationRun(ctx, taskRecord, subTasks, true)
+	result, serviceError := s.createIntegrationRun(ctx, taskRecord, subTasks, true)
+	if serviceError != nil {
+		return nil, serviceError
+	}
+
+	if result.Task != nil && result.Task.Status != taskRecord.Status {
+		s.publishTaskStatus(result.Task.ID, result.Task.Status, nil)
+	}
+	if result.IntegrationRun != nil {
+		s.publish(taskRecord.ID, "integration:queued", map[string]any{
+			"integrationBranch": result.IntegrationRun.IntegrationBranch,
+			"integrationRunId":  result.IntegrationRun.ID,
+			"status":            result.IntegrationRun.Status,
+			"taskId":            taskRecord.ID,
+		})
+	}
+	return result, nil
 }
 
 func (s *Service) RollbackIntegrationRun(ctx context.Context, integrationRunID string) (*IntegrationMutationResult, *Error) {
@@ -1732,6 +1922,15 @@ func (s *Service) RollbackIntegrationRun(ctx context.Context, integrationRunID s
 		return nil, failure("INTEGRATION_ROLLBACK_FAILED", txErr.Error(), nil)
 	}
 
+	if result.IntegrationRun != nil {
+		s.publish(taskRecord.ID, "integration:failed", map[string]any{
+			"integrationBranch": result.IntegrationRun.IntegrationBranch,
+			"integrationRunId":  result.IntegrationRun.ID,
+			"reason":            "Integration run rolled back by operator.",
+			"status":            result.IntegrationRun.Status,
+			"taskId":            taskRecord.ID,
+		})
+	}
 	return result, nil
 }
 
@@ -1775,6 +1974,14 @@ func (s *Service) DequeueIntegrationQueueItem(ctx context.Context, integrationQu
 	if err != nil {
 		return nil, failure("INTEGRATION_DEQUEUE_FAILED", err.Error(), nil)
 	}
+
+	s.publish(taskRecord.ID, "integration:queued", map[string]any{
+		"integrationQueueItemId": updatedQueueItem.ID,
+		"integrationRunId":       integrationRun.ID,
+		"status":                 updatedQueueItem.Status,
+		"subtaskId":              updatedQueueItem.SubTaskID,
+		"taskId":                 taskRecord.ID,
+	})
 
 	return &IntegrationMutationResult{
 		IntegrationQueueItem: updatedQueueItem,
@@ -1927,6 +2134,20 @@ func (s *Service) SendMailboxMessage(ctx context.Context, taskID string, input S
 	if err != nil {
 		return nil, failure("MAILBOX_MESSAGE_CREATE_FAILED", err.Error(), nil)
 	}
+
+	s.publish(taskID, "mailbox:message", map[string]any{
+		"message": message,
+		"taskId":  taskID,
+	})
+	s.publish(taskID, "board:activity", map[string]any{
+		"createdAt": message.CreatedAt,
+		"id":        "mailbox:" + message.ID,
+		"kind":      "MAILBOX_MESSAGE",
+		"subTaskId": nullableString(message.TargetSubTaskID, message.SenderSubTaskID),
+		"summary":   firstNonEmpty(message.Content, message.MessageType),
+		"taskId":    taskID,
+	})
+	s.publishTeamUpdated(taskID)
 
 	return &SendMailboxMessageResult{Message: message}, nil
 }
@@ -3480,6 +3701,106 @@ func assignmentSourcePointer(isManual bool, fallback *string) *string {
 		return fallback
 	}
 	return stringPointer(subTaskAssignmentSourceLead)
+}
+
+func (s *Service) publish(taskID, eventName string, data any) {
+	if s.bus == nil || strings.TrimSpace(taskID) == "" || strings.TrimSpace(eventName) == "" {
+		return
+	}
+
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+
+	s.bus.Publish("task:"+taskID, eventbus.Event{
+		Name: eventName,
+		Data: payload,
+	})
+}
+
+func (s *Service) publishTaskStatus(taskID, status string, reason *string) {
+	s.publish(taskID, "task:status", map[string]any{
+		"taskId": taskID,
+		"status": status,
+		"reason": reason,
+	})
+}
+
+func (s *Service) publishSession(taskID, eventName string, session *Session) {
+	if session == nil {
+		return
+	}
+	s.publish(taskID, eventName, map[string]any{
+		"agentType":            session.AgentType,
+		"attachments":          nil,
+		"containerId":          session.ContainerID,
+		"createdAt":            session.CreatedAt,
+		"endedAt":              session.EndedAt,
+		"exitCode":             session.ExitCode,
+		"firstOutputAt":        session.FirstOutputAt,
+		"id":                   session.ID,
+		"logPath":              session.LogPath,
+		"outputBuffer":         session.OutputBuffer,
+		"outputBufferMaxBytes": session.OutputBufferMaxBytes,
+		"pid":                  session.PID,
+		"sandboxType":          session.SandboxType,
+		"sessionId":            session.ID,
+		"sessionType":          session.SessionType,
+		"startedAt":            session.StartedAt,
+		"status":               session.Status,
+		"subTaskId":            session.SubTaskID,
+		"subtaskId":            session.SubTaskID,
+		"taskId":               session.TaskID,
+		"updatedAt":            session.UpdatedAt,
+	})
+}
+
+func (s *Service) publishSubTaskAssigned(taskID string, subTask *SubTask) {
+	if subTask == nil {
+		return
+	}
+	s.publish(taskID, "subtask:assigned", map[string]any{
+		"agentType":        subTask.AgentType,
+		"assignmentSource": subTask.AssignmentSource,
+		"displayName":      subTask.DisplayName,
+		"role":             subTask.Role,
+		"status":           subTask.Status,
+		"subtaskId":        subTask.ID,
+		"taskId":           taskID,
+	})
+}
+
+func (s *Service) publishSubTaskStatus(taskID string, subTask *SubTask) {
+	if subTask == nil {
+		return
+	}
+	s.publish(taskID, "subtask:status", map[string]any{
+		"id":               subTask.ID,
+		"taskId":           subTask.TaskID,
+		"subtaskId":        subTask.ID,
+		"title":            subTask.Title,
+		"description":      subTask.Description,
+		"branchSuffix":     subTask.BranchSuffix,
+		"branchName":       subTask.BranchName,
+		"agentType":        subTask.AgentType,
+		"status":           subTask.Status,
+		"autoAssigned":     subTask.AutoAssigned,
+		"retryCount":       subTask.RetryCount,
+		"lastError":        subTask.LastError,
+		"role":             subTask.Role,
+		"displayName":      subTask.DisplayName,
+		"executionOrder":   subTask.ExecutionOrder,
+		"assignmentSource": subTask.AssignmentSource,
+		"runSummary":       subTask.RunSummary,
+		"attachments":      nil,
+	})
+}
+
+func (s *Service) publishTeamUpdated(taskID string) {
+	s.publish(taskID, "team:updated", map[string]any{
+		"taskId": taskID,
+	})
 }
 
 func uniqueStrings(values []string) []string {

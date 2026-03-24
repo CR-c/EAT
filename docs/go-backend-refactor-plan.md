@@ -57,11 +57,18 @@
 当前 Go 测试基线为绿色：
 
 - `cd backend && go test ./...`：通过
+- `cd backend && go test -race ./...`：通过
 
 ### 2.3 已完成提交
 
 - `7df6e6a` `Add Go backend scaffold and fix review regressions`
 - `66157a1` `Implement Go project, agent, and template APIs`
+- `bb9341f` `Implement Go task read and create basics`
+- `4a415d7` `Implement Go guided task and plan seed APIs`
+- `edca7c6` `Implement Go plan lifecycle and metrics APIs`
+- `44fe8b6` `Implement Go preview APIs`
+- `c53eea8` `Implement Go task lifecycle APIs`
+- `c6a88f4` `Implement Go task operations and integration APIs`
 
 ---
 
@@ -378,10 +385,14 @@ Go：
 当前状态：
 
 - 进行中
+- 已完成 Go 侧 task-scoped event bus / SSE 基础接线，`/api/tasks/{taskId}/events` 不再只是空壳订阅端点
+- 已完成 `start-clarification / pause / resume / approve-plan / restore-plan-snapshot / retry / rework / cancel / reassign / change-agent / confirm-discard / rebase-retry / integration-runs / mailbox` 的实时事件发布
+- 已补齐事件级 Go API 测试，覆盖 `task:status / session:started / session:ended / subtask:assigned / subtask:status / task:plan-restored / integration:queued / mailbox:message / board:activity / team:updated`
 - 已完成 subtask `retry / rework / cancel / reassign / change-agent / confirm-discard` 的 Go 持久化写接口
 - 当前实现采用“持久化状态机 + 合成 worker session 占位”策略，用于保持前端与读模型可用
-- 尚未进入真实 worker lifecycle / dependency scheduling / SSE 驱动的 orchestrator 主链路
-- 说明：为保证 task detail / board 读模型可用，mailbox 的持久化存储与基础 API 已提前落地；但 review / merge / integration / SSE 驱动的 mailbox 全链路仍未开始
+- 尚未进入真实 worker lifecycle / dependency scheduling 主链路
+- 当前 SSE 仍主要由持久化状态迁移驱动，不代表已完成真实 worker output / watchdog / review / merge runtime parity
+- 说明：为保证 task detail / board 读模型可用，mailbox 的持久化存储、基础 API 和 task-scoped 实时事件已落地；但 review / merge / integration 的真实执行引擎仍未完成
 
 ### Phase G：审查、合并、集成与 mailbox
 
@@ -404,7 +415,12 @@ Go：
 
 当前状态：
 
-- 未开始
+- 进行中
+- 已完成 Go 侧 `rebase-retry`
+- 已完成 Go 侧 `integration run / retry / rollback / dequeue` 的持久化写接口
+- 已完成 Go 侧 `mailbox / structured handoff` 的持久化读写接口
+- 已补齐 integration / mailbox 相关 Go API 测试
+- 尚未完成 authoritative final review、真实 merge/integration runtime、gate 执行与 append-only 审查主链路
 
 ### Phase H：切换与收尾
 
