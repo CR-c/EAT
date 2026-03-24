@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,11 +12,14 @@ import (
 	"eat/backend/internal/agent"
 	"eat/backend/internal/git"
 	"eat/backend/internal/project"
+	"eat/backend/internal/tasktemplates"
 	"github.com/google/uuid"
 )
 
-const ErrorCodeTaskNotFound = "TASK_NOT_FOUND"
 const (
+	ErrorCodeInvalidPlan               = "INVALID_PLAN"
+	ErrorCodePlanTemplateNotFound      = "PLAN_TEMPLATE_NOT_FOUND"
+	ErrorCodePlanTemplateRequired      = "PLAN_TEMPLATE_REQUIRED"
 	ErrorCodeAttachmentContentRequired = "ATTACHMENT_CONTENT_REQUIRED"
 	ErrorCodeAttachmentMimeMismatch    = "ATTACHMENT_MIME_MISMATCH"
 	ErrorCodeAttachmentNameRequired    = "ATTACHMENT_NAME_REQUIRED"
@@ -31,10 +35,13 @@ const (
 	ErrorCodeLeadAgentRequired         = "LEAD_AGENT_REQUIRED"
 	ErrorCodeLeadAgentUnhealthy        = "LEAD_AGENT_UNHEALTHY"
 	ErrorCodeProjectNotFound           = "PROJECT_NOT_FOUND"
+	ErrorCodeTaskNotFound              = "TASK_NOT_FOUND"
+	ErrorCodeTaskNotPlanReview         = "TASK_NOT_PLAN_REVIEW"
 	ErrorCodeTitleRequired             = "TITLE_REQUIRED"
 )
 
 const maxAttachmentBytes = 10 * 1024 * 1024
+const planSnapshotSourceLeadGenerated = "LEAD_GENERATED"
 
 type Error struct {
 	Code    string         `json:"code"`
@@ -150,6 +157,30 @@ type AttachmentCreateInput struct {
 type CreateTaskResult struct {
 	Task        *Task        `json:"task"`
 	Attachments []Attachment `json:"attachments"`
+}
+
+type CreateGuidedTaskRequest struct {
+	CreateTaskRequest
+	TemplateID string `json:"templateId"`
+	AgentType  string `json:"agentType"`
+}
+
+type CreateGuidedTaskResult struct {
+	Task        *Task                  `json:"task"`
+	Attachments []Attachment           `json:"attachments"`
+	CurrentPlan tasktemplates.Plan     `json:"currentPlan"`
+	Template    tasktemplates.Template `json:"template"`
+}
+
+type PlanSeedRequest struct {
+	TemplateID string `json:"templateId"`
+	AgentType  string `json:"agentType"`
+}
+
+type PlanSeedResult struct {
+	Task        *Task                  `json:"task"`
+	CurrentPlan tasktemplates.Plan     `json:"currentPlan"`
+	Template    tasktemplates.Template `json:"template"`
 }
 
 func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*CreateTaskResult, *Error) {
@@ -283,6 +314,126 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*Cre
 	return &CreateTaskResult{
 		Task:        taskRecord,
 		Attachments: attachments,
+	}, nil
+}
+
+func (s *Service) CreateGuidedTask(ctx context.Context, input CreateGuidedTaskRequest) (*CreateGuidedTaskResult, *Error) {
+	templateID := normalizeRequiredString(input.TemplateID)
+	if templateID == "" {
+		return nil, failure(ErrorCodePlanTemplateRequired, "A task template must be selected before starting the guided flow.", nil)
+	}
+
+	workerAgentType := s.resolveDefaultTemplateAgentType(&Task{LeadAgentType: input.LeadAgentType}, input.AgentType)
+	seed := tasktemplates.BuildSeed(templateID, tasktemplates.BuildOptions{
+		AgentType:   workerAgentType,
+		Description: input.Description,
+		Title:       input.Title,
+	})
+	if seed == nil {
+		return nil, failure(ErrorCodePlanTemplateNotFound, "Requested plan template was not found.", map[string]any{"templateId": templateID})
+	}
+
+	if validationError := validatePlan(seed.Plan); validationError != nil {
+		return nil, validationError
+	}
+
+	createResult, serviceError := s.CreateTask(ctx, input.CreateTaskRequest)
+	if serviceError != nil {
+		return nil, serviceError
+	}
+
+	currentPlanJSONBytes, err := json.Marshal(seed.Plan)
+	if err != nil {
+		return nil, failure("PLAN_SERIALIZATION_FAILED", err.Error(), nil)
+	}
+	currentPlanJSON := string(currentPlanJSONBytes)
+	status := "PLAN_REVIEW"
+	planVersion := int64(1)
+
+	taskRecord, err := s.repository.UpdateTask(ctx, createResult.Task.ID, UpdateTaskInput{
+		Status:             &status,
+		PlanVersion:        &planVersion,
+		CurrentPlanJSON:    &currentPlanJSON,
+		SetCurrentPlanJSON: true,
+		LastError:          nil,
+		SetLastError:       true,
+	})
+	if err != nil {
+		return nil, failure("TASK_UPDATE_FAILED", err.Error(), nil)
+	}
+
+	if _, err := s.repository.CreatePlanSnapshot(ctx, CreatePlanSnapshotInput{
+		TaskID:  createResult.Task.ID,
+		Version: taskRecord.PlanVersion,
+		Source:  planSnapshotSourceLeadGenerated,
+		Payload: currentPlanJSON,
+	}); err != nil {
+		return nil, failure("PLAN_SNAPSHOT_CREATE_FAILED", err.Error(), nil)
+	}
+
+	return &CreateGuidedTaskResult{
+		Task:        taskRecord,
+		Attachments: createResult.Attachments,
+		CurrentPlan: seed.Plan,
+		Template:    seed.Template,
+	}, nil
+}
+
+func (s *Service) ApplyPlanSeed(ctx context.Context, taskID string, input PlanSeedRequest) (*PlanSeedResult, *Error) {
+	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})
+	}
+	if taskRecord.Status != "PLAN_REVIEW" {
+		return nil, failure(
+			ErrorCodeTaskNotPlanReview,
+			"Plan template seeding is only available during PLAN_REVIEW.",
+			map[string]any{"status": taskRecord.Status, "taskId": taskID},
+		)
+	}
+
+	templateID := normalizeRequiredString(input.TemplateID)
+	if templateID == "" {
+		return nil, failure(ErrorCodePlanTemplateRequired, "A plan template must be selected before seeding.", nil)
+	}
+
+	workerAgentType := s.resolveDefaultTemplateAgentType(taskRecord, input.AgentType)
+	seed := tasktemplates.BuildSeed(templateID, tasktemplates.BuildOptions{
+		AgentType:   workerAgentType,
+		Description: taskRecord.Description,
+		Title:       taskRecord.Title,
+	})
+	if seed == nil {
+		return nil, failure(ErrorCodePlanTemplateNotFound, "Requested plan template was not found.", map[string]any{"templateId": templateID})
+	}
+
+	if validationError := validatePlan(seed.Plan); validationError != nil {
+		return nil, validationError
+	}
+
+	currentPlanJSONBytes, err := json.Marshal(seed.Plan)
+	if err != nil {
+		return nil, failure("PLAN_SERIALIZATION_FAILED", err.Error(), nil)
+	}
+	currentPlanJSON := string(currentPlanJSONBytes)
+
+	nextTask, err := s.repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+		CurrentPlanJSON:    &currentPlanJSON,
+		SetCurrentPlanJSON: true,
+		LastError:          nil,
+		SetLastError:       true,
+	})
+	if err != nil {
+		return nil, failure("TASK_UPDATE_FAILED", err.Error(), nil)
+	}
+
+	return &PlanSeedResult{
+		Task:        nextTask,
+		CurrentPlan: seed.Plan,
+		Template:    seed.Template,
 	}, nil
 }
 
@@ -490,4 +641,55 @@ func inferAttachmentType(fileName, mimeType string) string {
 
 func failure(code, message string, details map[string]any) *Error {
 	return &Error{Code: code, Message: message, Details: details}
+}
+
+func validatePlan(plan tasktemplates.Plan) *Error {
+	if len(plan.Nodes) == 0 {
+		return failure(ErrorCodeInvalidPlan, "Plan must include at least one node.", nil)
+	}
+
+	knownNodes := make(map[string]bool, len(plan.Nodes))
+	for index, node := range plan.Nodes {
+		if strings.TrimSpace(node.Title) == "" {
+			return failure(ErrorCodeInvalidPlan, "Plan nodes must include a title.", map[string]any{"index": index})
+		}
+		if strings.TrimSpace(node.BranchSuffix) == "" {
+			return failure(ErrorCodeInvalidPlan, "Plan nodes must include a branch suffix.", map[string]any{"index": index})
+		}
+		if knownNodes[node.BranchSuffix] {
+			return failure(ErrorCodeInvalidPlan, "Plan branch_suffix values must be unique.", map[string]any{"branchSuffix": node.BranchSuffix})
+		}
+		knownNodes[node.BranchSuffix] = true
+	}
+
+	for _, node := range plan.Nodes {
+		for _, dependency := range node.DependsOn {
+			if !knownNodes[dependency] {
+				return failure(ErrorCodeInvalidPlan, "Plan node depends_on references an unknown branch_suffix.", map[string]any{
+					"branchSuffix": node.BranchSuffix,
+					"dependsOn":    dependency,
+				})
+			}
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) resolveDefaultTemplateAgentType(taskRecord *Task, requestedAgentType string) string {
+	explicitAgentType := normalizeRequiredString(requestedAgentType)
+	if explicitAgentType != "" {
+		return explicitAgentType
+	}
+	if taskRecord != nil && normalizeRequiredString(taskRecord.LeadAgentType) != "" {
+		return taskRecord.LeadAgentType
+	}
+
+	for _, descriptor := range s.agentService.ListAgents() {
+		if descriptor.Capabilities.CanExecute {
+			return descriptor.Name
+		}
+	}
+
+	return "codex-cli"
 }

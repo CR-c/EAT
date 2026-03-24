@@ -111,6 +111,24 @@ type Repository struct {
 	db *sql.DB
 }
 
+type UpdateTaskInput struct {
+	Status              *string
+	PlanVersion         *int64
+	CurrentPlanJSON     *string
+	SetCurrentPlanJSON  bool
+	ApprovedPlanJSON    *string
+	SetApprovedPlanJSON bool
+	LastError           *string
+	SetLastError        bool
+}
+
+type CreatePlanSnapshotInput struct {
+	TaskID  string
+	Version int64
+	Source  string
+	Payload string
+}
+
 func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
@@ -512,4 +530,86 @@ func (r *Repository) ListPlanSnapshotsByTaskID(ctx context.Context, taskID strin
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (r *Repository) UpdateTask(ctx context.Context, taskID string, input UpdateTaskInput) (*Task, error) {
+	currentTask, err := r.FindTaskByID(ctx, taskID)
+	if err != nil || currentTask == nil {
+		return currentTask, err
+	}
+
+	nextTask := *currentTask
+	nextTask.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	nextTask.Version++
+
+	if input.Status != nil {
+		nextTask.Status = *input.Status
+	}
+	if input.PlanVersion != nil {
+		nextTask.PlanVersion = *input.PlanVersion
+	}
+	if input.SetCurrentPlanJSON {
+		nextTask.CurrentPlanJSON = input.CurrentPlanJSON
+	}
+	if input.SetApprovedPlanJSON {
+		nextTask.ApprovedPlanJSON = input.ApprovedPlanJSON
+	}
+	if input.SetLastError {
+		nextTask.LastError = input.LastError
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		UPDATE tasks
+		SET
+			status = ?,
+			plan_version = ?,
+			current_plan_json = ?,
+			approved_plan_json = ?,
+			last_error = ?,
+			updated_at = ?,
+			version = ?
+		WHERE id = ?
+	`,
+		nextTask.Status,
+		nextTask.PlanVersion,
+		nextTask.CurrentPlanJSON,
+		nextTask.ApprovedPlanJSON,
+		nextTask.LastError,
+		nextTask.UpdatedAt,
+		nextTask.Version,
+		taskID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &nextTask, nil
+}
+
+func (r *Repository) CreatePlanSnapshot(ctx context.Context, input CreatePlanSnapshotInput) (*PlanSnapshot, error) {
+	record := &PlanSnapshot{
+		ID:        uuid.NewString(),
+		TaskID:    input.TaskID,
+		Version:   input.Version,
+		Source:    input.Source,
+		Payload:   input.Payload,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO plan_snapshots (id, task_id, version, source, payload, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`,
+		record.ID,
+		record.TaskID,
+		record.Version,
+		record.Source,
+		record.Payload,
+		record.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return record, nil
 }

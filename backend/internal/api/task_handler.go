@@ -14,7 +14,22 @@ func (h *Handler) ListTaskTemplates(w http.ResponseWriter, r *http.Request) {
 	})
 }
 func (h *Handler) CreateGuidedTask(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "guided task creation")
+	var input task.CreateGuidedTaskRequest
+	if err := decodeJSON(r, &input); err != nil {
+		respondTaskError(w, &task.Error{
+			Code:    "INVALID_REQUEST_BODY",
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	result, serviceError := h.taskService.CreateGuidedTask(r.Context(), input)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, result)
 }
 func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	var input task.CreateTaskRequest
@@ -82,7 +97,26 @@ func (h *Handler) SendMailboxMessage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UpdateCurrentPlan(w http.ResponseWriter, r *http.Request) {
 	notImplemented(w, "current plan update")
 }
-func (h *Handler) PlanSeed(w http.ResponseWriter, r *http.Request) { notImplemented(w, "plan seed") }
+func (h *Handler) PlanSeed(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+
+	var input task.PlanSeedRequest
+	if err := decodeJSON(r, &input); err != nil {
+		respondTaskError(w, &task.Error{
+			Code:    "INVALID_REQUEST_BODY",
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	result, serviceError := h.taskService.ApplyPlanSeed(r.Context(), taskID, input)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
 func (h *Handler) ApprovePlan(w http.ResponseWriter, r *http.Request) {
 	notImplemented(w, "plan approval")
 }

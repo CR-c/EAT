@@ -273,6 +273,10 @@ Go：
 - 已完成 Go 侧 `/api/tasks` 基础创建
 - 已完成 Go 侧 `/api/projects/{projectId}/tasks`
 - 已完成 Go 侧 `/api/tasks/{taskId}` 基础详情读取
+- 已完成 Go 侧 `/api/guided-tasks` 静态模板建单与 `PLAN_REVIEW` 初始化
+- 已完成 Go 侧 `/api/tasks/{taskId}/plan-seed` 模板 seed 写路径
+- 已完成 plan snapshot append-only 基础落库
+- 已补齐 guided task / plan seed 的 Go API 测试与错误用例覆盖
 
 ### Phase D：衍生服务迁移
 
@@ -422,7 +426,7 @@ Go：
 
 下一步唯一优先项：
 
-- 在 Go 侧补齐 guided task / plan seed / plan snapshot 等 Phase C 剩余静态 task 写路径，并补更多创建错误用例覆盖
+- 继续补齐 Phase C 剩余静态 task 写路径，优先 current plan update / approve-plan / restore-plan-snapshot
 
 ---
 

@@ -88,7 +88,7 @@ func mapProjectErrorStatus(code string) int {
 
 func mapTaskErrorStatus(code string) int {
 	switch code {
-	case task.ErrorCodeTaskNotFound:
+	case task.ErrorCodeTaskNotFound, task.ErrorCodeProjectNotFound, task.ErrorCodePlanTemplateNotFound, task.ErrorCodeAttachmentPathNotFound:
 		return http.StatusNotFound
 	default:
 		return http.StatusBadRequest
