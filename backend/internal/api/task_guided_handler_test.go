@@ -546,6 +546,84 @@ func TestApprovePlanEndpointFreezesPlanAndMaterializesSubTasks(t *testing.T) {
 	if len(detailPayload["subTasks"].([]any)) != 2 {
 		t.Fatalf("unexpected persisted subtasks after approval: %#v", detailPayload["subTasks"])
 	}
+	if len(detailPayload["sessions"].([]any)) != 1 {
+		t.Fatalf("unexpected persisted sessions after approval: %#v", detailPayload["sessions"])
+	}
+	sessionPayload := detailPayload["sessions"].([]any)[0].(map[string]any)
+	if sessionPayload["sessionType"] != "WORKER" || sessionPayload["status"] != "PENDING" {
+		t.Fatalf("unexpected worker session payload after approval: %#v", sessionPayload)
+	}
+}
+
+func TestApprovePlanEndpointCreatesWorkerSessionsForEachLaunchableRootSubTask(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	insertProjectAndTask(t, db, "project-1", "task-approve-parallel", "PLAN_REVIEW", 1, `{"subtasks":[{"title":"Backend slice","description":"Independent backend work.","recommended_agent":"codex-cli","branch_suffix":"backend-slice"},{"title":"Frontend slice","description":"Independent frontend work.","recommended_agent":"claude-cli","branch_suffix":"frontend-slice"},{"title":"Integration verify","description":"Depends on both roots.","recommended_agent":"codex-cli","branch_suffix":"integration-verify","depends_on":["backend-slice","frontend-slice"]}]}`)
+
+	if _, err := db.Exec(`
+		INSERT INTO plan_snapshots (id, task_id, version, source, payload, created_at)
+		VALUES (
+			'snapshot-seed-parallel', 'task-approve-parallel', 1, 'LEAD_GENERATED',
+			'{"subtasks":[{"title":"Backend slice","description":"Independent backend work.","recommended_agent":"codex-cli","branch_suffix":"backend-slice"},{"title":"Frontend slice","description":"Independent frontend work.","recommended_agent":"claude-cli","branch_suffix":"frontend-slice"},{"title":"Integration verify","description":"Depends on both roots.","recommended_agent":"codex-cli","branch_suffix":"integration-verify","depends_on":["backend-slice","frontend-slice"]}]}',
+			'2026-03-24T00:00:03Z'
+		)
+	`); err != nil {
+		t.Fatalf("insert seed snapshot: %v", err)
+	}
+
+	router := NewRouter(NewHandler(Dependencies{
+		DB:  db,
+		Bus: eventbus.New(),
+	}))
+
+	request := httptest.NewRequest(http.MethodPost, "/api/tasks/task-approve-parallel/approve-plan", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("unexpected approve plan status: %d body=%s", response.Code, response.Body.String())
+	}
+
+	detailRequest := httptest.NewRequest(http.MethodGet, "/api/tasks/task-approve-parallel", nil)
+	detailResponse := httptest.NewRecorder()
+	router.ServeHTTP(detailResponse, detailRequest)
+	if detailResponse.Code != http.StatusOK {
+		t.Fatalf("unexpected detail status after approval: %d body=%s", detailResponse.Code, detailResponse.Body.String())
+	}
+
+	var detailPayload map[string]any
+	if err := json.Unmarshal(detailResponse.Body.Bytes(), &detailPayload); err != nil {
+		t.Fatalf("decode detail response after approval: %v", err)
+	}
+
+	if len(detailPayload["subTasks"].([]any)) != 3 {
+		t.Fatalf("unexpected persisted subtasks after approval: %#v", detailPayload["subTasks"])
+	}
+	if len(detailPayload["sessions"].([]any)) != 2 {
+		t.Fatalf("unexpected persisted sessions after approval: %#v", detailPayload["sessions"])
+	}
+
+	seenSubTasks := map[string]bool{}
+	for _, raw := range detailPayload["sessions"].([]any) {
+		sessionPayload := raw.(map[string]any)
+		if sessionPayload["sessionType"] != "WORKER" || sessionPayload["status"] != "PENDING" {
+			t.Fatalf("unexpected worker session payload after parallel approval: %#v", sessionPayload)
+		}
+		subTaskID, _ := sessionPayload["subTaskId"].(string)
+		if subTaskID == "" {
+			t.Fatalf("expected session subTaskId after parallel approval: %#v", sessionPayload)
+		}
+		seenSubTasks[subTaskID] = true
+	}
+	if len(seenSubTasks) != 2 {
+		t.Fatalf("expected two distinct launched subtasks, got: %#v", seenSubTasks)
+	}
 }
 
 func insertProjectAndTask(t *testing.T, db *store.DB, projectID, taskID, status string, planVersion int, currentPlanJSON string) {

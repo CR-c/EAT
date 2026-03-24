@@ -259,6 +259,7 @@ type ApprovePlanResult struct {
 	ApprovedSnapshot *PlanSnapshot      `json:"approvedSnapshot,omitempty"`
 	CurrentPlan      tasktemplates.Plan `json:"currentPlan"`
 	Idempotent       bool               `json:"idempotent"`
+	Sessions         []Session          `json:"sessions,omitempty"`
 	SubTasks         []SubTask          `json:"subTasks"`
 	Task             *Task              `json:"task"`
 }
@@ -802,6 +803,7 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 		}
 
 		subTasks := make([]SubTask, 0, len(planNodes(normalizedPlan)))
+		sessions := make([]Session, 0, len(planNodes(normalizedPlan)))
 		seedTime := time.Now().UTC()
 		for index, node := range planNodes(normalizedPlan) {
 			dependencyBranchSuffixes := append([]string(nil), node.DependsOn...)
@@ -838,6 +840,25 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 				return createErr
 			}
 			subTasks = append(subTasks, *subTask)
+
+			if status != subTaskStatusPending {
+				continue
+			}
+
+			sessionRecord, sessionErr := repository.CreateSession(ctx, CreateSessionInput{
+				TaskID:               taskID,
+				SubTaskID:            &subTask.ID,
+				AgentType:            subTask.AgentType,
+				SessionType:          sessionTypeWorker,
+				SandboxType:          sessionSandboxDocker,
+				Status:               "PENDING",
+				OutputBuffer:         "",
+				OutputBufferMaxBytes: 65536,
+			})
+			if sessionErr != nil {
+				return sessionErr
+			}
+			sessions = append(sessions, *sessionRecord)
 		}
 
 		executingStatus := "EXECUTING"
@@ -856,6 +877,7 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 
 		result.ApprovedSnapshot = approvedSnapshot
 		result.Idempotent = false
+		result.Sessions = sessions
 		result.SubTasks = subTasks
 		result.Task = executingTask
 		return nil
@@ -876,6 +898,10 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 			subTaskCopy := subTask
 			s.publishSubTaskAssigned(taskID, &subTaskCopy)
 			s.publishSubTaskStatus(taskID, &subTaskCopy)
+		}
+		for _, session := range result.Sessions {
+			sessionCopy := session
+			s.publishSession(taskID, "session:started", &sessionCopy)
 		}
 		s.publishTeamUpdated(taskID)
 	}
