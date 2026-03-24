@@ -1,9 +1,15 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+
+	"eat/backend/internal/tasktemplates"
+)
 
 func (h *Handler) ListTaskTemplates(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "task template listing")
+	respondJSON(w, http.StatusOK, map[string]any{
+		"templates": tasktemplates.List(),
+	})
 }
 func (h *Handler) CreateGuidedTask(w http.ResponseWriter, r *http.Request) {
 	notImplemented(w, "guided task creation")
