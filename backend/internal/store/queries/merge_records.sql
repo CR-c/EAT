@@ -1,0 +1,1 @@
+-- Placeholder sqlc query file for merge record queries during the Go migration.

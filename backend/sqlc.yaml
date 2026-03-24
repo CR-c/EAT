@@ -1,0 +1,9 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "./internal/store/queries"
+    schema: "../prisma/migrations"
+    gen:
+      go:
+        package: "db"
+        out: "./internal/store/db"

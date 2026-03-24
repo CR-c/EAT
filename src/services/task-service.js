@@ -3693,14 +3693,6 @@ export class TaskService {
       const reviewResult = await this.#runIncrementalReview(taskId, subTaskId, sessionId);
       const decision = reviewResult?.decision;
 
-      if (decision === "REWORK") {
-        await this.#autoReworkSubTask(taskId, subTaskId);
-
-        await this.#progressDependencySchedule(taskId);
-        await this.#maybeStartFinalReview(taskId);
-        return;
-      }
-
       if (decision === "REJECTED") {
         await this.#progressDependencySchedule(taskId);
         await this.#maybeStartFinalReview(taskId);
@@ -6350,16 +6342,9 @@ function mapFinalReviewDecisionToSubTaskStatus(decision) {
 }
 
 function mapIncrementalReviewDecisionToSubTaskStatus(decision) {
-  switch (decision) {
-    case "REWORK":
-      return SUBTASK_STATUS.REWORK_REQUIRED;
-    case "REJECTED":
-      return SUBTASK_STATUS.REWORK_REQUIRED;
-    case "ACCEPTED":
-      return null;
-    default:
-      return null;
-  }
+  // Incremental review is advisory only. Final review is the only
+  // authoritative phase that may transition a subtask to rework/discard states.
+  return null;
 }
 
 function buildFinalReviewActionRequiredReason(subTasks) {

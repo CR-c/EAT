@@ -1,0 +1,1 @@
+-- Placeholder sqlc query file for subtask queries during the Go migration.
