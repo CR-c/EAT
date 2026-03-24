@@ -6,13 +6,6 @@ import (
 	"time"
 )
 
-func (h *Handler) HandleRoot(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, map[string]any{
-		"name":   "eat-backend",
-		"status": "ok",
-	})
-}
-
 func (h *Handler) SystemHealth(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]any{
 		"status":         "healthy",

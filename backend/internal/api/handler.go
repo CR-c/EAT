@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 
 	"eat/backend/internal/agent"
@@ -21,6 +22,7 @@ type Dependencies struct {
 	DB             *store.DB
 	Bus            *eventbus.Bus
 	UploadRootPath string
+	UIRootPath     string
 	PreviewService *preview.Service
 }
 
@@ -33,6 +35,7 @@ type Handler struct {
 	projectService *project.Service
 	agentService   *agent.Service
 	taskService    *task.Service
+	uiRootPath     string
 }
 
 func NewHandler(deps Dependencies) *Handler {
@@ -41,6 +44,7 @@ func NewHandler(deps Dependencies) *Handler {
 	if deps.UploadRootPath != "" {
 		uploadRootPath = deps.UploadRootPath
 	}
+	uiRootPath := resolveUIRootPath(deps.UIRootPath)
 
 	previewService := deps.PreviewService
 	if previewService == nil {
@@ -59,6 +63,7 @@ func NewHandler(deps Dependencies) *Handler {
 		previewService: previewService,
 		projectService: project.NewService(project.NewRepository(deps.DB.DB)),
 		agentService:   agent.NewService(sandboxManager),
+		uiRootPath:     uiRootPath,
 		taskService: task.NewService(task.Dependencies{
 			Repository:        task.NewRepository(deps.DB.DB),
 			ProjectRepository: project.NewRepository(deps.DB.DB),
@@ -179,4 +184,28 @@ func notImplemented(w http.ResponseWriter, scope string) {
 			"message": scope + " is scaffolded in Go but not migrated yet.",
 		},
 	})
+}
+
+func resolveUIRootPath(explicitPath string) string {
+	candidates := make([]string, 0, 5)
+	if explicitPath != "" {
+		candidates = append(candidates, explicitPath)
+	}
+	candidates = append(candidates,
+		filepath.Join(".", "src", "ui"),
+		filepath.Join("..", "src", "ui"),
+		filepath.Join("..", "..", "src", "ui"),
+		filepath.Join("..", "..", "..", "src", "ui"),
+	)
+
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(candidate, "index.html")); err == nil {
+			return candidate
+		}
+	}
+
+	return ""
 }

@@ -446,7 +446,10 @@ Go：
 
 当前状态：
 
-- 未开始
+- 进行中
+- 已完成 `npm start` 默认切换到 Go `backend/cmd/eat`
+- 已保留 `npm run start:node` 作为显式 Node 回滚入口
+- 已补齐 Go 侧 `/` 与静态 UI 资源承载，使现有前端可直接挂在 Go 入口下运行
 
 ---
 

@@ -18,6 +18,7 @@ import (
 func main() {
 	addr := envOrDefault("EAT_BACKEND_ADDR", ":8080")
 	dbPath := envOrDefault("EAT_BACKEND_DB_PATH", filepath.Join(".eat", "eat.db"))
+	uiRootPath := os.Getenv("EAT_UI_ROOT")
 
 	db, err := store.Open(dbPath)
 	if err != nil {
@@ -27,8 +28,9 @@ func main() {
 
 	bus := eventbus.New()
 	handler := api.NewHandler(api.Dependencies{
-		DB:  db,
-		Bus: bus,
+		DB:         db,
+		Bus:        bus,
+		UIRootPath: uiRootPath,
 	})
 
 	server := &http.Server{
