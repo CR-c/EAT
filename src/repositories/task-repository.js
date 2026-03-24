@@ -2,6 +2,15 @@ import { randomUUID } from "node:crypto";
 
 import { createDatabaseConnection, DEFAULT_DATABASE_PATH } from "./database.js";
 
+export class OptimisticLockError extends Error {
+  constructor(entityId, expectedVersion) {
+    super(`Optimistic lock conflict: entity ${entityId} was modified (expected version ${expectedVersion})`);
+    this.name = "OptimisticLockError";
+    this.entityId = entityId;
+    this.expectedVersion = expectedVersion;
+  }
+}
+
 export const TASK_STATUS = Object.freeze({
   ACTION_REQUIRED: "ACTION_REQUIRED",
   CANCELLED: "CANCELLED",
@@ -848,6 +857,7 @@ export class SqliteTaskRepository {
       taskId: input.taskId,
       title: input.title,
       updatedAt: input.updatedAt ?? timestamp,
+      version: 0,
       worktreePath: input.worktreePath ?? null,
     };
     subTask.runSummary = subTask.runSummary ?? buildSubTaskRunSummary(subTask);
@@ -937,6 +947,7 @@ export class SqliteTaskRepository {
           execution_order AS executionOrder,
           assignment_source AS assignmentSource,
           run_summary AS runSummary,
+          version,
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM sub_tasks
@@ -967,6 +978,7 @@ export class SqliteTaskRepository {
     const nextSubTask = {
       ...existingSubTask,
       ...updates,
+      version: (existingSubTask.version ?? 0) + 1,
       updatedAt: updates.updatedAt ?? new Date().toISOString(),
     };
     nextSubTask.role = normalizeOptionalString(nextSubTask.role) ?? inferSubTaskRole(nextSubTask.branchSuffix, nextSubTask.title);
@@ -976,7 +988,7 @@ export class SqliteTaskRepository {
       ?? (nextSubTask.autoAssigned ? SUBTASK_ASSIGNMENT_SOURCE.LEAD : SUBTASK_ASSIGNMENT_SOURCE.OPERATOR);
     nextSubTask.runSummary = normalizeOptionalString(nextSubTask.runSummary) ?? buildSubTaskRunSummary(nextSubTask);
 
-    this.#getDatabase()
+    const result = this.#getDatabase()
       .prepare(`
         UPDATE sub_tasks
         SET
@@ -1000,8 +1012,9 @@ export class SqliteTaskRepository {
           execution_order = ?,
           assignment_source = ?,
           run_summary = ?,
+          version = ?,
           updated_at = ?
-        WHERE id = ?
+        WHERE id = ? AND version = ?
       `)
       .run(
         nextSubTask.title,
@@ -1024,9 +1037,15 @@ export class SqliteTaskRepository {
         nextSubTask.executionOrder,
         nextSubTask.assignmentSource,
         nextSubTask.runSummary,
+        nextSubTask.version,
         nextSubTask.updatedAt,
         subTaskId,
+        existingSubTask.version ?? 0,
       );
+
+    if (result.changes === 0) {
+      throw new OptimisticLockError(subTaskId, existingSubTask.version ?? 0);
+    }
 
     return nextSubTask;
   }
@@ -1057,6 +1076,7 @@ export class SqliteTaskRepository {
           execution_order AS executionOrder,
           assignment_source AS assignmentSource,
           run_summary AS runSummary,
+          version,
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM sub_tasks
@@ -1644,6 +1664,7 @@ export class SqliteTaskRepository {
           execution_order AS executionOrder,
           assignment_source AS assignmentSource,
           run_summary AS runSummary,
+          version,
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM sub_tasks
@@ -1791,6 +1812,65 @@ export class SqliteTaskRepository {
       database.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  /**
+   * Atomic CAS: increment retry_count and reset status to PENDING,
+   * only if retry_count < maxRetries and status is in allowedStatuses.
+   * Returns the updated row or null if no row matched.
+   */
+  atomicClaimRetry(subTaskId, maxRetries, allowedStatuses = ["FAILED", "RUNNING"]) {
+    const placeholders = allowedStatuses.map(() => "?").join(", ");
+    const row = this.#getDatabase()
+      .prepare(`
+        UPDATE sub_tasks
+        SET retry_count = retry_count + 1,
+            status = 'PENDING',
+            last_error = NULL,
+            version = version + 1,
+            updated_at = ?
+        WHERE id = ?
+          AND retry_count < ?
+          AND status IN (${placeholders})
+        RETURNING
+          id,
+          task_id AS taskId,
+          title,
+          description,
+          branch_suffix AS branchSuffix,
+          dependency_branch_suffixes_json AS dependencyBranchSuffixesJson,
+          branch_name AS branchName,
+          start_commit_sha AS startCommitSha,
+          worktree_path AS worktreePath,
+          agent_type AS agentType,
+          status,
+          auto_assigned AS autoAssigned,
+          retry_count AS retryCount,
+          last_error AS lastError,
+          latest_review_decision AS latestReviewDecision,
+          latest_review_phase AS latestReviewPhase,
+          latest_review_summary AS latestReviewSummary,
+          role,
+          display_name AS displayName,
+          execution_order AS executionOrder,
+          assignment_source AS assignmentSource,
+          run_summary AS runSummary,
+          version,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+      `)
+      .get(new Date().toISOString(), subTaskId, maxRetries, ...allowedStatuses);
+
+    if (!row) {
+      return null;
+    }
+
+    const { dependencyBranchSuffixesJson, ...rest } = row;
+    return {
+      ...rest,
+      autoAssigned: Boolean(row.autoAssigned),
+      dependencyBranchSuffixes: parseJsonStringArray(dependencyBranchSuffixesJson),
+    };
   }
 
   close() {

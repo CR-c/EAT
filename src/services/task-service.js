@@ -60,6 +60,7 @@ const MAX_FINAL_REVIEW_DIFF_BYTES = 32_768;
 const MAX_FINAL_REVIEW_LOG_BYTES = 32_768;
 const MAX_INCREMENTAL_REVIEW_LOG_BYTES = 32_768;
 const MAX_AUTO_REWORK_RETRIES = 2;
+const MAX_CONCURRENT_WORKERS = 6;
 const MAX_MAILBOX_PROMPT_MESSAGE_BYTES = 1_024;
 const FINAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
 const INCREMENTAL_REVIEW_DECISIONS = new Set(["ACCEPTED", "REJECTED", "REWORK"]);
@@ -3199,7 +3200,7 @@ export class TaskService {
       && areSubTaskDependenciesSatisfied(subTask, subTasks)
     ));
 
-    await Promise.allSettled(launchableSubTasks.map((subTask) => this.#launchSubTask(taskId, subTask.id)));
+    await Promise.allSettled(launchableSubTasks.slice(0, Math.max(0, MAX_CONCURRENT_WORKERS - this.runningWorkerSessions.size)).map((subTask) => this.#launchSubTask(taskId, subTask.id)));
   }
 
   async #progressDependencySchedule(taskId) {
@@ -3389,6 +3390,10 @@ export class TaskService {
           task,
         };
       } catch (error) {
+        // P8 fix: clean up metadata maps on launch failure to prevent leaks
+        this.workerLaunchMetadata.delete(preparedSubTask.id);
+        this.workerSessionMetadata.delete(session.id);
+
         await this.taskRepository.updateSession(session.id, {
           endedAt: new Date().toISOString(),
           exitCode: null,
@@ -3689,11 +3694,7 @@ export class TaskService {
       const decision = reviewResult?.decision;
 
       if (decision === "REWORK") {
-        const subTask = await this.taskRepository.findSubTaskById(subTaskId);
-
-        if (subTask && (subTask.retryCount ?? 0) < MAX_AUTO_REWORK_RETRIES) {
-          await this.#autoReworkSubTask(taskId, subTaskId, subTask);
-        }
+        await this.#autoReworkSubTask(taskId, subTaskId);
 
         await this.#progressDependencySchedule(taskId);
         await this.#maybeStartFinalReview(taskId);
@@ -3956,7 +3957,7 @@ export class TaskService {
     return { decision: persistedReview.decision };
   }
 
-  async #autoReworkSubTask(taskId, subTaskId, subTask) {
+  async #autoReworkSubTask(taskId, subTaskId) {
     if (this.closed) {
       return;
     }
@@ -3965,20 +3966,32 @@ export class TaskService {
       return;
     }
 
-    const pendingSubTask = await this.taskRepository.updateSubTask(subTaskId, {
-      lastError: null,
-      retryCount: (subTask.retryCount ?? 0) + 1,
-      status: SUBTASK_STATUS.PENDING,
-    });
+    // P1 fix: Atomic CAS — increment retry_count only if below limit and status allows
+    const pendingSubTask = this.taskRepository.atomicClaimRetry(
+      subTaskId,
+      MAX_AUTO_REWORK_RETRIES,
+      ["FAILED", "RUNNING", "REWORK_REQUIRED", "REVIEW_PENDING"],
+    );
+
+    if (!pendingSubTask) {
+      return; // Already at retry limit or claimed by another path
+    }
 
     this.#publish(taskId, "subtask:rework", {
-      description: subTask.description,
+      description: pendingSubTask.description,
       subtaskId: subTaskId,
       taskId,
     });
     this.#publishSubTaskStatus(taskId, pendingSubTask);
 
     await this.#launchSubTask(taskId, subTaskId);
+  }
+
+  // P3 fix: Synchronous CAS — no await gap between check and claim
+  #tryClaimFinalReview(taskId) {
+    if (this.pendingFinalReviews.has(taskId)) return false;
+    this.pendingFinalReviews.add(taskId);
+    return true;
   }
 
   async #maybeStartFinalReview(taskId) {
@@ -3990,52 +4003,56 @@ export class TaskService {
       return;
     }
 
-    if (this.pendingFinalReviews.has(taskId)) {
+    // Synchronous claim before any awaits — prevents double-trigger
+    if (!this.#tryClaimFinalReview(taskId)) {
       return;
     }
-
-    const task = await this.taskRepository.findTaskById(taskId);
-
-    if (!task || ![TASK_STATUS.ACTION_REQUIRED, TASK_STATUS.EXECUTING].includes(task.status)) {
-      return;
-    }
-
-    const [sessions, subTasks] = await Promise.all([
-      this.taskRepository.listSessionsByTaskId(taskId),
-      this.taskRepository.listSubTasksByTaskId(taskId),
-    ]);
-
-    const hasLiveWorkerSession = sessions.some((session) => (
-      session.sessionType === SESSION_TYPE.WORKER && WORKER_LIVE_STATUSES.has(session.status)
-    ));
-
-    if (hasLiveWorkerSession || subTasks.some((subTask) => (
-      [SUBTASK_STATUS.PENDING, SUBTASK_STATUS.READY, SUBTASK_STATUS.RUNNING].includes(subTask.status)
-    ))) {
-      return;
-    }
-
-    const blockedSubTasks = subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.BLOCKED);
-
-    if (blockedSubTasks.length > 0) {
-      await this.#setTaskActionRequired(taskId, buildBlockedDependencyReason(blockedSubTasks, subTasks));
-      return;
-    }
-
-    const reviewPendingSubTasks = subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.REVIEW_PENDING);
-
-    if (reviewPendingSubTasks.length === 0) {
-      await this.#routeTaskForFinalReviewOutcome(taskId);
-      return;
-    }
-
-    if (reviewPendingSubTasks.some((subTask) => isEarlyReworkEligible(subTask))) {
-      return;
-    }
-
-    this.pendingFinalReviews.add(taskId);
 
     try {
+      const task = await this.taskRepository.findTaskById(taskId);
+
+      if (!task || ![TASK_STATUS.ACTION_REQUIRED, TASK_STATUS.EXECUTING].includes(task.status)) {
+        this.pendingFinalReviews.delete(taskId);
+        return;
+      }
+
+      const [sessions, subTasks] = await Promise.all([
+        this.taskRepository.listSessionsByTaskId(taskId),
+        this.taskRepository.listSubTasksByTaskId(taskId),
+      ]);
+
+      const hasLiveWorkerSession = sessions.some((session) => (
+        session.sessionType === SESSION_TYPE.WORKER && WORKER_LIVE_STATUSES.has(session.status)
+      ));
+
+      if (hasLiveWorkerSession || subTasks.some((subTask) => (
+        [SUBTASK_STATUS.PENDING, SUBTASK_STATUS.READY, SUBTASK_STATUS.RUNNING].includes(subTask.status)
+      ))) {
+        this.pendingFinalReviews.delete(taskId);
+        return;
+      }
+
+      const blockedSubTasks = subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.BLOCKED);
+
+      if (blockedSubTasks.length > 0) {
+        this.pendingFinalReviews.delete(taskId);
+        await this.#setTaskActionRequired(taskId, buildBlockedDependencyReason(blockedSubTasks, subTasks));
+        return;
+      }
+
+      const reviewPendingSubTasks = subTasks.filter((subTask) => subTask.status === SUBTASK_STATUS.REVIEW_PENDING);
+
+      if (reviewPendingSubTasks.length === 0) {
+        this.pendingFinalReviews.delete(taskId);
+        await this.#routeTaskForFinalReviewOutcome(taskId);
+        return;
+      }
+
+      if (reviewPendingSubTasks.some((subTask) => isEarlyReworkEligible(subTask))) {
+        this.pendingFinalReviews.delete(taskId);
+        return;
+      }
+
       await this.#updateTaskStatus(taskId, TASK_STATUS.REVIEWING, {
         currentTask: task,
         lastError: null,
@@ -5497,9 +5514,15 @@ export class TaskService {
 
     const subTask = await this.taskRepository.findSubTaskById(subTaskId);
 
-    if (subTask && (subTask.retryCount ?? 0) < MAX_AUTO_REWORK_RETRIES) {
-      await this.#autoReworkSubTask(entry.taskId, subTaskId, subTask);
-    } else {
+    // P1 fix: atomicClaimRetry handles retry limit check internally
+    const reworked = this.taskRepository.atomicClaimRetry(
+      subTaskId,
+      MAX_AUTO_REWORK_RETRIES,
+    );
+
+    if (reworked) {
+      await this.#autoReworkSubTask(entry.taskId, subTaskId);
+    } else if (subTask) {
       await this.taskRepository.updateSubTask(subTaskId, {
         lastError: reason,
         status: SUBTASK_STATUS.FAILED,

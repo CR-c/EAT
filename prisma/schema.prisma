@@ -100,6 +100,7 @@ model Task {
   currentPlanJson  String?        @map("current_plan_json")
   approvedPlanJson String?        @map("approved_plan_json")
   lastError        String?        @map("last_error")
+  version          Int            @default(0)
   archivedAt       DateTime?      @map("archived_at")
   createdAt        DateTime       @map("created_at")
   updatedAt        DateTime       @map("updated_at")
@@ -147,6 +148,7 @@ model SubTask {
   executionOrder       Int?          @map("execution_order")
   assignmentSource     String?       @map("assignment_source")
   runSummary           String?       @map("run_summary")
+  version              Int           @default(0)
   createdAt            DateTime      @map("created_at")
   updatedAt            DateTime      @map("updated_at")
   mergeRecords         MergeRecord[]
