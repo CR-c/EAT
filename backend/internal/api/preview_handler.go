@@ -20,7 +20,7 @@ func (h *Handler) GetTaskPreview(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) StartTaskPreview(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
 	var input preview.StartTaskPreviewRequest
-	if err := decodeJSON(r, &input); err != nil {
+	if err := decodeOptionalJSON(r, &input); err != nil {
 		respondPreviewError(w, &preview.Error{
 			Code:    "INVALID_REQUEST_BODY",
 			Message: "Request body must be valid JSON.",

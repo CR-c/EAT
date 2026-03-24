@@ -70,6 +70,43 @@ func TestPreviewEndpointsServePreviewServiceContract(t *testing.T) {
 	}
 }
 
+func TestPreviewStartEndpointAcceptsEmptyBodyLikeNodeContract(t *testing.T) {
+	repoPath := t.TempDir()
+	previewRoot := t.TempDir()
+	harness := &previewRunnerHarness{readyURLs: map[string]bool{}}
+
+	service := preview.NewService(preview.Dependencies{
+		ProjectRepository: apiPreviewProjectRepository{project: &project.Project{ID: "proj-1", Name: "Preview Repo", Path: repoPath}},
+		TaskRepository: apiPreviewTaskRepository{
+			task: &task.Task{ID: "task-1", ProjectID: "proj-1", BaseBranch: "main", TaskBranchName: stringPtr("eat/task-main")},
+		},
+		PreviewRootPath: previewRoot,
+		Runner:          harness,
+		RunCommand: func(ctx context.Context, binary string, args ...string) error {
+			if strings.Contains(strings.Join(args, " "), " worktree add ") || contains(args, "add") {
+				worktreePath := args[5]
+				if err := os.MkdirAll(filepath.Join(worktreePath, "apps", "web"), 0o755); err != nil {
+					return err
+				}
+				return os.WriteFile(filepath.Join(worktreePath, "apps", "web", "package.json"), []byte(`{"name":"preview-web","scripts":{"dev":"vite"},"dependencies":{"vite":"^5.0.0","react":"^18.0.0"},"packageManager":"pnpm@9.0.0"}`), 0o644)
+			}
+			if contains(args, "remove") {
+				return os.RemoveAll(args[5])
+			}
+			return nil
+		},
+		FetchReady: func(url string) bool { return harness.readyURLs[url] },
+	})
+
+	router := NewRouter(&Handler{previewService: service})
+
+	startResponse := httptest.NewRecorder()
+	router.ServeHTTP(startResponse, httptest.NewRequest(http.MethodPost, "/api/tasks/task-1/preview/start", nil))
+	if startResponse.Code != http.StatusOK {
+		t.Fatalf("unexpected start preview status with empty body: %d body=%s", startResponse.Code, startResponse.Body.String())
+	}
+}
+
 type apiPreviewProjectRepository struct {
 	project *project.Project
 }
