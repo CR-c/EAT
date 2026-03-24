@@ -300,10 +300,11 @@ Go：
 
 当前状态：
 
-- 进行中
+- 已完成
 - 已完成 Go 侧 `metrics summary / export` 真实实现
 - 已补齐 metrics Go API 测试
-- `preview` 仍未开始
+- 已完成 Go 侧 `preview` read model / start / stop 真实实现
+- 已补齐 preview service 与 preview API 的 Go 测试
 
 ### Phase E：Task 生命周期写接口
 
@@ -326,7 +327,7 @@ Go：
 
 当前状态：
 
-- 未开始
+- 进行中
 
 ### Phase F：Orchestrator 核心迁移
 
@@ -429,11 +430,11 @@ Go：
 
 当前正在执行：
 
-- Phase D
+- Phase E
 
 下一步唯一优先项：
 
-- 继续补齐 Phase D 剩余 `preview` read model / start / stop，再进入 Phase E 的 clarification / archive / pause / resume / delete 等生命周期写接口
+- 继续补齐 Phase E 的 clarification / messages / archive / unarchive / pause / resume / delete 等生命周期写接口，再进入 Phase F 的 orchestrator 主链路迁移
 
 ---
 

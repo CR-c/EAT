@@ -8,6 +8,7 @@ import (
 	"eat/backend/internal/agent"
 	"eat/backend/internal/eventbus"
 	"eat/backend/internal/metrics"
+	"eat/backend/internal/preview"
 	"eat/backend/internal/project"
 	"eat/backend/internal/sandbox"
 	"eat/backend/internal/store"
@@ -18,6 +19,7 @@ type Dependencies struct {
 	DB             *store.DB
 	Bus            *eventbus.Bus
 	UploadRootPath string
+	PreviewService *preview.Service
 }
 
 type Handler struct {
@@ -25,6 +27,7 @@ type Handler struct {
 	bus            *eventbus.Bus
 	sandbox        *sandbox.Manager
 	metricsService *metrics.Service
+	previewService *preview.Service
 	projectService *project.Service
 	agentService   *agent.Service
 	taskService    *task.Service
@@ -37,11 +40,21 @@ func NewHandler(deps Dependencies) *Handler {
 		uploadRootPath = deps.UploadRootPath
 	}
 
+	previewService := deps.PreviewService
+	if previewService == nil {
+		previewService = preview.NewService(preview.Dependencies{
+			ProjectRepository: project.NewRepository(deps.DB.DB),
+			TaskRepository:    task.NewRepository(deps.DB.DB),
+			PreviewRootPath:   filepath.Join(".", ".eat-preview-worktrees"),
+		})
+	}
+
 	return &Handler{
 		db:             deps.DB,
 		bus:            deps.Bus,
 		sandbox:        sandboxManager,
 		metricsService: metrics.NewService(deps.DB.DB),
+		previewService: previewService,
 		projectService: project.NewService(project.NewRepository(deps.DB.DB)),
 		agentService:   agent.NewService(sandboxManager),
 		taskService: task.NewService(task.Dependencies{
@@ -72,6 +85,12 @@ func respondProjectError(w http.ResponseWriter, err *project.Error) {
 
 func respondTaskError(w http.ResponseWriter, err *task.Error) {
 	respondJSON(w, mapTaskErrorStatus(err.Code), map[string]any{
+		"error": err,
+	})
+}
+
+func respondPreviewError(w http.ResponseWriter, err *preview.Error) {
+	respondJSON(w, mapPreviewErrorStatus(err.Code), map[string]any{
 		"error": err,
 	})
 }
@@ -109,6 +128,15 @@ func mapTaskErrorStatus(code string) int {
 		"PLAN_SNAPSHOT_CREATE_FAILED",
 		"PROJECT_READ_FAILED":
 		return http.StatusInternalServerError
+	default:
+		return http.StatusBadRequest
+	}
+}
+
+func mapPreviewErrorStatus(code string) int {
+	switch code {
+	case preview.ErrorCodeTaskNotFound, preview.ErrorCodeProjectNotFound, preview.ErrorCodePreviewTargetNotFound:
+		return http.StatusNotFound
 	default:
 		return http.StatusBadRequest
 	}
