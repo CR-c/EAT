@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"eat/backend/internal/agent"
 	"eat/backend/internal/git"
@@ -18,6 +19,7 @@ import (
 
 const (
 	ErrorCodeInvalidPlan               = "INVALID_PLAN"
+	ErrorCodePlanSnapshotNotFound      = "PLAN_SNAPSHOT_NOT_FOUND"
 	ErrorCodePlanTemplateNotFound      = "PLAN_TEMPLATE_NOT_FOUND"
 	ErrorCodePlanTemplateRequired      = "PLAN_TEMPLATE_REQUIRED"
 	ErrorCodeAttachmentContentRequired = "ATTACHMENT_CONTENT_REQUIRED"
@@ -42,6 +44,11 @@ const (
 
 const maxAttachmentBytes = 10 * 1024 * 1024
 const planSnapshotSourceLeadGenerated = "LEAD_GENERATED"
+const planSnapshotSourceApproved = "APPROVED"
+const planSnapshotSourceRestoredFromHistory = "RESTORED_FROM_HISTORY"
+const subTaskAssignmentSourceLead = "LEAD"
+const subTaskStatusBlocked = "BLOCKED"
+const subTaskStatusPending = "PENDING"
 
 type Error struct {
 	Code    string         `json:"code"`
@@ -181,6 +188,30 @@ type PlanSeedResult struct {
 	Task        *Task                  `json:"task"`
 	CurrentPlan tasktemplates.Plan     `json:"currentPlan"`
 	Template    tasktemplates.Template `json:"template"`
+}
+
+type UpdateCurrentPlanResult struct {
+	Task        *Task              `json:"task"`
+	CurrentPlan tasktemplates.Plan `json:"currentPlan"`
+}
+
+type ApprovePlanResult struct {
+	ApprovalReady    bool               `json:"approvalReady"`
+	ApprovedSnapshot *PlanSnapshot      `json:"approvedSnapshot,omitempty"`
+	CurrentPlan      tasktemplates.Plan `json:"currentPlan"`
+	Idempotent       bool               `json:"idempotent"`
+	SubTasks         []SubTask          `json:"subTasks"`
+	Task             *Task              `json:"task"`
+}
+
+type RestorePlanSnapshotResult struct {
+	CurrentPlan tasktemplates.Plan `json:"currentPlan"`
+	SnapshotID  string             `json:"snapshotId"`
+	Task        *Task              `json:"task"`
+}
+
+type RestorePlanSnapshotRequest struct {
+	SnapshotID string `json:"snapshotId"`
 }
 
 func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*CreateTaskResult, *Error) {
@@ -437,6 +468,283 @@ func (s *Service) ApplyPlanSeed(ctx context.Context, taskID string, input PlanSe
 	}, nil
 }
 
+func (s *Service) UpdateCurrentPlan(ctx context.Context, taskID string, input tasktemplates.Plan) (*UpdateCurrentPlanResult, *Error) {
+	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})
+	}
+	if taskRecord.Status != "PLAN_REVIEW" {
+		return nil, failure(
+			ErrorCodeTaskNotPlanReview,
+			"Plan drafts can only be edited during PLAN_REVIEW.",
+			map[string]any{"status": taskRecord.Status, "taskId": taskID},
+		)
+	}
+
+	normalizedPlan, validationError := s.normalizeAndValidatePlan(input)
+	if validationError != nil {
+		return nil, validationError
+	}
+
+	currentPlanJSONBytes, err := json.Marshal(normalizedPlan)
+	if err != nil {
+		return nil, failure("PLAN_SERIALIZATION_FAILED", err.Error(), nil)
+	}
+	currentPlanJSON := string(currentPlanJSONBytes)
+
+	nextTask, err := s.repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+		CurrentPlanJSON:    &currentPlanJSON,
+		SetCurrentPlanJSON: true,
+		LastError:          nil,
+		SetLastError:       true,
+	})
+	if err != nil {
+		return nil, failure("TASK_CURRENT_PLAN_UPDATE_FAILED", err.Error(), nil)
+	}
+
+	return &UpdateCurrentPlanResult{
+		Task:        nextTask,
+		CurrentPlan: normalizedPlan,
+	}, nil
+}
+
+func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanResult, *Error) {
+	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})
+	}
+
+	if taskRecord.Status == "EXECUTING" && taskRecord.ApprovedPlanJSON != nil && strings.TrimSpace(*taskRecord.ApprovedPlanJSON) != "" {
+		currentPlan := parsePlanJSON(*taskRecord.ApprovedPlanJSON)
+		if currentPlan == nil {
+			currentPlan = parsePlanJSON(derefString(taskRecord.CurrentPlanJSON))
+		}
+		if currentPlan == nil {
+			return nil, failure(ErrorCodeInvalidPlan, "Stored approved plan is not valid JSON.", map[string]any{"taskId": taskID})
+		}
+
+		subTasks, listErr := s.repository.ListSubTasksByTaskID(ctx, taskID)
+		if listErr != nil {
+			return nil, failure("TASK_SUBTASKS_READ_FAILED", listErr.Error(), nil)
+		}
+
+		return &ApprovePlanResult{
+			ApprovalReady: true,
+			CurrentPlan:   *currentPlan,
+			Idempotent:    true,
+			SubTasks:      subTasks,
+			Task:          taskRecord,
+		}, nil
+	}
+
+	if taskRecord.Status != "PLAN_REVIEW" {
+		return nil, failure(
+			ErrorCodeTaskNotPlanReview,
+			"Plan approval is only available during PLAN_REVIEW.",
+			map[string]any{"status": taskRecord.Status, "taskId": taskID},
+		)
+	}
+
+	parsedPlan := parsePlanJSON(derefString(taskRecord.CurrentPlanJSON))
+	if parsedPlan == nil {
+		return nil, failure(ErrorCodeInvalidPlan, "Stored current plan is not valid JSON.", map[string]any{"taskId": taskID})
+	}
+	normalizedPlan, validationError := s.normalizeAndValidatePlan(*parsedPlan)
+	if validationError != nil {
+		return nil, validationError
+	}
+
+	approvedPlanJSONBytes, err := json.Marshal(normalizedPlan)
+	if err != nil {
+		return nil, failure("PLAN_SERIALIZATION_FAILED", err.Error(), nil)
+	}
+	approvedPlanJSON := string(approvedPlanJSONBytes)
+
+	result := &ApprovePlanResult{
+		ApprovalReady: true,
+		CurrentPlan:   normalizedPlan,
+	}
+
+	txErr := s.repository.RunInTransaction(ctx, func(repository *Repository) error {
+		currentTask, readErr := repository.FindTaskByID(ctx, taskID)
+		if readErr != nil {
+			return readErr
+		}
+		if currentTask == nil {
+			return serviceFailure{payload: failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})}
+		}
+		if currentTask.Status == "EXECUTING" && currentTask.ApprovedPlanJSON != nil && strings.TrimSpace(*currentTask.ApprovedPlanJSON) != "" {
+			subTasks, listErr := repository.ListSubTasksByTaskID(ctx, taskID)
+			if listErr != nil {
+				return listErr
+			}
+			result.Idempotent = true
+			result.SubTasks = subTasks
+			result.Task = currentTask
+			return nil
+		}
+		if currentTask.Status != "PLAN_REVIEW" {
+			return serviceFailure{payload: failure(
+				ErrorCodeTaskNotPlanReview,
+				"Plan approval is only available during PLAN_REVIEW.",
+				map[string]any{"status": currentTask.Status, "taskId": taskID},
+			)}
+		}
+
+		approvedTask, updateErr := repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+			CurrentPlanJSON:     &approvedPlanJSON,
+			SetCurrentPlanJSON:  true,
+			ApprovedPlanJSON:    &approvedPlanJSON,
+			SetApprovedPlanJSON: true,
+			LastError:           nil,
+			SetLastError:        true,
+		})
+		if updateErr != nil {
+			return updateErr
+		}
+
+		approvedSnapshot, snapshotErr := repository.CreatePlanSnapshot(ctx, CreatePlanSnapshotInput{
+			TaskID:  taskID,
+			Version: approvedTask.PlanVersion,
+			Source:  planSnapshotSourceApproved,
+			Payload: approvedPlanJSON,
+		})
+		if snapshotErr != nil {
+			return snapshotErr
+		}
+
+		subTasks := make([]SubTask, 0, len(planNodes(normalizedPlan)))
+		seedTime := time.Now().UTC()
+		for index, node := range planNodes(normalizedPlan) {
+			dependencyBranchSuffixes := append([]string(nil), node.DependsOn...)
+			role := stringPointer(node.Role)
+			displayName := stringPointer(node.Title)
+			executionOrder := int64(index + 1)
+			assignmentSource := stringPointer(subTaskAssignmentSourceLead)
+			status := subTaskStatusPending
+			if len(dependencyBranchSuffixes) > 0 {
+				status = subTaskStatusBlocked
+			}
+
+			createdAt := seedTime.Add(time.Duration(index) * time.Millisecond).Format(time.RFC3339Nano)
+			subTask, createErr := repository.CreateSubTask(ctx, CreateSubTaskInput{
+				TaskID:                   taskID,
+				Title:                    node.Title,
+				Description:              node.Description,
+				BranchSuffix:             node.BranchSuffix,
+				DependencyBranchSuffixes: dependencyBranchSuffixes,
+				BranchName:               nil,
+				StartCommitSHA:           nil,
+				WorktreePath:             nil,
+				AgentType:                node.RecommendedAgent,
+				Status:                   status,
+				AutoAssigned:             true,
+				Role:                     role,
+				DisplayName:              displayName,
+				ExecutionOrder:           &executionOrder,
+				AssignmentSource:         assignmentSource,
+				CreatedAt:                createdAt,
+				UpdatedAt:                createdAt,
+			})
+			if createErr != nil {
+				return createErr
+			}
+			subTasks = append(subTasks, *subTask)
+		}
+
+		executingStatus := "EXECUTING"
+		executingTask, updateExecutingErr := repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+			CurrentPlanJSON:     &approvedPlanJSON,
+			SetCurrentPlanJSON:  true,
+			Status:              &executingStatus,
+			ApprovedPlanJSON:    &approvedPlanJSON,
+			SetApprovedPlanJSON: true,
+			LastError:           nil,
+			SetLastError:        true,
+		})
+		if updateExecutingErr != nil {
+			return updateExecutingErr
+		}
+
+		result.ApprovedSnapshot = approvedSnapshot
+		result.Idempotent = false
+		result.SubTasks = subTasks
+		result.Task = executingTask
+		return nil
+	})
+	if txErr != nil {
+		var opErr serviceFailure
+		if errors.As(txErr, &opErr) {
+			return nil, opErr.payload
+		}
+		return nil, failure("TASK_APPROVAL_FAILED", txErr.Error(), nil)
+	}
+
+	return result, nil
+}
+
+func (s *Service) RestorePlanSnapshot(ctx context.Context, taskID string, input RestorePlanSnapshotRequest) (*RestorePlanSnapshotResult, *Error) {
+	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})
+	}
+	if taskRecord.Status != "PLAN_REVIEW" {
+		return nil, failure(
+			ErrorCodeTaskNotPlanReview,
+			"Plan restore is only available during PLAN_REVIEW.",
+			map[string]any{"status": taskRecord.Status, "taskId": taskID},
+		)
+	}
+
+	snapshotID := normalizeRequiredString(input.SnapshotID)
+	snapshot, err := s.repository.FindPlanSnapshotByID(ctx, snapshotID)
+	if err != nil {
+		return nil, failure("TASK_PLAN_SNAPSHOT_READ_FAILED", err.Error(), nil)
+	}
+	if snapshot == nil || snapshot.TaskID != taskID {
+		return nil, failure(ErrorCodePlanSnapshotNotFound, "Plan snapshot not found.", map[string]any{"snapshotId": snapshotID, "taskId": taskID})
+	}
+
+	currentPlan := parsePlanJSON(snapshot.Payload)
+	if currentPlan == nil {
+		return nil, failure(ErrorCodeInvalidPlan, "Stored plan snapshot is not valid JSON.", map[string]any{"snapshotId": snapshotID})
+	}
+
+	nextTask, err := s.repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+		CurrentPlanJSON:    &snapshot.Payload,
+		SetCurrentPlanJSON: true,
+		LastError:          nil,
+		SetLastError:       true,
+	})
+	if err != nil {
+		return nil, failure("TASK_RESTORE_FAILED", err.Error(), nil)
+	}
+
+	if _, err := s.repository.CreatePlanSnapshot(ctx, CreatePlanSnapshotInput{
+		TaskID:  taskID,
+		Version: nextTask.PlanVersion,
+		Source:  planSnapshotSourceRestoredFromHistory,
+		Payload: snapshot.Payload,
+	}); err != nil {
+		return nil, failure("PLAN_SNAPSHOT_CREATE_FAILED", err.Error(), nil)
+	}
+
+	return &RestorePlanSnapshotResult{
+		CurrentPlan: *currentPlan,
+		SnapshotID:  snapshotID,
+		Task:        nextTask,
+	}, nil
+}
+
 type normalizedAttachment struct {
 	IDPrefix string
 	FileName string
@@ -644,12 +952,14 @@ func failure(code, message string, details map[string]any) *Error {
 }
 
 func validatePlan(plan tasktemplates.Plan) *Error {
-	if len(plan.Nodes) == 0 {
+	plan = normalizePlan(plan)
+	if len(planNodes(plan)) == 0 {
 		return failure(ErrorCodeInvalidPlan, "Plan must include at least one node.", nil)
 	}
 
-	knownNodes := make(map[string]bool, len(plan.Nodes))
-	for index, node := range plan.Nodes {
+	validAgents := knownExecutableAgents()
+	knownNodes := make(map[string]bool, len(planNodes(plan)))
+	for index, node := range planNodes(plan) {
 		if strings.TrimSpace(node.Title) == "" {
 			return failure(ErrorCodeInvalidPlan, "Plan nodes must include a title.", map[string]any{"index": index})
 		}
@@ -659,10 +969,19 @@ func validatePlan(plan tasktemplates.Plan) *Error {
 		if knownNodes[node.BranchSuffix] {
 			return failure(ErrorCodeInvalidPlan, "Plan branch_suffix values must be unique.", map[string]any{"branchSuffix": node.BranchSuffix})
 		}
+		if strings.TrimSpace(node.RecommendedAgent) == "" {
+			return failure(ErrorCodeInvalidPlan, "Plan nodes must include a recommended_agent.", map[string]any{"branchSuffix": node.BranchSuffix})
+		}
+		if !validAgents[node.RecommendedAgent] {
+			return failure(ErrorCodeInvalidPlan, "Plan nodes must target a known executable agent.", map[string]any{
+				"branchSuffix":     node.BranchSuffix,
+				"recommendedAgent": node.RecommendedAgent,
+			})
+		}
 		knownNodes[node.BranchSuffix] = true
 	}
 
-	for _, node := range plan.Nodes {
+	for _, node := range planNodes(plan) {
 		for _, dependency := range node.DependsOn {
 			if !knownNodes[dependency] {
 				return failure(ErrorCodeInvalidPlan, "Plan node depends_on references an unknown branch_suffix.", map[string]any{
@@ -674,6 +993,14 @@ func validatePlan(plan tasktemplates.Plan) *Error {
 	}
 
 	return nil
+}
+
+func (s *Service) normalizeAndValidatePlan(plan tasktemplates.Plan) (tasktemplates.Plan, *Error) {
+	normalizedPlan := normalizePlan(plan)
+	if validationError := validatePlan(normalizedPlan); validationError != nil {
+		return tasktemplates.Plan{}, validationError
+	}
+	return normalizedPlan, nil
 }
 
 func (s *Service) resolveDefaultTemplateAgentType(taskRecord *Task, requestedAgentType string) string {
@@ -692,4 +1019,73 @@ func (s *Service) resolveDefaultTemplateAgentType(taskRecord *Task, requestedAge
 	}
 
 	return "codex-cli"
+}
+
+func normalizePlan(plan tasktemplates.Plan) tasktemplates.Plan {
+	normalized := plan
+	if len(normalized.Nodes) == 0 && len(normalized.Subtasks) > 0 {
+		normalized.Nodes = append([]tasktemplates.Node(nil), normalized.Subtasks...)
+	}
+	if len(normalized.Subtasks) == 0 && len(normalized.Nodes) > 0 {
+		normalized.Subtasks = append([]tasktemplates.Node(nil), normalized.Nodes...)
+	}
+	if len(normalized.Nodes) > 0 && len(normalized.Subtasks) > 0 {
+		normalized.Nodes = append([]tasktemplates.Node(nil), normalized.Nodes...)
+		normalized.Subtasks = append([]tasktemplates.Node(nil), normalized.Subtasks...)
+	}
+	return normalized
+}
+
+func planNodes(plan tasktemplates.Plan) []tasktemplates.Node {
+	if len(plan.Nodes) > 0 {
+		return plan.Nodes
+	}
+	return plan.Subtasks
+}
+
+func parsePlanJSON(raw string) *tasktemplates.Plan {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	var plan tasktemplates.Plan
+	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+		return nil
+	}
+	normalized := normalizePlan(plan)
+	return &normalized
+}
+
+func knownExecutableAgents() map[string]bool {
+	return map[string]bool{
+		"claude-cli": true,
+		"codex-cli":  true,
+		"gemini-cli": true,
+	}
+}
+
+func stringPointer(value string) *string {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return nil
+	}
+	return &normalized
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+type serviceFailure struct {
+	payload *Error
+}
+
+func (f serviceFailure) Error() string {
+	if f.payload == nil {
+		return "service failure"
+	}
+	return f.payload.Code + ": " + f.payload.Message
 }

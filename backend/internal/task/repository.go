@@ -109,6 +109,7 @@ type PlanSnapshot struct {
 
 type Repository struct {
 	db *sql.DB
+	tx *sql.Tx
 }
 
 type UpdateTaskInput struct {
@@ -133,6 +134,12 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+type queryExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 func (r *Repository) CreateTask(ctx context.Context, input CreateTaskRecordInput) (*Task, error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	taskRecord := &Task{
@@ -155,7 +162,7 @@ func (r *Repository) CreateTask(ctx context.Context, input CreateTaskRecordInput
 		Version:          0,
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := r.exec().ExecContext(ctx, `
 		INSERT INTO tasks (
 			id, project_id, title, description, lead_agent_type, base_branch, base_commit_sha,
 			task_branch_name, status, plan_version, current_plan_json, approved_plan_json,
@@ -200,7 +207,7 @@ func (r *Repository) CreateAttachment(ctx context.Context, input CreateAttachmen
 		CreatedAt: now,
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := r.exec().ExecContext(ctx, `
 		INSERT INTO attachments (
 			id, task_id, file_name, file_path, file_type, mime_type, size, created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -242,7 +249,7 @@ type CreateAttachmentInput struct {
 }
 
 func (r *Repository) FindTaskByID(ctx context.Context, taskID string) (*Task, error) {
-	row := r.db.QueryRowContext(ctx, `
+	row := r.exec().QueryRowContext(ctx, `
 		SELECT
 			id,
 			project_id,
@@ -322,7 +329,7 @@ func (r *Repository) ListTasksByProjectID(ctx context.Context, projectID string,
 	}
 	query += " ORDER BY created_at DESC, id DESC"
 
-	rows, err := r.db.QueryContext(ctx, query, projectID)
+	rows, err := r.exec().QueryContext(ctx, query, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +366,7 @@ func (r *Repository) ListTasksByProjectID(ctx context.Context, projectID string,
 }
 
 func (r *Repository) ListMessagesByTaskID(ctx context.Context, taskID string) ([]Message, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := r.exec().QueryContext(ctx, `
 		SELECT id, task_id, sub_task_id, role, content, created_at
 		FROM messages
 		WHERE task_id = ?
@@ -382,7 +389,7 @@ func (r *Repository) ListMessagesByTaskID(ctx context.Context, taskID string) ([
 }
 
 func (r *Repository) ListAttachmentsByTaskID(ctx context.Context, taskID string) ([]Attachment, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := r.exec().QueryContext(ctx, `
 		SELECT id, task_id, file_name, file_path, file_type, mime_type, size, created_at
 		FROM attachments
 		WHERE task_id = ?
@@ -405,7 +412,7 @@ func (r *Repository) ListAttachmentsByTaskID(ctx context.Context, taskID string)
 }
 
 func (r *Repository) ListSessionsByTaskID(ctx context.Context, taskID string) ([]Session, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := r.exec().QueryContext(ctx, `
 		SELECT
 			id, task_id, sub_task_id, agent_type, session_type, sandbox_type, container_id,
 			status, pid, started_at, ended_at, exit_code, log_path, first_output_at,
@@ -450,7 +457,7 @@ func (r *Repository) ListSessionsByTaskID(ctx context.Context, taskID string) ([
 }
 
 func (r *Repository) ListSubTasksByTaskID(ctx context.Context, taskID string) ([]SubTask, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := r.exec().QueryContext(ctx, `
 		SELECT
 			id, task_id, title, description, branch_suffix, dependency_branch_suffixes_json,
 			branch_name, start_commit_sha, worktree_path, agent_type, status, auto_assigned,
@@ -510,11 +517,11 @@ func (r *Repository) ListSubTasksByTaskID(ctx context.Context, taskID string) ([
 }
 
 func (r *Repository) ListPlanSnapshotsByTaskID(ctx context.Context, taskID string) ([]PlanSnapshot, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := r.exec().QueryContext(ctx, `
 		SELECT id, task_id, version, source, payload, created_at
 		FROM plan_snapshots
 		WHERE task_id = ?
-		ORDER BY created_at ASC, id ASC
+		ORDER BY created_at DESC, id DESC
 	`, taskID)
 	if err != nil {
 		return nil, err
@@ -558,7 +565,7 @@ func (r *Repository) UpdateTask(ctx context.Context, taskID string, input Update
 		nextTask.LastError = input.LastError
 	}
 
-	_, err = r.db.ExecContext(ctx, `
+	_, err = r.exec().ExecContext(ctx, `
 		UPDATE tasks
 		SET
 			status = ?,
@@ -596,7 +603,7 @@ func (r *Repository) CreatePlanSnapshot(ctx context.Context, input CreatePlanSna
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := r.exec().ExecContext(ctx, `
 		INSERT INTO plan_snapshots (id, task_id, version, source, payload, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`,
@@ -612,4 +619,149 @@ func (r *Repository) CreatePlanSnapshot(ctx context.Context, input CreatePlanSna
 	}
 
 	return record, nil
+}
+
+type CreateSubTaskInput struct {
+	TaskID                   string
+	Title                    string
+	Description              string
+	BranchSuffix             string
+	DependencyBranchSuffixes []string
+	BranchName               *string
+	StartCommitSHA           *string
+	WorktreePath             *string
+	AgentType                string
+	Status                   string
+	AutoAssigned             bool
+	Role                     *string
+	DisplayName              *string
+	ExecutionOrder           *int64
+	AssignmentSource         *string
+	CreatedAt                string
+	UpdatedAt                string
+}
+
+func (r *Repository) CreateSubTask(ctx context.Context, input CreateSubTaskInput) (*SubTask, error) {
+	dependencyJSONBytes, err := json.Marshal(input.DependencyBranchSuffixes)
+	if err != nil {
+		return nil, err
+	}
+
+	autoAssignedInt := int64(0)
+	if input.AutoAssigned {
+		autoAssignedInt = 1
+	}
+
+	record := &SubTask{
+		ID:                       uuid.NewString(),
+		TaskID:                   input.TaskID,
+		Title:                    input.Title,
+		Description:              input.Description,
+		BranchSuffix:             input.BranchSuffix,
+		DependencyBranchSuffixes: append([]string(nil), input.DependencyBranchSuffixes...),
+		BranchName:               input.BranchName,
+		StartCommitSHA:           input.StartCommitSHA,
+		WorktreePath:             input.WorktreePath,
+		AgentType:                input.AgentType,
+		Status:                   input.Status,
+		AutoAssigned:             input.AutoAssigned,
+		RetryCount:               0,
+		LastError:                nil,
+		LatestReviewDecision:     nil,
+		LatestReviewPhase:        nil,
+		LatestReviewSummary:      nil,
+		Role:                     input.Role,
+		DisplayName:              input.DisplayName,
+		ExecutionOrder:           input.ExecutionOrder,
+		AssignmentSource:         input.AssignmentSource,
+		RunSummary:               nil,
+		Version:                  0,
+		CreatedAt:                input.CreatedAt,
+		UpdatedAt:                input.UpdatedAt,
+	}
+
+	_, err = r.exec().ExecContext(ctx, `
+		INSERT INTO sub_tasks (
+			id, task_id, title, description, branch_suffix, dependency_branch_suffixes_json,
+			branch_name, start_commit_sha, worktree_path, agent_type, status, auto_assigned,
+			retry_count, last_error, latest_review_decision, latest_review_phase,
+			latest_review_summary, role, display_name, execution_order, assignment_source,
+			run_summary, version, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		record.ID,
+		record.TaskID,
+		record.Title,
+		record.Description,
+		record.BranchSuffix,
+		string(dependencyJSONBytes),
+		record.BranchName,
+		record.StartCommitSHA,
+		record.WorktreePath,
+		record.AgentType,
+		record.Status,
+		autoAssignedInt,
+		record.RetryCount,
+		record.LastError,
+		record.LatestReviewDecision,
+		record.LatestReviewPhase,
+		record.LatestReviewSummary,
+		record.Role,
+		record.DisplayName,
+		record.ExecutionOrder,
+		record.AssignmentSource,
+		record.RunSummary,
+		record.Version,
+		record.CreatedAt,
+		record.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return record, nil
+}
+
+func (r *Repository) FindPlanSnapshotByID(ctx context.Context, snapshotID string) (*PlanSnapshot, error) {
+	row := r.exec().QueryRowContext(ctx, `
+		SELECT id, task_id, version, source, payload, created_at
+		FROM plan_snapshots
+		WHERE id = ?
+	`, snapshotID)
+
+	var snapshot PlanSnapshot
+	if err := row.Scan(&snapshot.ID, &snapshot.TaskID, &snapshot.Version, &snapshot.Source, &snapshot.Payload, &snapshot.CreatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &snapshot, nil
+}
+
+func (r *Repository) RunInTransaction(ctx context.Context, fn func(*Repository) error) error {
+	if r.db == nil {
+		return fn(r)
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	transactionalRepository := &Repository{db: r.db, tx: tx}
+	if err := fn(transactionalRepository); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (r *Repository) exec() queryExecutor {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db
 }

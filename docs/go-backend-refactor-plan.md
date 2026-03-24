@@ -276,7 +276,11 @@ Go：
 - 已完成 Go 侧 `/api/guided-tasks` 静态模板建单与 `PLAN_REVIEW` 初始化
 - 已完成 Go 侧 `/api/tasks/{taskId}/plan-seed` 模板 seed 写路径
 - 已完成 plan snapshot append-only 基础落库
+- 已完成 Go 侧 `/api/tasks/{taskId}/current-plan`
+- 已完成 Go 侧 `/api/tasks/{taskId}/approve-plan` 的静态审批落库与 subtask 物化
+- 已完成 Go 侧 `/api/tasks/{taskId}/restore-plan-snapshot`
 - 已补齐 guided task / plan seed 的 Go API 测试与错误用例覆盖
+- 已补齐 current plan / approve / restore 的 Go API 测试与幂等场景覆盖
 
 ### Phase D：衍生服务迁移
 
@@ -296,7 +300,10 @@ Go：
 
 当前状态：
 
-- 未开始
+- 进行中
+- 已完成 Go 侧 `metrics summary / export` 真实实现
+- 已补齐 metrics Go API 测试
+- `preview` 仍未开始
 
 ### Phase E：Task 生命周期写接口
 
@@ -422,11 +429,11 @@ Go：
 
 当前正在执行：
 
-- Phase C
+- Phase D
 
 下一步唯一优先项：
 
-- 继续补齐 Phase C 剩余静态 task 写路径，优先 current plan update / approve-plan / restore-plan-snapshot
+- 继续补齐 Phase D 剩余 `preview` read model / start / stop，再进入 Phase E 的 clarification / archive / pause / resume / delete 等生命周期写接口
 
 ---
 

@@ -95,7 +95,24 @@ func (h *Handler) SendMailboxMessage(w http.ResponseWriter, r *http.Request) {
 	notImplemented(w, "mailbox message")
 }
 func (h *Handler) UpdateCurrentPlan(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "current plan update")
+	taskID := chi.URLParam(r, "taskId")
+
+	var input tasktemplates.Plan
+	if err := decodeJSON(r, &input); err != nil {
+		respondTaskError(w, &task.Error{
+			Code:    "INVALID_REQUEST_BODY",
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	result, serviceError := h.taskService.UpdateCurrentPlan(r.Context(), taskID, input)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) PlanSeed(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
@@ -118,7 +135,15 @@ func (h *Handler) PlanSeed(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) ApprovePlan(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "plan approval")
+	taskID := chi.URLParam(r, "taskId")
+
+	result, serviceError := h.taskService.ApprovePlan(r.Context(), taskID)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 func (h *Handler) ArchiveTask(w http.ResponseWriter, r *http.Request) {
 	notImplemented(w, "task archive")
@@ -134,5 +159,22 @@ func (h *Handler) ResumeTask(w http.ResponseWriter, r *http.Request) {
 	notImplemented(w, "task resume")
 }
 func (h *Handler) RestorePlanSnapshot(w http.ResponseWriter, r *http.Request) {
-	notImplemented(w, "plan snapshot restore")
+	taskID := chi.URLParam(r, "taskId")
+
+	var input task.RestorePlanSnapshotRequest
+	if err := decodeJSON(r, &input); err != nil {
+		respondTaskError(w, &task.Error{
+			Code:    "INVALID_REQUEST_BODY",
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	result, serviceError := h.taskService.RestorePlanSnapshot(r.Context(), taskID, input)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }

@@ -7,6 +7,7 @@ import (
 
 	"eat/backend/internal/agent"
 	"eat/backend/internal/eventbus"
+	"eat/backend/internal/metrics"
 	"eat/backend/internal/project"
 	"eat/backend/internal/sandbox"
 	"eat/backend/internal/store"
@@ -23,6 +24,7 @@ type Handler struct {
 	db             *store.DB
 	bus            *eventbus.Bus
 	sandbox        *sandbox.Manager
+	metricsService *metrics.Service
 	projectService *project.Service
 	agentService   *agent.Service
 	taskService    *task.Service
@@ -39,6 +41,7 @@ func NewHandler(deps Dependencies) *Handler {
 		db:             deps.DB,
 		bus:            deps.Bus,
 		sandbox:        sandboxManager,
+		metricsService: metrics.NewService(deps.DB.DB),
 		projectService: project.NewService(project.NewRepository(deps.DB.DB)),
 		agentService:   agent.NewService(sandboxManager),
 		taskService: task.NewService(task.Dependencies{
@@ -88,8 +91,24 @@ func mapProjectErrorStatus(code string) int {
 
 func mapTaskErrorStatus(code string) int {
 	switch code {
-	case task.ErrorCodeTaskNotFound, task.ErrorCodeProjectNotFound, task.ErrorCodePlanTemplateNotFound, task.ErrorCodeAttachmentPathNotFound:
+	case task.ErrorCodeTaskNotFound, task.ErrorCodeProjectNotFound, task.ErrorCodePlanTemplateNotFound, task.ErrorCodeAttachmentPathNotFound, task.ErrorCodePlanSnapshotNotFound:
 		return http.StatusNotFound
+	case "TASK_APPROVAL_FAILED",
+		"TASK_CREATE_FAILED",
+		"TASK_CURRENT_PLAN_UPDATE_FAILED",
+		"TASK_MESSAGES_READ_FAILED",
+		"TASK_ATTACHMENTS_READ_FAILED",
+		"TASK_PLAN_SNAPSHOTS_READ_FAILED",
+		"TASK_PLAN_SNAPSHOT_READ_FAILED",
+		"TASK_READ_FAILED",
+		"TASK_RESTORE_FAILED",
+		"TASK_SESSIONS_READ_FAILED",
+		"TASK_SUBTASKS_READ_FAILED",
+		"TASK_UPDATE_FAILED",
+		"PLAN_SERIALIZATION_FAILED",
+		"PLAN_SNAPSHOT_CREATE_FAILED",
+		"PROJECT_READ_FAILED":
+		return http.StatusInternalServerError
 	default:
 		return http.StatusBadRequest
 	}
