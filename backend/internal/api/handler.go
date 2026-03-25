@@ -192,6 +192,10 @@ func resolveUIRootPath(explicitPath string) string {
 		candidates = append(candidates, explicitPath)
 	}
 	candidates = append(candidates,
+		filepath.Join(".", "..", "web", "dist"),
+		filepath.Join("..", "web", "dist"),
+		filepath.Join("..", "..", "web", "dist"),
+		filepath.Join("..", "..", "..", "web", "dist"),
 		filepath.Join(".", "src", "ui"),
 		filepath.Join("..", "src", "ui"),
 		filepath.Join("..", "..", "src", "ui"),

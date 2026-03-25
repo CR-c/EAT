@@ -1,9 +1,11 @@
 package api
 
 import (
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const uiStaticCacheControl = "no-store"
@@ -39,6 +41,30 @@ func (h *Handler) HandleStaticAsset(w http.ResponseWriter, r *http.Request) {
 	h.respondUIFile(w, asset.FileName, asset.ContentType)
 }
 
+func (h *Handler) HandleUIRoute(w http.ResponseWriter, r *http.Request) {
+	if h.uiRootPath == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	requestedPath := strings.TrimPrefix(filepath.Clean(r.URL.Path), string(filepath.Separator))
+	if requestedPath != "" && requestedPath != "." {
+		targetPath := filepath.Join(h.uiRootPath, requestedPath)
+		if isPathWithinRoot(h.uiRootPath, targetPath) {
+			if fileInfo, err := os.Stat(targetPath); err == nil && !fileInfo.IsDir() {
+				contentType := mime.TypeByExtension(filepath.Ext(targetPath))
+				if contentType == "" {
+					contentType = "application/octet-stream"
+				}
+				h.respondUIFile(w, requestedPath, contentType)
+				return
+			}
+		}
+	}
+
+	h.respondUIFile(w, "index.html", "text/html; charset=utf-8")
+}
+
 func (h *Handler) respondUIFile(w http.ResponseWriter, fileName, contentType string) {
 	if h.uiRootPath == "" {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{
@@ -65,4 +91,12 @@ func (h *Handler) respondUIFile(w http.ResponseWriter, fileName, contentType str
 	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+func isPathWithinRoot(rootPath, targetPath string) bool {
+	relativePath, err := filepath.Rel(rootPath, targetPath)
+	if err != nil {
+		return false
+	}
+	return relativePath != ".." && !strings.HasPrefix(relativePath, ".."+string(filepath.Separator))
 }

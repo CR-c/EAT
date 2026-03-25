@@ -95,5 +95,7 @@ func NewRouter(handler *Handler) http.Handler {
 		})
 	})
 
+	router.Get("/*", handler.HandleUIRoute)
+
 	return router
 }
