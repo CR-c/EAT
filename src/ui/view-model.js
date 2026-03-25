@@ -17,6 +17,7 @@ const MESSAGES = {
     notGitRepository: "所选目录不是非裸 Git 仓库。",
     bareGitRepository: "暂不支持裸 Git 仓库注册。",
     projectNotFound: "所选项目已不在本地注册表中。",
+    projectUnregisterRequiresTaskCleanup: "该项目仍有任务挂在 EAT 中。请先清理这些任务和相关分支，再取消注册。",
     baseBranchCreateFailed: "无法创建新的基线分支 {branch}。",
     baseBranchNotFound: "无法解析所选基线分支 {branch}。",
     leadAgentUnhealthy: "{agent} 当前不可用：{reason}。",
@@ -295,6 +296,8 @@ export function buildProjectErrorMessage(error) {
       return translate("bareGitRepository");
     case "PROJECT_NOT_FOUND":
       return translate("projectNotFound");
+    case "PROJECT_UNREGISTER_REQUIRES_TASK_CLEANUP":
+      return translate("projectUnregisterRequiresTaskCleanup");
     default:
       return error.message ?? translate("unknownProjectError");
   }

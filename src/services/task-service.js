@@ -3377,7 +3377,10 @@ export class TaskService {
         });
         runtime.onExit((exitCode) => {
           this.runningWorkerSessions.get(preparedSubTask.id)?.exitPromise.resolve(exitCode);
-          void this.#handleWorkerExit(task.id, preparedSubTask.id, runningSession.id, exitCode);
+          void this.#handleWorkerExit(task.id, preparedSubTask.id, runningSession.id, exitCode)
+            .catch((error) => {
+              this.#reportAsyncLifecycleError("worker-exit", error);
+            });
         });
 
         this.#publishSubTaskStatus(task.id, runningSubTask);
@@ -3692,14 +3695,6 @@ export class TaskService {
     if (exitCode === 0) {
       const reviewResult = await this.#runIncrementalReview(taskId, subTaskId, sessionId);
       const decision = reviewResult?.decision;
-
-      if (decision === "REWORK") {
-        await this.#autoReworkSubTask(taskId, subTaskId);
-
-        await this.#progressDependencySchedule(taskId);
-        await this.#maybeStartFinalReview(taskId);
-        return;
-      }
 
       if (decision === "REJECTED") {
         await this.#progressDependencySchedule(taskId);
@@ -5163,7 +5158,10 @@ export class TaskService {
     });
     runtime.onExit((exitCode) => {
       this.runningLeadSessions.get(task.id)?.exitPromise.resolve(exitCode);
-      void this.#handleLeadExit(task.id, session.id, exitCode);
+      void this.#handleLeadExit(task.id, session.id, exitCode)
+        .catch((error) => {
+          this.#reportAsyncLifecycleError("lead-exit", error);
+        });
     });
 
     this.#publishSessionEvent(task.id, "session:started", runningSession);
@@ -5554,6 +5552,15 @@ export class TaskService {
     this.cancelledLeadSessionIds.clear();
     this.runningWorkerSessions.clear();
     this.cancelledWorkerSessionIds.clear();
+  }
+
+  #reportAsyncLifecycleError(scope, error) {
+    if (this.closed) {
+      return;
+    }
+
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    console.error(`[TaskService:${scope}]`, message);
   }
 
   async #withProjectGitLock(projectPath, operation) {
@@ -6350,16 +6357,9 @@ function mapFinalReviewDecisionToSubTaskStatus(decision) {
 }
 
 function mapIncrementalReviewDecisionToSubTaskStatus(decision) {
-  switch (decision) {
-    case "REWORK":
-      return SUBTASK_STATUS.REWORK_REQUIRED;
-    case "REJECTED":
-      return SUBTASK_STATUS.REWORK_REQUIRED;
-    case "ACCEPTED":
-      return null;
-    default:
-      return null;
-  }
+  // Incremental review is advisory only. Final review is the only
+  // authoritative phase that may transition a subtask to rework/discard states.
+  return null;
 }
 
 function buildFinalReviewActionRequiredReason(subTasks) {
