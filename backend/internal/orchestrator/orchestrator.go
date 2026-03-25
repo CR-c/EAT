@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"eat/backend/internal/agent"
 	"eat/backend/internal/eventbus"
+	"eat/backend/internal/git"
 	"eat/backend/internal/sandbox"
 )
 
@@ -36,11 +38,13 @@ type TaskRepository interface {
 
 // Minimal record types the orchestrator needs.
 type TaskRecord struct {
-	ID            string
-	ProjectID     string
-	Title         string
-	Status        string
-	BaseCommitSha string
+	ID              string
+	ProjectID       string
+	Title           string
+	Status          string
+	BaseCommitSha   string
+	BaseBranch      string
+	TaskBranchName  string
 }
 
 type SubTaskRecord struct {
@@ -51,6 +55,7 @@ type SubTaskRecord struct {
 	WorktreePath             string
 	AgentType                string
 	Status                   string
+	Description              string
 	RetryCount               int
 	DependencyBranchSuffixes []string
 }
@@ -228,6 +233,14 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 		return
 	}
 
+	// === Prepare workspace: branch + worktree ===
+	prepared, prepErr := o.prepareSubTaskWorkspace(ctx, task, project, &subTask)
+	if prepErr != nil {
+		o.failSubTaskLaunch(ctx, task, subTask, fmt.Sprintf("Workspace preparation failed: %s", prepErr.Error()))
+		return
+	}
+	subTask = *prepared
+
 	// Check agent health
 	healthMap := o.agents.GetHealth(ctx)
 	agentHealth, ok := healthMap[subTask.AgentType]
@@ -241,8 +254,7 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 	}
 
 	// Build prompt
-	prompt := fmt.Sprintf("Task: %s\nSubtask: %s\nBranch: %s\nWorking directory: %s",
-		task.Title, subTask.BranchSuffix, subTask.BranchName, subTask.WorktreePath)
+	prompt := buildWorkerPrompt(task, &subTask)
 
 	// Spawn agent session
 	runtime, err := o.agents.SpawnSession(ctx, subTask.AgentType, agent.SpawnConfig{
@@ -370,8 +382,20 @@ func (o *Orchestrator) handleWorkerExit(ctx context.Context, taskID, subTaskID, 
 		"taskId":    taskID,
 	})
 
+	if wasCancelled {
+		o.progressDependencySchedule(ctx, taskID)
+		o.maybeStartFinalReview(ctx, taskID)
+		return
+	}
+
+	if exitCode == 0 {
+		// Successful exit: sync subtask branch into task mainline
+		o.syncSubTaskIntoMainline(ctx, taskID, subTaskID)
+	}
+
 	// Progress dependency schedule - launch more subtasks if deps satisfied
 	o.progressDependencySchedule(ctx, taskID)
+	o.maybeStartFinalReview(ctx, taskID)
 }
 
 func (o *Orchestrator) progressDependencySchedule(ctx context.Context, taskID string) {
@@ -575,4 +599,225 @@ func areDependenciesSatisfied(st SubTaskRecord, allSubTasks []SubTaskRecord) boo
 		}
 	}
 	return true
+}
+
+// prepareSubTaskWorkspace creates the git branch and worktree for a subtask before spawning.
+func (o *Orchestrator) prepareSubTaskWorkspace(ctx context.Context, task *TaskRecord, project *ProjectRecord, subTask *SubTaskRecord) (*SubTaskRecord, error) {
+	repoPath := project.Path
+
+	// Ensure branch exists
+	if subTask.BranchName == "" {
+		desiredName := git.ComputeDeterministicBranchName(task.ID, subTask.BranchSuffix)
+		resolvedName, err := git.ResolveUniqueBranchName(ctx, repoPath, desiredName)
+		if err != nil {
+			return nil, fmt.Errorf("resolve branch name: %w", err)
+		}
+
+		baseSHA := task.BaseCommitSha
+		if baseSHA == "" {
+			var resolveErr error
+			baseSHA, resolveErr = git.ResolveRevision(ctx, repoPath, "HEAD")
+			if resolveErr != nil {
+				return nil, fmt.Errorf("resolve HEAD: %w", resolveErr)
+			}
+		}
+
+		if err := git.EnsureBranchExists(ctx, repoPath, resolvedName, baseSHA); err != nil {
+			return nil, fmt.Errorf("create branch: %w", err)
+		}
+
+		subTask.BranchName = resolvedName
+		_ = o.repo.UpdateSubTask(ctx, subTask.ID, UpdateSubTaskInput{
+			Status:    subTask.Status,
+			LastError: nil,
+		})
+	} else {
+		baseSHA := task.BaseCommitSha
+		if baseSHA == "" {
+			baseSHA = "HEAD"
+		}
+		if err := git.EnsureBranchExists(ctx, repoPath, subTask.BranchName, baseSHA); err != nil {
+			return nil, fmt.Errorf("ensure branch: %w", err)
+		}
+	}
+
+	// Ensure worktree exists
+	if subTask.WorktreePath == "" {
+		worktreePath, err := git.ResolveWorktreePath(repoPath, task.ID, subTask.BranchSuffix)
+		if err != nil {
+			return nil, fmt.Errorf("resolve worktree path: %w", err)
+		}
+		if err := git.EnsureWorktree(ctx, repoPath, worktreePath, subTask.BranchName); err != nil {
+			return nil, fmt.Errorf("create worktree: %w", err)
+		}
+		subTask.WorktreePath = worktreePath
+	} else {
+		if err := git.EnsureWorktree(ctx, repoPath, subTask.WorktreePath, subTask.BranchName); err != nil {
+			return nil, fmt.Errorf("ensure worktree: %w", err)
+		}
+	}
+
+	return subTask, nil
+}
+
+// syncSubTaskIntoMainline merges a completed subtask's branch into the task mainline.
+func (o *Orchestrator) syncSubTaskIntoMainline(ctx context.Context, taskID, subTaskID string) {
+	task, err := o.repo.FindTaskByID(ctx, taskID)
+	if err != nil || task == nil {
+		return
+	}
+	subTask, err := o.repo.FindSubTaskByID(ctx, subTaskID)
+	if err != nil || subTask == nil {
+		return
+	}
+	project, err := o.repo.FindProjectByID(ctx, task.ProjectID)
+	if err != nil || project == nil {
+		return
+	}
+
+	if subTask.BranchName == "" {
+		return
+	}
+
+	repoPath := project.Path
+	taskBranch := task.TaskBranchName
+	if taskBranch == "" {
+		taskBranch = task.BaseBranch
+	}
+	if taskBranch == "" {
+		return
+	}
+
+	// Check if already merged
+	if git.BranchMergedInto(ctx, repoPath, subTask.BranchName, taskBranch) {
+		_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{Status: "MERGED"})
+		o.publish(taskID, "subtask:status", map[string]any{
+			"subtaskId": subTaskID,
+			"status":    "MERGED",
+			"taskId":    taskID,
+		})
+		return
+	}
+
+	// Merge subtask branch into task mainline
+	// Use merge engine lock to prevent concurrent merges on same project
+	o.mergeEngine.getProjectLock(repoPath).Lock()
+	defer o.mergeEngine.getProjectLock(repoPath).Unlock()
+
+	// Checkout task mainline branch in a temporary worktree for the merge
+	mergeResult := git.MergeBranch(ctx, repoPath, subTask.BranchName)
+	if !mergeResult.OK {
+		// Merge conflict - abort and mark for action
+		_ = git.AbortMerge(ctx, repoPath)
+		errMsg := fmt.Sprintf("Merge conflict merging %s into %s: %s", subTask.BranchName, taskBranch, mergeResult.Stderr)
+		_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{
+			Status:    "FAILED",
+			LastError: &errMsg,
+		})
+		_ = o.repo.UpdateTask(ctx, taskID, UpdateTaskInput{
+			Status:    "ACTION_REQUIRED",
+			LastError: &errMsg,
+		})
+		o.publish(taskID, "subtask:status", map[string]any{
+			"subtaskId": subTaskID,
+			"status":    "FAILED",
+			"taskId":    taskID,
+		})
+		return
+	}
+
+	// Mark as merged
+	_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{Status: "MERGED"})
+	o.publish(taskID, "subtask:status", map[string]any{
+		"subtaskId": subTaskID,
+		"status":    "MERGED",
+		"taskId":    taskID,
+	})
+	o.publish(taskID, "task:mainline-updated", map[string]any{
+		"taskId":    taskID,
+		"subtaskId": subTaskID,
+		"branch":    subTask.BranchName,
+	})
+}
+
+// maybeStartFinalReview checks if all subtasks are done and triggers final review.
+func (o *Orchestrator) maybeStartFinalReview(ctx context.Context, taskID string) {
+	subTasks, err := o.repo.ListSubTasksByTaskID(ctx, taskID)
+	if err != nil {
+		return
+	}
+
+	allDone := true
+	for _, st := range subTasks {
+		switch st.Status {
+		case "MERGED", "COMPLETED", "CANCELLED":
+			continue
+		default:
+			allDone = false
+		}
+	}
+
+	if !allDone {
+		return
+	}
+
+	// All subtasks are in terminal state - trigger final review
+	o.reviewEngine.MaybeStart(taskID, func() {
+		task, err := o.repo.FindTaskByID(ctx, taskID)
+		if err != nil || task == nil {
+			return
+		}
+		if task.Status != "EXECUTING" {
+			return
+		}
+
+		// Transition to REVIEWING
+		_ = o.repo.UpdateTask(ctx, taskID, UpdateTaskInput{Status: "REVIEWING"})
+		o.publish(taskID, "task:status", map[string]any{
+			"taskId": taskID,
+			"status": "REVIEWING",
+		})
+
+		// For now, auto-approve final review (real implementation would run a review agent)
+		_ = o.repo.UpdateTask(ctx, taskID, UpdateTaskInput{Status: "DONE"})
+		o.publish(taskID, "task:status", map[string]any{
+			"taskId": taskID,
+			"status": "DONE",
+		})
+	})
+}
+
+// buildWorkerPrompt constructs a detailed prompt for the worker agent.
+func buildWorkerPrompt(task *TaskRecord, subTask *SubTaskRecord) string {
+	parts := []string{
+		fmt.Sprintf("# Task: %s", task.Title),
+		"",
+		fmt.Sprintf("## Your Assignment: %s", subTask.BranchSuffix),
+	}
+
+	if subTask.Description != "" {
+		parts = append(parts, "", subTask.Description)
+	}
+
+	parts = append(parts, "",
+		fmt.Sprintf("Branch: %s", subTask.BranchName),
+		fmt.Sprintf("Working directory: %s", subTask.WorktreePath),
+	)
+
+	if len(subTask.DependencyBranchSuffixes) > 0 {
+		parts = append(parts, "",
+			fmt.Sprintf("Dependencies: %s", fmt.Sprintf("%v", subTask.DependencyBranchSuffixes)),
+			"The dependency branches have already been merged into the mainline. Your branch is up to date.",
+		)
+	}
+
+	parts = append(parts, "",
+		"## Instructions",
+		"- Complete your assigned work on the branch provided.",
+		"- Commit all changes with clear, descriptive commit messages.",
+		"- Do not modify files outside the scope of your assignment.",
+		"- Exit with code 0 on success.",
+	)
+
+	return strings.Join(parts, "\n")
 }

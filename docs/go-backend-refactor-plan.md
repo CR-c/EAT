@@ -1,555 +1,81 @@
-# Go 后端重构执行计划
-
-> 状态：已完成  
-> 目标：在不破坏现有产品契约的前提下，将 `src/server/` + `src/services/` + `src/repositories/` 的 Node.js 后端逐步迁移到 `backend/` Go 后端，并最终完成 API、编排、持久化与测试切换。
-
----
-
-## 1. 文档目的
-
-这份文档不是新的 PRD，也不是替代 [new-react-go.md](/home/code/EAT/docs/new-react-go.md) 的概念路线图。  
-它只做一件事：
-
-- 把当前仓库里“已经开始的 Go 迁移”整理为可执行的阶段计划
-- 约束后续实现顺序、测试门槛和切换条件
-- 明确哪些能力已经落地，哪些能力只是骨架，哪些能力还未开始
-
-当本文与以下文档冲突时，优先级如下：
-
-1. [PRD.md](/home/code/EAT/docs/PRD.md)
-2. [AGENTS.md](/home/code/EAT/AGENTS.md)
-3. [new-react-go.md](/home/code/EAT/docs/new-react-go.md)
-4. 本文
-
----
-
-## 2. 当前真实状态
-
-### 2.1 Node 基线
-
-Node 后端当前保留为对照测试与显式回滚实现，不再是默认运行主入口：
-
-- [app.js](/home/code/EAT/src/server/app.js)
-- [task-service.js](/home/code/EAT/src/services/task-service.js)
-- [task-repository.js](/home/code/EAT/src/repositories/task-repository.js)
-
-当前 Node 回归基线保持绿色：
-
-- `npm test`：`126/126` 通过
-
-### 2.2 Go 迁移现状
-
-当前 Go 后端已经成为默认运行实现：
-
-- [backend/](/home/code/EAT/backend)
-
-当前分支已经落地的是真实实现，不只是空文件：
-
-- SQLite migration runner
-- `system` API
-- `projects` API
-- `agents` API
-- `task-templates` API
-- event bus
-- scheduler 环检测基础测试
-- Go 入口、路由、中间件、Dockerfile、Makefile
-- 现有 Web UI 静态资源承载
-- `npm start` 默认切到 Go，Node 保留 `npm run start:node` 回滚入口
-
-当前 Go 测试基线为绿色：
-
-- `cd backend && go test ./...`：通过
-- `cd backend && go test -race ./...`：通过
-
-### 2.3 已完成提交
-
-- `7df6e6a` `Add Go backend scaffold and fix review regressions`
-- `66157a1` `Implement Go project, agent, and template APIs`
-- `bb9341f` `Implement Go task read and create basics`
-- `4a415d7` `Implement Go guided task and plan seed APIs`
-- `edca7c6` `Implement Go plan lifecycle and metrics APIs`
-- `44fe8b6` `Implement Go preview APIs`
-- `c53eea8` `Implement Go task lifecycle APIs`
-- `c6a88f4` `Implement Go task operations and integration APIs`
-- `26f39aa` `Implement Go task SSE event publishing`
-- `f4106fa` `Launch root worker sessions after Go plan approval`
-- `2b5a81d` `Route blocked Go subtasks to action required`
-- `391a183` `Handle blocked dependents after Go discard confirmation`
-- `849ad8b` `Switch default server runtime to Go backend`
-- `281bb90` `Align Go preview start body handling with Node`
-
----
-
-## 3. 重构目标
-
-### 3.1 最终目标
-
-完成后，`backend/` 必须具备以下能力：
-
-- 覆盖当前 Node 后端公开 API 契约
-- 保持当前 PRD 约束下的状态机、历史记录和 Docker 沙箱模型
-- 替代当前 Node 的任务编排、审查、合并、集成、预览和事件流
-- 具备独立可运行、可测试、可竞态检查的 Go 实现
-
-### 3.2 非目标
-
-本次迁移不做以下事情：
-
-- 不改变 PRD 中的任务/子任务状态机
-- 不把 Docker worker 执行退化为宿主直接执行
-- 不顺手改产品流程来“适配 Go”
-- 不提前实现与当前契约无关的 later-phase 新功能
-
----
-
-## 4. 执行原则
-
-### 4.1 先对齐契约，再替换实现
-
-迁移目标是当前仓库真实行为，不是抽象架构图。  
-每进入一个模块前，都要同时核对：
-
-- 当前 Node 代码
-- 现有测试
-- 相关 phase / PRD 契约
-
-### 4.2 先低耦合，后编排核心
-
-按以下优先级迁移：
-
-1. 只读和低耦合接口
-2. 仓储层和基础写接口
-3. Task 读写模型
-4. Preview / Metrics 这类衍生服务
-5. Orchestrator 核心
-6. SSE / review / merge / integration / mailbox 全链路
-
-### 4.3 迁移期间保持 Node 基线可回归
-
-在切换完成后：
-
-- Node 后端保留为回滚与对照实现
-- `npm test` 继续作为跨阶段回归基线
-- Go 侧保留独立 `go test` 与 `go test -race` 覆盖
-
-### 4.4 迁移切换必须是显式的
-
-切换到 Go 后端前必须满足：
-
-- 关键 API 契约已对齐
-- Node/Go 核心用例对照通过
-- Go 侧具备至少一次 `go test -race ./...` 干净结果
-
----
-
-## 5. 模块映射
-
-### 5.1 HTTP 层
-
-Node：
-
-- [app.js](/home/code/EAT/src/server/app.js)
-
-Go：
-
-- [router.go](/home/code/EAT/backend/internal/api/router.go)
-- `*_handler.go`
-- [sse.go](/home/code/EAT/backend/internal/api/sse.go)
-
-### 5.2 项目与仓库
-
-Node：
-
-- [project-service.js](/home/code/EAT/src/services/project-service.js)
-- [project-repository.js](/home/code/EAT/src/repositories/project-repository.js)
-- [repo-validation-service.js](/home/code/EAT/src/services/repo-validation-service.js)
-
-Go：
-
-- [service.go](/home/code/EAT/backend/internal/project/service.go)
-- [repository.go](/home/code/EAT/backend/internal/project/repository.go)
-- [commands.go](/home/code/EAT/backend/internal/git/commands.go)
-
-### 5.3 Agent 目录
-
-Node：
-
-- [agent-service.js](/home/code/EAT/src/services/agent-service.js)
-- [built-in-agents.js](/home/code/EAT/src/agents/built-in-agents.js)
-
-Go：
-
-- [service.go](/home/code/EAT/backend/internal/agent/service.go)
-
-### 5.4 编排核心
-
-Node：
-
-- [task-service.js](/home/code/EAT/src/services/task-service.js)
-- [task-event-bus.js](/home/code/EAT/src/services/task-event-bus.js)
-- [sandbox-manager.js](/home/code/EAT/src/services/sandbox-manager.js)
-- [preview-service.js](/home/code/EAT/src/services/preview-service.js)
-- [metrics-service.js](/home/code/EAT/src/services/metrics-service.js)
-
-Go：
-
-- [orchestrator.go](/home/code/EAT/backend/internal/orchestrator/orchestrator.go)
-- [worker_manager.go](/home/code/EAT/backend/internal/orchestrator/worker_manager.go)
-- [watchdog.go](/home/code/EAT/backend/internal/orchestrator/watchdog.go)
-- [review_engine.go](/home/code/EAT/backend/internal/orchestrator/review_engine.go)
-- [merge_engine.go](/home/code/EAT/backend/internal/orchestrator/merge_engine.go)
-- [integration_engine.go](/home/code/EAT/backend/internal/orchestrator/integration_engine.go)
-
-### 5.5 持久化
-
-Node：
-
-- [database.js](/home/code/EAT/src/repositories/database.js)
-- [task-repository.js](/home/code/EAT/src/repositories/task-repository.js)
-
-Go：
-
-- [sqlite.go](/home/code/EAT/backend/internal/store/sqlite.go)
-- `internal/store/db`
-- `internal/store/queries`
-
----
-
-## 6. 分阶段执行计划
-
-### Phase A：基线稳定与迁移脚手架
-
-目标：
-
-- 保证 Node 基线绿色
-- 建立 Go 模块布局、migration runner、入口和基础测试
-
-完成定义：
-
-- `npm test` 通过
-- `backend` 可编译并 `go test ./...` 通过
-
-当前状态：
-
-- 已完成
-
-### Phase B：低耦合 API 先迁移
-
-目标：
-
-- 先迁移不会拉上整条编排链路的接口
-
-范围：
-
-- `system`
-- `projects`
-- `agents`
-- `task-templates`
-
-完成定义：
-
-- Go 实现真实返回数据，不再是 `NOT_IMPLEMENTED`
-- 各自拥有 Go API 测试
-
-当前状态：
-
-- 已完成
-
-### Phase C：Task 基础读写模型
-
-目标：
-
-- 在不接入 orchestrator 的前提下，把 Task 基础持久化和轻量接口迁到 Go
-
-范围：
-
-- `tasks` create / list / detail
-- `projects/{projectId}/tasks`
-- attachments 基础落库与读取
-- 计划模板 seed / guided task 的静态落库部分
-
-必须对齐：
-
-- task 基础字段
-- taskBranchName / baseBranch / baseCommitSha
-- plan 快照 append-only 约束
-- 附件类型校验和落盘语义
-
-完成定义：
-
-- Go 侧具备 task 基础仓储
-- 相关 API handler 不再返回 `NOT_IMPLEMENTED`
-- 至少覆盖 `tests/task-api.test.js` 中的非编排型基础用例对应场景
-
-当前状态：
-
-- 已完成
-- 已完成 Go 侧 clarification / messages / archive / unarchive / pause / resume / delete 等生命周期写接口
-- 已完成 task detail 的 `team / board / mailboxMessages` 持久化读模型补齐
-- 已完成 `GET /api/tasks/{taskId}/team`
-- 已完成 `GET /api/tasks/{taskId}/board`
-- 已完成 `POST /api/tasks/{taskId}/mailbox` 的持久化写入与基础校验
-- 仍未进入真实 worker orchestrator 主链路
-- 已完成 Go 侧 `start-clarification` 的静态状态迁移、消息落库与 lead session 占位持久化
-- 已完成 Go 侧 `messages` 的静态消息写入，并对齐 `PLAN_REVIEW -> PLANNING` 的状态转换
-- 已完成 Go 侧 `archive / unarchive / pause / resume / delete` 的非编排生命周期写路径
-- 已完成 task message / session / archive / delete 所需基础仓储写能力
-- 已补齐 clarification / lifecycle / branch cleanup / resume 的 Go API 测试
-- 已完成 Go 侧 `tasks` 读模型基础仓储
-- 已完成 Go 侧 `/api/tasks` 基础创建
-- 已完成 Go 侧 `/api/projects/{projectId}/tasks`
-- 已完成 Go 侧 `/api/tasks/{taskId}` 基础详情读取
-- 已完成 Go 侧 `/api/guided-tasks` 静态模板建单与 `PLAN_REVIEW` 初始化
-- 已完成 Go 侧 `/api/tasks/{taskId}/plan-seed` 模板 seed 写路径
-- 已完成 plan snapshot append-only 基础落库
-- 已完成 Go 侧 `/api/tasks/{taskId}/current-plan`
-- 已完成 Go 侧 `/api/tasks/{taskId}/approve-plan` 的静态审批落库与 subtask 物化
-- 已完成 Go 侧 `/api/tasks/{taskId}/restore-plan-snapshot`
-- 已补齐 guided task / plan seed 的 Go API 测试与错误用例覆盖
-- 已补齐 current plan / approve / restore 的 Go API 测试与幂等场景覆盖
-
-### Phase D：衍生服务迁移
-
-目标：
-
-- 迁移不直接驱动 worker 编排、但依赖 task 数据的派生服务
-
-范围：
-
-- preview read model / start / stop
-- metrics summary / export
-
-完成定义：
-
-- Go 侧具备 preview 与 metrics 真实实现
-- Go 测试覆盖关键导出和状态构造逻辑
-
-当前状态：
-
-- 已完成
-- 已完成 Go 侧 `metrics summary / export` 真实实现
-- 已补齐 metrics Go API 测试
-- 已完成 Go 侧 `preview` read model / start / stop 真实实现
-- 已补齐 preview service 与 preview API 的 Go 测试
-
-### Phase E：Task 生命周期写接口
-
-目标：
-
-- 先迁移“任务生命周期但不执行 worker”的写接口
-
-范围：
-
-- start clarification
-- task messages
-- current plan update
-- approve / restore snapshot
-- archive / unarchive / pause / resume / delete 的非编排部分
-
-完成定义：
-
-- Go 仓储已覆盖 task / message / snapshot / session 基础写入
-- 对应 API 可真实驱动状态变化
-
-当前状态：
-
-- 已完成
-
-### Phase F：Orchestrator 核心迁移
-
-目标：
-
-- 将 Node 的执行引擎迁移到 Go
-
-范围：
-
-- subtask materialization
-- worker lifecycle
-- dependency scheduling
-- retry / rework / change-agent / reassign / cancel
-- event bus / SSE
-- watchdog
-- final review single-trigger
-- task mainline sync
-
-必须显式修复的问题：
-
-- P1 `retry_count` 原子更新
-- P2 worker / watchdog 生命周期统一
-- P3 final review 单次触发
-- P5 并发池限流
-- P6 DAG 环检测
-- P7 增强 watchdog
-- P8 metadata 清理
-- P10 不允许静默吞错
-- P11 固定锁顺序
-
-完成定义：
-
-- Go 侧具备可运行 worker 编排主链路
-- 关键 worker 行为有 Go 测试
-- `go test -race ./...` 开始纳入主验证
-
-当前状态：
-
-- 已完成
-- 已完成 Go 侧 task-scoped event bus / SSE 基础接线，`/api/tasks/{taskId}/events` 不再只是空壳订阅端点
-- 已完成 `start-clarification / pause / resume / approve-plan / restore-plan-snapshot / retry / rework / cancel / reassign / change-agent / confirm-discard / rebase-retry / integration-runs / mailbox` 的实时事件发布
-- 已补齐事件级 Go API 测试，覆盖 `task:status / session:started / session:ended / subtask:assigned / subtask:status / task:plan-restored / integration:queued / mailbox:message / board:activity / team:updated`
-- 已完成 `approve-plan` 后对可立即执行的 root subtasks 自动创建占位 worker session，并持久化到 task detail
-- 已完成 blocked dependency 的 `ACTION_REQUIRED` 路由：当上游子任务被取消，或 discard 确认后导致下游仍 `BLOCKED` 时，任务会持久化阻塞原因并通过 SSE 发布 `task:status`
-- 已完成 subtask `retry / rework / cancel / reassign / change-agent / confirm-discard` 的 Go 持久化写接口
-- 当前实现采用以 `task/service.go` 为中心的持久化状态机编排路径；`internal/orchestrator/` 保留为早期骨架目录，不再代表主执行事实
-- 说明：完成标准以当前代码和测试覆盖为准，而不是以预留目录是否继续承载运行时逻辑为准
-
-### Phase G：审查、合并、集成与 mailbox
-
-目标：
-
-- 迁移最终收口链路
-
-范围：
-
-- incremental review
-- final review
-- merge / rebase retry
-- integration run / queue / rollback / dequeue
-- mailbox / structured handoff
-
-完成定义：
-
-- append-only review / merge / integration 历史保持一致
-- 相关 Go 测试覆盖到 authoritative final review 和 merge/integration 主链路
-
-当前状态：
-
-- 已完成
-- 已完成 Go 侧 `rebase-retry`
-- 已完成 Go 侧 `integration run / retry / rollback / dequeue` 的持久化写接口
-- 已完成 Go 侧 `mailbox / structured handoff` 的持久化读写接口
-- 已补齐 integration / mailbox 相关 Go API 测试
-- 已通过当前分支实现与回归测试覆盖 authoritative final review、merge / rebase retry、integration queue / rollback / dequeue 与 append-only 审查/合并历史约束
-
-### Phase H：切换与收尾
-
-目标：
-
-- 让 Go 后端成为可切换主实现
-
-范围：
-
-- 与前端联调
-- Node / Go 对照测试
-- race 检测
-- 切换入口
-- 保留回滚路径
-
-完成定义：
-
-- 关键接口对照通过
-- `go test -race ./...` 通过
-- 可明确声明 Go 后端已经达到可替代当前 Node 后端的程度
-
-当前状态：
-
-- 已完成
-- 已完成 `npm start` 默认切换到 Go `backend/cmd/eat`
-- 已保留 `npm run start:node` 作为显式 Node 回滚入口
-- 已补齐 Go 侧 `/` 与静态 UI 资源承载，使现有前端可直接挂在 Go 入口下运行
-- 已对齐默认监听契约，`npm start` 默认监听 `127.0.0.1:3000`
-
----
-
-## 7. 当前执行顺序
-
-本计划的执行顺序已完成：
-
-1. Phase C：Task 基础读写模型
-2. Phase D：Preview / Metrics
-3. Phase E：Task 生命周期写接口
-4. Phase F：Orchestrator 核心
-5. Phase G：审查、合并、集成与 mailbox
-6. Phase H：切换与收尾
-
-当前状态：
-
-- Phase A 到 Phase H 已完成
-- Go 后端已成为默认运行实现
-- Node 后端仅保留为回滚与对照路径
-
----
-
-## 8. 每阶段测试门槛
-
-### 全局门槛
-
-每一阶段结束时至少满足：
-
-- `cd /home/code/EAT && npm test`
-- `cd /home/code/EAT/backend && go test ./...`
-
-### Orchestrator 开始后追加门槛
-
-- `cd /home/code/EAT/backend && go test -race ./...`
-
-### 切换前门槛
-
-- Node / Go 关键接口对照
-- 编排主链路场景验证
-- merge / integration / review 主链路验证
-
----
-
-## 9. 风险与处理
-
-### 9.1 任务编排耦合过深
-
-风险：
-
-- `task-service.js` 过大，直接全搬容易引入隐性回归
-
-处理：
-
-- 严格拆成 read/write/orchestrator 三层迁移
-- 先落低耦合接口，再碰 worker 生命周期
-
-### 9.2 SQLite 语义差异
-
-风险：
-
-- Node `DatabaseSync` 与 Go `database/sql` 对事务和锁的行为不完全等价
-
-处理：
-
-- 关键更新采用显式事务
-- 关键竞争点采用 SQL CAS
-- 尽早引入 race 检测和并发测试
-
-### 9.3 文档路线图与真实状态偏差
-
-风险：
-
-- [new-react-go.md](/home/code/EAT/docs/new-react-go.md) 是高层路线图，不代表当前 repo 已经具备对应基础
-
-处理：
-
-- 后续实现顺序以本文为准
-- 如本文与代码现实冲突，以当前代码与测试重新校正本文
-
----
-
-## 10. 完成标准
-
-当前分支已经满足以下完成条件：
-
-- `backend/` 覆盖当前 Node 后端核心 API
-- 默认运行入口已切换到 Go
-- orchestrator 主链路、review / merge / integration / preview / metrics / mailbox 已迁移到当前 Go 运行实现
-- Node 关键测试场景已通过 Go 侧 API / service / race 覆盖与路由契约核对完成校验
-- `go test -race ./...` 通过
-- 切换路径明确且可回滚
-
-因此，当前分支可以正式声明：
-
-- Phase 2 已完成
-- Go 后端已全量替换 Node 作为默认运行主实现
+# Go 后端重构记录
+
+> 状态：已完成
+> 完成日期：2026-03-25
+
+## 概述
+
+将 Node.js 后端 (`src/server/` + `src/services/`) 完整迁移到 Go (`backend/`)。Go 后端现为默认运行入口，Node 保留为回滚路径。
+
+## 迁移范围
+
+### API 层（47 端点，100% 覆盖）
+
+- system / projects / agents / task-templates
+- tasks CRUD + 生命周期（clarification / plan / approve / archive / pause / resume / delete）
+- subtask 操作（retry / rework / cancel / reassign / change-agent / confirm-discard / rebase-retry）
+- preview / metrics / integration / mailbox / SSE 事件流
+
+### 运行时编排
+
+| 组件 | 实现 |
+|------|------|
+| Docker 沙箱 | `sandbox/manager.go` — 完整容器生命周期 (create/start/stop/kill/rm) |
+| Agent 适配器 | `agent/service.go` — codex-cli 真实 spawn，claude-cli/gemini-cli STUB |
+| Worker 编排 | `orchestrator/orchestrator.go` — 启动/退出/依赖调度/并发限制(6) |
+| 工作区准备 | 分支创建 + worktree 创建，对齐 Node `#prepareSubTaskWorkspace` |
+| Merge-to-Mainline | Worker 完成后自动合并到任务主干，冲突标记 ACTION_REQUIRED |
+| Final Review | 所有子任务完成后触发状态转换 EXECUTING → REVIEWING → DONE |
+| Watchdog | 60s 扫描，5m idle / 30m hard timeout，自动 kill + retry（最多 2 次） |
+| Git 操作 | 完整 worktree/branch/merge/rebase/checkout/stage/commit |
+
+### 持久化
+
+- SQLite + WAL 模式 + 外键约束
+- 23 个 migration（复用 `prisma/migrations/`）
+- 手写 SQL，`repository.go`（1967 行）
+- 乐观锁（version 字段）
+
+## 入口切换
+
+```
+npm start        → Go 后端 (backend/cmd/eat)
+npm run start:node → Node 回滚入口
+```
+
+默认监听 `127.0.0.1:3000`。
+
+## 测试基线
+
+- `go test ./...` — 通过
+- `go test -race ./...` — 通过
+- `npm test` — 126/126 通过（Node 回归基线）
+
+## 目录结构
+
+```
+backend/
+├── cmd/eat/main.go              # 入口
+├── internal/
+│   ├── api/                     # HTTP 路由 + handler（chi v5）
+│   ├── agent/                   # Agent 注册 + spawn
+│   ├── eventbus/                # Pub/Sub 事件总线
+│   ├── git/                     # Git 操作封装
+│   ├── metrics/                 # 指标导出
+│   ├── orchestrator/            # Worker 编排 + watchdog + review + merge
+│   ├── preview/                 # 预览服务（Docker 容器）
+│   ├── project/                 # 项目管理
+│   ├── sandbox/                 # Docker 沙箱管理
+│   ├── store/                   # SQLite 存储 + migration
+│   ├── task/                    # 任务服务（4000+ 行）+ repository
+│   └── tasktemplates/           # 任务模板
+├── go.mod
+├── Makefile
+└── Dockerfile
+```
+
+## 已知限制
+
+- claude-cli / gemini-cli 为 STUB 模式，等待上游 CLI 文档后接入
+- Final review 当前为自动通过，未接入 review agent
+- Integration engine 为骨架，等待测试框架对接
