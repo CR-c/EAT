@@ -1,1 +1,0 @@
--- Placeholder sqlc query file for project queries during the Go migration.

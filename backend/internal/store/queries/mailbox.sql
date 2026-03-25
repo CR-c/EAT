@@ -1,1 +1,0 @@
--- Placeholder sqlc query file for mailbox queries during the Go migration.

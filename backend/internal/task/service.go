@@ -122,6 +122,7 @@ type Service struct {
 	agentService      *agent.Service
 	bus               *eventbus.Bus
 	uploadRootPath    string
+	OnPlanApproved    func(ctx context.Context, taskID string) // Called after successful plan approval
 }
 
 type Dependencies struct {
@@ -910,6 +911,11 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 			s.publishSession(taskID, "session:started", &sessionCopy)
 		}
 		s.publishTeamUpdated(taskID)
+
+		// Trigger orchestrator to launch workers
+		if s.OnPlanApproved != nil {
+			go s.OnPlanApproved(context.Background(), taskID)
+		}
 	}
 
 	return result, nil
