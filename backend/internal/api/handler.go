@@ -116,6 +116,8 @@ func mapProjectErrorStatus(code string) int {
 	switch code {
 	case project.ErrorCodeProjectAlreadyRegistered:
 		return http.StatusConflict
+	case project.ErrorCodeProjectHasTasksAttached:
+		return http.StatusConflict
 	case project.ErrorCodeProjectNotFound:
 		return http.StatusNotFound
 	case project.ErrorCodePathAccessDenied:

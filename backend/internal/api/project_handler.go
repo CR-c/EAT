@@ -86,3 +86,17 @@ func (h *Handler) GetProjectRepoStatus(w http.ResponseWriter, r *http.Request) {
 		"repoStatus": repoStatus,
 	})
 }
+
+func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectId")
+
+	projectRecord, serviceError := h.projectService.DeleteProject(r.Context(), projectID)
+	if serviceError != nil {
+		respondProjectError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"project": projectRecord,
+	})
+}

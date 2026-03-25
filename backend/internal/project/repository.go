@@ -3,6 +3,7 @@ package project
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -102,6 +103,73 @@ func (r *Repository) CreateProject(ctx context.Context, name, projectPath, defau
 	}
 
 	return project, nil
+}
+
+func (r *Repository) CountTasksByProjectID(ctx context.Context, projectID string) (int, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE project_id = ?`, projectID)
+
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (r *Repository) CountTasksByProjectIDAndStatuses(ctx context.Context, projectID string, statuses []string) (int, error) {
+	if len(statuses) == 0 {
+		return 0, nil
+	}
+
+	placeholders := make([]string, 0, len(statuses))
+	args := make([]any, 0, len(statuses)+1)
+	args = append(args, projectID)
+	for _, status := range statuses {
+		placeholders = append(placeholders, "?")
+		args = append(args, status)
+	}
+
+	query := `SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status IN (` + strings.Join(placeholders, ", ") + `)`
+	row := r.db.QueryRowContext(ctx, query, args...)
+
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (r *Repository) CountActiveExecutionTasksByProjectID(ctx context.Context, projectID string, pausedReasonPrefix string) (int, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM tasks
+		WHERE project_id = ?
+		  AND (
+			status IN ('EXECUTING', 'REVIEWING', 'MERGING')
+			OR (status = 'ACTION_REQUIRED' AND (last_error IS NULL OR last_error NOT LIKE ?))
+		  )
+	`, projectID, pausedReasonPrefix+"%")
+
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (r *Repository) DeleteProject(ctx context.Context, projectID string) (*Project, error) {
+	projectRecord, err := r.FindProjectByID(ctx, projectID)
+	if err != nil || projectRecord == nil {
+		return projectRecord, err
+	}
+
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, projectID); err != nil {
+		return nil, err
+	}
+
+	return projectRecord, nil
 }
 
 func (r *Repository) findOne(ctx context.Context, whereClause string, arg string) (*Project, error) {

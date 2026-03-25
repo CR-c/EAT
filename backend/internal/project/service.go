@@ -17,6 +17,7 @@ const (
 	ErrorCodeInvalidRequestBody       = "INVALID_REQUEST_BODY"
 	ErrorCodePathRequired             = "PATH_REQUIRED"
 	ErrorCodePathAccessDenied         = "PATH_ACCESS_DENIED"
+	ErrorCodeProjectHasTasksAttached  = "PROJECT_HAS_TASKS_ATTACHED"
 	ErrorCodeProjectAlreadyRegistered = "PROJECT_ALREADY_REGISTERED"
 	ErrorCodeProjectNotFound          = "PROJECT_NOT_FOUND"
 	ErrorCodePathNotAbsolute          = "PATH_NOT_ABSOLUTE"
@@ -27,6 +28,7 @@ const (
 )
 
 const defaultDirectoryEntryLimit = 200
+const taskPausedReasonPrefix = "Paused by operator from "
 
 type Error struct {
 	Code    string         `json:"code"`
@@ -148,6 +150,38 @@ func (s *Service) GetProjectRepoStatus(ctx context.Context, projectID string) (*
 	}
 
 	return repoStatus, nil
+}
+
+func (s *Service) DeleteProject(ctx context.Context, projectID string) (*Project, *Error) {
+	projectRecord, err := s.repository.FindProjectByID(ctx, projectID)
+	if err != nil {
+		return nil, failure("PROJECT_READ_FAILED", err.Error(), nil)
+	}
+	if projectRecord == nil {
+		return nil, failure(ErrorCodeProjectNotFound, "Project not found.", map[string]any{"projectId": projectID})
+	}
+
+	taskCount, err := s.repository.CountActiveExecutionTasksByProjectID(ctx, projectID, taskPausedReasonPrefix)
+	if err != nil {
+		return nil, failure("PROJECT_TASK_COUNT_FAILED", err.Error(), map[string]any{"projectId": projectID})
+	}
+	if taskCount > 0 {
+		return nil, failure(
+			ErrorCodeProjectHasTasksAttached,
+			"The project still has active execution task trees and cannot be unregistered yet.",
+			map[string]any{
+				"projectId": projectID,
+				"taskCount": taskCount,
+			},
+		)
+	}
+
+	deletedProject, err := s.repository.DeleteProject(ctx, projectID)
+	if err != nil {
+		return nil, failure("PROJECT_DELETE_FAILED", err.Error(), map[string]any{"projectId": projectID})
+	}
+
+	return deletedProject, nil
 }
 
 func (s *Service) BrowseDirectories(ctx context.Context, requestedPath string, includeHidden bool) (*BrowseResult, *Error) {

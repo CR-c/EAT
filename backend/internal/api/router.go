@@ -26,6 +26,7 @@ func NewRouter(handler *Handler) http.Handler {
 			r.Get("/", handler.ListProjects)
 			r.Get("/browse", handler.BrowseProjects)
 			r.Get("/{projectId}", handler.GetProject)
+			r.Delete("/{projectId}", handler.DeleteProject)
 			r.Get("/{projectId}/repo-status", handler.GetProjectRepoStatus)
 			r.Get("/{projectId}/tasks", handler.ListProjectTasks)
 		})
