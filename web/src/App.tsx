@@ -1,8 +1,13 @@
+import { RouterProvider } from "react-router-dom"
+
+import { AppProviders } from "@/app/providers"
+import { appRouter } from "@/app/router"
+
 function App() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <h1 className="text-3xl font-bold">EAT</h1>
-    </div>
+    <AppProviders>
+      <RouterProvider router={appRouter} />
+    </AppProviders>
   )
 }
 
