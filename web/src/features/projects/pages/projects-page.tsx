@@ -1,8 +1,8 @@
-import { FolderGit2, FolderPlus, Search, Trash2 } from "lucide-react"
+import { FolderGit2, FolderPlus, Search, Trash2, Zap } from "lucide-react"
 import { useDeferredValue, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
-import { deleteProject, getProjectRepoStatus, listProjectTasks, listProjects } from "@/lib/api/projects"
+import { deleteProject, getProjectRepoStatus, listProjectTasks, listProjects, updateProjectPreferences } from "@/lib/api/projects"
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme, getProjectColor } from "@/lib/pilot-theme"
@@ -18,6 +18,36 @@ interface ProjectViewModel {
   allTaskCount: number
   project: ProjectRecord
   repoStatus?: RepoStatus
+}
+
+function TokenUsageBadges({
+  isRei,
+  tokens,
+}: {
+  isRei: boolean
+  tokens?: Record<string, number | string> | null
+}) {
+  const entries = tokens ? Object.entries(tokens) : []
+  const items = entries.length > 0 ? entries : [["codex-cli", "--"]]
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {items.map(([cli, amount]) => (
+        <span
+          key={cli}
+          className={cn(
+            "flex items-center rounded-sm border px-1.5 py-0.5 font-mono text-[0.65rem]",
+            isRei
+              ? "border-indigo-200 bg-indigo-50 text-indigo-600"
+              : "border-indigo-500/50 bg-indigo-900/30 text-indigo-400",
+          )}
+        >
+          <Zap className="mr-1 h-3 w-3 opacity-70" />
+          {cli}: {String(amount)}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 export function ProjectsPage() {
@@ -62,6 +92,25 @@ export function ProjectsPage() {
       ),
     [deferredQuery, resource.data],
   )
+
+  async function handleTogglePin(project: ProjectRecord) {
+    const nextPinnedOrder = project.isPinned
+      ? null
+      : Math.max(
+          0,
+          ...((resource.data ?? [])
+            .filter((item) => item.project.isPinned)
+            .map((item) => item.project.pinnedOrder ?? 0)),
+        ) + 1
+
+    await updateProjectPreferences(project.id, {
+      color: project.color ?? getProjectColor(project.id),
+      isPinned: !project.isPinned,
+      pinnedOrder: nextPinnedOrder,
+    })
+    emitProjectRegistryChanged()
+    resource.reload()
+  }
 
   return (
     <>
@@ -122,6 +171,7 @@ export function ProjectsPage() {
               {filtered.map((item) => {
                 const color = item.project.color ?? getProjectColor(item.project.id)
                 const dirty = item.repoStatus?.isDirty ?? false
+                const tokenUsage = (item.project as ProjectRecord & { tokens?: Record<string, number | string> | null }).tokens
                 return (
                   <button
                     key={item.project.id}
@@ -163,6 +213,10 @@ export function ProjectsPage() {
                       {item.project.path}
                     </div>
 
+                    <div className="relative z-10 mb-6">
+                      <TokenUsageBadges isRei={isRei} tokens={tokenUsage} />
+                    </div>
+
                     <div className={cn("relative z-10 mt-auto flex items-center justify-between border-t pt-4 font-mono text-xs", isRei ? "border-blue-100" : "border-white/10")}>
                       <div className={cn("flex items-center", theme.cardSub)}>
                         <span className={cn("mr-2", theme.pathLabel)}>基线:</span>
@@ -174,6 +228,23 @@ export function ProjectsPage() {
                         <div className={cn("rounded-sm border px-2 py-0.5", item.activeTaskCount > 0 ? theme.taskBg : theme.cleanBg)}>
                           活跃任务: {item.activeTaskCount}
                         </div>
+                        <button
+                          className={cn(
+                            "rounded-sm border px-3 py-1 font-mono text-[0.65rem] transition-colors",
+                            item.project.isPinned
+                              ? isRei
+                                ? "border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200"
+                                : "border-orange-500/50 bg-orange-500/20 text-orange-400 hover:bg-orange-500/40"
+                              : theme.btnGhost,
+                          )}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void handleTogglePin(item.project)
+                          }}
+                          type="button"
+                        >
+                          {item.project.isPinned ? "取消标记" : "标 记"}
+                        </button>
                         <button
                           className={cn("rounded-sm p-1 transition-colors", theme.btnDanger)}
                           onClick={(event) => {
