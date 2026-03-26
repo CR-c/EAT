@@ -31,3 +31,27 @@ func TestResolveListenAddrPrefersExplicitBackendAddr(t *testing.T) {
 		t.Fatalf("unexpected explicit backend addr: %s", got)
 	}
 }
+
+func TestResolveDBPathDefaultsToRepositoryRuntimeLocation(t *testing.T) {
+	t.Setenv("EAT_BACKEND_DB_PATH", "")
+
+	if got := resolveDBPath(); got != ".eat/eat.db" {
+		t.Fatalf("unexpected default db path: %s", got)
+	}
+}
+
+func TestResolveUploadRootPathHonorsExplicitEnv(t *testing.T) {
+	t.Setenv("EAT_UPLOAD_ROOT", "/var/lib/eat/uploads")
+
+	if got := resolveUploadRootPath(); got != "/var/lib/eat/uploads" {
+		t.Fatalf("unexpected upload root: %s", got)
+	}
+}
+
+func TestResolvePreviewRootPathDefaultsToRuntimeDirectory(t *testing.T) {
+	t.Setenv("EAT_PREVIEW_ROOT", "")
+
+	if got := resolvePreviewRootPath(); got != ".eat-preview-worktrees" {
+		t.Fatalf("unexpected preview root: %s", got)
+	}
+}

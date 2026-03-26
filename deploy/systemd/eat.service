@@ -1,0 +1,23 @@
+[Unit]
+Description=EAT Backend
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=eat
+Group=eat
+WorkingDirectory=/var/lib/eat/runtime
+EnvironmentFile=-/etc/eat/eat.env
+ExecStart=/opt/eat/current/backend/eat-backend
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+UMask=0027
+NoNewPrivileges=true
+LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

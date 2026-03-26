@@ -19,11 +19,12 @@ import (
 )
 
 type Dependencies struct {
-	DB             *store.DB
-	Bus            *eventbus.Bus
-	UploadRootPath string
-	UIRootPath     string
-	PreviewService *preview.Service
+	DB              *store.DB
+	Bus             *eventbus.Bus
+	UploadRootPath  string
+	PreviewRootPath string
+	UIRootPath      string
+	PreviewService  *preview.Service
 }
 
 type Handler struct {
@@ -48,10 +49,14 @@ func NewHandler(deps Dependencies) *Handler {
 
 	previewService := deps.PreviewService
 	if previewService == nil {
+		previewRootPath := filepath.Join(".", ".eat-preview-worktrees")
+		if deps.PreviewRootPath != "" {
+			previewRootPath = deps.PreviewRootPath
+		}
 		previewService = preview.NewService(preview.Dependencies{
 			ProjectRepository: project.NewRepository(deps.DB.DB),
 			TaskRepository:    task.NewRepository(deps.DB.DB),
-			PreviewRootPath:   filepath.Join(".", ".eat-preview-worktrees"),
+			PreviewRootPath:   previewRootPath,
 		})
 	}
 

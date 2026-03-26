@@ -149,6 +149,23 @@ func (db *DB) appliedMigrationSet(ctx context.Context) (map[string]bool, error) 
 }
 
 func defaultMigrationsDir() string {
+	if explicitPath := os.Getenv("EAT_MIGRATIONS_DIR"); explicitPath != "" {
+		return filepath.Clean(explicitPath)
+	}
+
+	if executablePath, err := os.Executable(); err == nil {
+		executableDir := filepath.Dir(executablePath)
+		candidates := []string{
+			filepath.Join(executableDir, "..", "prisma", "migrations"),
+			filepath.Join(executableDir, "prisma", "migrations"),
+		}
+		for _, candidate := range candidates {
+			if info, statErr := os.Stat(candidate); statErr == nil && info.IsDir() {
+				return filepath.Clean(candidate)
+			}
+		}
+	}
+
 	_, currentFile, _, ok := runtime.Caller(0)
 	if !ok {
 		panic(errors.New("unable to resolve store source location"))

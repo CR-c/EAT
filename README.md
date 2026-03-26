@@ -223,8 +223,10 @@ EAT 借鉴的是：
 
 ```text
 .
+├── deploy/                # systemd、nginx 与 journald 部署模板
 ├── docs/                  # PRD、基础 phase、扩展 phase 与使用说明
 ├── prisma/                # schema 与 SQL migration
+├── scripts/               # 发布与备份脚本
 ├── src/
 │   ├── agents/            # Agent contract、registry、built-in adapters
 │   ├── repositories/      # SQLite repository 层
@@ -366,7 +368,10 @@ npm start
 - `PORT`
 - `EAT_BACKEND_ADDR`
 - `EAT_BACKEND_DB_PATH`
+- `EAT_MIGRATIONS_DIR`
 - `EAT_UI_ROOT`
+- `EAT_UPLOAD_ROOT`
+- `EAT_PREVIEW_ROOT`
 
 ### Codex 运行时
 
@@ -381,6 +386,133 @@ npm start
 
 - `EAT_WORKER_IMAGE`
 - `EAT_WORKER_CONTAINER_USER`
+- `EAT_WORKTREE_ROOT`
+
+## 推荐生产部署方式
+
+推荐部署拓扑：
+
+```text
+Browser
+  -> nginx
+  -> 127.0.0.1:3000
+  -> systemd-managed eat-backend
+  -> host Docker daemon (worker / preview containers)
+```
+
+这条路径是当前仓库最稳的主路径：
+
+- 主后端直接跑在宿主机，由 `systemd` 常驻
+- Worker 和 Preview 继续使用宿主机 Docker
+- 日志交给 `journald` 轮转
+- 数据落 SQLite + 本地持久化目录
+
+仓库内置的部署资产：
+
+- [`deploy/systemd/eat.service`](/home/code/EAT/deploy/systemd/eat.service)
+- [`deploy/systemd/eat.env.example`](/home/code/EAT/deploy/systemd/eat.env.example)
+- [`deploy/systemd/journald-eat.conf`](/home/code/EAT/deploy/systemd/journald-eat.conf)
+- [`deploy/nginx/eat.conf`](/home/code/EAT/deploy/nginx/eat.conf)
+- [`scripts/deploy-release.sh`](/home/code/EAT/scripts/deploy-release.sh)
+- [`scripts/backup-eat.sh`](/home/code/EAT/scripts/backup-eat.sh)
+
+推荐目录布局：
+
+```text
+/opt/eat/current                 # 当前发布版本
+/opt/eat/releases/<timestamp>    # 历史发布
+/etc/eat/eat.env                 # 服务环境变量
+/var/lib/eat/data/eat.db         # SQLite
+/var/lib/eat/uploads             # 附件
+/var/lib/eat/worktrees           # Worker worktree
+/var/lib/eat/preview-worktrees   # Preview worktree
+/var/lib/eat/codex-runtime       # Codex 会话运行时
+/var/lib/eat/home/.codex         # Codex 认证与配置
+/srv/eat-projects                # 推荐集中存放被注册的 Git 仓库
+```
+
+### 一次性初始化
+
+1. 安装依赖：`go`、`pnpm`、`git`、`docker`、`nginx`
+2. 创建运行用户并加入 Docker 组：`useradd --system --create-home --home-dir /var/lib/eat/home --shell /usr/sbin/nologin eat && usermod -aG docker eat`
+3. 创建目录：`mkdir -p /opt/eat/releases /var/lib/eat/{runtime,data,uploads,worktrees,preview-worktrees,codex-runtime} /etc/eat /var/backups/eat`
+4. 复制环境变量模板：`cp deploy/systemd/eat.env.example /etc/eat/eat.env`
+5. 编辑 [`/etc/eat/eat.env`](/etc/eat/eat.env)，至少确认数据库、UI、上传、preview、worktree、Codex 路径都指向持久化目录
+
+### 发布
+
+准备一个新版本：
+
+```bash
+sudo INSTALL_SYSTEM_ASSETS=1 ./scripts/deploy-release.sh
+```
+
+这个脚本会：
+
+- 构建 `web/dist`
+- 构建 `backend/eat-backend`
+- 复制 `prisma/migrations`
+- 可选重建 `eat/worker-base:latest`
+- 生成 `/opt/eat/releases/<timestamp>`
+- 切换 `/opt/eat/current` 软链接
+- 可选安装 `systemd` 与 `nginx` 模板
+
+如果你只想发布程序，不覆盖系统配置：
+
+```bash
+sudo INSTALL_SYSTEM_ASSETS=0 RESTART_SERVICE=1 ./scripts/deploy-release.sh
+```
+
+### 启动与日志
+
+启用服务：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now eat
+sudo systemctl status eat --no-pager
+```
+
+启用 nginx：
+
+```bash
+sudo cp deploy/nginx/eat.conf /etc/nginx/sites-available/eat.conf
+sudo ln -sfn /etc/nginx/sites-available/eat.conf /etc/nginx/sites-enabled/eat.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+日志默认走 `journald`，推荐复制 [`deploy/systemd/journald-eat.conf`](/home/code/EAT/deploy/systemd/journald-eat.conf) 到 `/etc/systemd/journald.conf.d/eat.conf` 后重启 `systemd-journald`。这样就有日志分割、压缩和保留策略。
+
+常用日志命令：
+
+```bash
+journalctl -u eat -f
+journalctl -u eat --since "1 hour ago"
+```
+
+### 备份
+
+备份脚本：
+
+```bash
+sudo ./scripts/backup-eat.sh
+```
+
+它会：
+
+- 读取 `/etc/eat/eat.env`
+- 备份 SQLite 数据库
+- 备份上传目录
+- 保留一份环境变量快照
+- 生成 `/var/backups/eat/eat-<timestamp>.tar.gz`
+- 自动清理超出保留天数的旧备份
+
+可以放到 `cron`：
+
+```bash
+0 3 * * * root /opt/eat/current/scripts/backup-eat.sh
+```
 
 ## 测试
 
@@ -405,7 +537,7 @@ npm test
 
 测试文件位于 [`tests/`](/home/code/EAT/tests)。
 
-## 当前部署方式
+## 现网实例
 
 这个仓库在当前服务器上的公开访问地址是：
 

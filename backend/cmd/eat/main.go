@@ -18,7 +18,9 @@ import (
 
 func main() {
 	addr := resolveListenAddr()
-	dbPath := envOrDefault("EAT_BACKEND_DB_PATH", filepath.Join(".eat", "eat.db"))
+	dbPath := resolveDBPath()
+	uploadRootPath := resolveUploadRootPath()
+	previewRootPath := resolvePreviewRootPath()
 	uiRootPath := os.Getenv("EAT_UI_ROOT")
 
 	db, err := store.Open(dbPath)
@@ -29,9 +31,11 @@ func main() {
 
 	bus := eventbus.New()
 	handler := api.NewHandler(api.Dependencies{
-		DB:         db,
-		Bus:        bus,
-		UIRootPath: uiRootPath,
+		DB:              db,
+		Bus:             bus,
+		UploadRootPath:  uploadRootPath,
+		PreviewRootPath: previewRootPath,
+		UIRootPath:      uiRootPath,
 	})
 
 	server := &http.Server{
@@ -76,4 +80,16 @@ func resolveListenAddr() string {
 	host := envOrDefault("HOST", "127.0.0.1")
 	port := envOrDefault("PORT", "3000")
 	return fmt.Sprintf("%s:%s", host, port)
+}
+
+func resolveDBPath() string {
+	return envOrDefault("EAT_BACKEND_DB_PATH", filepath.Join(".eat", "eat.db"))
+}
+
+func resolveUploadRootPath() string {
+	return envOrDefault("EAT_UPLOAD_ROOT", filepath.Join(".", "uploads"))
+}
+
+func resolvePreviewRootPath() string {
+	return envOrDefault("EAT_PREVIEW_ROOT", filepath.Join(".", ".eat-preview-worktrees"))
 }
