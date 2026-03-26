@@ -16,9 +16,6 @@ func NewRouter(handler *Handler) http.Handler {
 	router.Use(corsMiddleware)
 
 	router.Get("/", handler.HandleRoot)
-	router.Get("/app.css", handler.HandleStaticAsset)
-	router.Get("/app.js", handler.HandleStaticAsset)
-	router.Get("/view-model.js", handler.HandleStaticAsset)
 
 	router.Route("/api", func(r chi.Router) {
 		r.Get("/project-directories", handler.BrowseProjects)

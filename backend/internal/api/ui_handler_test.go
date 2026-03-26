@@ -20,10 +20,8 @@ func TestGoBackendServesUIShellAndStaticAssets(t *testing.T) {
 	defer db.Close()
 
 	uiDir := filepath.Join(tempDir, "ui")
-	writeTestFile(t, filepath.Join(uiDir, "index.html"), "<!doctype html><html><head><link rel=\"stylesheet\" href=\"/app.css\"></head><body><script src=\"/app.js\"></script></body></html>")
-	writeTestFile(t, filepath.Join(uiDir, "app.css"), "body { color: black; }")
-	writeTestFile(t, filepath.Join(uiDir, "app.js"), "import \"./view-model.js\"; console.log('app');")
-	writeTestFile(t, filepath.Join(uiDir, "view-model.js"), "console.log('view-model');")
+	writeTestFile(t, filepath.Join(uiDir, "index.html"), "<!doctype html><html><head></head><body><script type=\"module\" src=\"/assets/main.js\"></script></body></html>")
+	writeTestFile(t, filepath.Join(uiDir, "assets", "main.js"), "console.log('react-entry');")
 
 	router := NewRouter(NewHandler(Dependencies{
 		DB:         db,
@@ -42,15 +40,15 @@ func TestGoBackendServesUIShellAndStaticAssets(t *testing.T) {
 		t.Fatalf("expected html shell, got %q", rootResponse.Body.String())
 	}
 
-	appJSResponse := performJSONRequest(router, http.MethodGet, "/app.js?v=test", nil)
+	appJSResponse := performJSONRequest(router, http.MethodGet, "/assets/main.js?v=test", nil)
 	if appJSResponse.Code != http.StatusOK {
-		t.Fatalf("unexpected app.js status: %d body=%s", appJSResponse.Code, appJSResponse.Body.String())
+		t.Fatalf("unexpected asset status: %d body=%s", appJSResponse.Code, appJSResponse.Body.String())
 	}
 	if got := appJSResponse.Header().Get("Content-Type"); got != "text/javascript; charset=utf-8" {
-		t.Fatalf("unexpected app.js content type: %s", got)
+		t.Fatalf("unexpected asset content type: %s", got)
 	}
-	if !strings.Contains(appJSResponse.Body.String(), "view-model") {
-		t.Fatalf("expected app.js body, got %q", appJSResponse.Body.String())
+	if !strings.Contains(appJSResponse.Body.String(), "react-entry") {
+		t.Fatalf("expected asset body, got %q", appJSResponse.Body.String())
 	}
 	if got := appJSResponse.Header().Get("Cache-Control"); got != uiStaticCacheControl {
 		t.Fatalf("unexpected cache-control: %s", got)

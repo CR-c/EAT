@@ -10,35 +10,8 @@ import (
 
 const uiStaticCacheControl = "no-store"
 
-var uiStaticAssets = map[string]struct {
-	FileName    string
-	ContentType string
-}{
-	"/app.css": {
-		FileName:    "app.css",
-		ContentType: "text/css; charset=utf-8",
-	},
-	"/app.js": {
-		FileName:    "app.js",
-		ContentType: "text/javascript; charset=utf-8",
-	},
-	"/view-model.js": {
-		FileName:    "view-model.js",
-		ContentType: "text/javascript; charset=utf-8",
-	},
-}
-
 func (h *Handler) HandleRoot(w http.ResponseWriter, r *http.Request) {
 	h.respondUIFile(w, "index.html", "text/html; charset=utf-8")
-}
-
-func (h *Handler) HandleStaticAsset(w http.ResponseWriter, r *http.Request) {
-	asset, ok := uiStaticAssets[r.URL.Path]
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	h.respondUIFile(w, asset.FileName, asset.ContentType)
 }
 
 func (h *Handler) HandleUIRoute(w http.ResponseWriter, r *http.Request) {

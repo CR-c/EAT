@@ -10,8 +10,5 @@
     "start:go": "cd backend && go run ./cmd/eat",
     "start:node": "node src/server/index.js",
     "test": "node --test"
-  },
-  "devDependencies": {
-    "tailwindcss": "^3.4.17"
   }
 }

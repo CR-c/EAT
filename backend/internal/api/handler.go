@@ -207,10 +207,6 @@ func resolveUIRootPath(explicitPath string) string {
 		filepath.Join("..", "web", "dist"),
 		filepath.Join("..", "..", "web", "dist"),
 		filepath.Join("..", "..", "..", "web", "dist"),
-		filepath.Join(".", "src", "ui"),
-		filepath.Join("..", "src", "ui"),
-		filepath.Join("..", "..", "src", "ui"),
-		filepath.Join("..", "..", "..", "src", "ui"),
 	)
 
 	for _, candidate := range candidates {

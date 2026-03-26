@@ -1,6 +1,6 @@
 import http from "node:http";
 import path from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { SqliteProjectRepository } from "../repositories/project-repository.js";
@@ -13,13 +13,8 @@ import { DockerSandboxManager, SystemService } from "../services/sandbox-manager
 import { TaskService, TASK_SERVICE_ERROR_CODES } from "../services/task-service.js";
 import { TaskEventBus } from "../services/task-event-bus.js";
 
-const uiDirectoryPath = fileURLToPath(new URL("../ui/", import.meta.url));
 const STATIC_CACHE_CONTROL = "no-store";
-const STATIC_ROUTES = new Map([
-  ["/app.css", { contentType: "text/css; charset=utf-8", filePath: path.join(uiDirectoryPath, "app.css") }],
-  ["/app.js", { contentType: "text/javascript; charset=utf-8", filePath: path.join(uiDirectoryPath, "app.js") }],
-  ["/view-model.js", { contentType: "text/javascript; charset=utf-8", filePath: path.join(uiDirectoryPath, "view-model.js") }],
-]);
+const DEFAULT_UI_DIRECTORY_PATH = fileURLToPath(new URL("../../web/dist/", import.meta.url));
 
 export function createApp(options = {}) {
   const projectRepository = options.projectRepository ?? new SqliteProjectRepository(options.repositoryOptions);
@@ -37,7 +32,7 @@ export function createApp(options = {}) {
   const metricsService = options.metricsService ?? new MetricsService({
     taskRepository,
   });
-  const uiAssetVersion = options.uiAssetVersion ?? createUiAssetVersion();
+  const uiDirectoryPath = options.uiDirectoryPath ?? DEFAULT_UI_DIRECTORY_PATH;
   const taskService = options.taskService ?? new TaskService({
     agentService,
     eventBus,
@@ -64,7 +59,7 @@ export function createApp(options = {}) {
         projectService,
         systemService,
         taskService,
-        uiAssetVersion,
+        uiDirectoryPath,
       });
     } catch (error) {
       respondJson(response, 500, {
@@ -93,18 +88,13 @@ async function routeRequest(request, response, services) {
     projectService,
     systemService,
     taskService,
-    uiAssetVersion,
+    uiDirectoryPath,
   } = services;
   const url = new URL(request.url, "http://127.0.0.1");
   const pathName = url.pathname;
-  const staticRoute = STATIC_ROUTES.get(pathName);
 
   if (request.method === "GET" && pathName === "/") {
-    return respondIndexHtml(response, uiAssetVersion);
-  }
-
-  if (request.method === "GET" && staticRoute) {
-    return respondStaticAsset(response, staticRoute.filePath, staticRoute.contentType, uiAssetVersion);
+    return respondUiRoute(response, uiDirectoryPath, pathName);
   }
 
   if (request.method === "POST" && pathName === "/api/projects") {
@@ -567,6 +557,10 @@ async function routeRequest(request, response, services) {
     return respondServiceResult(response, result);
   }
 
+  if (request.method === "GET") {
+    return respondUiRoute(response, uiDirectoryPath, pathName);
+  }
+
   return respondJson(response, 404, {
     error: {
       code: "NOT_FOUND",
@@ -672,51 +666,26 @@ async function respondFile(response, filePath, contentType) {
   }
 }
 
-async function respondStaticAsset(response, filePath, contentType, uiAssetVersion) {
-  try {
-    const body = await readFile(filePath, "utf8");
-    const output = filePath.endsWith("app.js")
-      ? body.replace('from "./view-model.js";', `from "./view-model.js?v=${uiAssetVersion}";`)
-      : body;
-    response.writeHead(200, {
-      "cache-control": STATIC_CACHE_CONTROL,
-      "content-type": contentType,
-    });
-    response.end(output);
-  } catch {
+async function respondUiRoute(response, uiDirectoryPath, pathName) {
+  if (!uiDirectoryPath) {
     respondJson(response, 500, {
       error: {
-        code: "STATIC_ASSET_READ_ERROR",
-        message: "Unable to load the requested UI asset.",
+        code: "STATIC_ASSET_ROOT_NOT_FOUND",
+        message: "Unable to resolve the UI asset root.",
       },
     });
+    return;
   }
-}
 
-async function respondIndexHtml(response, uiAssetVersion) {
-  try {
-    const body = await readFile(path.join(uiDirectoryPath, "index.html"), "utf8");
-    const output = body
-      .replace('href="/app.css"', `href="/app.css?v=${uiAssetVersion}"`)
-      .replace('src="/app.js"', `src="/app.js?v=${uiAssetVersion}"`);
-
-    response.writeHead(200, {
-      "cache-control": STATIC_CACHE_CONTROL,
-      "content-type": "text/html; charset=utf-8",
-    });
-    response.end(output);
-  } catch {
-    respondJson(response, 500, {
-      error: {
-        code: "STATIC_ASSET_READ_ERROR",
-        message: "Unable to load the requested UI asset.",
-      },
-    });
+  const requestedPath = path.normalize(decodeURIComponent(pathName)).replace(/^(\.\.(\/|\\|$))+/, "");
+  if (requestedPath !== path.sep && requestedPath !== ".") {
+    const candidatePath = path.join(uiDirectoryPath, requestedPath.slice(1));
+    if (isPathWithinRoot(uiDirectoryPath, candidatePath) && await isStaticFile(candidatePath)) {
+      return respondFile(response, candidatePath, getContentType(candidatePath));
+    }
   }
-}
 
-function createUiAssetVersion() {
-  return Date.now().toString(36);
+  return respondFile(response, path.join(uiDirectoryPath, "index.html"), "text/html; charset=utf-8");
 }
 
 function stripOk(result) {
@@ -815,4 +784,39 @@ function respondTaskEventStream(request, response, eventBus, taskId) {
     clearInterval(keepAlive);
     unsubscribe();
   });
+}
+
+async function isStaticFile(filePath) {
+  try {
+    const fileInfo = await stat(filePath);
+    return fileInfo.isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isPathWithinRoot(rootPath, targetPath) {
+  const relativePath = path.relative(rootPath, targetPath);
+  return relativePath !== ".." && !relativePath.startsWith(`..${path.sep}`);
+}
+
+function getContentType(filePath) {
+  switch (path.extname(filePath)) {
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".js":
+      return "text/javascript; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml";
+    case ".woff":
+      return "font/woff";
+    case ".woff2":
+      return "font/woff2";
+    default:
+      return "application/octet-stream";
+  }
 }
