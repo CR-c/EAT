@@ -10,12 +10,15 @@ import (
 )
 
 type Project struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Path          string `json:"path"`
-	DefaultBranch string `json:"defaultBranch"`
-	CreatedAt     string `json:"createdAt"`
-	UpdatedAt     string `json:"updatedAt"`
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Path          string  `json:"path"`
+	DefaultBranch string  `json:"defaultBranch"`
+	Color         *string `json:"color,omitempty"`
+	IsPinned      bool    `json:"isPinned"`
+	PinnedOrder   *int64  `json:"pinnedOrder,omitempty"`
+	CreatedAt     string  `json:"createdAt"`
+	UpdatedAt     string  `json:"updatedAt"`
 }
 
 type Repository struct {
@@ -33,10 +36,18 @@ func (r *Repository) ListProjects(ctx context.Context) ([]Project, error) {
 			name,
 			path,
 			default_branch,
+			color,
+			is_pinned,
+			pinned_order,
 			created_at,
 			updated_at
 		FROM projects
-		ORDER BY name COLLATE NOCASE ASC, created_at ASC
+		ORDER BY
+			is_pinned DESC,
+			CASE WHEN pinned_order IS NULL THEN 1 ELSE 0 END ASC,
+			pinned_order ASC,
+			name COLLATE NOCASE ASC,
+			created_at ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -51,6 +62,9 @@ func (r *Repository) ListProjects(ctx context.Context) ([]Project, error) {
 			&project.Name,
 			&project.Path,
 			&project.DefaultBranch,
+			&project.Color,
+			&project.IsPinned,
+			&project.PinnedOrder,
 			&project.CreatedAt,
 			&project.UpdatedAt,
 		); err != nil {
@@ -70,13 +84,16 @@ func (r *Repository) FindProjectByPath(ctx context.Context, projectPath string) 
 	return r.findOne(ctx, "WHERE path = ?", projectPath)
 }
 
-func (r *Repository) CreateProject(ctx context.Context, name, projectPath, defaultBranch string) (*Project, error) {
+func (r *Repository) CreateProject(ctx context.Context, input CreateProjectRecordInput) (*Project, error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	project := &Project{
 		ID:            uuid.NewString(),
-		Name:          name,
-		Path:          projectPath,
-		DefaultBranch: defaultBranch,
+		Name:          input.Name,
+		Path:          input.Path,
+		DefaultBranch: input.DefaultBranch,
+		Color:         input.Color,
+		IsPinned:      input.IsPinned,
+		PinnedOrder:   input.PinnedOrder,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -87,14 +104,20 @@ func (r *Repository) CreateProject(ctx context.Context, name, projectPath, defau
 			name,
 			path,
 			default_branch,
+			color,
+			is_pinned,
+			pinned_order,
 			created_at,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		project.ID,
 		project.Name,
 		project.Path,
 		project.DefaultBranch,
+		project.Color,
+		project.IsPinned,
+		project.PinnedOrder,
 		project.CreatedAt,
 		project.UpdatedAt,
 	)
@@ -103,6 +126,23 @@ func (r *Repository) CreateProject(ctx context.Context, name, projectPath, defau
 	}
 
 	return project, nil
+}
+
+type CreateProjectRecordInput struct {
+	Name          string
+	Path          string
+	DefaultBranch string
+	Color         *string
+	IsPinned      bool
+	PinnedOrder   *int64
+}
+
+type UpdateProjectPreferencesRecordInput struct {
+	Color       *string
+	SetColor    bool
+	IsPinned    *bool
+	PinnedOrder *int64
+	SetPinned   bool
 }
 
 func (r *Repository) CountTasksByProjectID(ctx context.Context, projectID string) (int, error) {
@@ -172,6 +212,46 @@ func (r *Repository) DeleteProject(ctx context.Context, projectID string) (*Proj
 	return projectRecord, nil
 }
 
+func (r *Repository) UpdateProjectPreferences(ctx context.Context, projectID string, input UpdateProjectPreferencesRecordInput) (*Project, error) {
+	currentProject, err := r.FindProjectByID(ctx, projectID)
+	if err != nil || currentProject == nil {
+		return currentProject, err
+	}
+
+	nextProject := *currentProject
+	nextProject.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	if input.SetColor {
+		nextProject.Color = input.Color
+	}
+	if input.SetPinned {
+		if input.IsPinned != nil {
+			nextProject.IsPinned = *input.IsPinned
+		}
+		nextProject.PinnedOrder = input.PinnedOrder
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		UPDATE projects
+		SET
+			color = ?,
+			is_pinned = ?,
+			pinned_order = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		nextProject.Color,
+		nextProject.IsPinned,
+		nextProject.PinnedOrder,
+		nextProject.UpdatedAt,
+		projectID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &nextProject, nil
+}
+
 func (r *Repository) findOne(ctx context.Context, whereClause string, arg string) (*Project, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT
@@ -179,6 +259,9 @@ func (r *Repository) findOne(ctx context.Context, whereClause string, arg string
 			name,
 			path,
 			default_branch,
+			color,
+			is_pinned,
+			pinned_order,
 			created_at,
 			updated_at
 		FROM projects
@@ -192,6 +275,9 @@ func (r *Repository) findOne(ctx context.Context, whereClause string, arg string
 		&project.Name,
 		&project.Path,
 		&project.DefaultBranch,
+		&project.Color,
+		&project.IsPinned,
+		&project.PinnedOrder,
 		&project.CreatedAt,
 		&project.UpdatedAt,
 	); err != nil {

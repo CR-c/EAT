@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -77,6 +78,15 @@ func ResolveUniqueBranchName(ctx context.Context, workDir, desiredBranchName str
 		}
 		attempt++
 	}
+}
+
+// ValidateBranchName verifies that a value is a valid local branch name.
+func ValidateBranchName(ctx context.Context, workDir, branchName string) error {
+	result := RunCapture(ctx, workDir, "check-ref-format", "--branch", branchName)
+	if !result.OK {
+		return fmt.Errorf("invalid branch name %q: %s", branchName, result.Stderr)
+	}
+	return nil
 }
 
 // EnsureBranchExists creates a branch if it doesn't exist.
@@ -236,4 +246,125 @@ func DiffOutput(ctx context.Context, repoPath, baseRef, headRef string, maxBytes
 		result = result[:maxBytes] + "\n... (truncated)"
 	}
 	return result, nil
+}
+
+type DiffFileSummary struct {
+	Path      string
+	Previous  *string
+	Type      string
+	Additions int64
+	Deletions int64
+	Patch     string
+}
+
+func DiffFiles(ctx context.Context, repoPath, baseRef, headRef string, maxPatchBytes int) ([]DiffFileSummary, error) {
+	rangeRef := baseRef + "..." + headRef
+	statusOutput, err := Run(ctx, repoPath, "diff", "--name-status", "--find-renames", rangeRef)
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(strings.TrimSpace(statusOutput), "\n")
+	files := make([]DiffFileSummary, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Split(line, "\t")
+		if len(parts) < 2 {
+			continue
+		}
+
+		status := normalizeDiffStatus(parts[0])
+		path := parts[len(parts)-1]
+		var previous *string
+		if len(parts) >= 3 {
+			previous = stringPointer(parts[1])
+		}
+
+		additions, deletions, err := diffNumStatForPath(ctx, repoPath, rangeRef, path)
+		if err != nil {
+			return nil, err
+		}
+		patch, err := diffPatchForPath(ctx, repoPath, rangeRef, path, maxPatchBytes)
+		if err != nil {
+			return nil, err
+		}
+
+		files = append(files, DiffFileSummary{
+			Path:      path,
+			Previous:  previous,
+			Type:      status,
+			Additions: additions,
+			Deletions: deletions,
+			Patch:     patch,
+		})
+	}
+
+	return files, nil
+}
+
+func diffNumStatForPath(ctx context.Context, repoPath, rangeRef, path string) (int64, int64, error) {
+	output, err := Run(ctx, repoPath, "diff", "--numstat", "--find-renames", rangeRef, "--", path)
+	if err != nil {
+		return 0, 0, err
+	}
+	line := strings.TrimSpace(output)
+	if line == "" {
+		return 0, 0, nil
+	}
+
+	parts := strings.Fields(line)
+	if len(parts) < 2 {
+		return 0, 0, nil
+	}
+
+	additions, _ := strconv.ParseInt(strings.ReplaceAll(parts[0], "-", "0"), 10, 64)
+	deletions, _ := strconv.ParseInt(strings.ReplaceAll(parts[1], "-", "0"), 10, 64)
+	return additions, deletions, nil
+}
+
+func diffPatchForPath(ctx context.Context, repoPath, rangeRef, path string, maxPatchBytes int) (string, error) {
+	output, err := Run(ctx, repoPath, "diff", "--find-renames", "--unified=3", rangeRef, "--", path)
+	if err != nil {
+		return "", err
+	}
+	patch := strings.TrimSpace(output)
+	if maxPatchBytes > 0 && len(patch) > maxPatchBytes {
+		patch = patch[:maxPatchBytes] + "\n... (truncated)"
+	}
+	return patch, nil
+}
+
+func normalizeDiffStatus(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "M"
+	}
+	switch value[0] {
+	case 'A':
+		return "A"
+	case 'C':
+		return "C"
+	case 'D':
+		return "D"
+	case 'M':
+		return "M"
+	case 'R':
+		return "R"
+	case 'T':
+		return "T"
+	default:
+		return strings.ToUpper(string(value[0]))
+	}
+}
+
+func stringPointer(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }

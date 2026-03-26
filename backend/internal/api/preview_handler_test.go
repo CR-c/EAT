@@ -58,13 +58,13 @@ func TestPreviewEndpointsServePreviewServiceContract(t *testing.T) {
 		"targetId": "task-mainline",
 	})
 	startResponse := httptest.NewRecorder()
-	router.ServeHTTP(startResponse, httptest.NewRequest(http.MethodPost, "/api/tasks/task-1/preview/start", bytes.NewReader(startBody)))
+	router.ServeHTTP(startResponse, httptest.NewRequest(http.MethodPost, "/api/tasks/task-1/preview-sessions", bytes.NewReader(startBody)))
 	if startResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected start preview status: %d body=%s", startResponse.Code, startResponse.Body.String())
 	}
 
 	stopResponse := httptest.NewRecorder()
-	router.ServeHTTP(stopResponse, httptest.NewRequest(http.MethodPost, "/api/tasks/task-1/preview/stop", nil))
+	router.ServeHTTP(stopResponse, httptest.NewRequest(http.MethodDelete, "/api/tasks/task-1/preview-sessions/current", nil))
 	if stopResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected stop preview status: %d body=%s", stopResponse.Code, stopResponse.Body.String())
 	}
@@ -101,7 +101,7 @@ func TestPreviewStartEndpointAcceptsEmptyBodyLikeNodeContract(t *testing.T) {
 	router := NewRouter(&Handler{previewService: service})
 
 	startResponse := httptest.NewRecorder()
-	router.ServeHTTP(startResponse, httptest.NewRequest(http.MethodPost, "/api/tasks/task-1/preview/start", nil))
+	router.ServeHTTP(startResponse, httptest.NewRequest(http.MethodPost, "/api/tasks/task-1/preview-sessions", nil))
 	if startResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected start preview status with empty body: %d body=%s", startResponse.Code, startResponse.Body.String())
 	}

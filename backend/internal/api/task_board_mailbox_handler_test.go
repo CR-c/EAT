@@ -134,7 +134,7 @@ func TestTaskTeamBoardAndMailboxEndpointsReturnPersistedReadModels(t *testing.T)
 		t.Fatalf("expected dependency edge to remain blocking: %#v", edges)
 	}
 
-	mailboxResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-ops/mailbox", map[string]any{
+	mailboxResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-ops/mailbox-messages", map[string]any{
 		"content":         "Frontend can proceed once auth contract is merged.",
 		"messageType":     "NOTE",
 		"targetSubTaskId": "subtask-2",

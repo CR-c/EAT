@@ -104,6 +104,23 @@ When implementing a phase:
 - If the user asks for implementation, prefer making the code changes directly.
 - If the user asks for review, prioritize bugs, risks, regressions, and missing tests.
 
+## Backend API Conventions
+
+- Backend HTTP APIs must use canonical resource-style naming only. Do not keep parallel legacy route aliases once a route family is normalized.
+- Use plural nouns for collections and subordinate resources:
+  - `POST /api/tasks/{taskId}/plan-approvals`
+  - `POST /api/tasks/{taskId}/replan-requests`
+  - `POST /api/tasks/{taskId}/clarification-sessions`
+  - `PUT /api/projects/{projectId}/preferences`
+- Avoid verb-led route names such as `/start-*`, `/stop-*`, `/confirm-*`, `/approve-*`, `/current-*`, `/repo-status`, or `/docker-health` when introducing or refactoring endpoints.
+- For reversible singleton state, prefer a resource collection plus `DELETE .../current` for clearing the active state:
+  - `POST /api/tasks/{taskId}/pauses`
+  - `DELETE /api/tasks/{taskId}/pauses/current`
+  - `POST /api/tasks/{taskId}/archives`
+  - `DELETE /api/tasks/{taskId}/archives/current`
+- Use stable JSON field names in lower camel case. Do not mix synonymous field names for the same concept in the same response.
+- When frontend integration changes an API contract, update the frontend client wrappers and backend tests in the same change.
+
 ## Documentation Maintenance Rules
 
 When rewriting or integrating docs:

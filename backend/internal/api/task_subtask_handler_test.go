@@ -124,7 +124,7 @@ func TestSubTaskLifecycleEndpointsPersistOperatorMutations(t *testing.T) {
 		Bus: eventbus.New(),
 	}))
 
-	retryResponse := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-retry/retry", map[string]any{
+	retryResponse := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-retry/retry-requests", map[string]any{
 		"description": "Retry with stricter logging.",
 	})
 	if retryResponse.Code != http.StatusOK {
@@ -141,7 +141,7 @@ func TestSubTaskLifecycleEndpointsPersistOperatorMutations(t *testing.T) {
 		t.Fatalf("unexpected retry session payload: %#v", retryPayload["session"])
 	}
 
-	reworkResponse := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-rework/rework", map[string]any{
+	reworkResponse := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-rework/rework-requests", map[string]any{
 		"description": "Tighten validation coverage and relaunch.",
 	})
 	if reworkResponse.Code != http.StatusOK {
@@ -152,7 +152,7 @@ func TestSubTaskLifecycleEndpointsPersistOperatorMutations(t *testing.T) {
 		t.Fatalf("unexpected rework payload: %#v", reworkPayload["subTask"])
 	}
 
-	changeAgentResponse := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-change/change-agent", map[string]any{
+	changeAgentResponse := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-change/agent-changes", map[string]any{
 		"agentType":   "claude-cli",
 		"description": "Use a different worker for the rerun.",
 	})
@@ -167,7 +167,7 @@ func TestSubTaskLifecycleEndpointsPersistOperatorMutations(t *testing.T) {
 		t.Fatalf("unexpected change-agent payload: %#v", changeAgentPayload)
 	}
 
-	reassignResponse := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-reassign/reassign", map[string]any{
+	reassignResponse := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-reassign/reassignments", map[string]any{
 		"description": "Reassign after the dependency clears.",
 	})
 	if reassignResponse.Code != http.StatusOK {
@@ -181,7 +181,7 @@ func TestSubTaskLifecycleEndpointsPersistOperatorMutations(t *testing.T) {
 		t.Fatalf("unexpected reassign payload: %#v", reassignPayload)
 	}
 
-	discardResponse := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-discard/confirm-discard", nil)
+	discardResponse := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-discard/discard-confirmations", nil)
 	if discardResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected confirm-discard status: %d body=%s", discardResponse.Code, discardResponse.Body.String())
 	}
@@ -220,7 +220,7 @@ func TestCancelSubTaskEndpointCancelsLatestLiveWorkerSession(t *testing.T) {
 		Bus: eventbus.New(),
 	}))
 
-	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-cancel/cancel", nil)
+	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-cancel/cancellations", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("unexpected cancel status: %d body=%s", response.Code, response.Body.String())
 	}
@@ -278,7 +278,7 @@ func TestCancelSubTaskEndpointRoutesTaskToActionRequiredWhenBlockedDependentsNee
 		Bus: eventbus.New(),
 	}))
 
-	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-cancel-upstream/cancel", nil)
+	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-cancel-upstream/cancellations", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("unexpected cancel status: %d body=%s", response.Code, response.Body.String())
 	}
@@ -323,7 +323,7 @@ func TestRebaseRetrySubTaskEndpointResumesMergingAfterConflict(t *testing.T) {
 		Bus: eventbus.New(),
 	}))
 
-	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-rebase/rebase-retry", nil)
+	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-rebase/rebase-retries", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("unexpected rebase-retry status: %d body=%s", response.Code, response.Body.String())
 	}
@@ -377,7 +377,7 @@ func TestConfirmDiscardSubTaskRoutesTaskToActionRequiredWhenBlockedDependentsRem
 		Bus: eventbus.New(),
 	}))
 
-	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-discard-upstream/confirm-discard", nil)
+	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-discard-upstream/discard-confirmations", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("unexpected confirm-discard status: %d body=%s", response.Code, response.Body.String())
 	}

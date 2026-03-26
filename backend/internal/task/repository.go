@@ -10,23 +10,25 @@ import (
 )
 
 type Task struct {
-	ID               string  `json:"id"`
-	ProjectID        string  `json:"projectId"`
-	Title            string  `json:"title"`
-	Description      string  `json:"description"`
-	LeadAgentType    string  `json:"leadAgentType"`
-	BaseBranch       string  `json:"baseBranch"`
-	BaseCommitSHA    string  `json:"baseCommitSha"`
-	TaskBranchName   *string `json:"taskBranchName"`
-	Status           string  `json:"status"`
-	PlanVersion      int64   `json:"planVersion"`
-	CurrentPlanJSON  *string `json:"currentPlanJson"`
-	ApprovedPlanJSON *string `json:"approvedPlanJson"`
-	LastError        *string `json:"lastError"`
-	ArchivedAt       *string `json:"archivedAt"`
-	CreatedAt        string  `json:"createdAt"`
-	UpdatedAt        string  `json:"updatedAt"`
-	Version          int64   `json:"version"`
+	ID                  string  `json:"id"`
+	ProjectID           string  `json:"projectId"`
+	Title               string  `json:"title"`
+	Description         string  `json:"description"`
+	LeadAgentType       string  `json:"leadAgentType"`
+	BaseBranch          string  `json:"baseBranch"`
+	BaseCommitSHA       string  `json:"baseCommitSha"`
+	TaskBranchName      *string `json:"taskBranchName"`
+	Status              string  `json:"status"`
+	WorkspaceStage      string  `json:"workspaceStage,omitempty"`
+	WorkspaceStageLabel string  `json:"workspaceStageLabel,omitempty"`
+	PlanVersion         int64   `json:"planVersion"`
+	CurrentPlanJSON     *string `json:"currentPlanJson"`
+	ApprovedPlanJSON    *string `json:"approvedPlanJson"`
+	LastError           *string `json:"lastError"`
+	ArchivedAt          *string `json:"archivedAt"`
+	CreatedAt           string  `json:"createdAt"`
+	UpdatedAt           string  `json:"updatedAt"`
+	Version             int64   `json:"version"`
 }
 
 type Message struct {

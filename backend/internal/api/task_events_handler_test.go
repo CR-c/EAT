@@ -32,7 +32,7 @@ func TestStartClarificationAndPauseEndpointsPublishRealtimeEvents(t *testing.T) 
 		Bus: bus,
 	}))
 
-	startResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-events/start-clarification", map[string]any{
+	startResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-events/clarification-sessions", map[string]any{
 		"content": "Clarify the operator workflow first.",
 	})
 	if startResponse.Code != http.StatusOK {
@@ -57,7 +57,7 @@ func TestStartClarificationAndPauseEndpointsPublishRealtimeEvents(t *testing.T) 
 		t.Fatalf("unexpected session started payload: %#v", sessionStartedPayload)
 	}
 
-	pauseResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-events/pause", nil)
+	pauseResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-events/pauses", nil)
 	if pauseResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected pause status: %d body=%s", pauseResponse.Code, pauseResponse.Body.String())
 	}
@@ -117,7 +117,7 @@ func TestResumeEndpointPublishesTaskStatusEvent(t *testing.T) {
 		Bus: bus,
 	}))
 
-	response := performJSONRequest(router, http.MethodPost, "/api/tasks/task-resume-events/resume", nil)
+	response := performJSONRequest(router, http.MethodDelete, "/api/tasks/task-resume-events/pauses/current", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("unexpected resume status: %d body=%s", response.Code, response.Body.String())
 	}
@@ -152,7 +152,7 @@ func TestApprovePlanEndpointPublishesSubTaskAssignmentEvents(t *testing.T) {
 		Bus: bus,
 	}))
 
-	response := performJSONRequest(router, http.MethodPost, "/api/tasks/task-approve-events/approve-plan", nil)
+	response := performJSONRequest(router, http.MethodPost, "/api/tasks/task-approve-events/plan-approvals", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("unexpected approve status: %d body=%s", response.Code, response.Body.String())
 	}
@@ -239,7 +239,7 @@ func TestRestorePlanSnapshotEndpointPublishesPlanRestoredEvent(t *testing.T) {
 		Bus: bus,
 	}))
 
-	response := performJSONRequest(router, http.MethodPost, "/api/tasks/task-restore-events/restore-plan-snapshot", map[string]any{
+	response := performJSONRequest(router, http.MethodPost, "/api/tasks/task-restore-events/plan-snapshot-restores", map[string]any{
 		"snapshotId": "snapshot-restore-events",
 	})
 	if response.Code != http.StatusOK {
@@ -312,7 +312,7 @@ func TestIntegrationAndMailboxEndpointsPublishRealtimeEvents(t *testing.T) {
 		t.Fatalf("unexpected integration queued payload: %#v", integrationQueuedPayload)
 	}
 
-	mailboxResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-stream-events/mailbox", map[string]any{
+	mailboxResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-stream-events/mailbox-messages", map[string]any{
 		"content":         "Please verify the integration branch before release.",
 		"messageType":     "REVIEW_REQUEST",
 		"targetSubTaskId": "subtask-stream-alpha",
@@ -397,7 +397,7 @@ func TestCancelSubTaskPublishesActionRequiredWhenBlockedDependentsRemain(t *test
 		Bus: bus,
 	}))
 
-	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-cancel-events-upstream/cancel", nil)
+	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-cancel-events-upstream/cancellations", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("unexpected cancel status: %d body=%s", response.Code, response.Body.String())
 	}
@@ -463,7 +463,7 @@ func TestConfirmDiscardPublishesActionRequiredWhenBlockedDependentsRemain(t *tes
 		Bus: bus,
 	}))
 
-	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-discard-events-upstream/confirm-discard", nil)
+	response := performJSONRequest(router, http.MethodPost, "/api/subtasks/subtask-discard-events-upstream/discard-confirmations", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("unexpected confirm-discard status: %d body=%s", response.Code, response.Body.String())
 	}

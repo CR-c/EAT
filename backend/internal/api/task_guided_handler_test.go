@@ -144,7 +144,7 @@ func TestPlanSeedEndpointUpdatesCurrentPlanForPlanReviewTasks(t *testing.T) {
 	requestBody, _ := json.Marshal(map[string]any{
 		"templateId": "full-stack-web-app",
 	})
-	request := httptest.NewRequest(http.MethodPost, "/api/tasks/task-1/plan-seed", bytes.NewReader(requestBody))
+	request := httptest.NewRequest(http.MethodPost, "/api/tasks/task-1/plan-seeds", bytes.NewReader(requestBody))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -213,7 +213,7 @@ func TestPlanSeedEndpointRejectsNonPlanReviewTasks(t *testing.T) {
 	requestBody, _ := json.Marshal(map[string]any{
 		"templateId": "full-stack-web-app",
 	})
-	request := httptest.NewRequest(http.MethodPost, "/api/tasks/task-2/plan-seed", bytes.NewReader(requestBody))
+	request := httptest.NewRequest(http.MethodPost, "/api/tasks/task-2/plan-seeds", bytes.NewReader(requestBody))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -306,7 +306,7 @@ func TestUpdateCurrentPlanEndpointPersistsEditedDraft(t *testing.T) {
 		},
 	})
 
-	request := httptest.NewRequest(http.MethodPut, "/api/tasks/task-plan-edit/current-plan", bytes.NewReader(requestBody))
+	request := httptest.NewRequest(http.MethodPut, "/api/tasks/task-plan-edit/plan", bytes.NewReader(requestBody))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -369,7 +369,7 @@ func TestUpdateCurrentPlanEndpointRejectsInvalidPlan(t *testing.T) {
 		},
 	})
 
-	request := httptest.NewRequest(http.MethodPut, "/api/tasks/task-invalid-plan/current-plan", bytes.NewReader(requestBody))
+	request := httptest.NewRequest(http.MethodPut, "/api/tasks/task-invalid-plan/plan", bytes.NewReader(requestBody))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -414,7 +414,7 @@ func TestRestorePlanSnapshotEndpointRestoresPayloadAndAppendsAuditSnapshot(t *te
 	}))
 
 	requestBody, _ := json.Marshal(map[string]any{"snapshotId": "snapshot-1"})
-	request := httptest.NewRequest(http.MethodPost, "/api/tasks/task-restore/restore-plan-snapshot", bytes.NewReader(requestBody))
+	request := httptest.NewRequest(http.MethodPost, "/api/tasks/task-restore/plan-snapshot-restores", bytes.NewReader(requestBody))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -476,7 +476,7 @@ func TestApprovePlanEndpointFreezesPlanAndMaterializesSubTasks(t *testing.T) {
 		Bus: eventbus.New(),
 	}))
 
-	request := httptest.NewRequest(http.MethodPost, "/api/tasks/task-approve/approve-plan", nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/tasks/task-approve/plan-approvals", nil)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -514,7 +514,7 @@ func TestApprovePlanEndpointFreezesPlanAndMaterializesSubTasks(t *testing.T) {
 		t.Fatalf("unexpected second subtask status: %#v", subTasks[1])
 	}
 
-	duplicateRequest := httptest.NewRequest(http.MethodPost, "/api/tasks/task-approve/approve-plan", nil)
+	duplicateRequest := httptest.NewRequest(http.MethodPost, "/api/tasks/task-approve/plan-approvals", nil)
 	duplicateResponse := httptest.NewRecorder()
 	router.ServeHTTP(duplicateResponse, duplicateRequest)
 	if duplicateResponse.Code != http.StatusOK {
@@ -582,7 +582,7 @@ func TestApprovePlanEndpointCreatesWorkerSessionsForEachLaunchableRootSubTask(t 
 		Bus: eventbus.New(),
 	}))
 
-	request := httptest.NewRequest(http.MethodPost, "/api/tasks/task-approve-parallel/approve-plan", nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/tasks/task-approve-parallel/plan-approvals", nil)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 

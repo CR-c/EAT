@@ -122,6 +122,8 @@ func mapProjectErrorStatus(code string) int {
 		return http.StatusNotFound
 	case project.ErrorCodePathAccessDenied:
 		return http.StatusForbidden
+	case "PROJECT_CREATE_FAILED", "PROJECT_DELETE_FAILED", "PROJECT_LIST_FAILED", "PROJECT_PREFERENCES_UPDATE_FAILED", "PROJECT_READ_FAILED", "PROJECT_TASK_COUNT_FAILED":
+		return http.StatusInternalServerError
 	default:
 		return http.StatusBadRequest
 	}
@@ -134,6 +136,7 @@ func mapTaskErrorStatus(code string) int {
 	case "TASK_APPROVAL_FAILED",
 		"TASK_CREATE_FAILED",
 		"TASK_CURRENT_PLAN_UPDATE_FAILED",
+		"TASK_DIFF_READ_FAILED",
 		"TASK_MESSAGES_READ_FAILED",
 		"TASK_ATTACHMENTS_READ_FAILED",
 		"TASK_GATE_RESULTS_READ_FAILED",
@@ -146,6 +149,7 @@ func mapTaskErrorStatus(code string) int {
 		"TASK_PLAN_SNAPSHOT_READ_FAILED",
 		"TASK_READ_FAILED",
 		"TASK_RESTORE_FAILED",
+		"TASK_REPLAN_FAILED",
 		"TASK_SESSIONS_READ_FAILED",
 		"TASK_SESSION_UPDATE_FAILED",
 		"TASK_SUBTASK_READ_FAILED",

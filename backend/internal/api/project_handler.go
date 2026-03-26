@@ -87,6 +87,29 @@ func (h *Handler) GetProjectRepoStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) UpdateProjectPreferences(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectId")
+
+	var input project.UpdateProjectPreferencesInput
+	if err := decodeJSON(r, &input); err != nil {
+		respondProjectError(w, &project.Error{
+			Code:    project.ErrorCodeInvalidRequestBody,
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	projectRecord, serviceError := h.projectService.UpdateProjectPreferences(r.Context(), projectID, input)
+	if serviceError != nil {
+		respondProjectError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"project": projectRecord,
+	})
+}
+
 func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectId")
 

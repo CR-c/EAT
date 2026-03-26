@@ -75,6 +75,24 @@ func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusOK, detail)
 }
+func (h *Handler) GetTaskRuntime(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+	result, serviceError := h.taskService.GetTaskRuntime(r.Context(), taskID)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+func (h *Handler) GetTaskDiff(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+	result, serviceError := h.taskService.GetTaskDiff(r.Context(), taskID)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
 func (h *Handler) GetTaskTeam(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
 
@@ -198,6 +216,26 @@ func (h *Handler) UpdateCurrentPlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, result)
+}
+func (h *Handler) RequestReplan(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+
+	var input task.ReplanRequest
+	if err := decodeJSON(r, &input); err != nil {
+		respondTaskError(w, &task.Error{
+			Code:    "INVALID_REQUEST_BODY",
+			Message: "Request body must be valid JSON.",
+		})
+		return
+	}
+
+	result, serviceError := h.taskService.RequestReplan(r.Context(), taskID, input)
+	if serviceError != nil {
+		respondTaskError(w, serviceError)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, result)
 }
 func (h *Handler) PlanSeed(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")

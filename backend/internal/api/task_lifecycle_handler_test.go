@@ -30,7 +30,7 @@ func TestStartClarificationEndpointRequiresInitialMessage(t *testing.T) {
 		Bus: eventbus.New(),
 	}))
 
-	response := performJSONRequest(router, http.MethodPost, "/api/tasks/task-draft/start-clarification", nil)
+	response := performJSONRequest(router, http.MethodPost, "/api/tasks/task-draft/clarification-sessions", nil)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("unexpected status: %d body=%s", response.Code, response.Body.String())
 	}
@@ -129,7 +129,7 @@ func TestArchiveUnarchiveDeleteEndpointsManageLifecycleAndBranchCleanup(t *testi
 	taskID := createPayload["task"].(map[string]any)["id"].(string)
 	taskBranchName := createPayload["task"].(map[string]any)["taskBranchName"].(string)
 
-	archiveResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/"+taskID+"/archive", map[string]any{
+	archiveResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/"+taskID+"/archives", map[string]any{
 		"deleteBranches": false,
 	})
 	if archiveResponse.Code != http.StatusOK {
@@ -155,7 +155,7 @@ func TestArchiveUnarchiveDeleteEndpointsManageLifecycleAndBranchCleanup(t *testi
 		t.Fatal("expected archived task to appear in includeArchived list")
 	}
 
-	unarchiveResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/"+taskID+"/unarchive", nil)
+	unarchiveResponse := performJSONRequest(router, http.MethodDelete, "/api/tasks/"+taskID+"/archives/current", nil)
 	if unarchiveResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected unarchive status: %d body=%s", unarchiveResponse.Code, unarchiveResponse.Body.String())
 	}
@@ -225,7 +225,7 @@ func TestPauseEndpointRequiresPauseBeforeDeleteAndCancelsLeadSession(t *testing.
 	createPayload := decodeJSONMap(t, createResponse.Body.Bytes())
 	taskID := createPayload["task"].(map[string]any)["id"].(string)
 
-	startResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/"+taskID+"/start-clarification", map[string]any{
+	startResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/"+taskID+"/clarification-sessions", map[string]any{
 		"content": "Start a live clarification session.",
 	})
 	if startResponse.Code != http.StatusOK {
@@ -245,7 +245,7 @@ func TestPauseEndpointRequiresPauseBeforeDeleteAndCancelsLeadSession(t *testing.
 		t.Fatalf("unexpected blocked delete payload: %s", blockedDeleteResponse.Body.String())
 	}
 
-	pauseResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/"+taskID+"/pause", nil)
+	pauseResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/"+taskID+"/pauses", nil)
 	if pauseResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected pause status: %d body=%s", pauseResponse.Code, pauseResponse.Body.String())
 	}
@@ -312,7 +312,7 @@ func TestResumeTaskEndpointReturnsTaskToMergingWhenSubtasksAreResolved(t *testin
 		Bus: eventbus.New(),
 	}))
 
-	response := performJSONRequest(router, http.MethodPost, "/api/tasks/task-action-required/resume", nil)
+	response := performJSONRequest(router, http.MethodDelete, "/api/tasks/task-action-required/pauses/current", nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("unexpected resume status: %d body=%s", response.Code, response.Body.String())
 	}
@@ -339,14 +339,14 @@ func TestConfirmRequirementsAndStopLeadSessionEndpointsUseStaticLeadSessionState
 		Bus: eventbus.New(),
 	}))
 
-	startResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-clarifying/start-clarification", map[string]any{
+	startResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-clarifying/clarification-sessions", map[string]any{
 		"content": "Clarify the last missing operator constraints.",
 	})
 	if startResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected start status: %d body=%s", startResponse.Code, startResponse.Body.String())
 	}
 
-	stopResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-clarifying/stop-lead-session", nil)
+	stopResponse := performJSONRequest(router, http.MethodDelete, "/api/tasks/task-clarifying/lead-sessions/current", nil)
 	if stopResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected stop status: %d body=%s", stopResponse.Code, stopResponse.Body.String())
 	}
@@ -361,7 +361,7 @@ func TestConfirmRequirementsAndStopLeadSessionEndpointsUseStaticLeadSessionState
 		t.Fatalf("unexpected stopped session payload: %#v", stoppedDetailPayload["sessions"])
 	}
 
-	restartResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-clarifying/start-clarification", map[string]any{
+	restartResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-clarifying/clarification-sessions", map[string]any{
 		"content": "Clarify again after manual stop.",
 	})
 	if restartResponse.Code != http.StatusBadRequest {
@@ -375,7 +375,7 @@ func TestConfirmRequirementsAndStopLeadSessionEndpointsUseStaticLeadSessionState
 		t.Fatalf("unexpected message status: %d body=%s", messageResponse.Code, messageResponse.Body.String())
 	}
 
-	confirmResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-clarifying/confirm-requirements", nil)
+	confirmResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-clarifying/requirement-confirmations", nil)
 	if confirmResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected confirm status: %d body=%s", confirmResponse.Code, confirmResponse.Body.String())
 	}

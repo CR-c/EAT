@@ -1,0 +1,8 @@
+ALTER TABLE projects
+  ADD COLUMN color TEXT;
+
+ALTER TABLE projects
+  ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE projects
+  ADD COLUMN pinned_order INTEGER;

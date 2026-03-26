@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -53,11 +54,14 @@ const (
 	ErrorCodeTaskNotFound              = "TASK_NOT_FOUND"
 	ErrorCodeTaskBranchCleanupFailed   = "TASK_BRANCH_CLEANUP_FAILED"
 	ErrorCodeTaskDeleteRequiresPause   = "TASK_DELETE_REQUIRES_PAUSE"
+	ErrorCodeTaskBranchInvalid         = "TASK_BRANCH_INVALID"
 	ErrorCodeTaskMessageRequired       = "TASK_MESSAGE_REQUIRED"
 	ErrorCodeTaskNotClarifying         = "TASK_NOT_CLARIFYING"
 	ErrorCodeTaskNotDraft              = "TASK_NOT_DRAFT"
 	ErrorCodeTaskNotPlanReview         = "TASK_NOT_PLAN_REVIEW"
 	ErrorCodeTaskPauseNotAllowed       = "TASK_PAUSE_NOT_ALLOWED"
+	ErrorCodeTaskReplanFeedbackMissing = "TASK_REPLAN_FEEDBACK_REQUIRED"
+	ErrorCodeTaskReplanNotAllowed      = "TASK_REPLAN_NOT_ALLOWED"
 	ErrorCodeTaskResumeNotAllowed      = "TASK_RESUME_NOT_ALLOWED"
 	ErrorCodeTitleRequired             = "TITLE_REQUIRED"
 )
@@ -66,6 +70,7 @@ const maxAttachmentBytes = 10 * 1024 * 1024
 const planSnapshotSourceLeadGenerated = "LEAD_GENERATED"
 const planSnapshotSourceApproved = "APPROVED"
 const planSnapshotSourceRestoredFromHistory = "RESTORED_FROM_HISTORY"
+const planSnapshotSourceReplanRequest = "REPLAN_REQUEST"
 const subTaskAssignmentSourceLead = "LEAD"
 const subTaskStatusBlocked = "BLOCKED"
 const subTaskStatusPending = "PENDING"
@@ -113,6 +118,7 @@ type Detail struct {
 	MailboxMessages []MailboxMessage `json:"mailboxMessages"`
 	Board           map[string]any   `json:"board"`
 	Integration     map[string]any   `json:"integration"`
+	Runtime         map[string]any   `json:"runtime"`
 	Team            map[string]any   `json:"team"`
 }
 
@@ -144,7 +150,11 @@ func NewService(deps Dependencies) *Service {
 }
 
 func (s *Service) ListProjectTasks(ctx context.Context, projectID string, includeArchived bool) ([]Task, error) {
-	return s.repository.ListTasksByProjectID(ctx, projectID, includeArchived)
+	tasks, err := s.repository.ListTasksByProjectID(ctx, projectID, includeArchived)
+	if err != nil {
+		return nil, err
+	}
+	return decorateTasks(tasks), nil
 }
 
 func (s *Service) GetTask(ctx context.Context, taskID string) (*Detail, *Error) {
@@ -184,8 +194,10 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (*Detail, *Error) 
 	if errPayload != nil {
 		return nil, errPayload
 	}
+	taskRecord = decorateTask(taskRecord)
 	team := s.buildTaskTeamView(taskRecord, sessions, subTasks)
 	board := s.buildTaskBoardSnapshot(taskRecord, sessions, subTasks, mailboxMessages, integrationView)
+	runtime := s.buildTaskRuntimeView(taskRecord, sessions, subTasks)
 
 	return &Detail{
 		Task:            taskRecord,
@@ -198,6 +210,7 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (*Detail, *Error) 
 		MailboxMessages: mailboxMessages,
 		Board:           board,
 		Integration:     integrationView,
+		Runtime:         runtime,
 		Team:            team,
 	}, nil
 }
@@ -208,6 +221,7 @@ type CreateTaskRequest struct {
 	Description          string                  `json:"description"`
 	LeadAgentType        string                  `json:"leadAgentType"`
 	BaseBranch           string                  `json:"baseBranch"`
+	TaskBranchName       string                  `json:"taskBranchName"`
 	BaseBranchMode       string                  `json:"baseBranchMode"`
 	BaseBranchStartPoint string                  `json:"baseBranchStartPoint"`
 	Attachments          []AttachmentCreateInput `json:"attachments"`
@@ -253,6 +267,46 @@ type PlanSeedResult struct {
 type UpdateCurrentPlanResult struct {
 	Task        *Task              `json:"task"`
 	CurrentPlan tasktemplates.Plan `json:"currentPlan"`
+}
+
+type ReplanAnnotation struct {
+	NodeID       string `json:"nodeId"`
+	BranchSuffix string `json:"branchSuffix"`
+	Title        string `json:"title"`
+	Note         string `json:"note"`
+}
+
+type ReplanRequest struct {
+	Reason      string             `json:"reason"`
+	Annotations []ReplanAnnotation `json:"annotations"`
+}
+
+type ReplanResult struct {
+	Task           *Task              `json:"task"`
+	CurrentPlan    tasktemplates.Plan `json:"currentPlan"`
+	ChangeSummary  []string           `json:"changeSummary"`
+	PlanVersion    int64              `json:"planVersion"`
+	RequestedAt    string             `json:"requestedAt"`
+	RequestMessage *Message           `json:"requestMessage,omitempty"`
+}
+
+type DiffFile struct {
+	Path      string  `json:"path"`
+	Previous  *string `json:"previousPath,omitempty"`
+	Type      string  `json:"type"`
+	Additions int64   `json:"additions"`
+	Deletions int64   `json:"deletions"`
+	Patch     string  `json:"patch,omitempty"`
+}
+
+type DiffResult struct {
+	Task      *Task          `json:"task"`
+	BaseRef   string         `json:"baseRef"`
+	HeadRef   string         `json:"headRef"`
+	Available bool           `json:"available"`
+	Reason    string         `json:"reason,omitempty"`
+	Summary   map[string]any `json:"summary"`
+	Files     []DiffFile     `json:"files"`
 }
 
 type ApprovePlanResult struct {
@@ -409,6 +463,7 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*Cre
 	title := normalizeRequiredString(input.Title)
 	description := normalizeRequiredString(input.Description)
 	baseBranch := normalizeRequiredString(input.BaseBranch)
+	taskBranchNameInput := normalizeRequiredString(input.TaskBranchName)
 	leadAgentType := normalizeRequiredString(input.LeadAgentType)
 	baseBranchMode := "existing"
 	if strings.TrimSpace(input.BaseBranchMode) == "new" {
@@ -496,6 +551,15 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*Cre
 	}
 
 	desiredTaskBranchName := buildTaskMainlineBranchName(title)
+	if taskBranchNameInput != "" {
+		if err := git.ValidateBranchName(ctx, projectRecord.Path, taskBranchNameInput); err != nil {
+			return nil, failure(ErrorCodeTaskBranchInvalid, "Task branch name is not a valid local git branch.", map[string]any{
+				"taskBranchName": taskBranchNameInput,
+				"reason":         err.Error(),
+			})
+		}
+		desiredTaskBranchName = taskBranchNameInput
+	}
 	resolvedTaskBranchName, err := git.ResolveUniqueBranchName(ctx, projectRecord.Path, desiredTaskBranchName)
 	if err != nil {
 		return nil, failure("TASK_BRANCH_RESOLUTION_FAILED", err.Error(), nil)
@@ -533,7 +597,7 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*Cre
 	}
 
 	return &CreateTaskResult{
-		Task:        taskRecord,
+		Task:        decorateTask(taskRecord),
 		Attachments: attachments,
 	}, nil
 }
@@ -593,7 +657,7 @@ func (s *Service) CreateGuidedTask(ctx context.Context, input CreateGuidedTaskRe
 	}
 
 	return &CreateGuidedTaskResult{
-		Task:        taskRecord,
+		Task:        decorateTask(taskRecord),
 		Attachments: createResult.Attachments,
 		CurrentPlan: seed.Plan,
 		Template:    seed.Template,
@@ -652,7 +716,7 @@ func (s *Service) ApplyPlanSeed(ctx context.Context, taskID string, input PlanSe
 	}
 
 	return &PlanSeedResult{
-		Task:        nextTask,
+		Task:        decorateTask(nextTask),
 		CurrentPlan: seed.Plan,
 		Template:    seed.Template,
 	}, nil
@@ -696,9 +760,193 @@ func (s *Service) UpdateCurrentPlan(ctx context.Context, taskID string, input ta
 	}
 
 	return &UpdateCurrentPlanResult{
-		Task:        nextTask,
+		Task:        decorateTask(nextTask),
 		CurrentPlan: normalizedPlan,
 	}, nil
+}
+
+func (s *Service) RequestReplan(ctx context.Context, taskID string, input ReplanRequest) (*ReplanResult, *Error) {
+	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})
+	}
+	if taskRecord.Status != taskStatusPlanning && taskRecord.Status != "PLAN_REVIEW" {
+		return nil, failure(
+			ErrorCodeTaskReplanNotAllowed,
+			"Re-plan requests are only available during PLANNING or PLAN_REVIEW.",
+			map[string]any{"status": taskRecord.Status, "taskId": taskID},
+		)
+	}
+
+	currentPlan := parsePlanJSON(firstNonEmpty(derefString(taskRecord.CurrentPlanJSON), derefString(taskRecord.ApprovedPlanJSON)))
+	if currentPlan == nil {
+		return nil, failure(ErrorCodeInvalidPlan, "Stored current plan is not valid JSON.", map[string]any{"taskId": taskID})
+	}
+
+	changeSummary := normalizeReplanSummary(input)
+	if len(changeSummary) == 0 {
+		return nil, failure(ErrorCodeTaskReplanFeedbackMissing, "Re-plan requests require a reason or at least one node annotation.", map[string]any{"taskId": taskID})
+	}
+
+	nextPlan := *currentPlan
+	nextPlan.Notes = strings.TrimSpace(joinPlanNotes(nextPlan.Notes, buildReplanNotesBlock(changeSummary)))
+	normalizedPlan, validationError := s.normalizeAndValidatePlan(nextPlan)
+	if validationError != nil {
+		return nil, validationError
+	}
+
+	currentPlanJSONBytes, err := json.Marshal(normalizedPlan)
+	if err != nil {
+		return nil, failure("PLAN_SERIALIZATION_FAILED", err.Error(), nil)
+	}
+	currentPlanJSON := string(currentPlanJSONBytes)
+	requestedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	messageContent := strings.Join(changeSummary, "\n")
+
+	var nextTask *Task
+	var requestMessage *Message
+	txErr := s.repository.RunInTransaction(ctx, func(repository *Repository) error {
+		updatedTask, updateErr := repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+			CurrentPlanJSON:    &currentPlanJSON,
+			SetCurrentPlanJSON: true,
+			LastError:          nil,
+			SetLastError:       true,
+		})
+		if updateErr != nil {
+			return updateErr
+		}
+		nextTask = updatedTask
+
+		messageRecord, createErr := repository.CreateMessage(ctx, CreateMessageInput{
+			ID:        uuid.NewString(),
+			TaskID:    taskID,
+			Role:      messageRoleUser,
+			Content:   "[REPLAN_REQUEST]\n" + messageContent,
+			CreatedAt: requestedAt,
+		})
+		if createErr != nil {
+			return createErr
+		}
+		requestMessage = messageRecord
+
+		_, snapshotErr := repository.CreatePlanSnapshot(ctx, CreatePlanSnapshotInput{
+			TaskID:  taskID,
+			Version: updatedTask.PlanVersion,
+			Source:  planSnapshotSourceReplanRequest,
+			Payload: currentPlanJSON,
+		})
+		return snapshotErr
+	})
+	if txErr != nil {
+		return nil, failure("TASK_REPLAN_FAILED", txErr.Error(), map[string]any{"taskId": taskID})
+	}
+
+	return &ReplanResult{
+		Task:           decorateTask(nextTask),
+		CurrentPlan:    normalizedPlan,
+		ChangeSummary:  changeSummary,
+		PlanVersion:    nextTask.PlanVersion,
+		RequestedAt:    requestedAt,
+		RequestMessage: requestMessage,
+	}, nil
+}
+
+func (s *Service) GetTaskRuntime(ctx context.Context, taskID string) (map[string]any, *Error) {
+	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})
+	}
+
+	sessions, err := s.repository.ListSessionsByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_SESSIONS_READ_FAILED", err.Error(), nil)
+	}
+	subTasks, err := s.repository.ListSubTasksByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_SUBTASKS_READ_FAILED", err.Error(), nil)
+	}
+
+	return s.buildTaskRuntimeView(decorateTask(taskRecord), sessions, subTasks), nil
+}
+
+func (s *Service) GetTaskDiff(ctx context.Context, taskID string) (*DiffResult, *Error) {
+	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, failure("TASK_READ_FAILED", err.Error(), nil)
+	}
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})
+	}
+
+	projectRecord, err := s.projectRepository.FindProjectByID(ctx, taskRecord.ProjectID)
+	if err != nil {
+		return nil, failure("PROJECT_READ_FAILED", err.Error(), nil)
+	}
+	if projectRecord == nil {
+		return nil, failure(ErrorCodeProjectNotFound, "Project not found.", map[string]any{"projectId": taskRecord.ProjectID})
+	}
+
+	headRef := normalizeRequiredString(derefString(taskRecord.TaskBranchName))
+	baseRef := normalizeRequiredString(taskRecord.BaseBranch)
+	if baseRef == "" {
+		baseRef = normalizeRequiredString(taskRecord.BaseCommitSHA)
+	}
+	result := &DiffResult{
+		Task:      decorateTask(taskRecord),
+		BaseRef:   baseRef,
+		HeadRef:   headRef,
+		Available: false,
+		Summary: map[string]any{
+			"additions":    0,
+			"deletions":    0,
+			"filesChanged": 0,
+		},
+		Files: []DiffFile{},
+	}
+	if headRef == "" {
+		result.Reason = "Task branch is not available yet."
+		return result, nil
+	}
+	if !git.BranchExists(ctx, projectRecord.Path, headRef) {
+		result.Reason = "Task branch no longer exists in the repository."
+		return result, nil
+	}
+
+	fileSummaries, err := git.DiffFiles(ctx, projectRecord.Path, baseRef, headRef, 24*1024)
+	if err != nil {
+		return nil, failure("TASK_DIFF_READ_FAILED", err.Error(), map[string]any{"taskId": taskID})
+	}
+
+	files := make([]DiffFile, 0, len(fileSummaries))
+	var additions int64
+	var deletions int64
+	for _, fileSummary := range fileSummaries {
+		additions += fileSummary.Additions
+		deletions += fileSummary.Deletions
+		files = append(files, DiffFile{
+			Path:      fileSummary.Path,
+			Previous:  fileSummary.Previous,
+			Type:      fileSummary.Type,
+			Additions: fileSummary.Additions,
+			Deletions: fileSummary.Deletions,
+			Patch:     fileSummary.Patch,
+		})
+	}
+
+	result.Available = true
+	result.Files = files
+	result.Summary = map[string]any{
+		"additions":    additions,
+		"deletions":    deletions,
+		"filesChanged": len(files),
+	}
+	return result, nil
 }
 
 func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanResult, *Error) {
@@ -2640,6 +2888,97 @@ func (s *Service) buildTaskTeamView(taskRecord *Task, sessions []Session, subTas
 	}
 }
 
+func (s *Service) buildTaskRuntimeView(taskRecord *Task, sessions []Session, subTasks []SubTask) map[string]any {
+	latestLeadSession := latestSessionByType(sessions, sessionTypeLead, "")
+	nodes := make([]map[string]any, 0, len(subTasks)+1)
+	edges := make([]map[string]any, 0, len(subTasks))
+	subTaskIDByBranchSuffix := make(map[string]string, len(subTasks))
+	for _, subTask := range subTasks {
+		subTaskIDByBranchSuffix[subTask.BranchSuffix] = subTask.ID
+	}
+	leadStatus := deriveLeadLifecycleStatus(taskRecord.Status)
+	if latestLeadSession != nil && strings.TrimSpace(latestLeadSession.Status) != "" {
+		leadStatus = latestLeadSession.Status
+	}
+
+	nodes = append(nodes, map[string]any{
+		"id":               "lead",
+		"nodeType":         "LEAD",
+		"taskId":           taskRecord.ID,
+		"title":            "Lead Orchestrator",
+		"agentType":        taskRecord.LeadAgentType,
+		"status":           leadStatus,
+		"sessionId":        pointerStringValue(latestLeadSession, func(value *Session) *string { return &value.ID }),
+		"startedAt":        pointerStringValue(latestLeadSession, func(value *Session) *string { return value.StartedAt }),
+		"endedAt":          pointerStringValue(latestLeadSession, func(value *Session) *string { return value.EndedAt }),
+		"exitCode":         pointerIntValue(latestLeadSession, func(value *Session) *int64 { return value.ExitCode }),
+		"errorReason":      nullableString(taskRecord.LastError),
+		"branchName":       nullableString(taskRecord.TaskBranchName),
+		"logsPreview":      latestSessionOutput(latestLeadSession, "[SYS] Lead orchestration waiting for runtime output..."),
+		"dependsOnNodeIds": []string{},
+	})
+
+	for _, subTask := range sortSubTasksForDisplay(subTasks) {
+		session := latestSessionByType(sessions, sessionTypeWorker, subTask.ID)
+		nodeID := subTask.ID
+		dependencyNodeIDs := make([]string, 0, len(subTask.DependencyBranchSuffixes))
+		for _, dependency := range subTask.DependencyBranchSuffixes {
+			if dependency == "" {
+				continue
+			}
+			dependencyNodeID := firstNonEmpty(subTaskIDByBranchSuffix[dependency], dependency)
+			dependencyNodeIDs = append(dependencyNodeIDs, dependencyNodeID)
+			edges = append(edges, map[string]any{
+				"from": dependencyNodeID,
+				"to":   nodeID,
+				"type": "DEPENDS_ON",
+			})
+		}
+		if len(dependencyNodeIDs) == 0 {
+			edges = append(edges, map[string]any{
+				"from": "lead",
+				"to":   nodeID,
+				"type": "ASSIGNS",
+			})
+		}
+
+		nodes = append(nodes, map[string]any{
+			"id":               nodeID,
+			"nodeType":         "SUBTASK",
+			"taskId":           taskRecord.ID,
+			"subTaskId":        subTask.ID,
+			"title":            firstNonEmpty(derefString(subTask.DisplayName), subTask.Title),
+			"agentType":        subTask.AgentType,
+			"status":           subTask.Status,
+			"sessionId":        pointerStringValue(session, func(value *Session) *string { return &value.ID }),
+			"startedAt":        pointerStringValue(session, func(value *Session) *string { return value.StartedAt }),
+			"endedAt":          pointerStringValue(session, func(value *Session) *string { return value.EndedAt }),
+			"exitCode":         pointerIntValue(session, func(value *Session) *int64 { return value.ExitCode }),
+			"errorReason":      firstNonEmpty(derefString(subTask.LastError), latestSessionError(session)),
+			"branchName":       nullableString(subTask.BranchName),
+			"branchSuffix":     subTask.BranchSuffix,
+			"dependsOnNodeIds": dependencyNodeIDs,
+			"logsPreview":      latestSessionOutput(session, fmt.Sprintf("[SYS] %s\n[SYS] 状态: %s", subTask.Title, subTask.Status)),
+		})
+	}
+
+	return map[string]any{
+		"taskId":              taskRecord.ID,
+		"taskStatus":          taskRecord.Status,
+		"workspaceStage":      taskRecord.WorkspaceStage,
+		"workspaceStageLabel": taskRecord.WorkspaceStageLabel,
+		"nodes":               nodes,
+		"edges":               edges,
+		"summary": map[string]any{
+			"failed":      countSubTasksByStatuses(subTasks, "FAILED", "DISCARD_PENDING", "REWORK_REQUIRED"),
+			"running":     countSubTasksByStatuses(subTasks, "RUNNING"),
+			"total":       len(subTasks) + 1,
+			"waiting":     countSubTasksByStatuses(subTasks, subTaskStatusBlocked, subTaskStatusPending, "READY", "REVIEW_PENDING"),
+			"workerCount": len(subTasks),
+		},
+	}
+}
+
 func (s *Service) buildTaskBoardSnapshot(taskRecord *Task, sessions []Session, subTasks []SubTask, mailboxMessages []MailboxMessage, integrationView map[string]any) map[string]any {
 	sortedSubTasks := sortSubTasksForDisplay(subTasks)
 	actionRequiredItems := buildBoardActionRequiredItems(mailboxMessages)
@@ -2809,6 +3148,29 @@ func readAttachmentBytes(input AttachmentCreateInput, fileName string) ([]byte, 
 		return nil, 0, failure("ATTACHMENT_READ_FAILED", err.Error(), nil)
 	}
 	return buffer, stats.Size(), nil
+}
+
+func decorateTasks(tasks []Task) []Task {
+	decorated := make([]Task, 0, len(tasks))
+	for _, taskRecord := range tasks {
+		item := taskRecord
+		stage, label := workspaceStageForStatus(item.Status)
+		item.WorkspaceStage = stage
+		item.WorkspaceStageLabel = label
+		decorated = append(decorated, item)
+	}
+	return decorated
+}
+
+func decorateTask(taskRecord *Task) *Task {
+	if taskRecord == nil {
+		return nil
+	}
+	stage, label := workspaceStageForStatus(taskRecord.Status)
+	decorated := *taskRecord
+	decorated.WorkspaceStage = stage
+	decorated.WorkspaceStageLabel = label
+	return &decorated
 }
 
 func normalizeRequiredString(value string) string {
@@ -3365,6 +3727,91 @@ func pointerStringValue(session *Session, selector func(*Session) *string) any {
 		return nil
 	}
 	return *value
+}
+
+func pointerIntValue(session *Session, selector func(*Session) *int64) any {
+	if session == nil {
+		return nil
+	}
+	value := selector(session)
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func workspaceStageForStatus(status string) (string, string) {
+	switch status {
+	case "COMPLETED":
+		return "COMPLETED", "已完成"
+	case taskStatusExecuting, taskStatusActionRequired, taskStatusReviewing, taskStatusMerging:
+		return "EXECUTING", "执行中"
+	case "PLAN_REVIEW", taskStatusPlanning:
+		return "PLAN_REVIEW", "计划审阅"
+	default:
+		return "CLARIFYING", "需求澄清"
+	}
+}
+
+func latestSessionOutput(session *Session, fallback string) string {
+	if session == nil || strings.TrimSpace(session.OutputBuffer) == "" {
+		return fallback
+	}
+	output := strings.TrimSpace(session.OutputBuffer)
+	if len(output) > 4000 {
+		return output[len(output)-4000:]
+	}
+	return output
+}
+
+func latestSessionError(session *Session) string {
+	if session == nil {
+		return ""
+	}
+	if session.ExitCode != nil && *session.ExitCode != 0 {
+		return fmt.Sprintf("Session exited with code %d.", *session.ExitCode)
+	}
+	return ""
+}
+
+func normalizeReplanSummary(input ReplanRequest) []string {
+	summary := make([]string, 0, len(input.Annotations)+1)
+	if reason := normalizeRequiredString(input.Reason); reason != "" {
+		summary = append(summary, "整体意见: "+reason)
+	}
+	for _, annotation := range input.Annotations {
+		note := normalizeRequiredString(annotation.Note)
+		if note == "" {
+			continue
+		}
+		nodeLabel := firstNonEmpty(
+			normalizeRequiredString(annotation.NodeID),
+			normalizeRequiredString(annotation.BranchSuffix),
+			normalizeRequiredString(annotation.Title),
+			"unknown-node",
+		)
+		summary = append(summary, fmt.Sprintf("节点 %s: %s", nodeLabel, note))
+	}
+	return uniqueStrings(summary)
+}
+
+func buildReplanNotesBlock(lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	return "[REPLAN_REQUEST]\n- " + strings.Join(lines, "\n- ")
+}
+
+func joinPlanNotes(parts ...string) string {
+	segments := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		segments = append(segments, trimmed)
+	}
+	return strings.Join(segments, "\n\n")
 }
 
 func failure(code, message string, details map[string]any) *Error {

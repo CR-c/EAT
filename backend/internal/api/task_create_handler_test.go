@@ -84,3 +84,48 @@ func TestCreateTaskEndpointPersistsTaskAndAttachments(t *testing.T) {
 		t.Fatalf("expected task branch to exist: %v", err)
 	}
 }
+
+func TestCreateTaskEndpointAcceptsCustomTaskBranchName(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	repoPath := createGitRepository(t, tempDir, "task-custom-branch-repo", "main")
+	if _, err := db.Exec(`
+		INSERT INTO projects (id, name, path, default_branch, created_at, updated_at)
+		VALUES ('project-custom-branch', 'Project Branch', ?, 'main', '2026-03-24T00:00:00Z', '2026-03-24T00:00:00Z')
+	`, repoPath); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+
+	router := NewRouter(NewHandler(Dependencies{
+		DB:             db,
+		Bus:            eventbus.New(),
+		UploadRootPath: filepath.Join(tempDir, "uploads"),
+	}))
+
+	response := performJSONRequest(router, http.MethodPost, "/api/tasks", map[string]any{
+		"projectId":      "project-custom-branch",
+		"title":          "Branch override",
+		"description":    "Use explicit task branch.",
+		"leadAgentType":  "codex-cli",
+		"baseBranch":     "main",
+		"taskBranchName": "feature/task-override",
+	})
+	if response.Code != http.StatusCreated {
+		t.Fatalf("unexpected create task status: %d body=%s", response.Code, response.Body.String())
+	}
+
+	payload := decodeJSONMap(t, response.Body.Bytes())
+	taskPayload := payload["task"].(map[string]any)
+	if taskPayload["taskBranchName"] != "feature/task-override" {
+		t.Fatalf("unexpected taskBranchName: %#v", taskPayload["taskBranchName"])
+	}
+	if _, err := exec.CommandContext(context.Background(), "git", "-C", repoPath, "rev-parse", "feature/task-override^{commit}").CombinedOutput(); err != nil {
+		t.Fatalf("expected custom task branch to exist: %v", err)
+	}
+}

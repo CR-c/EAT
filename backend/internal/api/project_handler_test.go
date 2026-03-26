@@ -61,7 +61,7 @@ func TestProjectEndpointsRegisterListAndProbe(t *testing.T) {
 		t.Fatalf("unexpected detail status: %d body=%s", detailResponse.Code, detailResponse.Body.String())
 	}
 
-	statusRequest := httptest.NewRequest(http.MethodGet, "/api/projects/"+projectID+"/repo-status", nil)
+	statusRequest := httptest.NewRequest(http.MethodGet, "/api/projects/"+projectID+"/repository-status", nil)
 	statusResponse := httptest.NewRecorder()
 	router.ServeHTTP(statusResponse, statusRequest)
 	if statusResponse.Code != http.StatusOK {
@@ -91,7 +91,7 @@ func TestProjectBrowseEndpoint(t *testing.T) {
 		Bus: eventbus.New(),
 	}))
 
-	request := httptest.NewRequest(http.MethodGet, "/api/projects/browse?path="+tempDir, nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/project-directories?path="+tempDir, nil)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -243,6 +243,62 @@ func TestProjectDeleteEndpointAllowsCompletedTasks(t *testing.T) {
 	router.ServeHTTP(deleteResponse, deleteRequest)
 	if deleteResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected delete status: %d body=%s", deleteResponse.Code, deleteResponse.Body.String())
+	}
+}
+
+func TestProjectPreferencesEndpointPersistsMetadata(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	repoPath := createGitRepository(t, tempDir, "prefs-repo", "main")
+	router := NewRouter(NewHandler(Dependencies{
+		DB:  db,
+		Bus: eventbus.New(),
+	}))
+
+	registerResponse := performJSONRequest(router, http.MethodPost, "/api/projects", map[string]any{"path": repoPath})
+	if registerResponse.Code != http.StatusCreated {
+		t.Fatalf("unexpected register status: %d body=%s", registerResponse.Code, registerResponse.Body.String())
+	}
+
+	var registerPayload map[string]any
+	if err := json.Unmarshal(registerResponse.Body.Bytes(), &registerPayload); err != nil {
+		t.Fatalf("decode register response: %v", err)
+	}
+	projectID := registerPayload["project"].(map[string]any)["id"].(string)
+
+	updateResponse := performJSONRequest(router, http.MethodPut, "/api/projects/"+projectID+"/preferences", map[string]any{
+		"color":       "#55c271",
+		"isPinned":    true,
+		"pinnedOrder": 7,
+	})
+	if updateResponse.Code != http.StatusOK {
+		t.Fatalf("unexpected update status: %d body=%s", updateResponse.Code, updateResponse.Body.String())
+	}
+
+	detailResponse := performJSONRequest(router, http.MethodGet, "/api/projects/"+projectID, nil)
+	if detailResponse.Code != http.StatusOK {
+		t.Fatalf("unexpected detail status: %d body=%s", detailResponse.Code, detailResponse.Body.String())
+	}
+
+	var detailPayload map[string]any
+	if err := json.Unmarshal(detailResponse.Body.Bytes(), &detailPayload); err != nil {
+		t.Fatalf("decode detail response: %v", err)
+	}
+	projectPayload := detailPayload["project"].(map[string]any)
+	if projectPayload["color"] != "#55c271" {
+		t.Fatalf("unexpected color: %#v", projectPayload["color"])
+	}
+	if projectPayload["isPinned"] != true {
+		t.Fatalf("unexpected isPinned: %#v", projectPayload["isPinned"])
+	}
+	if projectPayload["pinnedOrder"] != float64(7) {
+		t.Fatalf("unexpected pinnedOrder: %#v", projectPayload["pinnedOrder"])
 	}
 }
 

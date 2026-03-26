@@ -135,7 +135,7 @@ func TestIntegrationRetryRollbackAndDequeueEndpointsPersistUpdates(t *testing.T)
 		Bus: eventbus.New(),
 	}))
 
-	retryResponse := performJSONRequest(router, http.MethodPost, "/api/integration-runs/integration-run-old/retry", nil)
+	retryResponse := performJSONRequest(router, http.MethodPost, "/api/integration-runs/integration-run-old/retry-requests", nil)
 	if retryResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected integration retry status: %d body=%s", retryResponse.Code, retryResponse.Body.String())
 	}
@@ -144,7 +144,7 @@ func TestIntegrationRetryRollbackAndDequeueEndpointsPersistUpdates(t *testing.T)
 		t.Fatalf("unexpected integration retry payload: %#v", retryPayload)
 	}
 
-	rollbackResponse := performJSONRequest(router, http.MethodPost, "/api/integration-runs/integration-run-rollback/rollback", nil)
+	rollbackResponse := performJSONRequest(router, http.MethodPost, "/api/integration-runs/integration-run-rollback/rollback-requests", nil)
 	if rollbackResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected integration rollback status: %d body=%s", rollbackResponse.Code, rollbackResponse.Body.String())
 	}
@@ -153,7 +153,7 @@ func TestIntegrationRetryRollbackAndDequeueEndpointsPersistUpdates(t *testing.T)
 		t.Fatalf("unexpected integration rollback payload: %#v", rollbackPayload)
 	}
 
-	dequeueResponse := performJSONRequest(router, http.MethodPost, "/api/integration-queue-items/integration-queue-dequeue/dequeue", nil)
+	dequeueResponse := performJSONRequest(router, http.MethodPost, "/api/integration-queue-items/integration-queue-dequeue/dequeue-requests", nil)
 	if dequeueResponse.Code != http.StatusOK {
 		t.Fatalf("unexpected integration dequeue status: %d body=%s", dequeueResponse.Code, dequeueResponse.Body.String())
 	}

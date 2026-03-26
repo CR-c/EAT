@@ -41,7 +41,16 @@ type Service struct {
 }
 
 type RegisterInput struct {
-	Path string `json:"path"`
+	Path        string `json:"path"`
+	Color       string `json:"color"`
+	IsPinned    bool   `json:"isPinned"`
+	PinnedOrder *int64 `json:"pinnedOrder"`
+}
+
+type UpdateProjectPreferencesInput struct {
+	Color       *string `json:"color"`
+	IsPinned    *bool   `json:"isPinned"`
+	PinnedOrder *int64  `json:"pinnedOrder"`
 }
 
 type RepoStatus struct {
@@ -106,7 +115,14 @@ func (s *Service) RegisterProject(ctx context.Context, input RegisterInput) (*Pr
 		defaultBranch = *repoStatus.DefaultBranch
 	}
 
-	projectRecord, err := s.repository.CreateProject(ctx, filepath.Base(canonicalPath), canonicalPath, defaultBranch)
+	projectRecord, err := s.repository.CreateProject(ctx, CreateProjectRecordInput{
+		Name:          filepath.Base(canonicalPath),
+		Path:          canonicalPath,
+		DefaultBranch: defaultBranch,
+		Color:         normalizeOptionalStringPointer(input.Color),
+		IsPinned:      input.IsPinned,
+		PinnedOrder:   input.PinnedOrder,
+	})
 	if err != nil {
 		return nil, nil, failure("PROJECT_CREATE_FAILED", err.Error(), nil)
 	}
@@ -182,6 +198,29 @@ func (s *Service) DeleteProject(ctx context.Context, projectID string) (*Project
 	}
 
 	return deletedProject, nil
+}
+
+func (s *Service) UpdateProjectPreferences(ctx context.Context, projectID string, input UpdateProjectPreferencesInput) (*Project, *Error) {
+	projectRecord, err := s.repository.FindProjectByID(ctx, projectID)
+	if err != nil {
+		return nil, failure("PROJECT_READ_FAILED", err.Error(), nil)
+	}
+	if projectRecord == nil {
+		return nil, failure(ErrorCodeProjectNotFound, "Project not found.", map[string]any{"projectId": projectID})
+	}
+
+	nextProject, err := s.repository.UpdateProjectPreferences(ctx, projectID, UpdateProjectPreferencesRecordInput{
+		Color:       normalizeStringPointer(input.Color),
+		SetColor:    true,
+		IsPinned:    input.IsPinned,
+		PinnedOrder: input.PinnedOrder,
+		SetPinned:   true,
+	})
+	if err != nil {
+		return nil, failure("PROJECT_PREFERENCES_UPDATE_FAILED", err.Error(), map[string]any{"projectId": projectID})
+	}
+
+	return nextProject, nil
 }
 
 func (s *Service) BrowseDirectories(ctx context.Context, requestedPath string, includeHidden bool) (*BrowseResult, *Error) {
@@ -496,4 +535,23 @@ func hasGitMarker(targetPath string) bool {
 
 func failure(code, message string, details map[string]any) *Error {
 	return &Error{Code: code, Message: message, Details: details}
+}
+
+func normalizeOptionalStringPointer(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
+func normalizeStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }
