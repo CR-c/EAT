@@ -25,10 +25,10 @@ function TokenUsageBadges({
   tokens,
 }: {
   isRei: boolean
-  tokens?: Record<string, number | string> | null
+  tokens?: Record<string, number> | null
 }) {
   const entries = tokens ? Object.entries(tokens) : []
-  const items = entries.length > 0 ? entries : [["codex-cli", "--"]]
+  const items: Array<[string, number]> = entries.length > 0 ? entries : [["codex-cli", 0]]
 
   return (
     <div className="mt-3 flex flex-wrap gap-2">
@@ -43,11 +43,21 @@ function TokenUsageBadges({
           )}
         >
           <Zap className="mr-1 h-3 w-3 opacity-70" />
-          {cli}: {String(amount)}
+          {cli}: {formatTokenAmount(amount)}
         </span>
       ))}
     </div>
   )
+}
+
+function formatTokenAmount(amount: number) {
+  if (amount >= 1_000_000) {
+    return `${(amount / 1_000_000).toFixed(amount >= 10_000_000 ? 0 : 1)}m`
+  }
+  if (amount >= 1_000) {
+    return `${(amount / 1_000).toFixed(amount >= 10_000 ? 0 : 1)}k`
+  }
+  return String(amount)
 }
 
 export function ProjectsPage() {
@@ -187,7 +197,7 @@ export function ProjectsPage() {
               {filtered.map((item) => {
                 const color = item.project.color ?? getProjectColor(item.project.id)
                 const dirty = item.repoStatus?.isDirty ?? false
-                const tokenUsage = (item.project as ProjectRecord & { tokens?: Record<string, number | string> | null }).tokens
+                const tokenUsage = item.project.tokens
                 return (
                   <button
                     key={item.project.id}

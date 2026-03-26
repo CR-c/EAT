@@ -87,6 +87,25 @@ model Project {
   @@map("projects")
 }
 
+model SessionTokenUsage {
+  id                String   @id
+  sessionId         String   @unique @map("session_id")
+  taskId            String   @map("task_id")
+  projectId         String   @map("project_id")
+  subTaskId         String?  @map("sub_task_id")
+  agentType         String   @map("agent_type")
+  inputTokens       Int      @default(0) @map("input_tokens")
+  outputTokens      Int      @default(0) @map("output_tokens")
+  totalTokens       Int      @default(0) @map("total_tokens")
+  turnCount         Int      @default(0) @map("turn_count")
+  createdAt         DateTime @map("created_at")
+  updatedAt         DateTime @map("updated_at")
+
+  @@index([taskId, agentType, updatedAt], map: "idx_session_token_usage_task_id")
+  @@index([projectId, agentType, updatedAt], map: "idx_session_token_usage_project_id")
+  @@map("session_token_usage")
+}
+
 model Task {
   id               String         @id
   projectId        String         @map("project_id")

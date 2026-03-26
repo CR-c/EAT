@@ -43,6 +43,8 @@ type Summary struct {
 	SandboxLaunchFailureCount         int                 `json:"sandboxLaunchFailureCount"`
 	TasksCompleted                    int                 `json:"tasksCompleted"`
 	TasksEnteredExecuting             int                 `json:"tasksEnteredExecuting"`
+	TotalTokensByAgent                map[string]int64    `json:"totalTokensByAgent"`
+	TotalTokensUsed                   int64               `json:"totalTokensUsed"`
 	UnavailableMetrics                []UnavailableMetric `json:"unavailableMetrics"`
 	WorkerCrashDetectionRate          *float64            `json:"workerCrashDetectionRate"`
 }
@@ -142,10 +144,16 @@ type launchFailure struct {
 	Reason    string
 }
 
+type tokenUsageRecord struct {
+	AgentType   string
+	TotalTokens int64
+}
+
 type dataset struct {
 	Tasks           []taskRecord
 	SubTasks        []subTaskRecord
 	Sessions        []sessionRecord
+	TokenUsage      []tokenUsageRecord
 	Messages        []messageRecord
 	ReviewRecords   []reviewRecord
 	MergeRecords    []mergeRecord
@@ -195,6 +203,10 @@ func (s *Service) loadDataset(ctx context.Context) (*dataset, error) {
 	if err != nil {
 		return nil, err
 	}
+	tokenUsage, err := queryTokenUsage(ctx, s.db)
+	if err != nil {
+		return nil, err
+	}
 	messages, err := queryMessages(ctx, s.db)
 	if err != nil {
 		return nil, err
@@ -216,6 +228,7 @@ func (s *Service) loadDataset(ctx context.Context) (*dataset, error) {
 		Tasks:         tasks,
 		SubTasks:      subTasks,
 		Sessions:      sessions,
+		TokenUsage:    tokenUsage,
 		Messages:      messages,
 		ReviewRecords: reviewRecords,
 		MergeRecords:  mergeRecords,
@@ -295,6 +308,7 @@ func buildMetricsSummary(data *dataset) Summary {
 
 	firstOutputDurations := resolveFirstOutputDurationsMS(data.Tasks, data.Sessions, data.PlanSnapshots)
 	missingFirstOutputTiming := resolveTasksMissingFirstOutputTiming(data.Tasks, data.Sessions, data.PlanSnapshots)
+	totalTokensByAgent, totalTokensUsed := summarizeTokenUsage(data.TokenUsage)
 
 	return Summary{
 		CleanupWarningCount:             len(data.CleanupWarnings),
@@ -315,6 +329,8 @@ func buildMetricsSummary(data *dataset) Summary {
 		SandboxLaunchFailureCount:         countSandboxLaunchFailures(data.LaunchFailures),
 		TasksCompleted:                    tasksCompleted,
 		TasksEnteredExecuting:             tasksEnteredExecuting,
+		TotalTokensByAgent:                totalTokensByAgent,
+		TotalTokensUsed:                   totalTokensUsed,
 		UnavailableMetrics:                buildUnavailableMetrics(missingFirstOutputTiming),
 		WorkerCrashDetectionRate:          safeRate(len(detectedWorkerCrashes), len(crashedWorkerSessions)),
 	}
@@ -673,6 +689,29 @@ func queryMessages(ctx context.Context, db *sql.DB) ([]messageRecord, error) {
 	return records, rows.Err()
 }
 
+func queryTokenUsage(ctx context.Context, db *sql.DB) ([]tokenUsageRecord, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT agent_type, COALESCE(SUM(total_tokens), 0) AS total_tokens
+		FROM session_token_usage
+		GROUP BY agent_type
+		ORDER BY agent_type ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []tokenUsageRecord
+	for rows.Next() {
+		var record tokenUsageRecord
+		if err := rows.Scan(&record.AgentType, &record.TotalTokens); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
 func queryReviewRecords(ctx context.Context, db *sql.DB) ([]reviewRecord, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT sub_task_id, session_id, phase, decision, created_at
@@ -757,6 +796,20 @@ func countSandboxLaunchFailures(failures []launchFailure) int {
 		}
 	}
 	return count
+}
+
+func summarizeTokenUsage(records []tokenUsageRecord) (map[string]int64, int64) {
+	summary := make(map[string]int64, len(records))
+	var total int64
+	for _, record := range records {
+		agentType := strings.TrimSpace(record.AgentType)
+		if agentType == "" {
+			continue
+		}
+		summary[agentType] += record.TotalTokens
+		total += record.TotalTokens
+	}
+	return summary, total
 }
 
 func countFailedWorkerSessions(sessions []sessionRecord) int {

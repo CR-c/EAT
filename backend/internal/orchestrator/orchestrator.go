@@ -12,6 +12,7 @@ import (
 	"eat/backend/internal/eventbus"
 	"eat/backend/internal/git"
 	"eat/backend/internal/sandbox"
+	"eat/backend/internal/tokenusage"
 )
 
 const (
@@ -28,6 +29,7 @@ type TaskRepository interface {
 	FindSubTaskByID(ctx context.Context, subTaskID string) (*SubTaskRecord, error)
 	ListSubTasksByTaskID(ctx context.Context, taskID string) ([]SubTaskRecord, error)
 	FindProjectByID(ctx context.Context, projectID string) (*ProjectRecord, error)
+	AccumulateSessionTokenUsage(ctx context.Context, input tokenusage.SessionInput) error
 	UpdateSession(ctx context.Context, sessionID string, input UpdateSessionInput) error
 	UpdateSubTask(ctx context.Context, subTaskID string, input UpdateSubTaskInput) error
 	UpdateTask(ctx context.Context, taskID string, input UpdateTaskInput) error
@@ -312,6 +314,14 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 	runtime.OnOutput(func(chunk string) {
 		handle.touchOutput()
 		_ = o.repo.AppendSessionOutput(ctx, runtime.SessionID, chunk)
+		for _, usage := range collectSessionTokenUsage(chunk) {
+			usage.SessionID = runtime.SessionID
+			usage.TaskID = task.ID
+			usage.ProjectID = task.ProjectID
+			usage.SubTaskID = &subTask.ID
+			usage.AgentType = subTask.AgentType
+			_ = o.repo.AccumulateSessionTokenUsage(ctx, usage)
+		}
 		o.publish(task.ID, "session:output", map[string]any{
 			"chunk":     chunk,
 			"sessionId": runtime.SessionID,

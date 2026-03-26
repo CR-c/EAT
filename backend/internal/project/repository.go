@@ -6,19 +6,21 @@ import (
 	"strings"
 	"time"
 
+	"eat/backend/internal/tokenusage"
 	"github.com/google/uuid"
 )
 
 type Project struct {
-	ID            string  `json:"id"`
-	Name          string  `json:"name"`
-	Path          string  `json:"path"`
-	DefaultBranch string  `json:"defaultBranch"`
-	Color         *string `json:"color,omitempty"`
-	IsPinned      bool    `json:"isPinned"`
-	PinnedOrder   *int64  `json:"pinnedOrder,omitempty"`
-	CreatedAt     string  `json:"createdAt"`
-	UpdatedAt     string  `json:"updatedAt"`
+	ID            string             `json:"id"`
+	Name          string             `json:"name"`
+	Path          string             `json:"path"`
+	DefaultBranch string             `json:"defaultBranch"`
+	Color         *string            `json:"color,omitempty"`
+	IsPinned      bool               `json:"isPinned"`
+	PinnedOrder   *int64             `json:"pinnedOrder,omitempty"`
+	Tokens        tokenusage.Summary `json:"tokens,omitempty"`
+	CreatedAt     string             `json:"createdAt"`
+	UpdatedAt     string             `json:"updatedAt"`
 }
 
 type Repository struct {
@@ -73,15 +75,27 @@ func (r *Repository) ListProjects(ctx context.Context) ([]Project, error) {
 		projects = append(projects, project)
 	}
 
-	return projects, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return r.attachProjectTokenSummaries(ctx, projects)
 }
 
 func (r *Repository) FindProjectByID(ctx context.Context, projectID string) (*Project, error) {
-	return r.findOne(ctx, "WHERE id = ?", projectID)
+	projectRecord, err := r.findOne(ctx, "WHERE id = ?", projectID)
+	if err != nil {
+		return nil, err
+	}
+	return r.attachSingleProjectTokenSummary(ctx, projectRecord)
 }
 
 func (r *Repository) FindProjectByPath(ctx context.Context, projectPath string) (*Project, error) {
-	return r.findOne(ctx, "WHERE path = ?", projectPath)
+	projectRecord, err := r.findOne(ctx, "WHERE path = ?", projectPath)
+	if err != nil {
+		return nil, err
+	}
+	return r.attachSingleProjectTokenSummary(ctx, projectRecord)
 }
 
 func (r *Repository) CreateProject(ctx context.Context, input CreateProjectRecordInput) (*Project, error) {

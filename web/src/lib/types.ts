@@ -16,6 +16,7 @@ export interface ProjectRecord {
   color?: string | null
   isPinned: boolean
   pinnedOrder?: number | null
+  tokens?: Record<string, number> | null
   createdAt: string
   updatedAt: string
 }
@@ -65,6 +66,7 @@ export interface TaskRecord {
   approvedPlanJson?: string | null
   lastError?: string | null
   archivedAt?: string | null
+  tokens?: Record<string, number> | null
   createdAt: string
   updatedAt: string
   version: number
@@ -386,6 +388,8 @@ export interface MetricsSummaryResponse {
     sandboxLaunchFailureCount: number
     tasksCompleted: number
     tasksEnteredExecuting: number
+    totalTokensByAgent: Record<string, number>
+    totalTokensUsed: number
     unavailableMetrics: Array<{
       metric: string
       reason: string

@@ -1,4 +1,4 @@
-import { Archive, FolderPlus, GitBranch, PauseCircle, PlayCircle, Search, Trash2 } from "lucide-react"
+import { Archive, FolderPlus, GitBranch, PauseCircle, PlayCircle, Search, Trash2, Zap } from "lucide-react"
 import { useDeferredValue, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 
@@ -169,6 +169,9 @@ export function ProjectTasksPage() {
                       </span>
                     </div>
                   </div>
+                  <div className="relative z-10 mt-3">
+                    <TokenUsageBadges isRei={isRei} tokens={task.tokens} />
+                  </div>
                   <div className={cn("relative z-10 mt-4 flex items-center justify-between border-t pt-4", isRei ? "border-blue-100/50" : "border-white/5")}>
                     <div className={cn("h-1 flex-1 overflow-hidden rounded-full", isRei ? "bg-blue-100" : "bg-white/10")}>
                       <div
@@ -228,6 +231,46 @@ export function ProjectTasksPage() {
       </div>
     </>
   )
+}
+
+function TokenUsageBadges({
+  isRei,
+  tokens,
+}: {
+  isRei: boolean
+  tokens?: Record<string, number> | null
+}) {
+  const entries = tokens ? Object.entries(tokens) : []
+  const items: Array<[string, number]> = entries.length > 0 ? entries : [["codex-cli", 0]]
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map(([cli, amount]) => (
+        <span
+          key={cli}
+          className={cn(
+            "flex items-center rounded-sm border px-1.5 py-0.5 font-mono text-[0.65rem]",
+            isRei
+              ? "border-indigo-200 bg-indigo-50 text-indigo-600"
+              : "border-indigo-500/50 bg-indigo-900/30 text-indigo-400",
+          )}
+        >
+          <Zap className="mr-1 h-3 w-3 opacity-70" />
+          {cli}: {formatTokenAmount(amount)}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function formatTokenAmount(amount: number) {
+  if (amount >= 1_000_000) {
+    return `${(amount / 1_000_000).toFixed(amount >= 10_000_000 ? 0 : 1)}m`
+  }
+  if (amount >= 1_000) {
+    return `${(amount / 1_000).toFixed(amount >= 10_000 ? 0 : 1)}k`
+  }
+  return String(amount)
 }
 
 function getTaskProgress(status: string) {

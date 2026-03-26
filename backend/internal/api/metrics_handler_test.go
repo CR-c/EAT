@@ -76,6 +76,19 @@ func TestMetricsEndpointsReportSummaryAndExportRows(t *testing.T) {
 	if summary["medianPlanApprovalToFirstWorkerOutputMs"].(float64) != 6000 {
 		t.Fatalf("unexpected median first output timing: %#v", summary["medianPlanApprovalToFirstWorkerOutputMs"])
 	}
+	if summary["totalTokensUsed"].(float64) != 2700 {
+		t.Fatalf("unexpected total tokens used: %#v", summary["totalTokensUsed"])
+	}
+	totalTokensByAgent := summary["totalTokensByAgent"].(map[string]any)
+	if totalTokensByAgent["codex-cli"].(float64) != 1500 {
+		t.Fatalf("unexpected codex token total: %#v", totalTokensByAgent)
+	}
+	if totalTokensByAgent["claude-cli"].(float64) != 900 {
+		t.Fatalf("unexpected claude token total: %#v", totalTokensByAgent)
+	}
+	if totalTokensByAgent["gemini-cli"].(float64) != 300 {
+		t.Fatalf("unexpected gemini token total: %#v", totalTokensByAgent)
+	}
 	unavailableMetrics := summary["unavailableMetrics"].([]any)
 	if len(unavailableMetrics) != 1 {
 		t.Fatalf("unexpected unavailable metrics: %#v", unavailableMetrics)
@@ -166,6 +179,9 @@ func seedMetricsDataset(t *testing.T, db *store.DB) {
 		`INSERT INTO agent_sessions (id, task_id, sub_task_id, agent_type, session_type, sandbox_type, container_id, status, pid, started_at, ended_at, exit_code, log_path, first_output_at, output_buffer, output_buffer_max_bytes, created_at, updated_at) VALUES ('session-completed-first', 'task-completed', 'subtask-completed', 'worker-agent', 'WORKER', 'DOCKER', NULL, 'COMPLETED', NULL, '2026-03-19T10:00:03.000Z', '2026-03-19T10:00:30.000Z', 0, NULL, '2026-03-19T10:00:04.000Z', 'first output', 65536, '2026-03-19T10:00:02.000Z', '2026-03-19T10:00:30.000Z')`,
 		`INSERT INTO agent_sessions (id, task_id, sub_task_id, agent_type, session_type, sandbox_type, container_id, status, pid, started_at, ended_at, exit_code, log_path, first_output_at, output_buffer, output_buffer_max_bytes, created_at, updated_at) VALUES ('session-completed-retry', 'task-completed', 'subtask-completed', 'worker-agent', 'WORKER', 'DOCKER', NULL, 'COMPLETED', NULL, '2026-03-19T10:05:03.000Z', '2026-03-19T10:05:30.000Z', 0, NULL, '2026-03-19T10:05:05.000Z', 'retry output', 65536, '2026-03-19T10:05:02.000Z', '2026-03-19T10:05:30.000Z')`,
 		`INSERT INTO agent_sessions (id, task_id, sub_task_id, agent_type, session_type, sandbox_type, container_id, status, pid, started_at, ended_at, exit_code, log_path, first_output_at, output_buffer, output_buffer_max_bytes, created_at, updated_at) VALUES ('session-action-failed', 'task-action', 'subtask-action', 'worker-agent', 'WORKER', 'DOCKER', NULL, 'FAILED', NULL, '2026-03-19T11:00:03.000Z', '2026-03-19T11:00:40.000Z', 2, NULL, '2026-03-19T11:00:08.000Z', 'crash output', 65536, '2026-03-19T11:00:02.000Z', '2026-03-19T11:00:40.000Z')`,
+		`INSERT INTO session_token_usage (id, session_id, task_id, project_id, sub_task_id, agent_type, input_tokens, output_tokens, total_tokens, turn_count, created_at, updated_at) VALUES ('usage-completed-first', 'session-completed-first', 'task-completed', 'project-1', 'subtask-completed', 'codex-cli', 1200, 300, 1500, 1, '2026-03-19T10:00:30.000Z', '2026-03-19T10:00:30.000Z')`,
+		`INSERT INTO session_token_usage (id, session_id, task_id, project_id, sub_task_id, agent_type, input_tokens, output_tokens, total_tokens, turn_count, created_at, updated_at) VALUES ('usage-completed-retry', 'session-completed-retry', 'task-completed', 'project-1', 'subtask-completed', 'claude-cli', 700, 200, 900, 1, '2026-03-19T10:05:30.000Z', '2026-03-19T10:05:30.000Z')`,
+		`INSERT INTO session_token_usage (id, session_id, task_id, project_id, sub_task_id, agent_type, input_tokens, output_tokens, total_tokens, turn_count, created_at, updated_at) VALUES ('usage-action-failed', 'session-action-failed', 'task-action', 'project-1', 'subtask-action', 'gemini-cli', 200, 100, 300, 1, '2026-03-19T11:00:40.000Z', '2026-03-19T11:00:40.000Z')`,
 		`INSERT INTO review_records (id, sub_task_id, session_id, phase, decision, summary, created_at) VALUES ('review-incremental', 'subtask-completed', 'session-completed-retry', 'INCREMENTAL', 'REWORK', 'Needs one more pass.', '2026-03-19T10:01:00.000Z')`,
 		`INSERT INTO merge_records (id, sub_task_id, attempt_number, operation, source_branch, target_branch, status, result_commit_sha, conflict_summary, completed_at, created_at, updated_at) VALUES ('merge-conflict', 'subtask-completed', 1, 'MERGE', 'eat/task/subtask-completed', 'eat/task/mainline', 'CONFLICT', NULL, 'conflict summary', '2026-03-19T10:20:00.000Z', '2026-03-19T10:20:00.000Z', '2026-03-19T10:20:00.000Z')`,
 		`INSERT INTO merge_records (id, sub_task_id, attempt_number, operation, source_branch, target_branch, status, result_commit_sha, conflict_summary, completed_at, created_at, updated_at) VALUES ('merge-rebase', 'subtask-completed', 2, 'REBASE', 'eat/task/subtask-completed', 'eat/task/mainline', 'SUCCEEDED', 'abc123', NULL, '2026-03-19T10:25:00.000Z', '2026-03-19T10:25:00.000Z', '2026-03-19T10:25:00.000Z')`,

@@ -166,7 +166,7 @@ func (r *Repository) FindTaskByID(ctx context.Context, taskID string) (*Task, er
 		return nil, err
 	}
 
-	return &task, nil
+	return r.attachSingleTaskTokenSummary(ctx, &task)
 }
 
 func (r *Repository) ListTasksByProjectID(ctx context.Context, projectID string, includeArchived bool) ([]Task, error) {
@@ -230,7 +230,11 @@ func (r *Repository) ListTasksByProjectID(ctx context.Context, projectID string,
 		tasks = append(tasks, task)
 	}
 
-	return tasks, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return r.attachTaskTokenSummaries(ctx, tasks)
 }
 
 func (r *Repository) ListMessagesByTaskID(ctx context.Context, taskID string) ([]Message, error) {

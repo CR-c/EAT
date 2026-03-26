@@ -59,33 +59,35 @@ export function ConsolePage() {
   const activeTasks = allTasks.filter(({ task }) => task.archivedAt == null && task.status !== "COMPLETED")
   const dirtyProjects = allProjects.filter(({ project }) => project.id && true)
   const agentHealth = resource.data?.agents.agents ?? {}
-  const totalTokens =
-    (resource.data?.metrics.summary.tasksCompleted ?? 0) * 1_000 +
-    (resource.data?.metrics.summary.tasksEnteredExecuting ?? 0) * 500
+  const totalTokens = resource.data?.metrics.summary.totalTokensUsed ?? 0
+  const totalTokensByAgent = resource.data?.metrics.summary.totalTokensByAgent ?? {}
 
   const cliStatus = [
     {
+      agentKey: "codex-cli",
       id: "codex-cli",
       name: "Codex Orchestrator",
       status: agentHealth["codex-cli"]?.available ? "ONLINE" : "OFFLINE",
       latency: agentHealth["codex-cli"]?.available ? "45ms" : "-",
-      totalTokens,
+      totalTokens: totalTokensByAgent["codex-cli"] ?? 0,
       icon: Bot,
     },
     {
-      id: "claude-code",
+      agentKey: "claude-cli",
+      id: "claude-cli",
       name: "Claude Reviewer",
-      status: agentHealth["claude-code"]?.available ? "ONLINE" : "OFFLINE",
-      latency: agentHealth["claude-code"]?.available ? "120ms" : "-",
-      totalTokens: (resource.data?.metrics.summary.retryToReviewConversionRate ?? 0) * 10000,
+      status: agentHealth["claude-cli"]?.available ? "ONLINE" : "OFFLINE",
+      latency: agentHealth["claude-cli"]?.available ? "120ms" : "-",
+      totalTokens: totalTokensByAgent["claude-cli"] ?? 0,
       icon: Code2,
     },
     {
+      agentKey: "gemini-cli",
       id: "gemini-cli",
       name: "Gemini Multimodal",
       status: agentHealth["gemini-cli"]?.available ? "ONLINE" : "OFFLINE",
       latency: agentHealth["gemini-cli"]?.available ? "88ms" : "-",
-      totalTokens: (resource.data?.metrics.summary.mergeConflictCount ?? 0) * 1000,
+      totalTokens: totalTokensByAgent["gemini-cli"] ?? 0,
       icon: Sparkles,
     },
   ]
@@ -110,7 +112,7 @@ export function ConsolePage() {
                 icon={Zap}
                 label="TOTAL_TOKENS_USED"
                 theme={theme}
-                value={`${(totalTokens / 1000).toFixed(1)}k`}
+                value={formatTokenAmount(totalTokens)}
               />
               <MetricPanel
                 accent={isRei ? "text-cyan-600" : "text-green-400"}
@@ -182,7 +184,7 @@ export function ConsolePage() {
                       <div className={cn("relative z-10 flex items-center justify-between border-t pt-3 font-mono text-xs", isRei ? "border-blue-100" : "border-white/10")}>
                         <span className={theme.cardSub}>消耗累计:</span>
                         <span className={cn("font-bold", isRei ? "text-indigo-600" : "text-indigo-400")}>
-                          {(cli.totalTokens / 1000).toFixed(1)}k
+                          {formatTokenAmount(cli.totalTokens)}
                         </span>
                       </div>
                       <div className={cn("absolute left-0 top-0 h-2 w-2 border-l-2 border-t-2", isOnline ? theme.cardCorner : "border-transparent")} />
@@ -264,6 +266,16 @@ function MetricPanel({
       <div className={cn("font-mono text-4xl font-black tracking-wider", accent)}>{value}</div>
     </div>
   )
+}
+
+function formatTokenAmount(amount: number) {
+  if (amount >= 1_000_000) {
+    return `${(amount / 1_000_000).toFixed(amount >= 10_000_000 ? 0 : 1)}m`
+  }
+  if (amount >= 1_000) {
+    return `${(amount / 1_000).toFixed(amount >= 10_000 ? 0 : 1)}k`
+  }
+  return String(amount)
 }
 
 function TaskStatus({
