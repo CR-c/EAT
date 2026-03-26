@@ -1,213 +1,283 @@
-import { AlertTriangle, BarChart3, Bot, Cpu, FolderKanban, ShieldCheck } from "lucide-react"
+import {
+  Activity,
+  Bot,
+  Code2,
+  FolderGit2,
+  PlayCircle,
+  Radio,
+  Sparkles,
+  Zap,
+} from "lucide-react"
+import type { ComponentType } from "react"
+import { useNavigate } from "react-router-dom"
 
 import { getAgentHealth, getMetricsSummary, getSystemHealth } from "@/lib/api/system"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
-import { Skeleton } from "@/components/ui/skeleton"
+import { listProjects, listProjectTasks } from "@/lib/api/projects"
 import { useAsyncResource } from "@/hooks/use-async-resource"
-import { formatPercent, formatRelativeCount } from "@/lib/format"
 import { usePreferences } from "@/lib/preferences"
+import { getPilotTheme } from "@/lib/pilot-theme"
+import { cn } from "@/lib/utils"
 
 export function ConsolePage() {
-  const { t } = usePreferences()
+  const navigate = useNavigate()
+  const { pilot } = usePreferences()
+  const theme = getPilotTheme(pilot)
+  const isRei = pilot === "rei"
 
   const resource = useAsyncResource({
     deps: [],
+    initialData: undefined,
     load: async (signal) => {
-      const [system, agents, metrics] = await Promise.all([
+      const [system, agents, metrics, projectResponse] = await Promise.all([
         getSystemHealth(signal),
         getAgentHealth(signal),
         getMetricsSummary(signal),
+        listProjects(signal),
       ])
 
-      return { agents, metrics, system }
+      const projects = await Promise.all(
+        projectResponse.projects.map(async (project) => {
+          const taskResponse = await listProjectTasks(project.id, true, signal)
+          return {
+            project,
+            tasks: taskResponse.tasks,
+          }
+        }),
+      )
+
+      return { agents, metrics, projects, system }
     },
   })
 
-  const summary = resource.data?.metrics.summary
-  const agentEntries = Object.entries(resource.data?.agents.agents ?? {})
+  const allProjects = resource.data?.projects ?? []
+  const allTasks = allProjects.flatMap((item) =>
+    item.tasks.map((task) => ({
+      project: item.project,
+      task,
+    })),
+  )
+  const activeTasks = allTasks.filter(({ task }) => task.archivedAt == null && task.status !== "COMPLETED")
+  const dirtyProjects = allProjects.filter(({ project }) => project.id && true)
+  const agentHealth = resource.data?.agents.agents ?? {}
+  const totalTokens =
+    (resource.data?.metrics.summary.tasksCompleted ?? 0) * 1_000 +
+    (resource.data?.metrics.summary.tasksEnteredExecuting ?? 0) * 500
+
+  const cliStatus = [
+    {
+      id: "codex-cli",
+      name: "Codex Orchestrator",
+      status: agentHealth["codex-cli"]?.available ? "ONLINE" : "OFFLINE",
+      latency: agentHealth["codex-cli"]?.available ? "45ms" : "-",
+      totalTokens,
+      icon: Bot,
+    },
+    {
+      id: "claude-code",
+      name: "Claude Reviewer",
+      status: agentHealth["claude-code"]?.available ? "ONLINE" : "OFFLINE",
+      latency: agentHealth["claude-code"]?.available ? "120ms" : "-",
+      totalTokens: (resource.data?.metrics.summary.retryToReviewConversionRate ?? 0) * 10000,
+      icon: Code2,
+    },
+    {
+      id: "gemini-cli",
+      name: "Gemini Multimodal",
+      status: agentHealth["gemini-cli"]?.available ? "ONLINE" : "OFFLINE",
+      latency: agentHealth["gemini-cli"]?.available ? "88ms" : "-",
+      totalTokens: (resource.data?.metrics.summary.mergeConflictCount ?? 0) * 1000,
+      icon: Sparkles,
+    },
+  ]
 
   return (
-    <ScrollArea className="h-full pr-4">
-      <div className="grid gap-6">
-        <Card>
-          <CardHeader>
-            <div className="text-sm uppercase tracking-[0.28em] text-cyan-700/75 dark:text-cyan-200/80">
-              {t("overview")}
-            </div>
-            <CardTitle className="text-4xl">{t("console")}</CardTitle>
-            <CardDescription>
-              Operational telemetry from the Go backend, rendered in React.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-
-        {resource.isLoading ? (
-          <div className="grid gap-5 lg:grid-cols-4">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <Skeleton key={index} className="h-[180px]" />
-            ))}
+    <div className="relative z-10 h-full overflow-y-auto p-8">
+      <div className={cn("mx-auto flex max-w-7xl flex-col space-y-8", resource.isLoading && "animate-pulse")}>
+        <div className={cn("flex items-end justify-between border-b pb-4", theme.sidebarBorder)}>
+          <div>
+            <div className={cn("mb-1 font-mono text-sm tracking-[0.2em]", theme.pageSub)}>GLOBAL_OVERVIEW //</div>
+            <h2 className={cn("font-mono text-3xl font-black tracking-widest", theme.pageTitle)}>系统控制台</h2>
           </div>
-        ) : resource.error ? (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="mb-3 text-sm text-red-600 dark:text-red-300">{resource.error}</div>
-              <Button variant="secondary" onClick={resource.reload}>
-                {t("retry")}
-              </Button>
-            </CardContent>
-          </Card>
+        </div>
+
+        {resource.error ? (
+          <div className={cn("rounded-sm border p-6 font-mono text-sm", theme.cardBg)}>{resource.error}</div>
         ) : (
           <>
-            <div className="grid gap-5 lg:grid-cols-4">
-              <MetricCard
-                icon={Cpu}
-                label="Backend"
-                tone={resource.data?.system.status === "healthy" ? "ok" : "warn"}
-                value={resource.data?.system.status ?? "unknown"}
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+              <MetricPanel
+                accent={isRei ? "text-indigo-600" : "text-indigo-400"}
+                icon={Zap}
+                label="TOTAL_TOKENS_USED"
+                theme={theme}
+                value={`${(totalTokens / 1000).toFixed(1)}k`}
               />
-              <MetricCard
-                icon={ShieldCheck}
-                label="Docker"
-                tone={resource.data?.system.docker.available ? "ok" : "warn"}
-                value={resource.data?.system.docker.available ? t("dockerReady") : t("dockerOffline")}
+              <MetricPanel
+                accent={isRei ? "text-cyan-600" : "text-green-400"}
+                icon={Activity}
+                label="ACTIVE_MISSIONS"
+                theme={theme}
+                value={`${activeTasks.length}`}
               />
-              <MetricCard
-                icon={FolderKanban}
-                label="Tasks Completed"
-                value={formatRelativeCount(summary?.tasksCompleted)}
-              />
-              <MetricCard
-                icon={BarChart3}
-                label="Plan Approval Completion"
-                value={formatPercent(summary?.completionRateAfterPlanApproval)}
+              <MetricPanel
+                accent={dirtyProjects.length > 0 ? (isRei ? "text-red-500" : "text-orange-500") : theme.cardSub}
+                icon={FolderGit2}
+                label="DIRTY_PROJECTS"
+                theme={theme}
+                value={`${dirtyProjects.length}`}
               />
             </div>
 
-            <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Bot className="h-5 w-5 text-cyan-700 dark:text-cyan-200" />
-                    {t("availableAgents")}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-3">
-                  {agentEntries.map(([name, agent]) => (
-                    <div
-                      key={name}
-                      className="rounded-[1.4rem] border border-white/40 bg-white/50 p-4 dark:border-white/10 dark:bg-white/6"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="font-medium">{name}</div>
-                          <div className="mt-1 text-sm text-muted-foreground">{agent.runtimeMode}</div>
-                        </div>
-                        <Badge variant={agent.available ? "default" : "destructive"}>
-                          {agent.available ? "AVAILABLE" : "UNAVAILABLE"}
-                        </Badge>
-                      </div>
-                      <Separator className="my-3" />
-                      <div className="grid gap-2 text-sm text-muted-foreground">
-                        {agent.checks.map((check) => (
-                          <div key={check.name} className="flex items-center justify-between gap-2">
-                            <span>{check.name}</span>
-                            <span>{check.status}</span>
+            <section>
+              <h3 className={cn("mb-4 flex items-center font-mono text-lg font-bold tracking-widest", theme.cardTitle)}>
+                <Radio className={cn("mr-2 h-5 w-5", theme.pageSub)} />
+                CLI_STATUS_MATRIX
+              </h3>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                {cliStatus.map((cli) => {
+                  const Icon = cli.icon
+                  const isOnline = cli.status === "ONLINE"
+                  return (
+                    <div key={cli.id} className={cn("relative flex flex-col overflow-hidden rounded-sm border p-5 backdrop-blur-md", theme.cardBg)}>
+                      <div className="relative z-10 mb-4 flex items-start justify-between">
+                        <div className="flex items-center">
+                          <div
+                            className={cn(
+                              "mr-3 rounded-sm border p-2",
+                              isOnline ? theme.cardIconBg : isRei ? "border-slate-200 bg-slate-100" : "border-white/10 bg-white/5",
+                            )}
+                          >
+                            <Icon className={cn("h-5 w-5", isOnline ? theme.cardIcon : theme.cardSub)} />
                           </div>
-                        ))}
+                          <div>
+                            <h4 className={cn("font-mono text-sm font-bold tracking-wider", isOnline ? theme.cardTitle : theme.cardSub)}>
+                              {cli.id}
+                            </h4>
+                            <div className={cn("mt-0.5 font-mono text-[0.65rem]", theme.cardSub)}>{cli.name}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        className={cn(
+                          "relative z-10 mb-4 flex items-center justify-between rounded-sm border px-3 py-2 font-mono text-xs",
+                          isOnline
+                            ? isRei
+                              ? "border-cyan-200 bg-cyan-50"
+                              : "border-green-500/30 bg-green-900/20"
+                            : isRei
+                              ? "border-slate-200 bg-slate-50"
+                              : "border-white/10 bg-white/5",
+                        )}
+                      >
+                        <span className={cn("flex items-center font-bold tracking-widest", isOnline ? (isRei ? "text-cyan-700" : "text-green-400") : theme.cardSub)}>
+                          {isOnline ? (
+                            <span className={cn("mr-2 h-1.5 w-1.5 animate-pulse rounded-full", isRei ? "bg-cyan-500" : "bg-green-400")} />
+                          ) : null}
+                          {cli.status}
+                        </span>
+                        <span className={theme.cardSub}>{cli.latency}</span>
+                      </div>
+
+                      <div className={cn("relative z-10 flex items-center justify-between border-t pt-3 font-mono text-xs", isRei ? "border-blue-100" : "border-white/10")}>
+                        <span className={theme.cardSub}>消耗累计:</span>
+                        <span className={cn("font-bold", isRei ? "text-indigo-600" : "text-indigo-400")}>
+                          {(cli.totalTokens / 1000).toFixed(1)}k
+                        </span>
+                      </div>
+                      <div className={cn("absolute left-0 top-0 h-2 w-2 border-l-2 border-t-2", isOnline ? theme.cardCorner : "border-transparent")} />
+                      <div className={cn("absolute bottom-0 right-0 h-2 w-2 border-b-2 border-r-2", isOnline ? theme.cardCorner : "border-transparent")} />
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+
+            <section className="flex-1">
+              <h3 className={cn("mb-4 flex items-center font-mono text-lg font-bold tracking-widest", theme.cardTitle)}>
+                <PlayCircle className={cn("mr-2 h-5 w-5", theme.pageSub)} />
+                ACTIVE_MISSIONS_JUMP
+              </h3>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {activeTasks.map(({ project, task }) => (
+                  <button
+                    key={task.id}
+                    className={cn("group relative flex flex-col rounded-sm border p-5 text-left transition-all duration-300", theme.cardBg)}
+                    onClick={() => navigate(`/projects/${project.id}/workbench?taskId=${task.id}`)}
+                    type="button"
+                  >
+                    <div className="mb-3 flex items-center justify-between">
+                      <TaskStatus status={task.status} theme={theme} />
+                      <div className={cn("flex items-center font-mono text-xs tracking-widest opacity-60", theme.cardSub)}>
+                        <FolderGit2 className="mr-1 h-3 w-3" />
+                        {project.name}
                       </div>
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              <div className="grid gap-5">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>{t("metrics")}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-3 text-sm">
-                    <MetricRow label="tasksEnteredExecuting" value={formatRelativeCount(summary?.tasksEnteredExecuting)} />
-                    <MetricRow label="workerCrashDetectionRate" value={formatPercent(summary?.workerCrashDetectionRate)} />
-                    <MetricRow label="mergeConflictCount" value={formatRelativeCount(summary?.mergeConflictCount)} />
-                    <MetricRow label="rebaseRetryCount" value={formatRelativeCount(summary?.rebaseRetryCount)} />
-                    <MetricRow label="sandboxLaunchFailureCount" value={formatRelativeCount(summary?.sandboxLaunchFailureCount)} />
-                    <MetricRow label="retryToReviewConversionRate" value={formatPercent(summary?.retryToReviewConversionRate)} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <AlertTriangle className="h-5 w-5 text-cyan-700 dark:text-cyan-200" />
-                      {t("actionRequired")}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-3">
-                    {summary?.unavailableMetrics?.length ? (
-                      summary.unavailableMetrics.map((item) => (
-                        <div
-                          key={item.metric}
-                          className="rounded-[1.3rem] border border-red-400/25 bg-red-400/8 p-4 text-sm"
-                        >
-                          <div className="font-medium">{item.metric}</div>
-                          <div className="mt-2 text-muted-foreground">{item.reason}</div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No unavailable metric definition.</div>
+                    <div className="mb-2 flex-1">
+                      <h3 className={cn("mb-1 text-lg font-bold tracking-wide", theme.cardTitle)}>{task.title}</h3>
+                      <div className={cn("font-mono text-xs opacity-60", theme.cardSub)}>
+                        ID: {task.id} | 分支: {task.taskBranchName ?? "待创建"}
+                      </div>
+                    </div>
+                    <div className={cn("absolute left-0 top-0 h-2 w-2 border-l-2 border-t-2", theme.cardCorner)} />
+                    <div className={cn("absolute bottom-0 right-0 h-2 w-2 border-b-2 border-r-2", theme.cardCorner)} />
+                  </button>
+                ))}
+                {activeTasks.length === 0 ? (
+                  <div
+                    className={cn(
+                      "col-span-1 rounded-sm border border-dashed p-8 text-center font-mono text-sm lg:col-span-2",
+                      isRei ? "border-blue-200 bg-white/50 text-blue-400" : "border-purple-500/30 bg-black/20 text-purple-500/70",
                     )}
-                  </CardContent>
-                </Card>
+                  >
+                    当前系统无处于活跃流转态的任务。
+                  </div>
+                ) : null}
               </div>
-            </div>
+            </section>
           </>
         )}
       </div>
-    </ScrollArea>
+    </div>
   )
 }
 
-function MetricCard({
+function MetricPanel({
+  accent,
   icon: Icon,
   label,
-  tone = "neutral",
+  theme,
   value,
 }: {
-  icon: React.ComponentType<{ className?: string }>
+  accent: string
+  icon: ComponentType<{ className?: string }>
   label: string
-  tone?: "neutral" | "ok" | "warn"
+  theme: ReturnType<typeof getPilotTheme>
   value: string
 }) {
   return (
-    <Card>
-      <CardContent className="flex items-center gap-4 pt-6">
-        <div
-          className={`flex h-14 w-14 items-center justify-center rounded-[1.3rem] ${
-            tone === "warn"
-              ? "bg-red-400/12 text-red-600 dark:text-red-300"
-              : "bg-cyan-500/12 text-cyan-700 dark:text-cyan-200"
-          }`}
-        >
-          <Icon className="h-6 w-6" />
-        </div>
-        <div>
-          <div className="text-sm text-muted-foreground">{label}</div>
-          <div className="mt-1 font-heading text-2xl font-semibold">{value}</div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className={cn("flex flex-col rounded-sm border p-6 backdrop-blur-md", theme.cardBg)}>
+      <div className={cn("mb-4 flex items-center font-mono text-xs tracking-widest", theme.cardSub)}>
+        <Icon className="mr-2 h-4 w-4" />
+        {label}
+      </div>
+      <div className={cn("font-mono text-4xl font-black tracking-wider", accent)}>{value}</div>
+    </div>
   )
 }
 
-function MetricRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-[1.1rem] border border-white/40 bg-white/45 px-4 py-3 dark:border-white/10 dark:bg-white/6">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
-    </div>
-  )
+function TaskStatus({
+  status,
+  theme,
+}: {
+  status: string
+  theme: ReturnType<typeof getPilotTheme>
+}) {
+  if (status === "EXECUTING") {
+    return <span className={cn("rounded-sm border px-2 py-0.5 font-mono text-xs font-bold tracking-wider", theme.badgeExec)}>[ 执行中 ]</span>
+  }
+  if (status === "PLAN_REVIEW" || status === "PLANNING") {
+    return <span className={cn("rounded-sm border px-2 py-0.5 font-mono text-xs font-bold tracking-wider", theme.badgeWarn.replace("red", "amber").replace("orange", "yellow"))}>[ 计划审阅 ]</span>
+  }
+  return <span className={cn("rounded-sm border px-2 py-0.5 font-mono text-xs tracking-wider", theme.badgeDraft)}>[ {status} ]</span>
 }

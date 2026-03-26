@@ -1,4 +1,4 @@
-import { fetchJson, postJson } from "@/lib/api/client"
+import { fetchJson, postJson, putJson } from "@/lib/api/client"
 import type {
   BrowseResult,
   CreateProjectInput,
@@ -19,7 +19,7 @@ export function getProject(projectId: string, signal?: AbortSignal) {
 
 export function getProjectRepoStatus(projectId: string, signal?: AbortSignal) {
   return fetchJson<{ projectId: string; repoStatus: RepoStatus }>(
-    `/api/projects/${projectId}/repo-status`,
+    `/api/projects/${projectId}/repository-status`,
     { signal },
   )
 }
@@ -29,7 +29,7 @@ export function browseDirectories(path: string, signal?: AbortSignal) {
   if (path) {
     query.set("path", path)
   }
-  return fetchJson<BrowseResult>(`/api/projects/browse?${query.toString()}`, { signal })
+  return fetchJson<BrowseResult>(`/api/project-directories?${query.toString()}`, { signal })
 }
 
 export function createProject(input: CreateProjectInput) {
@@ -40,6 +40,13 @@ export function deleteProject(projectId: string) {
   return fetchJson<{ project: ProjectRecord }>(`/api/projects/${projectId}`, {
     method: "DELETE",
   })
+}
+
+export function updateProjectPreferences(
+  projectId: string,
+  input: { color?: string | null; isPinned?: boolean; pinnedOrder?: number | null },
+) {
+  return putJson<{ project: ProjectRecord }>(`/api/projects/${projectId}/preferences`, input)
 }
 
 export function listProjectTasks(projectId: string, includeArchived: boolean, signal?: AbortSignal) {

@@ -1,18 +1,21 @@
-import { Cpu, Languages } from "lucide-react"
-import { Link, useLocation, useParams } from "react-router-dom"
+import { ChevronRight, FolderPlus, KanbanSquare, Languages, TerminalSquare } from "lucide-react"
+import type { ReactNode } from "react"
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom"
 
 import { getProject } from "@/lib/api/projects"
-import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { cn } from "@/lib/utils"
+import { getSystemHealth } from "@/lib/api/system"
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
-import { getSystemHealth } from "@/lib/api/system"
+import { getPilotTheme, getProjectColor } from "@/lib/pilot-theme"
+import { cn } from "@/lib/utils"
 
 export function AppHeader() {
   const location = useLocation()
   const { projectId } = useParams()
-  const { locale, pilot, setLocale, setPilot, t } = usePreferences()
+  const [searchParams] = useSearchParams()
+  const { locale, pilot, setLocale } = usePreferences()
+  const theme = getPilotTheme(pilot)
+  const isRei = pilot === "rei"
 
   const project = useAsyncResource({
     deps: [projectId],
@@ -28,78 +31,119 @@ export function AppHeader() {
 
   const system = useAsyncResource({
     deps: [],
+    initialData: undefined,
     load: getSystemHealth,
   })
 
-  const title = location.pathname.startsWith("/projects")
-    ? t("projects")
-    : location.pathname.startsWith("/settings")
-      ? t("settings")
-      : t("console")
+  const selectedTask = searchParams.get("taskId")
+  const isTaskCenter = location.pathname.endsWith("/tasks")
+  const isCreateTask = location.pathname.endsWith("/tasks/new")
+  const isWorkbench = location.pathname.includes("/workbench")
 
   return (
-    <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-white/45 bg-[var(--app-shell)] px-8 backdrop-blur-2xl dark:border-white/10">
-      <div className="min-w-0">
+    <header
+      className={cn(
+        "relative z-10 flex h-16 items-center justify-between border-b px-6 backdrop-blur-md",
+        theme.shell,
+        theme.sidebarBorder,
+      )}
+    >
+      <div className="flex min-w-0 items-center">
         {project.data ? (
-          <div className="space-y-2">
-            <div className="font-heading text-2xl font-semibold tracking-tight">{project.data.name}</div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                asChild
-                size="sm"
-                variant={location.pathname.endsWith("/tasks") ? "default" : "secondary"}
-              >
-                <Link to={`/projects/${projectId}/tasks`}>{t("taskCenter")}</Link>
-              </Button>
-              <Button
-                asChild
-                size="sm"
-                variant={location.pathname.includes("/workbench") ? "default" : "secondary"}
-              >
-                <Link to={`/projects/${projectId}/workbench`}>{t("workbench")}</Link>
-              </Button>
+          <div className="flex min-w-0 items-center font-mono">
+            <span className={cn("flex items-center truncate font-bold tracking-wider", theme.pageSub)}>
+              <div
+                className="mr-2 h-2 w-2 rounded-full"
+                style={{ backgroundColor: project.data.color ?? getProjectColor(project.data.id) }}
+              />
+              {project.data.name}
+            </span>
+            <ChevronRight className="mx-3 h-4 w-4 text-slate-400" />
+            <div
+              className={cn(
+                "flex items-center space-x-2 rounded-sm border p-1",
+                isRei ? "border-blue-200/50 bg-white/50" : "border-purple-900/50 bg-black/50",
+              )}
+            >
+              <HeaderLink active={isTaskCenter} themeClass={isTaskCenter ? theme.tabActive : theme.tabInactive} to={`/projects/${projectId}/tasks`}>
+                <TerminalSquare className="mr-2 h-3 w-3" />
+                任务中心
+              </HeaderLink>
+              <HeaderLink active={isWorkbench} themeClass={isWorkbench ? theme.tabActive : theme.tabInactive} to={`/projects/${projectId}/workbench${selectedTask ? `?taskId=${selectedTask}` : ""}`}>
+                <KanbanSquare className="mr-2 h-3 w-3" />
+                工作台 {selectedTask ? `<${selectedTask}>` : ""}
+              </HeaderLink>
+              {isCreateTask ? (
+                <span className={cn("flex items-center rounded-sm px-4 py-1.5 text-xs tracking-wider", theme.tabActive)}>
+                  <FolderPlus className="mr-2 h-3 w-3" />
+                  发布任务
+                </span>
+              ) : null}
             </div>
           </div>
         ) : (
-          <div>
-            <div className="text-sm uppercase tracking-[0.28em] text-cyan-700/80 dark:text-cyan-200/80">
-              {t("localFirst")}
+          <div className="min-w-0">
+            <div className={cn("font-mono text-sm tracking-[0.2em]", theme.pageSub)}>
+              {system.data?.docker.available ? "LOCAL_FIRST //" : "SYSTEM_OFFLINE //"}
             </div>
-            <div className="font-heading text-3xl font-semibold tracking-tight">{title}</div>
+            <div className={cn("font-mono text-2xl font-black tracking-widest", theme.pageTitle)}>
+              {location.pathname.startsWith("/settings")
+                ? "系统全局配置"
+                : location.pathname.startsWith("/projects")
+                  ? "本地项目库"
+                  : "系统控制台"}
+            </div>
           </div>
         )}
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="hidden rounded-full border border-white/45 bg-white/55 px-4 py-2 text-sm text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/6 lg:flex lg:items-center lg:gap-2">
-          <Cpu className="h-4 w-4" />
-          <span>
-            {system.data?.docker.available ? t("dockerReady") : t("dockerOffline")}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 rounded-full border border-white/45 bg-white/55 p-1.5 backdrop-blur-xl dark:border-white/10 dark:bg-white/6">
-          <Languages className="ml-2 h-4 w-4 text-muted-foreground" />
-          <Select value={locale} onValueChange={(value) => setLocale(value as "zh-CN" | "en")}>
-            <SelectTrigger className="h-9 w-[110px] border-0 bg-transparent px-2 shadow-none">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="zh-CN">zh-CN</SelectItem>
-              <SelectItem value="en">en</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Button
-          size="sm"
-          variant="secondary"
-          className={cn("rounded-full", pilot === "shinji" && "border-cyan-400/20")}
-          onClick={() => setPilot(pilot === "rei" ? "shinji" : "rei")}
+      <div
+        className={cn(
+          "flex items-center gap-2 rounded-sm border px-3 py-2 font-mono text-xs",
+          isRei ? "border-blue-200/50 bg-white/60 text-blue-600" : "border-purple-500/30 bg-black/40 text-purple-300",
+        )}
+      >
+        <Languages className="h-4 w-4" />
+        <button
+          className={cn("rounded-sm px-2 py-1 transition-colors", locale === "zh-CN" ? theme.tabActive : theme.tabInactive)}
+          onClick={() => setLocale("zh-CN")}
+          type="button"
         >
-          {pilot === "rei" ? t("pilotRei") : t("pilotShinji")}
-        </Button>
+          zh-CN
+        </button>
+        <button
+          className={cn("rounded-sm px-2 py-1 transition-colors", locale === "en" ? theme.tabActive : theme.tabInactive)}
+          onClick={() => setLocale("en")}
+          type="button"
+        >
+          en
+        </button>
       </div>
     </header>
+  )
+}
+
+function HeaderLink({
+  active,
+  children,
+  themeClass,
+  to,
+}: {
+  active: boolean
+  children: ReactNode
+  themeClass: string
+  to: string
+}) {
+  return (
+    <Link
+      className={cn(
+        "flex items-center rounded-sm px-4 py-1.5 text-xs tracking-wider transition-all",
+        active && "font-semibold",
+        themeClass,
+      )}
+      to={to}
+    >
+      {children}
+    </Link>
   )
 }

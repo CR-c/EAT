@@ -13,6 +13,9 @@ export interface ProjectRecord {
   name: string
   path: string
   defaultBranch: string
+  color?: string | null
+  isPinned: boolean
+  pinnedOrder?: number | null
   createdAt: string
   updatedAt: string
 }
@@ -54,6 +57,8 @@ export interface TaskRecord {
   baseCommitSha: string
   taskBranchName?: string | null
   status: string
+  workspaceStage?: string
+  workspaceStageLabel?: string
   planVersion: number
   currentPlanJson?: string | null
   approvedPlanJson?: string | null
@@ -152,7 +157,129 @@ export interface TaskDetail {
   mailboxMessages: MailboxMessage[]
   board: Record<string, unknown>
   integration: Record<string, unknown>
+  runtime: TaskRuntime
   team: Record<string, unknown>
+}
+
+export interface TaskRuntimeNode {
+  id: string
+  nodeType: string
+  taskId: string
+  subTaskId?: string | null
+  title: string
+  agentType: string
+  status: string
+  sessionId?: string | null
+  startedAt?: string | null
+  endedAt?: string | null
+  exitCode?: number | null
+  errorReason?: string | null
+  branchName?: string | null
+  branchSuffix?: string | null
+  logsPreview: string
+  dependsOnNodeIds: string[]
+}
+
+export interface TaskRuntimeEdge {
+  from: string
+  to: string
+  type: string
+}
+
+export interface TaskRuntime {
+  taskId: string
+  taskStatus: string
+  workspaceStage: string
+  workspaceStageLabel: string
+  nodes: TaskRuntimeNode[]
+  edges: TaskRuntimeEdge[]
+  summary: {
+    failed: number
+    running: number
+    total: number
+    waiting: number
+    workerCount: number
+  }
+}
+
+export interface TaskDiffFile {
+  path: string
+  previousPath?: string | null
+  type: string
+  additions: number
+  deletions: number
+  patch?: string
+}
+
+export interface TaskDiff {
+  task: TaskRecord
+  baseRef: string
+  headRef: string
+  available: boolean
+  reason?: string
+  summary: {
+    additions: number
+    deletions: number
+    filesChanged: number
+  }
+  files: TaskDiffFile[]
+}
+
+export interface TaskMessageResponse {
+  message: {
+    id: string
+    role: string
+    content: string
+    createdAt: string
+  }
+  task: TaskRecord
+}
+
+export interface TaskPreviewTarget {
+  type: string
+  id: string
+  label: string
+  description: string
+  branchName: string
+  recommended: boolean
+}
+
+export interface TaskPreviewAppRoot {
+  command: string
+  framework: string
+  label: string
+  packageManager: string
+  path: string
+  recommended: boolean
+}
+
+export interface PreviewSession {
+  appRoot: string
+  branchName: string
+  command: string
+  exitCode?: number | null
+  logs: string
+  note: string
+  port: number
+  startedAt: string
+  status: string
+  targetId: string
+  targetLabel: string
+  targetType: string
+  updatedAt: string
+  url: string
+  worktreePath: string
+}
+
+export interface TaskPreview {
+  preview: {
+    appRoots: TaskPreviewAppRoot[]
+    available: boolean
+    defaults: Record<string, unknown>
+    recommendation: Record<string, unknown>
+    session?: PreviewSession | null
+    targets: TaskPreviewTarget[]
+  }
 }
 
 export interface SystemHealth {
@@ -268,6 +395,9 @@ export interface MetricsSummaryResponse {
 
 export interface CreateProjectInput {
   path: string
+  color?: string
+  isPinned?: boolean
+  pinnedOrder?: number | null
 }
 
 export interface CreateTaskInput {
@@ -276,6 +406,7 @@ export interface CreateTaskInput {
   description: string
   leadAgentType: string
   baseBranch: string
+  taskBranchName?: string
   baseBranchMode?: string
   baseBranchStartPoint?: string
   attachments?: Array<{
@@ -284,5 +415,23 @@ export interface CreateTaskInput {
     fileType: string
     mimeType: string
     contentBase64?: string
+  }>
+}
+
+export interface StartClarificationInput {
+  content: string
+}
+
+export interface SendTaskMessageInput {
+  content: string
+}
+
+export interface ReplanRequestInput {
+  reason?: string
+  annotations: Array<{
+    nodeId?: string
+    branchSuffix?: string
+    title?: string
+    note: string
   }>
 }

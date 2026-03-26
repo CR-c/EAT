@@ -1,69 +1,279 @@
-import { Cpu, FolderGit2, LayoutDashboard, RefreshCw, Settings } from "lucide-react"
-import { NavLink } from "react-router-dom"
+import {
+  ChevronDown,
+  FolderGit2,
+  LayoutDashboard,
+  PanelLeftClose,
+  PanelLeftOpen,
+  RefreshCw,
+  Settings,
+  Triangle,
+} from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { NavLink, useLocation, useNavigate, useParams } from "react-router-dom"
 
-import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { cn } from "@/lib/utils"
+import { listProjects, updateProjectPreferences } from "@/lib/api/projects"
+import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
+import { getPilotTheme, getProjectColor } from "@/lib/pilot-theme"
+import { cn } from "@/lib/utils"
+
+const sidebarOpenStorageKey = "eat.web.sidebar.open"
 
 const navItems = [
-  { to: "/console", icon: LayoutDashboard, key: "console" },
-  { to: "/projects", icon: FolderGit2, key: "projects" },
-  { to: "/settings", icon: Settings, key: "settings" },
+  { key: "console", label: "[ 控制台 ]", to: "/console", icon: LayoutDashboard },
+  { key: "projects", label: "[ 项目档案库 ]", to: "/projects", icon: FolderGit2 },
+  { key: "settings", label: "[ 系统配置 ]", to: "/settings", icon: Settings },
 ] as const
 
+function getStoredSidebarOpen() {
+  return window.localStorage.getItem(sidebarOpenStorageKey) !== "0"
+}
+
 export function AppSidebar() {
-  const { pilot, setPilot, t } = usePreferences()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { projectId } = useParams()
+  const { pilot, setPilot } = usePreferences()
+  const theme = getPilotTheme(pilot)
+  const isRei = pilot === "rei"
+  const [isSidebarOpen, setIsSidebarOpen] = useState(getStoredSidebarOpen)
+  const [isProjectsMenuExpanded, setIsProjectsMenuExpanded] = useState(true)
+
+  const projects = useAsyncResource({
+    deps: [],
+    initialData: [],
+    load: async (signal) => {
+      const response = await listProjects(signal)
+      return response.projects
+    },
+  })
+  const allProjects = useMemo(() => projects.data ?? [], [projects.data])
+
+  useEffect(() => {
+    window.localStorage.setItem(sidebarOpenStorageKey, isSidebarOpen ? "1" : "0")
+  }, [isSidebarOpen])
+
+  const pinnedProjects = useMemo(() => {
+    const explicitPinned = allProjects
+      .filter((project) => project.isPinned)
+      .sort((left, right) => (left.pinnedOrder ?? Number.MAX_SAFE_INTEGER) - (right.pinnedOrder ?? Number.MAX_SAFE_INTEGER))
+    return explicitPinned.length > 0 ? explicitPinned : allProjects.slice(0, 3)
+  }, [allProjects])
+
+  async function togglePinnedProject(projectIdToToggle: string) {
+    const targetProject = allProjects.find((project) => project.id === projectIdToToggle)
+    if (!targetProject) {
+      return
+    }
+    const currentlyPinned = targetProject.isPinned
+    const nextPinnedOrder = currentlyPinned
+      ? null
+      : Math.max(0, ...allProjects.filter((project) => project.isPinned).map((project) => project.pinnedOrder ?? 0)) + 1
+    await updateProjectPreferences(projectIdToToggle, {
+      color: targetProject.color ?? getProjectColor(targetProject.id),
+      isPinned: !currentlyPinned,
+      pinnedOrder: nextPinnedOrder,
+    })
+    projects.reload()
+  }
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-r border-white/45 bg-[var(--app-shell)] px-5 py-6 backdrop-blur-2xl dark:border-white/10">
-      <div className="rounded-[2rem] border border-white/40 bg-[var(--app-shell-strong)] p-5 shadow-[0_20px_70px_rgba(56,189,248,0.12)] dark:border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-700 dark:text-cyan-200">
-            <Cpu className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="font-heading text-xl font-bold tracking-[0.22em]">{t("appName")}</div>
-            <div className="text-xs tracking-[0.28em] text-muted-foreground">{t("localFirst")}</div>
-          </div>
+    <aside
+      className={cn(
+        "relative z-20 flex h-screen shrink-0 flex-col border-r backdrop-blur-xl transition-all duration-300 ease-in-out",
+        isSidebarOpen ? "w-64" : "w-20",
+        theme.sidebar,
+        theme.sidebarBorder,
+      )}
+    >
+      <button
+        className={cn(
+          "absolute -right-3.5 top-8 z-30 rounded-full border p-1 shadow-md transition-all",
+          isRei
+            ? "border-blue-200 bg-white text-blue-500 hover:bg-blue-50"
+            : "border-purple-500 bg-black text-purple-400 hover:bg-purple-900/50",
+        )}
+        onClick={() => setIsSidebarOpen((current) => !current)}
+        type="button"
+      >
+        {isSidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+      </button>
+
+      <div
+        className={cn(
+          "relative flex h-20 flex-col justify-center overflow-hidden border-b transition-colors duration-500",
+          isSidebarOpen ? "px-6" : "items-center px-0",
+          theme.sidebarBorder,
+        )}
+      >
+        <div
+          className="absolute right-0 top-0 h-full w-16"
+          style={{
+            backgroundImage: `repeating-linear-gradient(45deg,transparent,transparent 4px,${theme.gridLines} 4px,${theme.gridLines} 8px)`,
+          }}
+        />
+        <div className={cn("z-10 flex items-center font-black tracking-widest", theme.logo, isSidebarOpen ? "text-2xl" : "text-xl")}>
+          <Triangle className={cn("h-6 w-6", isSidebarOpen && "mr-2", theme.logoIcon)} />
+          {isSidebarOpen ? <span>E.A.T.</span> : null}
         </div>
+        {isSidebarOpen ? (
+          <div className={cn("z-10 mt-1 whitespace-nowrap font-mono text-[0.65rem] tracking-widest", theme.logoSub)}>
+            多智能体协作任务部队
+          </div>
+        ) : null}
       </div>
 
-      <nav className="mt-6 grid gap-2">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              cn(
-                "group flex items-center gap-3 rounded-[1.5rem] border px-4 py-3 text-sm font-medium transition-all",
-                isActive
-                  ? "border-cyan-300/60 bg-white/72 text-foreground shadow-lg dark:border-cyan-400/25 dark:bg-white/8"
-                  : "border-transparent text-muted-foreground hover:border-white/40 hover:bg-white/45 hover:text-foreground dark:hover:border-white/10 dark:hover:bg-white/5",
-              )
-            }
-          >
-            <item.icon className="h-4 w-4" />
-            <span>{t(item.key)}</span>
-          </NavLink>
-        ))}
-      </nav>
+      <div
+        className={cn(
+          "relative z-10 flex-1 overflow-y-auto py-6 font-mono text-sm",
+          isSidebarOpen ? "space-y-2 px-4" : "space-y-2 px-2",
+        )}
+      >
+        {isSidebarOpen ? <div className={cn("mb-2 pl-2 text-[10px] tracking-widest", theme.sysMenu)}>系统菜单 //</div> : null}
 
-      <div className="mt-auto rounded-[2rem] border border-white/40 bg-[var(--app-shell-strong)] p-4 dark:border-white/10">
-        <div className="mb-3 text-xs uppercase tracking-[0.28em] text-muted-foreground">{t("themePilot")}</div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              className="w-full justify-between rounded-[1.4rem]"
-              variant="secondary"
-              onClick={() => setPilot(pilot === "rei" ? "shinji" : "rei")}
+        {navItems.map((item) =>
+          item.key === "projects" ? (
+            <div key={item.key} className="pt-2">
+              <div
+                className={cn(
+                  "flex w-full items-center justify-between rounded-sm border transition-all duration-300",
+                  location.pathname.startsWith("/projects") ? theme.menuActive : theme.menuInactive,
+                )}
+              >
+                <NavLink
+                  className={cn(
+                    "flex flex-1 items-center py-3",
+                    isSidebarOpen ? "justify-start px-4" : "justify-center px-0",
+                  )}
+                  to={item.to}
+                >
+                  <item.icon className={cn("h-4 w-4", isSidebarOpen && "mr-3")} />
+                  {isSidebarOpen ? <span>{item.label}</span> : null}
+                </NavLink>
+                {isSidebarOpen ? (
+                  <button
+                    className={cn("py-3 pl-2 pr-4 transition-colors hover:text-current", !isProjectsMenuExpanded && "opacity-50")}
+                    onClick={() => setIsProjectsMenuExpanded((current) => !current)}
+                    type="button"
+                  >
+                    <ChevronDown className={cn("h-4 w-4 transition-transform", !isProjectsMenuExpanded && "-rotate-90")} />
+                  </button>
+                ) : null}
+              </div>
+
+              <div className={cn("mt-1 space-y-1 overflow-hidden", !isProjectsMenuExpanded && "hidden")}>
+                {pinnedProjects.map((project) => {
+                  const isSelected = project?.id === projectId
+                  if (!project) {
+                    return null
+                  }
+                  const color = project.color ?? getProjectColor(project.id)
+                  return (
+                    <button
+                      key={project.id}
+                      className={cn(
+                        "group flex w-full items-center py-2 transition-all duration-200",
+                        isSidebarOpen ? "justify-start px-6" : "justify-center px-0",
+                        isSelected ? (isRei ? "bg-blue-50/50" : "bg-white/5") : "hover:bg-white/5",
+                      )}
+                      onClick={() => navigate(`/projects/${project.id}/tasks`)}
+                      title={!isSidebarOpen ? project.name : undefined}
+                      type="button"
+                    >
+                      {isSidebarOpen ? (
+                        <>
+                          <div
+                            className={cn(
+                              "h-2.5 w-2.5 shrink-0 rounded-full transition-transform",
+                              isSelected && "scale-125 ring-2 ring-offset-1",
+                            )}
+                            style={{ backgroundColor: color }}
+                          />
+                          <span
+                            className={cn(
+                              "ml-3 truncate text-[0.75rem] font-mono transition-colors",
+                              isSelected
+                                ? isRei
+                                  ? "font-bold text-blue-700"
+                                  : "font-bold text-purple-300"
+                                : theme.cardSub,
+                            )}
+                          >
+                            {project.name}
+                          </span>
+                        </>
+                      ) : (
+                        <div
+                          className="flex h-7 w-7 items-center justify-center rounded-sm border text-[0.65rem] font-bold shadow-sm transition-transform group-hover:scale-110"
+                          style={{ backgroundColor: `${color}20`, borderColor: `${color}50`, color }}
+                        >
+                          {project.name.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+
+                {isSidebarOpen && allProjects.length ? (
+                  <div className={cn("px-6 pt-2 text-[11px]", theme.cardSub)}>
+                    {allProjects.map((project) => {
+                      const pinned = project.isPinned
+                      return (
+                        <button
+                          key={project.id}
+                          className={cn(
+                            "flex w-full items-center justify-between rounded-sm px-2 py-1 text-left transition-colors",
+                            theme.treeItemHover,
+                          )}
+                          onClick={() => togglePinnedProject(project.id)}
+                          type="button"
+                        >
+                          <span className="truncate">{project.name}</span>
+                          <span className={cn("text-[10px]", pinned ? theme.pageSub : theme.cardSub)}>
+                            {pinned ? "已置顶" : "置顶"}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <NavLink
+              key={item.key}
+              className={({ isActive }) =>
+                cn(
+                  "flex w-full items-center rounded-sm border py-3 transition-all duration-300",
+                  isSidebarOpen ? "justify-start px-4" : "justify-center px-0",
+                  isActive ? theme.menuActive : theme.menuInactive,
+                )
+              }
+              title={item.key}
+              to={item.to}
             >
-              <span>{pilot === "rei" ? t("pilotRei") : t("pilotShinji")}</span>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t("themePilot")}</TooltipContent>
-        </Tooltip>
+              <item.icon className={cn("h-4 w-4", isSidebarOpen && "mr-3")} />
+              {isSidebarOpen ? <span>{item.label}</span> : null}
+            </NavLink>
+          ),
+        )}
+      </div>
+
+      <div className={cn("z-10 flex flex-col space-y-2 border-t p-4 font-mono", theme.sidebarBorder)}>
+        <button
+          className={cn(
+            "flex w-full items-center justify-center rounded-sm border py-2.5 transition-all",
+            isRei
+              ? "border-blue-300 bg-white/80 text-blue-600 hover:bg-blue-50"
+              : "border-purple-500/50 bg-black/50 text-purple-400 hover:bg-purple-900/30",
+          )}
+          onClick={() => setPilot(isRei ? "shinji" : "rei")}
+          title={`切换至 ${isRei ? "01_碇真嗣" : "00_绫波丽"}`}
+          type="button"
+        >
+          <RefreshCw className={cn("h-4 w-4", isSidebarOpen && "mr-2")} />
+          {isSidebarOpen ? <span className="text-xs">PILOT: {isRei ? "00_绫波丽" : "01_碇真嗣"}</span> : null}
+        </button>
       </div>
     </aside>
   )

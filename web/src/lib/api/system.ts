@@ -13,7 +13,7 @@ export function getSystemHealth(signal?: AbortSignal) {
 }
 
 export function getDockerHealth(signal?: AbortSignal) {
-  return fetchJson<DockerHealth>("/api/system/docker-health", { signal })
+  return fetchJson<DockerHealth>("/api/system/docker", { signal })
 }
 
 export function getSandboxPolicy(signal?: AbortSignal) {
