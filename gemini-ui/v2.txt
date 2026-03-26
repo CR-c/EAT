@@ -1,0 +1,1599 @@
+import React, { useState, useMemo, useEffect, createContext, useContext } from 'react';
+import { 
+  LayoutDashboard, 
+  FolderGit2, 
+  Settings, 
+  TerminalSquare, 
+  KanbanSquare, 
+  ChevronRight, 
+  FolderPlus,
+  Triangle,
+  AlertTriangle,
+  Cpu,
+  RefreshCw,
+  Search,
+  PauseCircle,
+  Archive,
+  Trash2,
+  GitBranch,
+  PlayCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
+  XCircle,
+  FolderOpen,
+  CornerLeftUp,
+  Folder,
+  ArrowLeft,
+  Bot,
+  FileText,
+  GitMerge,
+  UploadCloud,
+  X,
+  Code2,
+  Sparkles,
+  Send,
+  CheckCircle2,
+  GitCommit,
+  Terminal,
+  Activity,
+  MessageSquare,
+  Network,
+  ArrowDown,
+  MessageSquareDiff,
+  FileDiff,
+  FilePlus,
+  Zap,
+  Radio,
+  ChevronDown
+} from 'lucide-react';
+
+// --- 全局 Context ---
+const AppContext = createContext();
+const useApp = () => useContext(AppContext);
+
+// --- 递归文件树节点组件 ---
+const FileTreeNode = ({ node, level, selectedDiffFile, setSelectedDiffFile, theme, isRei }) => {
+  const [isOpen, setIsOpen] = useState(true);
+  const isFile = node.type === 'file';
+  const isSelected = isFile && selectedDiffFile?.path === node.path;
+
+  if (node.name === 'root') {
+    return (
+      <div className="py-2">
+        {Object.values(node.children || {}).map(child => (
+          <FileTreeNode key={child.path} node={child} level={0} selectedDiffFile={selectedDiffFile} setSelectedDiffFile={setSelectedDiffFile} theme={theme} isRei={isRei} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col select-none">
+      <div
+        className={`flex items-center justify-between py-1.5 pr-3 cursor-pointer transition-colors ${isSelected ? (isRei ? 'bg-blue-100/60 border-r-2 border-blue-500' : 'bg-purple-900/40 border-r-2 border-purple-500') : (isRei ? 'hover:bg-slate-100/50' : 'hover:bg-white/5')}`}
+        style={{ paddingLeft: `${level * 16 + 12}px` }}
+        onClick={() => {
+          if (isFile) setSelectedDiffFile(node.fileData);
+          else setIsOpen(!isOpen);
+        }}
+      >
+        <div className="flex items-center overflow-hidden">
+          {!isFile ? (
+            <div className="flex items-center">
+               <ChevronRight className={`w-3 h-3 mr-1 transition-transform ${isOpen ? 'rotate-90' : ''} ${theme.cardSub}`} />
+               {isOpen ? <FolderOpen className={`w-4 h-4 mr-2 shrink-0 ${isRei ? 'text-blue-500' : 'text-purple-400'}`} /> : <Folder className={`w-4 h-4 mr-2 shrink-0 ${isRei ? 'text-blue-500' : 'text-purple-400'}`} />}
+            </div>
+          ) : (
+            <div className="flex items-center pl-4">
+               <FileText className={`w-4 h-4 mr-2 shrink-0 ${isSelected ? (isRei ? 'text-blue-600' : 'text-purple-400') : theme.cardSub}`} />
+            </div>
+          )}
+          <span className={`text-sm font-mono truncate ${isSelected ? (isRei ? 'text-blue-700 font-bold' : 'text-purple-300 font-bold') : theme.cardTitle}`}>
+            {String(node.name)}
+          </span>
+        </div>
+        {isFile && node.fileData && (
+          <div className="flex space-x-2 text-[0.65rem] font-mono shrink-0 ml-2 opacity-80">
+            {Number(node.fileData.additions) > 0 && <span className="text-emerald-500">+{node.fileData.additions}</span>}
+            {Number(node.fileData.deletions) > 0 && <span className="text-red-500">-{node.fileData.deletions}</span>}
+          </div>
+        )}
+      </div>
+      {!isFile && isOpen && (
+         <div>
+           {Object.values(node.children || {}).map(child => (
+             <FileTreeNode key={child.path} node={child} level={level + 1} selectedDiffFile={selectedDiffFile} setSelectedDiffFile={setSelectedDiffFile} theme={theme} isRei={isRei} />
+           ))}
+         </div>
+      )}
+    </div>
+  );
+};
+
+// --- 工具组件：Token 消耗徽章 ---
+const TokenUsageBadges = ({ tokens, theme, isRei }) => {
+  if (!tokens || Object.keys(tokens).length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2 mt-3">
+      {Object.entries(tokens).map(([cli, amount]) => (
+        <span key={cli} className={`flex items-center px-1.5 py-0.5 text-[0.65rem] font-mono rounded-sm border ${isRei ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-indigo-900/30 text-indigo-400 border-indigo-500/50'}`}>
+          <Zap className="w-3 h-3 mr-1 opacity-70" />
+          {String(cli)}: {(Number(amount) / 1000).toFixed(1)}k
+        </span>
+      ))}
+    </div>
+  );
+};
+
+// --- 基础子组件 ---
+const PlaceholderPage = ({ title, desc }) => {
+  const { theme, isRei } = useApp();
+  return (
+    <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] relative z-10">
+      <div className="w-24 h-24 mb-6 relative">
+        <div className={`absolute inset-0 border-2 animate-[spin_10s_linear_infinite] rounded-full ${theme.placeholderIcon}`}></div>
+        <div className={`absolute inset-2 border-2 border-dashed animate-[spin_7s_linear_infinite_reverse] rounded-full ${isRei ? 'border-cyan-400/30' : 'border-green-400/20'}`}></div>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <AlertTriangle className={`w-8 h-8 opacity-50 ${isRei ? 'text-blue-500' : 'text-purple-400'}`} />
+        </div>
+      </div>
+      <h2 className={`text-2xl font-bold mb-2 font-mono tracking-widest ${isRei ? 'text-slate-800' : 'text-slate-200'}`}>[{String(title)}]</h2>
+      <p className="text-slate-500 font-mono text-sm">{String(desc)}</p>
+    </div>
+  );
+};
+
+// --- 页面：系统全局配置 ---
+const SettingsPage = () => {
+  const { theme, isRei, setPilot } = useApp();
+
+  return (
+    <div className="p-8 max-w-4xl mx-auto relative z-10 h-full overflow-y-auto custom-scrollbar flex flex-col">
+      <div className={`flex justify-between items-end border-b pb-4 shrink-0 ${isRei ? 'border-blue-200/50' : 'border-white/10'}`}>
+        <div>
+          <div className={`font-mono text-sm tracking-[0.2em] mb-1 ${theme.pageSub}`}>SYSTEM_PREFERENCES //</div>
+          <h2 className={`text-3xl font-black tracking-widest ${theme.pageTitle}`}>系统全局配置</h2>
+        </div>
+      </div>
+
+      <div className="space-y-6 flex-1 pb-10 mt-8">
+        <div className={`p-6 rounded-sm border backdrop-blur-md relative ${theme.cardBg}`}>
+          <div className={`absolute top-0 left-0 px-3 py-0.5 text-[0.65rem] font-mono font-bold tracking-widest ${isRei ? 'bg-blue-100 text-blue-700' : 'bg-purple-900/50 text-purple-300'}`}>[ 01_UI_THEME ]</div>
+          <div className="mt-5 space-y-4">
+            <label className={`block text-xs font-mono mb-2 ${theme.cardSub}`}>界面操作终端主题 (PILOT_THEME)</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div
+                onClick={() => setPilot('rei')}
+                className={`p-5 rounded-sm border cursor-pointer transition-all flex items-center ${isRei ? 'bg-blue-50/80 border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : theme.inputBg}`}
+              >
+                 <div className={`w-5 h-5 rounded-full border-2 mr-4 flex items-center justify-center shrink-0 ${isRei ? 'border-blue-500' : 'border-slate-400'}`}>
+                    {isRei && <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>}
+                 </div>
+                 <div>
+                    <div className={`font-bold font-mono text-sm ${isRei ? 'text-blue-700' : theme.cardTitle}`}>00_绫波丽 (Rei)</div>
+                    <div className={`text-[0.65rem] font-mono mt-1 ${theme.cardSub}`}>冰蓝清新亮色调 / 适合明亮环境</div>
+                 </div>
+              </div>
+              <div
+                onClick={() => setPilot('shinji')}
+                className={`p-5 rounded-sm border cursor-pointer transition-all flex items-center ${!isRei ? 'bg-purple-900/40 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.2)]' : theme.inputBg}`}
+              >
+                 <div className={`w-5 h-5 rounded-full border-2 mr-4 flex items-center justify-center shrink-0 ${!isRei ? 'border-purple-500' : 'border-slate-500'}`}>
+                    {!isRei && <div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div>}
+                 </div>
+                 <div>
+                    <div className={`font-bold font-mono text-sm ${!isRei ? 'text-green-400' : theme.cardTitle}`}>01_碇真嗣 (Shinji)</div>
+                    <div className={`text-[0.65rem] font-mono mt-1 ${theme.cardSub}`}>暴走暗夜紫绿色调 / 适合极客环境</div>
+                 </div>
+              </div>
+            </div>
+          </div>
+          <div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 transition-colors ${theme.cardCorner}`}></div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- 页面：系统控制台 ---
+const ConsolePage = () => {
+  const { theme, isRei, projects, tasks, setSelectedProject, setSelectedTask, setProjectView } = useApp();
+
+  const activeTasks = tasks.filter(t => t.category === 'ACTIVE');
+  const dirtyProjects = projects.filter(p => p.status === 'dirty');
+  
+  let totalCodex = 0, totalClaude = 0, totalGemini = 0;
+  projects.forEach(p => {
+    if (p.tokens?.codex) totalCodex += p.tokens.codex;
+    if (p.tokens?.claude) totalClaude += p.tokens.claude;
+    if (p.tokens?.gemini) totalGemini += p.tokens.gemini;
+  });
+
+  const cliStatus = [
+    { id: 'codex-cli', name: 'Codex Orchestrator', status: 'ONLINE', latency: '45ms', totalTokens: totalCodex, icon: Bot },
+    { id: 'claude-code', name: 'Claude Reviewer', status: 'ONLINE', latency: '120ms', totalTokens: totalClaude, icon: Code2 },
+    { id: 'gemini-cli', name: 'Gemini Multimodal', status: 'OFFLINE', latency: '-', totalTokens: totalGemini, icon: Sparkles }
+  ];
+
+  const handleJumpToTask = (task) => {
+    const proj = projects.find(p => p.id === task.projectId);
+    if (proj) {
+      setSelectedProject(proj);
+      setSelectedTask(task.id);
+      setProjectView('workbench');
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    switch(status) {
+      case 'EXECUTING': return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono font-bold tracking-wider ${theme.badgeExec}`}>[ 执行中 ]</span>;
+      case 'PLAN_REVIEW': return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono font-bold tracking-wider ${theme.badgeWarn.replace('red', 'amber').replace('orange', 'yellow')}`}>[ 计划审阅 ]</span>;
+      case 'PAUSED': return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono tracking-wider ${theme.badgeDraft}`}>[ 已暂停 ]</span>;
+      default: return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono tracking-wider ${theme.badgeDraft}`}>[ {status} ]</span>;
+    }
+  };
+
+  return (
+    <div className="p-8 max-w-7xl mx-auto relative z-10 h-full overflow-y-auto custom-scrollbar flex flex-col space-y-8">
+      <div className={`flex justify-between items-end border-b pb-4 shrink-0 ${isRei ? 'border-blue-200/50' : 'border-white/10'}`}>
+        <div>
+          <div className={`font-mono text-sm tracking-[0.2em] mb-1 ${theme.pageSub}`}>GLOBAL_OVERVIEW //</div>
+          <h2 className={`text-3xl font-black tracking-widest ${theme.pageTitle}`}>系统控制台</h2>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className={`p-6 rounded-sm border backdrop-blur-md flex flex-col ${theme.cardBg}`}>
+          <div className={`text-xs font-mono tracking-widest mb-4 flex items-center ${theme.cardSub}`}><Zap className="w-4 h-4 mr-2" /> TOTAL_TOKENS_USED</div>
+          <div className={`text-4xl font-black font-mono tracking-wider ${isRei ? 'text-indigo-600' : 'text-indigo-400'}`}>
+             {((totalCodex + totalClaude + totalGemini) / 1000).toFixed(1)}<span className="text-xl ml-1">k</span>
+          </div>
+        </div>
+        <div className={`p-6 rounded-sm border backdrop-blur-md flex flex-col ${theme.cardBg}`}>
+          <div className={`text-xs font-mono tracking-widest mb-4 flex items-center ${theme.cardSub}`}><Activity className="w-4 h-4 mr-2" /> ACTIVE_MISSIONS</div>
+          <div className={`text-4xl font-black font-mono tracking-wider ${isRei ? 'text-cyan-600' : 'text-green-400'}`}>
+             {activeTasks.length} <span className="text-lg font-normal ml-2 opacity-60">tasks</span>
+          </div>
+        </div>
+        <div className={`p-6 rounded-sm border backdrop-blur-md flex flex-col ${theme.cardBg}`}>
+          <div className={`text-xs font-mono tracking-widest mb-4 flex items-center ${theme.cardSub}`}><FolderGit2 className="w-4 h-4 mr-2" /> DIRTY_PROJECTS</div>
+          <div className={`text-4xl font-black font-mono tracking-wider ${dirtyProjects.length > 0 ? (isRei ? 'text-red-500' : 'text-orange-500') : (isRei ? 'text-slate-600' : 'text-slate-400')}`}>
+             {dirtyProjects.length} <span className="text-lg font-normal ml-2 opacity-60">repos</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className={`text-lg font-bold font-mono tracking-widest mb-4 flex items-center ${theme.cardTitle}`}>
+          <Radio className={`w-5 h-5 mr-2 ${theme.pageSub}`} /> CLI_STATUS_MATRIX
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {cliStatus.map(cli => {
+            const Icon = cli.icon;
+            const isOnline = cli.status === 'ONLINE';
+            return (
+              <div key={cli.id} className={`p-5 rounded-sm border backdrop-blur-md flex flex-col relative overflow-hidden ${theme.cardBg}`}>
+                <div className="flex justify-between items-start mb-4 relative z-10">
+                  <div className="flex items-center">
+                     <div className={`p-2 rounded-sm mr-3 border ${isOnline ? theme.cardIconBg : (isRei ? 'bg-slate-100 border-slate-200' : 'bg-white/5 border-white/10')}`}>
+                        <Icon className={`w-5 h-5 ${isOnline ? theme.cardIcon : (isRei ? 'text-slate-400' : 'text-slate-500')}`} />
+                     </div>
+                     <div>
+                       <h4 className={`font-bold font-mono text-sm tracking-wider ${isOnline ? theme.cardTitle : theme.cardSub}`}>{cli.id}</h4>
+                       <div className={`text-[0.65rem] font-mono mt-0.5 ${theme.cardSub}`}>{cli.name}</div>
+                     </div>
+                  </div>
+                </div>
+                
+                <div className={`flex items-center justify-between text-xs font-mono px-3 py-2 rounded-sm border mb-4 relative z-10 ${isOnline ? (isRei ? 'bg-cyan-50 border-cyan-200' : 'bg-green-900/20 border-green-500/30') : (isRei ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10')}`}>
+                  <span className={`font-bold tracking-widest flex items-center ${isOnline ? (isRei ? 'text-cyan-700' : 'text-green-400') : theme.cardSub}`}>
+                    {isOnline && <span className={`w-1.5 h-1.5 rounded-full mr-2 animate-pulse ${isRei ? 'bg-cyan-500' : 'bg-green-400'}`}></span>}
+                    {cli.status}
+                  </span>
+                  <span className={theme.cardSub}>{cli.latency}</span>
+                </div>
+
+                <div className={`text-xs font-mono flex items-center justify-between pt-3 border-t relative z-10 ${isRei ? 'border-blue-100' : 'border-white/10'}`}>
+                  <span className={theme.cardSub}>消耗累计:</span>
+                  <span className={`font-bold ${isRei ? 'text-indigo-600' : 'text-indigo-400'}`}>{(cli.totalTokens / 1000).toFixed(1)}k</span>
+                </div>
+                
+                <div className={`absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 transition-colors ${isOnline ? theme.cardCorner : 'border-transparent'}`}></div>
+                <div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 transition-colors ${isOnline ? theme.cardCorner : 'border-transparent'}`}></div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex-1">
+        <h3 className={`text-lg font-bold font-mono tracking-widest mb-4 flex items-center ${theme.cardTitle}`}>
+          <PlayCircle className={`w-5 h-5 mr-2 ${theme.pageSub}`} /> ACTIVE_MISSIONS_JUMP
+        </h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {activeTasks.map(task => {
+            const project = projects.find(p => p.id === task.projectId) || { name: 'Unknown' };
+            return (
+              <div key={task.id} onClick={() => handleJumpToTask(task)} className={`group relative backdrop-blur-md border p-5 rounded-sm cursor-pointer transition-all duration-300 flex flex-col ${theme.cardBg}`}>
+                <div className="flex justify-between items-center mb-3">
+                  {getStatusBadge(task.status)}
+                  <div className={`text-xs font-mono tracking-widest opacity-60 flex items-center ${theme.cardSub}`}>
+                    <FolderGit2 className="w-3 h-3 mr-1" /> {project.name}
+                  </div>
+                </div>
+                
+                <div className="flex-1 mb-2">
+                  <h3 className={`text-lg font-bold mb-1 tracking-wide ${theme.cardTitle}`}>{task.title}</h3>
+                  <div className={`text-xs font-mono opacity-60 ${theme.cardSub}`}>ID: {task.id} | 分支: {task.taskBranch}</div>
+                </div>
+
+                <TokenUsageBadges tokens={task.tokens} theme={theme} isRei={isRei} />
+
+                <div className={`absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 transition-colors ${theme.cardCorner}`}></div><div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 transition-colors ${theme.cardCorner}`}></div>
+              </div>
+            );
+          })}
+          {activeTasks.length === 0 && (
+            <div className={`col-span-1 lg:col-span-2 p-8 text-center rounded-sm border border-dashed font-mono text-sm ${isRei ? 'border-blue-200 text-blue-400 bg-white/50' : 'border-purple-500/30 text-purple-500/70 bg-black/20'}`}>
+              当前系统无处于活跃流转态的任务。
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- 其他各种弹窗模块 ---
+const RegisterProjectModal = () => {
+  const { isRegisterModalOpen, setIsRegisterModalOpen, projects, setProjects, theme, isRei } = useApp();
+  const [registerPathInput, setRegisterPathInput] = useState('/Users/dev');
+  const [currentBrowsePath, setCurrentBrowsePath] = useState('/Users/dev');
+  
+  const PRESET_COLORS = ['#eab308', '#f97316', '#ef4444', '#22c55e', '#06b6d4', '#3b82f6', '#a855f7'];
+  const [projectColor, setProjectColor] = useState(PRESET_COLORS[0]);
+
+  if (!isRegisterModalOpen) return null;
+
+  const mockFileSystem = {
+    '/': [ { name: 'Users', type: 'dir' } ],
+    '/Users': [ { name: 'dev', type: 'dir' } ],
+    '/Users/dev': [ { name: 'eat-frontend', type: 'dir', isGit: true }, { name: 'backend-api', type: 'dir', isGit: true } ]
+  };
+
+  const currentDirs = mockFileSystem[currentBrowsePath] || [];
+
+  const handleDirClick = (dirName) => {
+    const newPath = currentBrowsePath === '/' ? `/${dirName}` : `${currentBrowsePath}/${dirName}`;
+    setCurrentBrowsePath(newPath);
+    setRegisterPathInput(newPath);
+  };
+
+  const handleGoUp = () => {
+    if (currentBrowsePath === '/') return;
+    const parts = currentBrowsePath.split('/');
+    parts.pop();
+    const newPath = parts.length <= 1 ? '/' : parts.join('/');
+    setCurrentBrowsePath(newPath);
+    setRegisterPathInput(newPath);
+  };
+
+  const handleRegisterSubmit = () => {
+    if (!registerPathInput) return;
+    const name = registerPathInput.split('/').pop() || 'new-project';
+    setProjects([{ id: Math.random().toString(36).substr(2, 5).toUpperCase(), name: name, path: registerPathInput, defaultBranch: 'main', taskCount: 0, status: 'clean', tokens: {}, color: projectColor, isPinned: true }, ...projects]);
+    setIsRegisterModalOpen(false);
+  };
+
+  return (
+    <div className={`fixed inset-0 z-50 flex items-center justify-center transition-all ${theme.modalOverlay}`}>
+      <div className={`w-full max-w-2xl p-6 rounded-sm relative overflow-hidden flex flex-col max-h-[90vh] ${theme.modalBox}`}>
+         <div className="absolute inset-0 pointer-events-none opacity-10" style={{ backgroundImage: theme.grid, backgroundSize: '20px 20px' }}></div>
+         <div className="flex items-center mb-6 relative z-10">
+            <div className={`p-2 rounded-sm mr-3 border ${isRei ? 'bg-cyan-50 border-cyan-200' : 'bg-green-900/20 border-green-500/30'}`}>
+               <FolderPlus className={`w-5 h-5 ${isRei ? 'text-cyan-600' : 'text-green-400'}`} />
+            </div>
+            <h3 className={`text-xl font-bold tracking-wider ${isRei ? 'text-cyan-700' : 'text-green-400'}`}>注册本地新项目</h3>
+         </div>
+         <div className="relative z-10 flex flex-col flex-1 overflow-hidden space-y-4">
+            <div>
+              <label className={`block text-xs font-mono mb-2 ${theme.cardSub}`}>[ TARGET_PATH ] 手动输入路径</label>
+              <div className="relative">
+                <TerminalSquare className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isRei ? 'text-blue-400' : 'text-purple-500'}`} />
+                <input type="text" value={registerPathInput} onChange={(e) => setRegisterPathInput(e.target.value)} placeholder="输入本地 Git 仓库绝对路径..." className={`w-full pl-9 pr-4 py-2.5 rounded-sm outline-none font-mono text-sm transition-all border ${theme.inputBg}`} />
+              </div>
+            </div>
+            
+            <div>
+              <label className={`block text-xs font-mono mb-2 ${theme.cardSub}`}>[ PROJECT_COLOR ] 标识颜色</label>
+              <div className="flex items-center space-x-3">
+                {PRESET_COLORS.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setProjectColor(c)}
+                    className={`w-6 h-6 rounded-full transition-transform ${projectColor === c ? (isRei ? 'scale-125 ring-2 ring-offset-1 ring-blue-400' : 'scale-125 ring-2 ring-offset-1 ring-green-400 ring-offset-[#0a0a0a]') : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
+                    style={{ backgroundColor: c }}
+                    title={`选择预设颜色 ${c}`}
+                  />
+                ))}
+                <div className={`w-px h-5 mx-2 ${isRei ? 'bg-blue-200' : 'bg-white/20'}`}></div>
+                <label className="relative flex items-center justify-center w-7 h-7 rounded-full overflow-hidden border border-slate-400 hover:scale-110 transition-transform cursor-pointer shadow-sm" title="打开调色板选择自定义颜色">
+                  <input type="color" value={projectColor} onChange={e => setProjectColor(e.target.value)} className="absolute -top-2 -left-2 w-12 h-12 cursor-pointer opacity-0" />
+                  <div className="w-full h-full pointer-events-none" style={{ backgroundColor: projectColor }}></div>
+                </label>
+                <span className={`text-[0.65rem] font-mono ml-2 opacity-60 uppercase ${theme.cardSub}`}>{projectColor}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col flex-1 overflow-hidden border rounded-sm mt-2" style={{ borderColor: isRei ? 'rgba(59,130,246,0.3)' : 'rgba(168,85,247,0.3)' }}>
+              <div className={`px-3 py-2 border-b flex items-center text-xs font-mono tracking-wide ${theme.treePathBar}`}>
+                <FolderOpen className="w-3.5 h-3.5 mr-2" />
+                <span className="truncate flex-1 font-bold">{currentBrowsePath}</span>
+              </div>
+              <div className={`flex-1 overflow-y-auto custom-scrollbar p-2 ${isRei ? 'bg-white/40' : 'bg-black/20'}`}>
+                {currentBrowsePath !== '/' && (
+                  <div onClick={handleGoUp} className={`flex items-center px-3 py-2 cursor-pointer transition-colors rounded-sm font-mono text-sm ${theme.treeItemHover} ${theme.cardSub}`}>
+                    <CornerLeftUp className="w-4 h-4 mr-3" /><span>.. (返回上级)</span>
+                  </div>
+                )}
+                {currentDirs.length === 0 && (
+                  <div className={`px-3 py-4 text-center font-mono text-xs opacity-50 ${theme.cardSub}`}>当前目录下未发现文件夹。</div>
+                )}
+                {currentDirs.map((dir, idx) => (
+                  <div key={idx} onClick={() => handleDirClick(dir.name)} className={`flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors rounded-sm font-mono text-sm group ${theme.treeItemHover}`}>
+                    <div className="flex items-center overflow-hidden">
+                      <Folder className={`w-4 h-4 mr-3 shrink-0 ${dir.isGit ? (isRei ? 'text-cyan-500 fill-cyan-500/20' : 'text-green-400 fill-green-400/20') : (isRei ? 'text-blue-400' : 'text-purple-500')}`} />
+                      <span className={`truncate ${theme.cardTitle}`}>{dir.name}</span>
+                    </div>
+                    {dir.isGit && (
+                      <div className={`text-[0.6rem] px-1.5 py-0.5 rounded-sm border opacity-70 group-hover:opacity-100 transition-opacity ${isRei ? 'bg-cyan-50 border-cyan-200 text-cyan-600' : 'bg-green-900/30 border-green-500/50 text-green-400'}`}>GIT</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+         </div>
+         <div className="flex justify-end space-x-3 mt-6 relative z-10 font-mono text-sm">
+           <button onClick={() => setIsRegisterModalOpen(false)} className={`px-5 py-2 rounded-sm border transition-colors ${theme.btnGhost} ${isRei ? 'border-blue-200' : 'border-white/10'}`}>取消 (CANCEL)</button>
+           <button onClick={handleRegisterSubmit} className={`px-5 py-2 rounded-sm border transition-colors flex items-center ${isRei ? 'bg-blue-50 text-blue-600 border-blue-300 hover:bg-blue-600 hover:text-white' : 'bg-green-900/30 border-green-500/50 text-green-400 hover:bg-green-500 hover:text-black'}`}>确认注册</button>
+         </div>
+      </div>
+    </div>
+  );
+};
+
+const DeleteProjectModal = () => {
+  const { projectToDelete, setProjectToDelete, projects, setProjects, theme, isRei } = useApp();
+
+  if (!projectToDelete) return null;
+  const hasActiveTasks = projectToDelete.taskCount > 0;
+
+  const handleConfirmProjectDelete = () => {
+    if (projectToDelete && projectToDelete.taskCount === 0) {
+      setProjects(prev => prev.filter(p => p.id !== projectToDelete.id));
+      setProjectToDelete(null);
+    }
+  };
+
+  return (
+    <div className={`fixed inset-0 z-50 flex items-center justify-center transition-all ${theme.modalOverlay}`}>
+      <div className={`w-full max-w-md p-6 rounded-sm relative overflow-hidden ${theme.modalBox}`}>
+         <div className="absolute inset-0 pointer-events-none opacity-10" style={{ backgroundImage: theme.grid, backgroundSize: '20px 20px' }}></div>
+         <div className="flex items-start mb-6 relative z-10">
+            <div className={`p-3 rounded-full mr-4 border ${hasActiveTasks ? 'bg-red-500/10 border-red-500/30' : (isRei ? 'bg-amber-500/10 border-amber-500/30' : 'bg-orange-500/10 border-orange-500/30')}`}>
+               {hasActiveTasks ? <XCircle className="w-6 h-6 text-red-500" /> : <AlertTriangle className={`w-6 h-6 ${theme.modalTitle}`} />}
+            </div>
+            <div>
+              <h3 className={`text-lg font-bold mb-1 tracking-wider ${hasActiveTasks ? 'text-red-500' : theme.modalTitle}`}>
+                {hasActiveTasks ? '操作被拦截：存在活跃任务' : '确认移除项目注册？'}
+              </h3>
+              <p className={`text-sm font-mono mt-2 leading-relaxed ${theme.cardSub}`}>
+                {hasActiveTasks ? (
+                  <>目标项目 <span className="font-bold text-slate-300">[{String(projectToDelete.name)}]</span> 当前仍有 <span className="font-bold text-red-500">{projectToDelete.taskCount}</span> 个活跃任务正在执行中。<br/><br/><span className="text-red-400">系统指令约束：请先将所有活跃任务暂停并归档，或直接删除它们后，再尝试解除项目注册。</span></>
+                ) : (
+                  <>即将移除对项目 <span className="font-bold text-slate-300">[{String(projectToDelete.name)}]</span> 的接管。<br/><br/><span className={`inline-block px-2 py-1 rounded-sm border ${isRei ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-orange-500/10 border-orange-500/30 text-orange-400'}`}>⚠️ 提示：此操作仅在本系统中去除记录，不会删除您的本地仓库。</span></>
+                )}
+              </p>
+            </div>
+         </div>
+         <div className="flex justify-end space-x-3 relative z-10 font-mono text-sm">
+           {hasActiveTasks ? (
+              <button onClick={() => setProjectToDelete(null)} className={`px-4 py-2 rounded-sm border transition-colors bg-red-500/10 border-red-500/50 text-red-500 hover:bg-red-500 hover:text-white`}>收到 (ACKNOWLEDGE)</button>
+           ) : (
+              <>
+                <button onClick={() => setProjectToDelete(null)} className={`px-4 py-2 rounded-sm border transition-colors ${theme.btnGhost} ${isRei ? 'border-blue-200' : 'border-white/10'}`}>取消 (CANCEL)</button>
+                <button onClick={handleConfirmProjectDelete} className={`px-4 py-2 rounded-sm border transition-colors flex items-center bg-red-500/10 border-red-500/50 text-red-500 hover:bg-red-500 hover:text-white`}><Trash2 className="w-4 h-4 mr-2" />确认移除</button>
+              </>
+           )}
+         </div>
+      </div>
+    </div>
+  );
+};
+
+const TaskActionModal = () => {
+  const { taskActionState, setTaskActionState, deleteBranchChecked, setDeleteBranchChecked, setTasks, theme, isRei } = useApp();
+
+  if (!taskActionState.isOpen || !taskActionState.task) return null;
+  const { type, task } = taskActionState;
+
+  const executeTaskAction = () => {
+    if (!task) return;
+    if (type === 'delete') setTasks(prev => prev.filter(t => t.id !== task.id));
+    else if (type === 'archive') setTasks(prev => prev.map(t => t.id === task.id ? { ...t, category: 'ARCHIVED', status: 'COMPLETED' } : t));
+    else if (type === 'pause') setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: task.status === 'PAUSED' ? 'EXECUTING' : 'PAUSED' } : t));
+    setTaskActionState({ isOpen: false, type: '', task: null });
+  };
+
+  let config = {};
+  if (type === 'error') {
+    config = { icon: <XCircle className="w-6 h-6 text-red-500" />, title: '操作被拦截：任务处于活跃状态', colorClass: 'text-red-500 border-red-500/30 bg-red-500/10', content: `任务 [${task.id}] 正在被执行或处于审查流中。为保障数据完整性，系统禁止直接归档或删除活跃任务。请先暂停该任务。`, hideCancel: true, confirmText: '收到 (ACKNOWLEDGE)' };
+  } else if (type === 'delete') {
+    config = { icon: <AlertTriangle className="w-6 h-6 text-red-500" />, title: '彻底销毁任务记录？', colorClass: 'text-red-500 border-red-500/30 bg-red-500/10', content: `即将从系统中永久抹除任务 [${task.id}]：${task.title} 的所有上下文及快照。此操作不可逆！`, showCheckbox: true, confirmText: '确认销毁 (DESTROY)' };
+  } else if (type === 'archive') {
+    config = { icon: <Archive className={`w-6 h-6 ${theme.modalTitleInfo}`} />, title: '将任务转入冷数据归档？', colorClass: `${theme.modalTitleInfo} border-blue-500/30 bg-blue-500/10`, content: `任务 [${task.id}]：${task.title} 将被移出活跃工作台并进入已归档视图。你可以随时在档案库中查阅它的历史。`, confirmText: '确认归档 (ARCHIVE)' };
+  } else if (type === 'pause') {
+    const isPaused = task.status === 'PAUSED';
+    config = { icon: isPaused ? <PlayCircle className={`w-6 h-6 ${theme.modalTitleInfo}`} /> : <PauseCircle className={`w-6 h-6 ${theme.modalTitleInfo}`} />, title: isPaused ? '恢复任务执行流？' : '挂起任务执行流？', colorClass: `${theme.modalTitleInfo} border-blue-500/30 bg-blue-500/10`, content: isPaused ? `将重新激活任务 [${task.id}]，对应的 Agent 会话和工作流将继续进行。` : `将中止当前任务 [${task.id}] 的所有 Agent 进程并释放容器资源。你可以随时恢复它。`, confirmText: isPaused ? '确认恢复 (RESUME)' : '确认挂起 (PAUSE)' };
+  }
+  return (
+    <div className={`fixed inset-0 z-50 flex items-center justify-center transition-all ${theme.modalOverlay}`}>
+      <div className={`w-full max-w-md p-6 rounded-sm relative overflow-hidden flex flex-col ${theme.modalBox}`}>
+         <div className="absolute inset-0 pointer-events-none opacity-10" style={{ backgroundImage: theme.grid, backgroundSize: '20px 20px' }}></div>
+         <div className="flex items-start mb-6 relative z-10">
+            <div className={`p-3 rounded-full mr-4 border ${config.colorClass}`}>{config.icon}</div>
+            <div className="flex-1 mt-1">
+              <h3 className={`text-lg font-bold mb-2 tracking-wider ${config.colorClass.split(' ')[0]}`}>{config.title}</h3>
+              <p className={`text-sm font-mono leading-relaxed ${theme.cardSub}`}>{config.content}</p>
+              {config.showCheckbox && (
+                <label className="flex items-center space-x-3 mt-4 cursor-pointer p-2 rounded-sm border border-red-500/20 bg-red-500/5 group">
+                  <div className="relative flex items-center justify-center">
+                    <input type="checkbox" checked={deleteBranchChecked} onChange={(e) => setDeleteBranchChecked(e.target.checked)} className="peer appearance-none w-4 h-4 border border-red-500/50 rounded-sm checked:bg-red-500 transition-colors cursor-pointer" />
+                    <svg className="absolute w-3 h-3 text-white opacity-0 peer-checked:opacity-100 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  </div>
+                  <span className="text-sm font-mono text-red-400 group-hover:text-red-500 transition-colors">同时抹除本地对应分支：<br/><span className="font-bold">{task.taskBranch}</span></span>
+                </label>
+              )}
+            </div>
+         </div>
+         <div className="flex justify-end space-x-3 relative z-10 font-mono text-sm">
+           {!config.hideCancel && (<button onClick={() => setTaskActionState({ isOpen: false, type: '', task: null })} className={`px-4 py-2 rounded-sm border transition-colors ${theme.btnGhost} ${isRei ? 'border-blue-200' : 'border-white/10'}`}>取消 (CANCEL)</button>)}
+           <button onClick={config.hideCancel ? () => setTaskActionState({ isOpen: false, type: '', task: null }) : executeTaskAction} className={`px-4 py-2 rounded-sm border transition-colors flex items-center ${config.hideCancel ? 'bg-red-500/10 border-red-500/50 text-red-500 hover:bg-red-500 hover:text-white' : (type === 'delete' ? 'bg-red-500/10 border-red-500/50 text-red-500 hover:bg-red-500 hover:text-white' : (isRei ? 'bg-blue-50 text-blue-600 border-blue-300 hover:bg-blue-600 hover:text-white' : 'bg-green-900/30 border-green-500/50 text-green-400 hover:bg-green-500 hover:text-black'))}`}>{config.confirmText}</button>
+         </div>
+      </div>
+    </div>
+  );
+};
+
+const Sidebar = () => {
+  const { isSidebarOpen, setIsSidebarOpen, isRei, theme, activeMenu, setActiveMenu, selectedProject, setSelectedProject, setProjectView, setPilot, projects } = useApp();
+  
+  const [isProjectsMenuExpanded, setIsProjectsMenuExpanded] = useState(true);
+
+  return (
+    <div className={`${isSidebarOpen ? 'w-64' : 'w-20'} backdrop-blur-xl border-r flex flex-col h-screen relative z-20 transition-all duration-300 ease-in-out shrink-0 ${theme.sidebarBg}`}>
+      <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`absolute -right-3.5 top-8 p-1 rounded-full border shadow-md transition-all z-30 ${isRei ? 'bg-white border-blue-200 text-blue-500 hover:bg-blue-50' : 'bg-black border-purple-500 text-purple-400 hover:bg-purple-900/50'}`}>
+        {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+      </button>
+      <div className={`h-20 flex flex-col justify-center ${isSidebarOpen ? 'px-6' : 'px-0 items-center'} border-b relative overflow-hidden transition-colors duration-500 ${isRei ? 'border-blue-200/60' : 'border-purple-500/30'}`}>
+        <div className={`absolute top-0 right-0 w-16 h-full bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,${theme.gridLines}_4px,${theme.gridLines}_8px)]`}></div>
+        <div className={`flex items-center font-black text-2xl tracking-widest z-10 ${theme.logo}`}><Triangle className={`w-6 h-6 ${isSidebarOpen ? 'mr-2' : ''} ${theme.logoIcon}`} />{isSidebarOpen && <span>E.A.T.</span>}</div>
+        {isSidebarOpen && (<div className={`text-[0.65rem] font-mono tracking-widest mt-1 z-10 whitespace-nowrap ${theme.logoSub}`}>多智能体协作任务部队</div>)}
+      </div>
+      
+      <div className={`flex-1 py-6 space-y-2 font-mono text-sm relative z-10 ${isSidebarOpen ? 'px-4' : 'px-2'} overflow-y-auto custom-scrollbar`}>
+        {isSidebarOpen && <div className={`text-[10px] mb-2 tracking-widest pl-2 ${theme.sysMenu}`}>系统菜单 //</div>}
+        
+        <button onClick={() => { setActiveMenu('console'); setSelectedProject(null); }} className={`w-full flex items-center ${isSidebarOpen ? 'px-4 justify-start' : 'px-0 justify-center'} py-3 rounded-sm border transition-all duration-300 ${activeMenu === 'console' && !selectedProject ? theme.menuActive : theme.menuInactive}`} title="控制台">
+          <LayoutDashboard className={`w-4 h-4 ${isSidebarOpen ? 'mr-3' : ''}`} />{isSidebarOpen && <span>[ 控制台 ]</span>}
+        </button>
+        
+        <div className="pt-2">
+          <div className={`w-full flex items-center justify-between rounded-sm border transition-all duration-300 ${activeMenu === 'projects' && !selectedProject ? theme.menuActive : theme.menuInactive}`}>
+            <button 
+              onClick={() => { 
+                setActiveMenu('projects'); 
+                setSelectedProject(null); 
+                setIsProjectsMenuExpanded(true);
+              }} 
+              className={`flex-1 flex items-center py-3 ${isSidebarOpen ? 'px-4 justify-start' : 'px-0 justify-center'}`} 
+              title="项目档案库"
+            >
+              <FolderGit2 className={`w-4 h-4 ${isSidebarOpen ? 'mr-3' : ''}`} />
+              {isSidebarOpen && <span>[ 项目档案库 ]</span>}
+            </button>
+            {isSidebarOpen && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); setIsProjectsMenuExpanded(!isProjectsMenuExpanded); }}
+                className={`pr-4 pl-2 py-3 hover:text-current transition-colors ${isProjectsMenuExpanded ? 'opacity-100' : 'opacity-50'}`}
+              >
+                <ChevronDown className={`w-4 h-4 transition-transform ${isProjectsMenuExpanded ? '' : '-rotate-90'}`} />
+              </button>
+            )}
+          </div>
+          
+          <div className={`mt-1 space-y-1 overflow-hidden transition-all ${isProjectsMenuExpanded ? 'block' : 'hidden'}`}>
+            {projects.filter(p => p.isPinned).map(p => {
+              const isProjSelected = selectedProject?.id === p.id;
+              const abbr = p.name.substring(0, 2).toUpperCase();
+              return (
+                <button 
+                  key={p.id}
+                  onClick={() => { setSelectedProject(p); setProjectView('taskCenter'); setActiveMenu('projects'); }}
+                  className={`w-full flex items-center ${isSidebarOpen ? 'px-6 justify-start' : 'px-0 justify-center'} py-2 transition-all duration-200 group ${isProjSelected ? (isRei ? 'bg-blue-50/50' : 'bg-white/5') : 'hover:bg-white/5'}`}
+                  title={!isSidebarOpen ? p.name : undefined}
+                >
+                  {isSidebarOpen ? (
+                    <>
+                      <div className={`w-2.5 h-2.5 rounded-full shrink-0 transition-transform ${isProjSelected ? 'scale-125 ring-2 ring-offset-1' : ''}`} style={{ backgroundColor: p.color, ...(isProjSelected ? { ringColor: p.color, ringOffsetColor: isRei ? '#f0f8ff' : '#0a0a0a' } : {}) }}></div>
+                      <span className={`ml-3 text-[0.75rem] font-mono truncate transition-colors ${isProjSelected ? (isRei ? 'text-blue-700 font-bold' : 'text-purple-300 font-bold') : theme.cardSub}`}>{p.name}</span>
+                    </>
+                  ) : (
+                    <div className="w-7 h-7 rounded-sm flex items-center justify-center text-[0.65rem] font-bold font-mono transition-transform group-hover:scale-110 shadow-sm" style={{ backgroundColor: `${p.color}20`, color: p.color, border: `1px solid ${p.color}50` }}>
+                      {abbr}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+      </div>
+      
+      <div className={`p-4 border-t font-mono space-y-2 z-10 flex flex-col ${isRei ? 'border-blue-200/60' : 'border-purple-500/30'}`}>
+        <button onClick={() => setPilot(isRei ? 'shinji' : 'rei')} className={`w-full flex items-center justify-center py-2.5 rounded-sm border transition-all ${isRei ? 'bg-white/80 border-blue-300 text-blue-600 hover:bg-blue-50' : 'bg-black/50 border-purple-500/50 text-purple-400 hover:bg-purple-900/30'}`} title={`切换至 ${isRei ? '01_碇真嗣' : '00_绫波丽'}`}><RefreshCw className={`w-4 h-4 ${isSidebarOpen ? 'mr-2' : ''}`} />{isSidebarOpen && <span className="text-xs">PILOT: {isRei ? '00_绫波丽' : '01_碇真嗣'}</span>}</button>
+        <button onClick={() => { setActiveMenu('settings'); setSelectedProject(null); }} className={`w-full flex items-center ${isSidebarOpen ? 'px-4 justify-start' : 'px-0 justify-center'} py-3 rounded-sm border transition-all duration-300 ${activeMenu === 'settings' && !selectedProject ? theme.menuActive : theme.menuInactive}`} title="系统配置"><Settings className={`w-4 h-4 ${isSidebarOpen ? 'mr-3' : ''}`} />{isSidebarOpen && <span>[ 系统配置 ]</span>}</button>
+      </div>
+    </div>
+  );
+};
+
+const Header = () => {
+  const { theme, isRei, selectedProject, projectView, setProjectView, selectedTask } = useApp();
+  return (
+    <div className={`h-16 backdrop-blur-md border-b flex items-center justify-between px-6 z-10 relative transition-colors duration-500 ${theme.headerBg}`}>
+      <div className="flex items-center">
+        {selectedProject && (
+          <div className="flex items-center font-mono">
+            <span className={`font-bold tracking-wider flex items-center ${theme.headerTitle}`}>
+              <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: selectedProject.color }}></div>
+              {selectedProject.name}
+            </span>
+            <ChevronRight className="w-4 h-4 mx-3 text-slate-400" />
+            <div className={`flex space-x-2 border p-1 rounded-sm ${isRei ? 'bg-white/50 border-blue-200/50' : 'bg-black/50 border-purple-900/50'}`}>
+              <button onClick={() => setProjectView('taskCenter')} className={`flex items-center px-4 py-1.5 rounded-sm text-xs tracking-wider transition-all ${projectView === 'taskCenter' ? theme.btnActive : theme.btnInactive}`}><TerminalSquare className="w-3 h-3 mr-2" />任务中心</button>
+              <button onClick={() => setProjectView('workbench')} className={`flex items-center px-4 py-1.5 rounded-sm text-xs tracking-wider transition-all ${projectView === 'workbench' ? theme.btnActive : theme.btnInactive}`}><KanbanSquare className="w-3 h-3 mr-2" />工作台 {selectedTask ? `<${selectedTask}>` : ''}</button>
+              {projectView === 'createTask' && (<button className={`flex items-center px-4 py-1.5 rounded-sm text-xs tracking-wider transition-all ${theme.btnActive}`}><FolderPlus className="w-3 h-3 mr-2" />发布任务</button>)}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ProjectListPage = () => {
+  const { theme, isRei, projects, setIsRegisterModalOpen, setSelectedProject, setProjectView, setProjectToDelete, togglePinProject } = useApp();
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  
+  const filteredProjects = useMemo(() => projects.filter(p => p.name.toLowerCase().includes(projectSearchQuery.toLowerCase())), [projects, projectSearchQuery]);
+  
+  const handleSelectProject = (project) => {
+    setSelectedProject(project);
+    setProjectView('taskCenter'); 
+  };
+
+  return (
+    <div className="p-8 max-w-7xl mx-auto relative z-10 h-full overflow-y-auto custom-scrollbar">
+      <div className={`flex flex-col sm:flex-row sm:justify-between sm:items-end mb-10 border-b pb-4 space-y-4 sm:space-y-0 ${isRei ? 'border-blue-200/50' : 'border-white/10'}`}>
+        <div><div className={`font-mono text-sm tracking-[0.2em] mb-1 ${theme.pageSub}`}>目标选择 //</div><h2 className={`text-3xl font-black tracking-widest ${theme.pageTitle}`}>本地项目库</h2></div>
+        <div className="flex items-center space-x-4">
+          <div className="relative w-full sm:w-64 group">
+            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${isRei ? 'text-blue-400 group-focus-within:text-cyan-500' : 'text-purple-500 group-focus-within:text-green-400'}`} />
+            <input type="text" placeholder="检索项目名称..." value={projectSearchQuery} onChange={(e) => setProjectSearchQuery(e.target.value)} className={`w-full pl-9 pr-4 py-2 rounded-sm outline-none font-mono text-sm transition-all border ${theme.inputBg}`} />
+          </div>
+          <button onClick={() => setIsRegisterModalOpen(true)} className={`flex items-center px-5 py-2 rounded-sm font-mono text-sm transition-all border shrink-0 ${theme.actionBtn}`}><FolderPlus className="w-4 h-4 mr-2" />注册新项目</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {filteredProjects.map(project => (
+          <div key={project.id} onClick={() => handleSelectProject(project)} className={`group relative backdrop-blur-md border p-6 rounded-sm cursor-pointer transition-all duration-500 overflow-hidden hover:-translate-y-1 flex flex-col ${theme.cardBg}`}>
+            <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl to-transparent pointer-events-none ${theme.cardGradient}`}></div>
+            <div className={`absolute bottom-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 text-[10rem] font-black leading-none pointer-events-none translate-x-4 translate-y-8 font-mono ${theme.cardNumber}`}>{String(project.id).padStart(2, '0')}</div>
+            
+            <div className="flex justify-between items-start mb-6 relative z-10">
+              <div className="flex items-start">
+                <div className={`p-2.5 rounded-sm transition-colors border ${theme.cardIconBg}`}>
+                   <FolderGit2 className={`w-6 h-6 transition-colors ${theme.cardIcon}`} />
+                </div>
+                <div className="ml-4">
+                  <h3 className={`text-xl font-bold tracking-wide flex items-center ${theme.cardTitle}`}>
+                     <div className="w-2.5 h-2.5 rounded-full mr-2" style={{ backgroundColor: project.color }}></div>
+                     {project.name}
+                  </h3>
+                  <div className={`text-xs font-mono mt-1 ${theme.cardSub}`}>系统编号: {String(project.id).padStart(4, '0')}</div>
+                </div>
+              </div>
+              {project.status === 'dirty' ? (<div className={`flex items-center px-2 py-1 border rounded-sm shrink-0 ${theme.dirtyBg}`}><span className="flex h-2 w-2 relative mr-2"><span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${theme.dirtyPing}`}></span><span className={`relative inline-flex rounded-full h-2 w-2 ${theme.dirtyDot}`}></span></span><span className={`text-[0.6rem] font-mono tracking-widest ${theme.dirtyText}`}>未提交</span></div>) : (<div className={`text-[0.6rem] font-mono tracking-widest px-2 py-1 rounded-sm shrink-0 ${theme.cleanBg}`}>已同步</div>)}
+            </div>
+            <div className={`text-xs mb-3 font-mono truncate p-2 rounded-sm border ${theme.pathBg}`} title={project.path}><span className={`mr-2 ${theme.pathLabel}`}>路径:</span>{project.path}</div>
+            
+            <div className="mb-6 relative z-10">
+               <TokenUsageBadges tokens={project.tokens} theme={theme} isRei={isRei} />
+            </div>
+
+            <div className={`flex items-center justify-between text-xs pt-4 border-t font-mono relative z-10 mt-auto ${isRei ? 'border-blue-100' : 'border-white/10'}`}>
+              <div className={`flex items-center ${theme.cardSub}`}><span className={`mr-2 ${theme.pathLabel}`}>基线:</span><span className={`px-2 py-0.5 rounded-sm ${theme.branchBg}`}>{project.defaultBranch}</span></div>
+              <div className="flex items-center space-x-2">
+                <div className={`px-2 py-0.5 rounded-sm border ${project.taskCount > 0 ? (isRei ? 'border-cyan-400 text-cyan-600 bg-cyan-50' : 'border-green-500/50 text-green-400 bg-green-900/30') : theme.taskBg}`}>活跃任务: {project.taskCount}</div>
+                
+                <button 
+                  onClick={(e) => togglePinProject(project.id, e)} 
+                  className={`px-3 py-1 rounded-sm border transition-colors font-mono text-[0.65rem] ${project.isPinned ? (isRei ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200' : 'bg-orange-500/20 text-orange-400 border-orange-500/50 hover:bg-orange-500/40') : theme.btnGhost}`} 
+                  title="标记/取消标记在侧边栏显示"
+                >
+                  {project.isPinned ? '取消标记' : '标 记'}
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); setProjectToDelete(project); }} className={`p-1 rounded-sm transition-colors ${theme.btnDanger}`} title="解除项目注册"><Trash2 className="w-4 h-4" /></button>
+              </div>
+            </div>
+            <div className={`absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 transition-colors ${theme.cardCorner}`}></div><div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 transition-colors ${theme.cardCorner}`}></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const TaskCenterPage = () => {
+  const { theme, isRei, tasks, setProjectView, setSelectedTask, setTaskActionState, isTaskActive } = useApp();
+  const [filter, setFilter] = useState('ACTIVE');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const filteredTasks = useMemo(() => tasks.filter(task => {
+    const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) || task.id.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFilter = filter === 'ALL' || task.category === filter || (filter === 'ACTIVE' && task.category !== 'ARCHIVED');
+    return matchesSearch && matchesFilter;
+  }), [filter, searchQuery, tasks]);
+
+  const openTaskModal = (type, task, e) => {
+    e.stopPropagation();
+    if ((type === 'delete' || type === 'archive') && isTaskActive(task.status)) {
+        setTaskActionState({ isOpen: true, type: 'error', task });
+        return;
+    }
+    setTaskActionState({ isOpen: true, type, task });
+  };
+
+  const getStatusBadge = (status) => {
+    switch(status) {
+      case 'EXECUTING': return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono font-bold tracking-wider ${theme.badgeExec}`}>[ 执行中 ]</span>;
+      case 'PLAN_REVIEW': return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono font-bold tracking-wider ${theme.badgeWarn.replace('red', 'amber').replace('orange', 'yellow')}`}>[ 计划审阅 ]</span>;
+      case 'PAUSED': return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono tracking-wider ${theme.badgeDraft}`}>[ 已暂停 ]</span>;
+      case 'COMPLETED': return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono tracking-wider ${theme.badgeDraft.replace('slate', 'emerald')}`}>[ 已合并 ]</span>;
+      default: return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono tracking-wider ${theme.badgeDraft}`}>[ {status} ]</span>;
+    }
+  };
+
+  return (
+    <div className="p-8 max-w-7xl mx-auto relative z-10 h-full flex flex-col">
+      <div className={`flex justify-between items-end mb-6 border-b pb-4 shrink-0 ${isRei ? 'border-blue-200/50' : 'border-white/10'}`}>
+        <div><div className={`font-mono text-sm tracking-[0.2em] mb-1 ${theme.pageSub}`}>OPERATIONAL_HUB //</div><h2 className={`text-3xl font-black tracking-widest ${theme.pageTitle}`}>任务指挥中心</h2></div>
+        <button onClick={() => setProjectView('createTask')} className={`flex items-center px-5 py-2 rounded-sm font-mono text-sm transition-all border shadow-lg ${theme.actionBtn}`}><FolderPlus className="w-4 h-4 mr-2" />发布新任务</button>
+      </div>
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 shrink-0">
+        <div className={`flex space-x-1 font-mono text-sm border-b ${isRei ? 'border-blue-200/50' : 'border-white/10'}`}>
+          {['ALL', 'ACTIVE', 'ARCHIVED'].map(tab => (
+            <button key={tab} onClick={() => setFilter(tab)} className={`px-6 py-2.5 border-b-2 transition-all tracking-wider ${filter === tab ? theme.tabActive : theme.tabInactive}`}>{tab === 'ALL' ? '全部任务' : tab === 'ACTIVE' ? '活跃作战' : '已归档案'}</button>
+          ))}
+        </div>
+        <div className="relative w-full sm:w-72 group">
+          <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${isRei ? 'text-blue-400 group-focus-within:text-cyan-500' : 'text-purple-500 group-focus-within:text-green-400'}`} />
+          <input type="text" placeholder="检索任务代号或名称..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`w-full pl-9 pr-4 py-2 rounded-sm outline-none font-mono text-sm transition-all border ${theme.inputBg}`} />
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {filteredTasks.map(task => (
+            <div key={task.id} onClick={() => { setSelectedTask(task.id); setProjectView('workbench'); }} className={`group relative backdrop-blur-md border p-5 rounded-sm cursor-pointer transition-all duration-300 flex flex-col min-h-[260px] h-auto ${theme.cardBg}`}>
+              <div className="flex justify-between items-center mb-3">{getStatusBadge(task.status)}<div className={`text-xs font-mono tracking-widest opacity-60 ${theme.cardSub}`}>{task.id}</div></div>
+              <div className="flex-1">
+                 <h3 className={`text-lg font-bold mb-2 tracking-wide ${theme.cardTitle}`}>{task.title}</h3>
+                 <p className={`text-sm leading-relaxed ${theme.cardSub}`}>{task.description}</p>
+                 <TokenUsageBadges tokens={task.tokens} theme={theme} isRei={isRei} />
+              </div>
+              <div className={`mt-4 p-2.5 rounded-sm border font-mono text-xs flex items-center justify-between ${theme.pathBg}`}><div className="flex items-center overflow-hidden"><GitBranch className={`w-3.5 h-3.5 mr-2 shrink-0 ${theme.pathLabel}`} /><span className="truncate max-w-[80px]" title={task.baseBranch}>{task.baseBranch}</span><ChevronRight className={`w-3 h-3 mx-1 shrink-0 ${isRei ? 'text-blue-300' : 'text-purple-700'}`} /><span className={`font-bold truncate ${isRei ? 'text-cyan-600' : 'text-green-400'}`} title={task.taskBranch}>{task.taskBranch}</span></div></div>
+              <div className={`flex items-center justify-between mt-4 pt-4 border-t ${isRei ? 'border-blue-100/50' : 'border-white/5'}`}>
+                <div className="flex-1 mr-4"><div className={`h-1 w-full rounded-full overflow-hidden ${isRei ? 'bg-blue-100' : 'bg-white/10'}`}><div className={`h-full transition-all duration-1000 ${isRei ? 'bg-cyan-400' : 'bg-green-400'}`} style={{ width: `${task.progress}%` }}></div></div></div>
+                <div className="flex items-center space-x-1 shrink-0">
+                  <button onClick={(e) => openTaskModal('pause', task, e)} className={`p-1.5 rounded-sm transition-colors ${theme.btnGhost}`} title={task.status === 'PAUSED' ? '恢复执行' : '暂停任务'}>{task.status === 'PAUSED' ? <PlayCircle className="w-4 h-4" /> : <PauseCircle className="w-4 h-4" />}</button>
+                  <button onClick={(e) => openTaskModal('archive', task, e)} className={`p-1.5 rounded-sm transition-colors ${theme.btnGhost}`} title="归档至冷数据区"><Archive className="w-4 h-4" /></button>
+                  <button onClick={(e) => openTaskModal('delete', task, e)} className={`p-1.5 rounded-sm transition-colors ${theme.btnDanger}`} title="彻底抹除记录"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              </div>
+              <div className={`absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 transition-colors ${theme.cardCorner}`}></div><div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 transition-colors ${theme.cardCorner}`}></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CreateTaskPage = () => {
+  const { theme, isRei, selectedProject, tasks, setTasks, setSelectedTask, setProjectView } = useApp();
+  
+  const mockBranches = [selectedProject.defaultBranch, 'develop', 'release-1.2', 'hotfix/login-bug'];
+  const agentConfig = {
+    'codex-cli': { name: 'codex-cli', icon: Bot, desc: '通用全能架构', models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
+    'claude-code': { name: 'claude-code', icon: Code2, desc: '长文与逻辑审查', models: ['claude-3-5-sonnet', 'claude-3-opus'] },
+    'gemini-cli': { name: 'gemini-cli', icon: Sparkles, desc: '多模态极速响应', models: ['gemini-1.5-pro', 'gemini-1.5-flash'] },
+  };
+
+  const initialBranchCode = useMemo(() => `eat/feat-${Math.random().toString(36).substr(2, 6)}`, []);
+
+  const [formData, setFormData] = useState({
+    title: '', description: '', leadAgent: 'codex-cli', model: 'gpt-4o', baseBranch: selectedProject.defaultBranch, taskBranch: initialBranchCode
+  });
+  const [files, setFiles] = useState([]);
+
+  const handleTitleChange = (e) => setFormData(prev => ({ ...prev, title: e.target.value }));
+  const handleBranchChange = (e) => setFormData(prev => ({ ...prev, taskBranch: e.target.value }));
+  const handleAgentSelect = (agentId) => setFormData(prev => ({ ...prev, leadAgent: agentId, model: agentConfig[agentId].models[0] }));
+  const removeFile = (index) => setFiles(prev => prev.filter((_, i) => i !== index));
+
+  const handleCreate = () => {
+    if (!formData.title || !formData.taskBranch) return;
+    const newTask = {
+      id: `TASK-${Math.floor(Math.random() * 900 + 100)}`, projectId: selectedProject.id, title: formData.title, description: formData.description, status: 'CLARIFYING', baseBranch: formData.baseBranch, taskBranch: formData.taskBranch, category: 'ACTIVE', progress: 0, tokens: {}
+    };
+    setTasks([newTask, ...tasks]);
+    setSelectedTask(newTask.id);
+    setProjectView('workbench'); 
+  };
+
+  return (
+    <div className="p-8 max-w-4xl mx-auto relative z-10 h-full overflow-y-auto custom-scrollbar flex flex-col">
+      <div className={`flex items-center mb-6 border-b pb-4 shrink-0 ${isRei ? 'border-blue-200/50' : 'border-white/10'}`}>
+        <button onClick={() => setProjectView('taskCenter')} className={`p-2 rounded-sm mr-4 transition-colors border ${theme.btnGhost} ${isRei ? 'border-blue-200 hover:border-blue-400' : 'border-purple-500/30 hover:border-green-400/50'}`}>
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div>
+          <div className={`font-mono text-sm tracking-[0.2em] mb-1 ${theme.pageSub}`}>INITIATE_OPERATION //</div>
+          <h2 className={`text-2xl font-black tracking-widest ${theme.pageTitle}`}>发布新任务</h2>
+        </div>
+      </div>
+
+      <div className="space-y-6 flex-1 pb-10">
+        <div className={`p-5 rounded-sm border backdrop-blur-md relative ${theme.cardBg}`}>
+          <div className={`absolute top-0 left-0 px-3 py-0.5 text-[0.65rem] font-mono font-bold tracking-widest ${isRei ? 'bg-blue-100 text-blue-700' : 'bg-purple-900/50 text-purple-300'}`}>[ 01_BASIC_INFO ]</div>
+          <div className="mt-5 space-y-4">
+            <div>
+              <label className={`block text-xs font-mono mb-1.5 ${theme.cardSub}`}>任务代号 (TASK_TITLE) <span className="text-red-500">*</span></label>
+              <input type="text" value={formData.title} onChange={handleTitleChange} placeholder="如：实现用户鉴权模块 / 修复支付超时 BUG" className={`w-full px-3 py-2 rounded-sm outline-none font-mono text-sm transition-all border ${theme.inputBg}`} />
+            </div>
+            <div>
+              <label className={`block text-xs font-mono mb-1.5 ${theme.cardSub}`}>需求描述 (REQUIREMENTS)</label>
+              <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="详细描述本次任务的目标、期望行为，或直接粘贴 PRD 链接..." rows={3} className={`w-full px-3 py-2 rounded-sm outline-none font-mono text-sm transition-all border resize-none ${theme.inputBg}`} />
+            </div>
+            <div>
+              <label className={`block text-xs font-mono mb-1.5 ${theme.cardSub}`}>参考附件 (ATTACHMENTS)</label>
+              <div onClick={() => { const mockFile = { name: `PRD_附加规格_${Math.floor(Math.random() * 1000)}.pdf`, size: '1.2 MB' }; setFiles(prev => [...prev, mockFile]); }} className={`w-full p-4 border border-dashed rounded-sm flex flex-col items-center justify-center cursor-pointer transition-colors group ${isRei ? 'border-blue-300 bg-blue-50/50 hover:bg-blue-100/50' : 'border-purple-500/30 bg-purple-900/10 hover:bg-purple-900/30'}`}>
+                <UploadCloud className={`w-6 h-6 mb-2 opacity-60 group-hover:opacity-100 transition-opacity ${isRei ? 'text-blue-500' : 'text-purple-400'}`} />
+                <span className={`text-xs font-mono opacity-60 group-hover:opacity-100 transition-opacity ${theme.cardSub}`}>点击或拖拽上传设计图、PRD等参考文件</span>
+              </div>
+              {files.length > 0 && (
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {files.map((f, i) => (
+                    <div key={i} className={`flex items-center justify-between px-3 py-2 rounded-sm border text-xs font-mono ${theme.pathBg}`}>
+                      <div className="flex items-center overflow-hidden">
+                        <FileText className={`w-3.5 h-3.5 mr-2 shrink-0 ${theme.pathLabel}`} />
+                        <span className="truncate max-w-[150px]">{f.name}</span><span className="ml-2 opacity-50">{f.size}</span>
+                      </div>
+                      <button onClick={() => removeFile(i)} className={`p-1 hover:text-red-500 transition-colors`}><X className="w-3.5 h-3.5" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 transition-colors ${theme.cardCorner}`}></div>
+        </div>
+
+        <div className={`p-5 rounded-sm border backdrop-blur-md relative ${theme.cardBg}`}>
+          <div className={`absolute top-0 left-0 px-3 py-0.5 text-[0.65rem] font-mono font-bold tracking-widest ${isRei ? 'bg-blue-100 text-blue-700' : 'bg-purple-900/50 text-purple-300'}`}>[ 02_GIT_RESOURCES ]</div>
+          <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className={`block text-xs font-mono mb-1.5 flex items-center ${theme.cardSub}`}><GitBranch className="w-3.5 h-3.5 mr-1.5" /> 基线分支 (BASE)</label>
+              <select value={formData.baseBranch} onChange={(e) => setFormData({ ...formData, baseBranch: e.target.value })} className={`w-full px-3 py-2 rounded-sm outline-none font-mono text-sm transition-all border appearance-none ${theme.inputBg}`}>
+                {mockBranches.map(branch => (<option key={branch} value={branch} className="text-slate-800 bg-white">{branch}</option>))}
+              </select>
+            </div>
+            <div>
+              <label className={`block text-xs font-mono mb-1.5 flex items-center ${theme.cardSub}`}><GitMerge className="w-3.5 h-3.5 mr-1.5" /> 目标工作分支 (TARGET) <span className="text-red-500 ml-1">*</span></label>
+              <input type="text" value={formData.taskBranch} onChange={handleBranchChange} placeholder="输入工作分支名称..." className={`w-full px-3 py-2 rounded-sm outline-none font-mono text-sm transition-all border ${theme.inputBg}`} />
+            </div>
+          </div>
+          <div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 transition-colors ${theme.cardCorner}`}></div>
+        </div>
+
+        <div className={`p-5 rounded-sm border backdrop-blur-md relative ${theme.cardBg}`}>
+          <div className={`absolute top-0 left-0 px-3 py-0.5 text-[0.65rem] font-mono font-bold tracking-widest ${isRei ? 'bg-blue-100 text-blue-700' : 'bg-purple-900/50 text-purple-300'}`}>[ 03_LEAD_AGENT ]</div>
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {Object.entries(agentConfig).map(([id, config]) => {
+              const isSelected = formData.leadAgent === id;
+              const Icon = config.icon;
+              return (
+                <div key={id} onClick={() => handleAgentSelect(id)} className={`p-3 rounded-sm border cursor-pointer transition-all flex flex-col justify-between h-full ${isSelected ? (isRei ? 'bg-cyan-50 border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.2)]' : 'bg-green-900/30 border-green-400 shadow-[inset_2px_0_0_#4ade80]') : theme.inputBg}`}>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center font-bold tracking-wider text-sm">
+                        <Icon className={`w-4 h-4 mr-1.5 ${isSelected ? (isRei ? 'text-cyan-600' : 'text-green-400') : theme.cardSub}`} />
+                        <span className={isSelected ? (isRei ? 'text-cyan-700' : 'text-green-400') : theme.cardTitle}>{config.name}</span>
+                      </div>
+                    </div>
+                    <p className={`text-[0.65rem] font-mono mb-3 ${theme.cardSub}`}>{config.desc}</p>
+                  </div>
+                  {isSelected && (
+                    <div className="mt-auto border-t pt-2" style={{ borderColor: isRei ? 'rgba(6,182,212,0.2)' : 'rgba(74,222,128,0.2)' }}>
+                      <select value={formData.model} onChange={(e) => { e.stopPropagation(); setFormData({ ...formData, model: e.target.value }) }} className={`w-full px-2 py-1 text-xs rounded-sm outline-none font-mono transition-all border appearance-none cursor-pointer ${isRei ? 'bg-white border-cyan-200 text-cyan-700 focus:border-cyan-400' : 'bg-black/50 border-green-500/50 text-green-400 focus:border-green-400'}`}>
+                        {config.models.map(m => (<option key={m} value={m} className="bg-white text-slate-800">{m}</option>))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 transition-colors ${theme.cardCorner}`}></div>
+        </div>
+      </div>
+
+      <div className="mt-auto shrink-0 flex items-center justify-end space-x-4 border-t pt-4" style={{ borderColor: isRei ? 'rgba(59,130,246,0.2)' : 'rgba(168,85,247,0.2)' }}>
+        <button onClick={() => setProjectView('taskCenter')} className={`px-6 py-2 rounded-sm border font-mono text-sm tracking-widest transition-colors ${theme.btnGhost} ${isRei ? 'border-blue-200' : 'border-purple-500/30'}`}>放弃 (CANCEL)</button>
+        <button onClick={handleCreate} disabled={!formData.title || !formData.taskBranch} className={`px-6 py-2 rounded-sm border font-mono font-bold tracking-widest text-sm transition-all flex items-center ${(!formData.title || !formData.taskBranch) ? 'opacity-50 cursor-not-allowed border-slate-500 text-slate-500 bg-transparent' : (isRei ? 'bg-cyan-500 text-white border-cyan-400 hover:bg-cyan-600 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-green-500 border-green-400 text-black hover:bg-green-400 shadow-[0_0_15px_rgba(34,197,94,0.4)]')}`}><PlayCircle className="w-4 h-4 mr-2" />确认发布 (EXECUTE)</button>
+      </div>
+    </div>
+  );
+};
+
+const WorkbenchPage = () => {
+  const { theme, isRei, tasks, setTasks, selectedTask, setProjectView } = useApp();
+  const task = tasks.find(t => t.id === selectedTask);
+  
+  // --- 工作台通用共享状态 ---
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [specContent, setSpecContent] = useState('');
+  const [docReady, setDocReady] = useState(false);
+  const [nodeAnnotations, setNodeAnnotations] = useState({});
+  const [annotatingNode, setAnnotatingNode] = useState(null);
+  const [activeNodeId, setActiveNodeId] = useState('LEAD_AGENT');
+  
+  // MERGE_REVIEW 专用状态：当前查看差异的文件
+  const [selectedDiffFile, setSelectedDiffFile] = useState(null);
+
+  const mockDagNodes = useMemo(() => [
+    { id: 'NODE_01', name: '前端回调开发', status: 'done', agent: 'claude-code', type: 'worker', dependsOn: [], branch: 'eat/feat-auth-n1',
+      logs: '[SYS] Container initialized.\n[SYS] Git checkout new branch eat/feat-auth-n1.\n> claude-code run --goal="Update React Router and add OAuthCallback.tsx"\n[AGENT] Analyzed src/pages/Login.tsx.\n[AGENT] Created src/pages/OAuthCallback.tsx.\n[SYS] Prettier formatting applied.\n[SYS] Worker completed successfully.' 
+    },
+    { id: 'NODE_02', name: '后端持久化', status: 'running', agent: 'codex-cli', type: 'worker', dependsOn: [], branch: 'eat/feat-auth-n2',
+      logs: '[SYS] Container initialized.\n> codex-cli build-api\n[AGENT] Generating models/oauth_token.go...\n[AGENT] Running `go mod tidy`...\ngo: downloading github.com/golang-jwt/jwt/v5\n[SYS] Testing endpoints...' 
+    },
+    { id: 'NODE_03', name: '中间件集成', status: 'pending', agent: 'codex-cli', type: 'worker', dependsOn: ['NODE_01', 'NODE_02'], branch: 'eat/feat-auth-n3',
+      logs: '[SYS] Node is paused. Waiting for dependencies: NODE_01 (done), NODE_02 (running)...' 
+    }
+  ], []);
+
+  const mockMergeFiles = useMemo(() => [
+    {
+      path: 'src/pages/index/index.tsx', type: 'M', additions: 2, deletions: 2,
+      diff: "@@ -160,5 +160,5 @@\n const firstScreenHeroHeight = `calc(100% - ...)`\n-const loadHeroBanners = async () => {\n+const loadHeroBanners = async () => {\n   try {\n-    const records = await fetchDurianBanners()\n+    const records = await fetchBanners()\n     const nextBanners = records"
+    },
+    {
+      path: 'src/pages/order-voucher/index.config.ts', type: 'A', additions: 1, deletions: 0,
+      diff: "@@ -3,3 +3,4 @@\n   navigationStyle: 'custom',\n   disableScroll: true,\n })\n+asdfasdf\n\\ No newline at end of file"
+    },
+    {
+      path: 'server/routes/auth.go', type: 'M', additions: 45, deletions: 18,
+      diff: "@@ -45,6 +45,8 @@\n func InitAuthRoutes(r *gin.Engine) {\n \tauth := r.Group(\"/api/v1/auth\")\n \t{\n-\t\tauth.POST(\"/login\", LoginHandler)\n+\t\tauth.POST(\"/login\", LoginHandler)\n+\t\tauth.GET(\"/oauth/callback\", OAuthCallbackHandler)\n+\t\tauth.POST(\"/refresh\", RefreshTokenHandler)\n \t}\n }"
+    },
+    {
+      path: 'package.json', type: 'M', additions: 2, deletions: 1,
+      diff: "@@ -15,5 +15,6 @@\n   \"dependencies\": {\n-    \"react\": \"^18.2.0\"\n+    \"react\": \"^18.2.0\",\n+    \"jwt-decode\": \"^3.1.2\"\n   }\n }"
+    }
+  ], []);
+
+  const fileTree = useMemo(() => {
+    const root = { name: 'root', type: 'folder', children: {}, path: '' };
+    mockMergeFiles.forEach(file => {
+      const parts = file.path.split('/');
+      let current = root;
+      parts.forEach((part, index) => {
+        if (index === parts.length - 1) {
+          current.children[part] = { name: part, type: 'file', fileData: file, path: file.path };
+        } else {
+          if (!current.children[part]) {
+            current.children[part] = { name: part, type: 'folder', children: {}, path: parts.slice(0, index + 1).join('/') };
+          }
+          current = current.children[part];
+        }
+      });
+    });
+    return root;
+  }, [mockMergeFiles]);
+
+  useEffect(() => {
+    if (task && chatMessages.length === 0) {
+      setChatMessages([{ role: 'agent', content: `[SYSTEM] 神经连接建立。Lead Agent (codex-cli) 就绪。\n\n关于任务 ${task.id}，我已读取需求描述。你需要我们马上输出一份完整的 markdown 规格书以供审阅吗？` }]);
+    }
+    if (task && !specContent) {
+      setSpecContent(`# 任务规格说明：${task.title}\n\n等待对话生成具体的实施方案与受影响文件...`);
+    }
+  }, [task, chatMessages.length, specContent]);
+
+  if (!task) return <PlaceholderPage title="ERROR" desc="任务实例丢失。" />;
+
+  const handleSendMessage = () => {
+    if(!chatInput.trim()) return;
+    setChatMessages(prev => [...prev, { role: 'user', content: chatInput }]);
+    setChatInput('');
+    setTimeout(() => {
+      setChatMessages(prev => [...prev, { role: 'agent', content: `明白。我已经根据你的指示，更新了右侧的【系统规格说明书】(写入 /eat/task.md)。请随时在对话框中告诉我是否还需要修改。` }]);
+      setDocReady(true);
+      setSpecContent(`# 任务规格说明：${task.title}\n\n## 1. 目标与范围\n本次任务的目标是在 \`${task.taskBranch}\` 分支上完成认证模块的重构工作，包含接入第三方 OAuth 接口并建立全局缓存机制。\n\n## 2. 计划拆解草案\n- **子任务 1 [前端]**: 更新路由守卫，开发回调落地页。\n- **子任务 2 [后端]**: 提供回调接口，完成数据库 Token 持久化。\n- **子任务 3 [后端]**: 修复中间件并发问题。\n\n## 3. 预期变更文件\n- \`src/pages/Login.tsx\`\n- \`src/pages/OAuthCallback.tsx\`\n- \`server/routes/auth.go\``);
+    }, 800);
+  };
+
+  const handleConfirmRequirements = () => setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'PLAN_REVIEW' } : t));
+  const handleRejectDoc = () => {
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'CLARIFYING' } : t));
+    setChatMessages(prev => [...prev, { role: 'user', content: "计划有误，我们需要重新梳理。" }]);
+  };
+  const handleRePlanWithAnnotations = () => {
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'CLARIFYING' } : t));
+    const feedback = Object.entries(nodeAnnotations).map(([id, note]) => `节点 [${id}]: ${note}`).join('\n');
+    setChatMessages(prev => [...prev, { role: 'user', content: `关于之前的拆解图我有修改意见，请重拟：\n${feedback}` }]);
+    setNodeAnnotations({});
+  };
+  const handleExecutePlan = () => {
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'EXECUTING', progress: 30 } : t));
+    setActiveNodeId('LEAD_AGENT');
+  };
+  const handleFinishExecution = () => setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'COMPLETED' } : t));
+  const handleFinalCommit = () => {
+    setSelectedDiffFile(null);
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, category: 'ARCHIVED', progress: 100 } : t));
+    setProjectView('taskCenter');
+  };
+
+  const renderClarifyingView = () => (
+    <div className="flex h-full w-full overflow-hidden">
+      <div className={`w-1/2 flex flex-col border-r ${isRei ? 'border-blue-200' : 'border-purple-500/30'}`}>
+        <div className={`p-4 border-b font-mono text-xs tracking-widest font-bold ${isRei ? 'border-blue-200 text-blue-700 bg-white/40' : 'border-purple-500/30 text-purple-400 bg-black/20'}`}>
+          <TerminalSquare className="w-4 h-4 inline-block mr-2" /> COMMAND_CLI //
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar pb-6">
+          {chatMessages.map((msg, i) => (
+            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] p-4 rounded-sm border backdrop-blur-md ${msg.role === 'user' ? theme.chatUser : theme.chatAgent}`}>
+                <div className={`text-[0.65rem] font-mono mb-2 opacity-60 flex items-center`}>
+                  {msg.role === 'user' ? <RefreshCw className="w-3 h-3 mr-1" /> : <Bot className="w-3 h-3 mr-1" />}
+                  {msg.role === 'user' ? 'COMMANDER // LOCAL' : 'LEAD_AGENT // CODEX-CLI'}
+                </div>
+                <div className="text-sm font-mono whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className={`p-6 border-t ${isRei ? 'border-blue-200 bg-white/50' : 'border-purple-500/30 bg-black/40'}`}>
+          <div className="relative flex items-center">
+            <MessageSquare className={`absolute left-4 w-5 h-5 opacity-50 ${isRei ? 'text-blue-500' : 'text-purple-500'}`} />
+            <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="继续对话以修改规格，无需打回..." className={`w-full pl-12 pr-12 py-3 rounded-sm outline-none font-mono text-sm transition-all border shadow-sm ${theme.inputBg}`} />
+            <button onClick={handleSendMessage} className={`absolute right-2 p-1.5 rounded-sm transition-colors ${chatInput.trim() ? (isRei ? 'bg-cyan-500 text-white' : 'bg-green-500 text-black') : 'bg-transparent opacity-30 text-slate-500'}`}><Send className="w-4 h-4" /></button>
+          </div>
+        </div>
+      </div>
+      <div className={`w-1/2 flex flex-col relative ${isRei ? 'bg-[#f0f8ff]' : 'bg-[#0a0a0a]'}`}>
+        <div className={`p-4 border-b flex justify-between items-center ${isRei ? 'border-blue-200 bg-white/40' : 'border-purple-500/30 bg-black/20'}`}>
+          <div className={`font-mono text-xs tracking-widest font-bold flex items-center ${isRei ? 'text-blue-700' : 'text-purple-400'}`}>
+            <FileText className="w-4 h-4 mr-2" /> /eat/task.md
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+          <div className={`prose prose-sm max-w-none font-mono prose-headings:font-bold prose-h1:text-2xl prose-h2:text-xl prose-li:my-1 ${isRei ? 'prose-slate prose-headings:text-blue-800' : 'prose-invert prose-headings:text-green-400 prose-strong:text-purple-300'}`}>
+             {specContent.split('\n').map((line, i) => {
+               if (line.startsWith('# ')) return <h1 key={i}>{line.substring(2)}</h1>;
+               if (line.startsWith('## ')) return <h2 key={i}>{line.substring(3)}</h2>;
+               if (line.startsWith('- ')) return <li key={i}>{line.substring(2)}</li>;
+               if (line.trim() === '') return <br key={i}/>;
+               return <p key={i} className="my-1">{line}</p>;
+             })}
+          </div>
+        </div>
+        <div className={`p-4 border-t flex justify-end shrink-0 ${isRei ? 'border-blue-200 bg-white/60' : 'border-purple-500/30 bg-black/40'}`}>
+           <button onClick={handleConfirmRequirements} disabled={!docReady} className={`px-6 py-2.5 rounded-sm border font-mono font-bold tracking-widest text-sm transition-all flex items-center shadow-lg ${!docReady ? 'opacity-50 cursor-not-allowed border-slate-500 text-slate-500' : (isRei ? 'bg-cyan-500 text-white border-cyan-400 hover:bg-cyan-600' : 'bg-green-500 border-green-400 text-black hover:bg-green-400')}`}>
+              <CheckCircle2 className="w-4 h-4 mr-2" />确认文档，进入计划审阅
+           </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPlanReviewView = () => {
+    const layer1 = mockDagNodes.filter(n => n.dependsOn.length === 0);
+    const layer2 = mockDagNodes.filter(n => n.dependsOn.length > 0);
+    const hasAnnotations = Object.keys(nodeAnnotations).length > 0;
+
+    return (
+      <div className="flex flex-col h-full p-8 overflow-y-auto custom-scrollbar relative">
+        <div className="mb-6 text-center">
+            <h3 className={`text-xl font-bold font-mono tracking-widest mb-2 flex items-center justify-center ${isRei ? 'text-blue-700' : 'text-green-400'}`}><Network className="w-5 h-5 mr-2" /> 任务分配拓扑图 (DAG_PLAN)</h3>
+            <p className={`text-sm font-mono ${theme.cardSub}`}>Lead Agent 已拆解任务。点击卡片可添加批注，确认无误后执行。</p>
+        </div>
+        
+        <div className="flex-1 flex flex-col items-center w-full max-w-5xl mx-auto space-y-6 pb-20">
+          <div className="flex flex-col md:flex-row w-full gap-6 justify-center">
+            {layer1.map(node => (
+              <div key={node.id} onClick={() => setAnnotatingNode(node.id)} className={`relative flex-1 p-5 rounded-sm border backdrop-blur-md shadow-lg transition-all cursor-pointer hover:-translate-y-1 ${nodeAnnotations[node.id] ? (isRei ? 'bg-amber-50 border-amber-300' : 'bg-orange-900/20 border-orange-500') : theme.cardBg}`}>
+                <div className="flex justify-between items-start mb-3">
+                  <div className={`text-[0.65rem] font-mono font-bold tracking-widest px-1.5 py-0.5 border rounded-sm ${isRei ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-purple-900/50 text-purple-300 border-purple-500/50'}`}>{node.id}</div>
+                  <div className={`flex items-center text-[0.65rem] font-mono px-1.5 py-0.5 border rounded-sm ${isRei ? 'bg-cyan-50 text-cyan-600 border-cyan-200' : 'bg-green-900/30 text-green-400 border-green-500/50'}`}><Bot className="w-3 h-3 mr-1" /> {node.agent}</div>
+                </div>
+                <h4 className={`text-sm font-bold mb-2 ${theme.cardTitle}`}>{node.name}</h4>
+                {annotatingNode === node.id ? (
+                  <div onClick={e => e.stopPropagation()} className="mt-3">
+                    <textarea autoFocus value={nodeAnnotations[node.id] || ''} onChange={e => setNodeAnnotations({...nodeAnnotations, [node.id]: e.target.value})} placeholder="输入修改批注..." rows={2} className={`w-full px-2 py-1 text-xs rounded-sm border font-mono outline-none ${theme.inputBg}`} />
+                    <button onClick={(e) => { e.stopPropagation(); setAnnotatingNode(null); }} className={`mt-1 text-xs px-2 py-0.5 rounded-sm bg-black/10 hover:bg-black/20 transition-colors ${theme.cardTitle}`}>完成</button>
+                  </div>
+                ) : nodeAnnotations[node.id] ? (
+                  <div className={`mt-3 text-xs font-mono p-2 rounded-sm border ${isRei ? 'bg-amber-100/50 border-amber-200 text-amber-800' : 'bg-orange-500/10 border-orange-500/30 text-orange-400'}`}>
+                    💬 批注: {nodeAnnotations[node.id]}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          {layer1.length > 0 && layer2.length > 0 && (
+            <div className="flex justify-center w-full py-2">
+              <ArrowDown className={`w-6 h-6 opacity-50 animate-bounce ${theme.dagLine}`} />
+            </div>
+          )}
+          <div className="flex flex-col w-full gap-6 items-center">
+            {layer2.map(node => (
+              <div key={node.id} onClick={() => setAnnotatingNode(node.id)} className={`relative w-full md:w-1/2 p-5 rounded-sm border backdrop-blur-md shadow-lg transition-all cursor-pointer hover:-translate-y-1 ${nodeAnnotations[node.id] ? (isRei ? 'bg-amber-50 border-amber-300' : 'bg-orange-900/20 border-orange-500') : theme.cardBg}`}>
+                <div className="flex justify-between items-start mb-3">
+                  <div className={`text-[0.65rem] font-mono font-bold tracking-widest px-1.5 py-0.5 border rounded-sm ${isRei ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-purple-900/50 text-purple-300 border-purple-500/50'}`}>{node.id}</div>
+                  <div className={`flex items-center text-[0.65rem] font-mono px-1.5 py-0.5 border rounded-sm ${isRei ? 'bg-cyan-50 text-cyan-600 border-cyan-200' : 'bg-green-900/30 text-green-400 border-green-500/50'}`}><Bot className="w-3 h-3 mr-1" /> {node.agent}</div>
+                </div>
+                <h4 className={`text-sm font-bold mb-2 ${theme.cardTitle}`}>{node.name}</h4>
+                <div className={`text-[0.65rem] font-mono opacity-60 mb-2 ${theme.cardSub}`}>依赖: [{node.dependsOn.join(', ')}]</div>
+                {annotatingNode === node.id ? (
+                  <div onClick={e => e.stopPropagation()} className="mt-3">
+                    <textarea autoFocus value={nodeAnnotations[node.id] || ''} onChange={e => setNodeAnnotations({...nodeAnnotations, [node.id]: e.target.value})} placeholder="输入修改批注..." rows={2} className={`w-full px-2 py-1 text-xs rounded-sm border font-mono outline-none ${theme.inputBg}`} />
+                    <button onClick={(e) => { e.stopPropagation(); setAnnotatingNode(null); }} className={`mt-1 text-xs px-2 py-0.5 rounded-sm bg-black/10 hover:bg-black/20 transition-colors ${theme.cardTitle}`}>完成</button>
+                  </div>
+                ) : nodeAnnotations[node.id] ? (
+                  <div className={`mt-3 text-xs font-mono p-2 rounded-sm border ${isRei ? 'bg-amber-100/50 border-amber-200 text-amber-800' : 'bg-orange-500/10 border-orange-500/30 text-orange-400'}`}>
+                    💬 批注: {nodeAnnotations[node.id]}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className={`absolute bottom-0 left-0 w-full p-6 flex justify-center space-x-6 bg-gradient-to-t ${isRei ? 'from-[#f0f8ff] via-[#f0f8ff]' : 'from-[#0a0a0a] via-[#0a0a0a]'} to-transparent pt-12`}>
+          <button onClick={hasAnnotations ? handleRePlanWithAnnotations : handleRejectDoc} className={`px-8 py-3 rounded-sm border font-mono text-sm tracking-widest transition-colors ${theme.btnGhost} ${isRei ? 'border-blue-200' : 'border-purple-500/30'}`}>
+            {hasAnnotations ? '带着批注打回重拟 (RE_PLAN)' : '无批注打回 (REJECT)'}
+          </button>
+          <button onClick={handleExecutePlan} className={`px-10 py-3 rounded-sm border font-mono font-bold tracking-widest text-sm transition-all flex items-center shadow-[0_0_20px_rgba(34,197,94,0.3)] ${isRei ? 'bg-cyan-500 text-white border-cyan-400 hover:bg-cyan-600' : 'bg-green-500 border-green-400 text-black hover:bg-green-400'}`}>
+            <PlayCircle className="w-5 h-5 mr-2" /> 确认无误，开始并行执行
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderExecutingView = () => {
+    const allNodes = [{ id: 'LEAD_AGENT', name: '总控与监听台', status: 'running', agent: 'codex-cli', type: 'lead', branch: task.taskBranch, logs: '[SYS] Global task orchestration started.\n[SYS] Spawning child containers for Node_01, Node_02...\n[SYS] Listening for completion signals...\n[AGENT] Both nodes successfully started. Waiting for execution results.' }, ...mockDagNodes];
+    const activeNode = allNodes.find(n => n.id === activeNodeId) || allNodes[0];
+
+    return (
+      <div className="flex h-full w-full overflow-hidden">
+        <div className={`w-1/3 max-w-[320px] border-r flex flex-col shrink-0 ${isRei ? 'border-blue-200 bg-white/40' : 'border-purple-500/30 bg-black/20'}`}>
+          <div className={`p-4 border-b font-mono text-xs tracking-widest font-bold flex justify-between items-center ${isRei ? 'border-blue-200 text-blue-700' : 'border-purple-500/30 text-purple-400'}`}>
+            <span>WORKER_STATUS //</span><Activity className="w-4 h-4 animate-pulse" />
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+             {allNodes.map((n, i) => {
+               const isActive = n.id === activeNodeId;
+               return (
+                 <div key={i} onClick={() => setActiveNodeId(n.id)} className={`p-3 border rounded-sm cursor-pointer transition-all duration-300 ${isActive ? theme.dagNodeActive : theme.dagNodeReady} ${n.status === 'running' ? 'opacity-100' : 'opacity-70 hover:opacity-100'}`}>
+                   <div className="flex justify-between items-center mb-2">
+                     <div className={`text-xs font-mono font-bold ${isActive ? (isRei ? 'text-cyan-700' : 'text-green-400') : (isRei ? 'text-slate-800' : 'text-slate-200')}`}>{n.id}</div>
+                     {n.status === 'running' && <div className={`w-2 h-2 rounded-full animate-ping ${isRei ? 'bg-cyan-500' : 'bg-green-500'}`}></div>}
+                     {n.status === 'done' && <CheckCircle2 className={`w-3 h-3 ${isRei ? 'text-blue-500' : 'text-purple-500'}`} />}
+                     {n.status === 'pending' && <PauseCircle className={`w-3 h-3 opacity-30 ${theme.cardSub}`} />}
+                   </div>
+                   <div className={`text-sm truncate mb-2 ${isActive ? (isRei ? 'text-cyan-900 font-bold' : 'text-green-300 font-bold') : theme.cardTitle}`}>{n.name}</div>
+                   <div className="flex items-center justify-between text-[0.65rem] font-mono">
+                      <span className={`flex items-center ${theme.cardSub}`}><Bot className="w-3 h-3 mr-1 opacity-50" /> {n.agent}</span>
+                      {n.type === 'worker' && <span className={`px-1.5 py-0.5 rounded-sm border truncate max-w-[120px] ${theme.pathBg}`}>{n.branch}</span>}
+                   </div>
+                 </div>
+               )
+             })}
+          </div>
+        </div>
+        <div className="flex-1 flex flex-col relative bg-[#1e1e1e]">
+          <div className={`h-10 border-b flex justify-between items-center px-4 font-mono text-xs ${isRei ? 'border-[#333] text-slate-400' : 'border-green-900/50 text-green-700'}`}>
+             <div className="flex items-center"><Terminal className="w-4 h-4 mr-2" /> bash - {activeNode.id}</div>
+             <button onClick={handleFinishExecution} className={`px-2 py-0.5 border rounded-sm transition-colors hover:text-white ${isRei ? 'border-cyan-500/50 text-cyan-400 hover:bg-cyan-600' : 'border-green-500/50 text-green-500 hover:bg-green-600'}`}>
+               [ 模拟进入终态审查 ]
+             </button>
+          </div>
+          <div className={`flex-1 p-6 font-mono text-sm overflow-y-auto custom-scrollbar whitespace-pre-wrap leading-relaxed ${theme.terminalBg}`}>
+             {activeNode.logs}
+             {activeNode.status === 'running' && <span className="inline-block w-2 h-4 animate-pulse align-middle ml-1 bg-current"></span>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMergeReviewView = () => {
+    return (
+      <div className="flex h-full w-full overflow-hidden transition-all duration-500">
+        
+        {/* 左侧：真正的 Git Tree */}
+        <div className={`flex flex-col border-r transition-all duration-500 ease-in-out ${selectedDiffFile ? 'w-64' : 'w-1/2'} ${isRei ? 'border-blue-200 bg-white/40' : 'border-purple-500/30 bg-black/20'}`}>
+          <div className={`p-4 border-b font-mono text-xs tracking-widest font-bold flex items-center justify-between ${isRei ? 'border-blue-200 text-blue-700' : 'border-purple-500/30 text-purple-400'}`}>
+             <span className="flex items-center"><FolderOpen className="w-4 h-4 mr-2" /> FILES</span>
+             {!selectedDiffFile && <span className="text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-sm border border-emerald-500/30">+145 / -4</span>}
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+             {!selectedDiffFile && (
+               <div className="relative w-full mb-3 px-2 mt-2">
+                 <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${isRei ? 'text-blue-400' : 'text-purple-500'}`} />
+                 <input type="text" placeholder="筛选文件..." className={`w-full pl-8 pr-3 py-1.5 rounded-sm outline-none font-mono text-xs transition-all border ${theme.inputBg}`} />
+               </div>
+             )}
+             
+             {/* 渲染递归树 */}
+             <div className="font-mono text-xs">
+                <FileTreeNode node={fileTree} level={0} selectedDiffFile={selectedDiffFile} setSelectedDiffFile={setSelectedDiffFile} theme={theme} isRei={isRei} />
+             </div>
+          </div>
+
+          <div className={`p-4 border-t flex justify-end shrink-0 ${isRei ? 'border-blue-200 bg-white/60' : 'border-purple-500/30 bg-black/40'}`}>
+             <button onClick={handleFinalCommit} className={`w-full py-2.5 rounded-sm border font-mono font-bold tracking-widest text-xs transition-all flex justify-center items-center shadow-lg ${isRei ? 'bg-emerald-500 text-white border-emerald-400 hover:bg-emerald-600' : 'bg-emerald-600 border-emerald-400 text-black hover:bg-emerald-500'}`}>
+                <CheckCircle2 className="w-4 h-4 mr-2" /> 完成合并
+             </button>
+          </div>
+        </div>
+
+        {/* 中间：弹性 Diff 差异视图 */}
+        {selectedDiffFile ? (
+          <div className={`flex-1 flex flex-col border-r transition-all duration-500 bg-[#1e1e1e]`}>
+             <div className={`h-10 border-b border-[#333] flex items-center justify-between px-4 font-mono text-xs bg-[#252526] text-slate-300`}>
+                <div className="flex items-center">
+                   <span className="font-bold mr-3">{selectedDiffFile.path.split('/').pop()}</span>
+                   {selectedDiffFile.additions > 0 && <span className="text-emerald-500 mr-2">+{selectedDiffFile.additions}</span>}
+                   {selectedDiffFile.deletions > 0 && <span className="text-red-500">-{selectedDiffFile.deletions}</span>}
+                </div>
+                <div className="flex items-center space-x-3 text-slate-500">
+                  <RefreshCw className="w-3.5 h-3.5 cursor-pointer hover:text-slate-300" />
+                  <FilePlus className="w-3.5 h-3.5 cursor-pointer hover:text-slate-300" />
+                  <ChevronRight className="w-4 h-4 rotate-90 cursor-pointer hover:text-slate-300" />
+                  <button onClick={() => setSelectedDiffFile(null)} className="ml-2 hover:text-red-400"><X className="w-4 h-4" /></button>
+                </div>
+             </div>
+             
+             <div className="flex-1 overflow-y-auto custom-scrollbar font-mono text-[0.8rem] leading-relaxed py-2 bg-[#1e1e1e]">
+                {selectedDiffFile.diff.split('\n').map((line, i) => {
+                    let lineClass = "text-slate-300";
+                    let bgClass = "bg-transparent";
+                    if (line.startsWith('+') && !line.startsWith('+++')) {
+                       lineClass = "text-emerald-400";
+                       bgClass = "bg-emerald-900/20";
+                    } else if (line.startsWith('-') && !line.startsWith('---')) {
+                       lineClass = "text-red-400";
+                       bgClass = "bg-red-900/20";
+                    } else if (line.startsWith('@@')) {
+                       lineClass = "text-blue-400";
+                       bgClass = "bg-blue-900/20";
+                    }
+                    return (
+                       <div key={i} className={`px-4 py-0.5 whitespace-pre-wrap flex hover:bg-white/5 ${bgClass}`}>
+                          <span className={`w-10 shrink-0 text-right mr-4 select-none opacity-40`}>{i+1}</span>
+                          <span className={`${lineClass} break-all`}>{line}</span>
+                       </div>
+                    );
+                })}
+             </div>
+          </div>
+        ) : (
+          <div className={`flex-1 flex items-center justify-center font-mono text-sm transition-all duration-500 ${isRei ? 'bg-[#f8fafc] text-blue-300' : 'bg-[#121212] text-purple-900'}`}>
+             <div className="flex flex-col items-center">
+                <FileDiff className="w-12 h-12 mb-4 opacity-20" />
+                请在左侧选中文件以审查代码差异
+             </div>
+          </div>
+        )}
+
+        {/* 右侧：Lead Agent 对话框 */}
+        <div className={`w-[320px] shrink-0 flex flex-col relative transition-all duration-500 ${isRei ? 'bg-[#f0f8ff]' : 'bg-[#0a0a0a]'}`}>
+          <div className={`p-4 border-b flex justify-between items-center ${isRei ? 'border-blue-200 bg-white/40' : 'border-purple-500/30 bg-black/20'}`}>
+            <div className={`font-mono text-xs tracking-widest font-bold flex items-center ${isRei ? 'text-blue-700' : 'text-purple-400'}`}>
+              <Bot className="w-4 h-4 mr-2" /> LEAD_AGENT // 审查
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar pb-32">
+             <div className="flex justify-start">
+               <div className={`w-full p-3 rounded-sm border backdrop-blur-md ${theme.chatAgent}`}>
+                 <div className={`text-[0.65rem] font-mono mb-2 opacity-60 flex items-center`}><Bot className="w-3 h-3 mr-1" /> CODEX-CLI</div>
+                 <div className="text-xs font-mono leading-relaxed">已汇总代码。请左侧查看单一文件的 Diff。若有问题，请在此通知我进行修补或回滚。</div>
+               </div>
+             </div>
+          </div>
+          <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t ${isRei ? 'from-[#f0f8ff] via-[#f0f8ff]/90' : 'from-[#0a0a0a] via-[#0a0a0a]/90'} to-transparent pt-12`}>
+            <div className="relative w-full flex items-center">
+              <input type="text" placeholder="下达修复指令..." className={`w-full pl-3 pr-8 py-2 rounded-sm outline-none font-mono text-xs transition-all border shadow-sm ${theme.inputBg}`} />
+              <button className={`absolute right-2 p-1 rounded-sm transition-colors opacity-30 text-slate-500`}><Send className="w-3.5 h-3.5" /></button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-full relative overflow-hidden">
+      <div className={`h-16 flex items-center justify-between px-6 border-b shrink-0 bg-black/10 backdrop-blur-sm z-20 ${isRei ? 'border-blue-200' : 'border-purple-500/30'}`}>
+        <div className="flex items-center font-mono">
+          <button onClick={() => setProjectView('taskCenter')} className={`p-1.5 mr-3 rounded-sm border transition-colors ${theme.btnGhost} ${isRei ? 'border-blue-200' : 'border-purple-500/30'}`}><ArrowLeft className="w-4 h-4" /></button>
+          <div className={`px-2 py-0.5 mr-3 text-xs font-bold tracking-wider border rounded-sm ${isRei ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-purple-900/50 text-purple-400 border-purple-500/50'}`}>{task.id}</div>
+          <span className={`font-bold truncate max-w-xs mr-4 ${theme.cardTitle}`}>{task.title}</span>
+          <div className={`flex items-center text-xs px-2 py-1 rounded-sm border ${theme.pathBg}`}><GitBranch className={`w-3 h-3 mr-1.5 ${theme.pathLabel}`} /> {task.taskBranch}</div>
+        </div>
+        <div className="flex items-center space-x-2 text-[0.65rem] font-mono tracking-widest overflow-x-auto">
+          {['CLARIFYING', 'PLAN_REVIEW', 'EXECUTING', 'COMPLETED'].map((stage, idx) => {
+             const stages = ['CLARIFYING', 'PLAN_REVIEW', 'EXECUTING', 'COMPLETED'];
+             const currentIdx = stages.indexOf(task.status);
+             const isActive = idx === currentIdx;
+             const isPassed = idx < currentIdx;
+             let style = isRei ? 'border-blue-200 text-blue-300' : 'border-purple-500/30 text-purple-700'; 
+             if (isActive) style = isRei ? 'border-cyan-400 bg-cyan-50 text-cyan-600 shadow-[0_0_8px_rgba(6,182,212,0.3)]' : 'border-green-400 bg-green-900/30 text-green-400 shadow-[0_0_8px_rgba(34,197,94,0.3)]';
+             if (isPassed) style = isRei ? 'border-blue-400 bg-blue-100 text-blue-600' : 'border-purple-500 bg-purple-900/50 text-purple-300';
+             const labels = { 'CLARIFYING': '01_需求澄清', 'PLAN_REVIEW': '02_计划审阅', 'EXECUTING': '03_并行执行', 'COMPLETED': '04_合并收尾' };
+             return (
+               <div key={stage} className="flex items-center shrink-0">
+                 <div className={`px-2 py-1 rounded-sm border transition-all duration-500 ${style}`}>{labels[stage]}</div>
+                 {idx < 3 && <ChevronRight className={`w-3 h-3 mx-1 ${isPassed ? (isRei ? 'text-blue-400' : 'text-purple-500') : (isRei ? 'text-blue-200' : 'text-purple-500/30')}`} />}
+               </div>
+             );
+          })}
+        </div>
+      </div>
+      <div className="flex-1 overflow-hidden relative">
+        {task.status === 'CLARIFYING' && renderClarifyingView()}
+        {task.status === 'PLAN_REVIEW' && renderPlanReviewView()}
+        {task.status === 'EXECUTING' && renderExecutingView()}
+        {task.status === 'COMPLETED' && renderMergeReviewView()}
+      </div>
+    </div>
+  );
+};
+
+// --- App 根组件 ---
+export default function App() {
+  const [activeMenu, setActiveMenu] = useState('projects'); 
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [projectView, setProjectView] = useState('taskCenter'); 
+  const [selectedTask, setSelectedTask] = useState(null);
+  
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [pilot, setPilot] = useState('rei'); 
+  const isRei = pilot === 'rei';
+
+  const [projects, setProjects] = useState([
+    { id: '1', name: 'eat-frontend', path: '/Users/dev/eat-frontend', defaultBranch: 'main', taskCount: 3, status: 'dirty', tokens: { codex: 125000, claude: 45000 }, color: '#3b82f6', isPinned: true }, // Blue
+    { id: '2', name: 'backend-api', path: '/Users/dev/backend-api', defaultBranch: 'master', taskCount: 1, status: 'clean', tokens: { codex: 85000 }, color: '#22c55e', isPinned: true }, // Green
+    { id: '3', name: 'magi-core-sys', path: '/Users/nerv/magi', defaultBranch: 'casper', taskCount: 7, status: 'dirty', tokens: { codex: 450000, claude: 120000, gemini: 50000 }, color: '#a855f7', isPinned: false }, // Purple
+    { id: '4', name: 'evangelion-ui', path: '/Users/nerv/eva-ui', defaultBranch: 'develop', taskCount: 0, status: 'clean', tokens: {}, color: '#f97316', isPinned: false } // Orange
+  ]);
+
+  const [tasks, setTasks] = useState([
+    { id: 'TASK-001', projectId: '1', title: '实现用户鉴权模块', description: '集成 JWT，完成登录及中间件拦截功能。', status: 'CLARIFYING', baseBranch: 'main', taskBranch: 'eat/feat-auth', category: 'ACTIVE', progress: 10, tokens: { codex: 4500 } },
+    { id: 'TASK-002', projectId: '2', title: '重构前端路由体系', description: '将现有的 React Router v5 彻底升级至 v6...', status: 'PLAN_REVIEW', baseBranch: 'main', taskBranch: 'eat/router-v6', category: 'ACTIVE', progress: 20, tokens: { codex: 1200, claude: 300 } }
+  ]);
+
+  const [projectToDelete, setProjectToDelete] = useState(null);
+  const [taskActionState, setTaskActionState] = useState({ isOpen: false, type: '', task: null });
+  const [deleteBranchChecked, setDeleteBranchChecked] = useState(true);
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+
+  const isTaskActive = (status) => !['PAUSED', 'COMPLETED', 'DRAFT', 'FAILED', 'CANCELLED'].includes(status);
+  
+  const togglePinProject = (id, e) => {
+    e.stopPropagation();
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, isPinned: !p.isPinned } : p));
+  };
+
+  const theme = isRei ? {
+    bg: 'bg-[#f0f8ff] text-slate-800 selection:bg-blue-200',
+    grid: 'linear-gradient(rgba(59,130,246,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.1) 1px, transparent 1px)',
+    blur1: 'bg-blue-400/20',
+    blur2: 'bg-cyan-300/20',
+    blur3: 'bg-white/40',
+    sidebarBg: 'bg-white/60 border-blue-200/60 shadow-[4px_0_24px_rgba(59,130,246,0.08)]',
+    headerBg: 'bg-white/50 border-blue-200/60',
+    logo: 'text-cyan-600',
+    logoIcon: 'text-blue-500 fill-blue-500/20',
+    logoSub: 'text-blue-400',
+    sysMenu: 'text-blue-500/70',
+    menuActive: 'bg-blue-50/80 border-blue-300 text-cyan-600 shadow-[inset_4px_0_0_#06b6d4]',
+    menuInactive: 'border-transparent text-slate-500 hover:bg-blue-50/50 hover:text-blue-600',
+    headerTitle: 'text-blue-600',
+    headerSub: 'text-slate-700',
+    btnActive: 'bg-blue-50 text-cyan-600 border-blue-300 shadow-[0_0_10px_rgba(59,130,246,0.15)]',
+    btnInactive: 'text-slate-500 hover:text-blue-500 border-transparent',
+    statusReady: 'text-white bg-cyan-500 border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.4)]',
+    pageTitle: 'text-slate-800 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]',
+    pageSub: 'text-blue-500',
+    cardBg: 'bg-white/60 border-blue-200/60 hover:border-cyan-400/80 hover:shadow-[0_0_25px_rgba(6,182,212,0.15)]',
+    cardGradient: 'from-blue-500/10',
+    cardNumber: 'text-cyan-600/5',
+    cardIconBg: 'bg-blue-50 border-blue-200 group-hover:bg-cyan-50 group-hover:border-cyan-300',
+    cardIcon: 'text-blue-500 group-hover:text-cyan-600',
+    cardTitle: 'text-slate-800',
+    cardSub: 'text-slate-500',
+    dirtyBg: 'bg-red-50 border-red-200',
+    dirtyDot: 'bg-red-500',
+    dirtyPing: 'bg-red-400',
+    dirtyText: 'text-red-500',
+    cleanBg: 'border-blue-200 text-blue-400 bg-white/50',
+    pathBg: 'bg-white/80 border-blue-100 text-slate-500',
+    pathLabel: 'text-blue-500',
+    branchBg: 'bg-blue-50 border-blue-200 text-slate-600',
+    taskBg: 'bg-cyan-50 border-cyan-200 text-cyan-600',
+    cardCorner: 'border-blue-400/50 group-hover:border-cyan-500',
+    actionBtn: 'bg-white/50 border-blue-300 text-cyan-600 hover:bg-white hover:shadow-[0_0_15px_rgba(59,130,246,0.2)]',
+    placeholderIcon: 'border-blue-300 border-cyan-200 text-blue-400',
+    gridLines: 'rgba(59,130,246,0.1)',
+    inputBg: 'bg-white/60 border-blue-200 text-slate-800 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 placeholder:text-blue-300',
+    tabActive: 'border-cyan-500 text-cyan-600 bg-gradient-to-t from-cyan-500/10 to-transparent',
+    tabInactive: 'border-transparent text-slate-500 hover:text-blue-500 hover:border-blue-300',
+    badgeExec: 'bg-cyan-100/80 border-cyan-300 text-cyan-700 shadow-[0_0_8px_rgba(6,182,212,0.3)]',
+    badgeWarn: 'bg-red-100/80 border-red-300 text-red-700 shadow-[0_0_8px_rgba(239,68,68,0.3)]',
+    badgeDraft: 'bg-slate-200/80 border-slate-300 text-slate-600',
+    btnGhost: 'text-blue-400 hover:text-cyan-600 hover:bg-cyan-50',
+    btnDanger: 'text-blue-400 hover:text-red-500 hover:bg-red-50',
+    modalOverlay: 'bg-white/40 backdrop-blur-sm',
+    modalBox: 'bg-white/90 border-blue-300 shadow-[0_0_40px_rgba(59,130,246,0.2)]',
+    modalTitle: 'text-red-500',
+    modalTitleInfo: 'text-blue-600',
+    treeItemHover: 'hover:bg-blue-50',
+    treePathBar: 'bg-blue-50 border-blue-200 text-blue-600',
+    chatUser: 'bg-blue-100 border-blue-200 text-slate-800',
+    chatAgent: 'bg-white/80 border-cyan-200 text-slate-800',
+    terminalBg: 'bg-[#1e1e1e] border-blue-300 text-green-400 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]',
+    drawerBg: 'bg-[#f0f8ff] border-l border-blue-300 shadow-[-10px_0_40px_rgba(59,130,246,0.15)]',
+    dagLine: 'text-blue-400',
+    dagNodeReady: 'bg-white/60 border-blue-200',
+    dagNodeActive: 'bg-cyan-50/80 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)]',
+  } : {
+    bg: 'bg-[#0a0a0a] text-slate-200 selection:bg-purple-500/30',
+    grid: 'linear-gradient(rgba(168,85,247,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(168,85,247,0.2) 1px, transparent 1px)',
+    blur1: 'bg-purple-900/30',
+    blur2: 'bg-green-900/20',
+    blur3: 'bg-orange-900/10',
+    sidebarBg: 'bg-black/40 border-purple-500/30 shadow-[4px_0_24px_rgba(147,51,234,0.1)]',
+    headerBg: 'bg-black/30 border-purple-500/30',
+    logo: 'text-green-400',
+    logoIcon: 'text-purple-500 fill-purple-500/20',
+    logoSub: 'text-purple-400',
+    sysMenu: 'text-purple-500/70',
+    menuActive: 'bg-purple-900/40 border-purple-500 text-green-400 shadow-[inset_4px_0_0_#22c55e]',
+    menuInactive: 'border-transparent text-slate-400 hover:bg-white/5 hover:text-purple-300',
+    headerTitle: 'text-purple-400',
+    headerSub: 'text-slate-200',
+    btnActive: 'bg-purple-600/20 text-green-400 border-purple-500/50 shadow-[0_0_10px_rgba(168,85,247,0.2)]',
+    btnInactive: 'text-slate-400 hover:text-purple-300 border-transparent',
+    statusReady: 'text-black bg-green-500 border-green-400 shadow-[0_0_8px_rgba(34,197,94,0.6)]',
+    pageTitle: 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]',
+    pageSub: 'text-purple-500',
+    cardBg: 'bg-black/40 border-white/10 hover:border-green-400/60 hover:shadow-[0_0_25px_rgba(34,197,94,0.15)]',
+    cardGradient: 'from-purple-500/10',
+    cardNumber: 'text-green-400/5',
+    cardIconBg: 'bg-purple-900/50 border-purple-500/50 group-hover:bg-green-900/30 group-hover:border-green-400/50',
+    cardIcon: 'text-purple-400 group-hover:text-green-400',
+    cardTitle: 'text-slate-100',
+    cardSub: 'text-slate-500',
+    dirtyBg: 'bg-orange-500/10 border-orange-500/50',
+    dirtyDot: 'bg-orange-500',
+    dirtyPing: 'bg-orange-400',
+    dirtyText: 'text-orange-400',
+    cleanBg: 'border-slate-700 text-slate-500',
+    pathBg: 'bg-black/50 border-white/5 text-slate-400',
+    pathLabel: 'text-purple-500',
+    branchBg: 'bg-purple-900/30 border-purple-500/30 text-slate-300',
+    taskBg: 'bg-green-900/20 border-green-500/20 text-green-400',
+    cardCorner: 'border-purple-500/50 group-hover:border-green-400',
+    actionBtn: 'bg-purple-600/20 border-purple-500 text-green-400 hover:bg-purple-600/40 hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]',
+    placeholderIcon: 'border-purple-500/30 border-green-400/20 text-purple-400',
+    gridLines: 'rgba(168,85,247,0.1)',
+    inputBg: 'bg-black/60 border-purple-500/50 text-green-400 focus:border-green-400 focus:ring-2 focus:ring-green-400/20 placeholder:text-purple-900',
+    tabActive: 'border-green-400 text-green-400 bg-gradient-to-t from-green-400/10 to-transparent',
+    tabInactive: 'border-transparent text-slate-500 hover:text-purple-400 hover:border-purple-500/50',
+    badgeExec: 'bg-green-900/30 border-green-500/50 text-green-400 shadow-[0_0_8px_rgba(34,197,94,0.3)]',
+    badgeWarn: 'bg-orange-900/30 border-orange-500/50 text-orange-400 shadow-[0_0_8px_rgba(249,115,22,0.3)]',
+    badgeDraft: 'bg-white/5 border-white/10 text-slate-400',
+    btnGhost: 'text-slate-500 hover:text-green-400 hover:bg-green-400/10',
+    btnDanger: 'text-slate-500 hover:text-red-500 hover:bg-red-500/10',
+    modalOverlay: 'bg-black/60 backdrop-blur-sm',
+    modalBox: 'bg-[#0a0a0a] border-orange-500/50 shadow-[0_0_40px_rgba(249,115,22,0.15)]',
+    modalTitle: 'text-orange-500',
+    modalTitleInfo: 'text-purple-400',
+    treeItemHover: 'hover:bg-purple-900/30',
+    treePathBar: 'bg-purple-900/20 border-purple-500/30 text-purple-400',
+    chatUser: 'bg-purple-900/40 border-purple-500/50 text-slate-200',
+    chatAgent: 'bg-black/60 border-green-500/30 text-slate-200',
+    terminalBg: 'bg-black/80 border-green-500/50 text-green-400 shadow-[inset_0_0_20px_rgba(34,197,94,0.1)]',
+    drawerBg: 'bg-[#0a0a0a] border-l border-purple-500/50 shadow-[-10px_0_40px_rgba(168,85,247,0.15)]',
+    dagLine: 'text-purple-500/50',
+    dagNodeReady: 'bg-black/40 border-white/10',
+    dagNodeActive: 'bg-green-900/20 border-green-400 shadow-[0_0_15px_rgba(34,197,94,0.2)]',
+  };
+
+  const contextValue = {
+    activeMenu, setActiveMenu,
+    selectedProject, setSelectedProject,
+    projectView, setProjectView,
+    selectedTask, setSelectedTask,
+    isSidebarOpen, setIsSidebarOpen,
+    pilot, setPilot,
+    isRei, theme,
+    projects, setProjects,
+    tasks, setTasks,
+    projectToDelete, setProjectToDelete,
+    taskActionState, setTaskActionState,
+    deleteBranchChecked, setDeleteBranchChecked,
+    isRegisterModalOpen, setIsRegisterModalOpen,
+    isTaskActive,
+    togglePinProject
+  };
+
+  return (
+    <AppContext.Provider value={contextValue}>
+      <div className={`flex h-screen w-full overflow-hidden font-sans relative transition-colors duration-500 ${theme.bg}`}>
+        <div className="absolute inset-0 pointer-events-none opacity-20 transition-all duration-500" style={{ backgroundImage: theme.grid, backgroundSize: '40px 40px' }}></div>
+        <div className={`absolute -top-[20%] -left-[10%] w-[50vw] h-[50vw] blur-[120px] rounded-full pointer-events-none transition-colors duration-1000 ${theme.blur1}`}></div>
+        <div className={`absolute -bottom-[20%] -right-[10%] w-[40vw] h-[40vw] blur-[100px] rounded-full pointer-events-none transition-colors duration-1000 ${theme.blur2}`}></div>
+        <div className={`absolute top-[30%] right-[20%] w-[20vw] h-[20vw] blur-[80px] rounded-full pointer-events-none transition-colors duration-1000 ${theme.blur3}`}></div>
+        <div className="absolute inset-0 pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjEiIGZpbGw9InJnYmEoMCwwLDAsMC4yKSIvPjwvc3ZnPg==')] opacity-50 mix-blend-overlay"></div>
+
+        <RegisterProjectModal />
+        <DeleteProjectModal />
+        <TaskActionModal />
+
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0 relative z-10">
+          <Header />
+          <main className="flex-1 overflow-hidden relative">
+            {!selectedProject && activeMenu === 'console' && <ConsolePage />}
+            {!selectedProject && activeMenu === 'projects' && <ProjectListPage />}
+            {!selectedProject && activeMenu === 'settings' && <SettingsPage />}
+            
+            {selectedProject && projectView === 'taskCenter' && <TaskCenterPage />}
+            {selectedProject && projectView === 'createTask' && <CreateTaskPage />}
+            {selectedProject && projectView === 'workbench' && <WorkbenchPage />}
+          </main>
+        </div>
+      </div>
+    </AppContext.Provider>
+  );
+}

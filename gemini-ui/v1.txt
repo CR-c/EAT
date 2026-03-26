@@ -1,0 +1,982 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { 
+  LayoutDashboard, 
+  FolderGit2, 
+  Settings, 
+  TerminalSquare, 
+  KanbanSquare, 
+  ChevronRight, 
+  FolderPlus,
+  Triangle,
+  AlertTriangle,
+  Cpu,
+  RefreshCw,
+  Search,
+  PauseCircle,
+  Archive,
+  Trash2,
+  GitBranch,
+  PlayCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
+  XCircle,
+  Info,
+  FolderOpen,
+  CornerLeftUp,
+  Folder
+} from 'lucide-react';
+
+export default function App() {
+  // 全局状态管理
+  const [activeMenu, setActiveMenu] = useState('projects'); 
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [projectView, setProjectView] = useState('taskCenter'); 
+  const [selectedTask, setSelectedTask] = useState(null);
+  
+  // 侧边栏折叠状态
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  
+  // 主题/驾驶员切换状态
+  const [pilot, setPilot] = useState('rei'); // 'shinji' | 'rei'
+  const isRei = pilot === 'rei';
+
+  // --- 主题配置字典 ---
+  const theme = isRei ? {
+    // Rei (Unit-00) - 冰蓝清新亮色调
+    bg: 'bg-[#f0f8ff] text-slate-800 selection:bg-blue-200',
+    grid: 'linear-gradient(rgba(59,130,246,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.1) 1px, transparent 1px)',
+    blur1: 'bg-blue-400/20',
+    blur2: 'bg-cyan-300/20',
+    blur3: 'bg-white/40',
+    sidebarBg: 'bg-white/60 border-blue-200/60 shadow-[4px_0_24px_rgba(59,130,246,0.08)]',
+    headerBg: 'bg-white/50 border-blue-200/60',
+    logo: 'text-cyan-600',
+    logoIcon: 'text-blue-500 fill-blue-500/20',
+    logoSub: 'text-blue-400',
+    sysMenu: 'text-blue-500/70',
+    menuActive: 'bg-blue-50/80 border-blue-300 text-cyan-600 shadow-[inset_4px_0_0_#06b6d4]',
+    menuInactive: 'border-transparent text-slate-500 hover:bg-blue-50/50 hover:text-blue-600',
+    headerTitle: 'text-blue-600',
+    headerSub: 'text-slate-700',
+    btnActive: 'bg-blue-50 text-cyan-600 border border-blue-300 shadow-[0_0_10px_rgba(59,130,246,0.15)]',
+    btnInactive: 'text-slate-500 hover:text-blue-500 border border-transparent',
+    statusReady: 'text-white bg-cyan-500 border border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.4)]',
+    pageTitle: 'text-slate-800 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]',
+    pageSub: 'text-blue-500',
+    cardBg: 'bg-white/60 border-blue-200/60 hover:border-cyan-400/80 hover:shadow-[0_0_25px_rgba(6,182,212,0.15)]',
+    cardGradient: 'from-blue-500/10',
+    cardNumber: 'text-cyan-600/5',
+    cardIconBg: 'bg-blue-50 border-blue-200 group-hover:bg-cyan-50 group-hover:border-cyan-300',
+    cardIcon: 'text-blue-500 group-hover:text-cyan-600',
+    cardTitle: 'text-slate-800',
+    cardSub: 'text-slate-500',
+    dirtyBg: 'bg-red-50 border-red-200',
+    dirtyDot: 'bg-red-500',
+    dirtyPing: 'bg-red-400',
+    dirtyText: 'text-red-500',
+    cleanBg: 'border border-blue-200 text-blue-400 bg-white/50',
+    pathBg: 'bg-white/80 border-blue-100 text-slate-500',
+    pathLabel: 'text-blue-500',
+    branchBg: 'bg-blue-50 border-blue-200 text-slate-600',
+    taskBg: 'bg-cyan-50 border-cyan-200 text-cyan-600',
+    cardCorner: 'border-blue-400/50 group-hover:border-cyan-500',
+    actionBtn: 'bg-white/50 border-blue-300 text-cyan-600 hover:bg-white hover:shadow-[0_0_15px_rgba(59,130,246,0.2)]',
+    placeholderIcon: 'border-blue-300 border-cyan-200 text-blue-400',
+    gridLines: 'rgba(59,130,246,0.1)',
+    inputBg: 'bg-white/60 border-blue-200 text-slate-800 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 placeholder:text-blue-300',
+    tabActive: 'border-cyan-500 text-cyan-600 bg-gradient-to-t from-cyan-500/10 to-transparent',
+    tabInactive: 'border-transparent text-slate-500 hover:text-blue-500 hover:border-blue-300',
+    badgeExec: 'bg-cyan-100/80 border-cyan-300 text-cyan-700 shadow-[0_0_8px_rgba(6,182,212,0.3)]',
+    badgeWarn: 'bg-red-100/80 border-red-300 text-red-700 shadow-[0_0_8px_rgba(239,68,68,0.3)]',
+    badgeDraft: 'bg-slate-200/80 border-slate-300 text-slate-600',
+    btnGhost: 'text-blue-400 hover:text-cyan-600 hover:bg-cyan-50',
+    btnDanger: 'text-blue-400 hover:text-red-500 hover:bg-red-50',
+    modalOverlay: 'bg-white/40 backdrop-blur-sm',
+    modalBox: 'bg-white/90 border border-blue-300 shadow-[0_0_40px_rgba(59,130,246,0.2)]',
+    modalTitle: 'text-red-500',
+    modalTitleInfo: 'text-blue-600',
+    treeItemHover: 'hover:bg-blue-50',
+    treePathBar: 'bg-blue-50 border-blue-200 text-blue-600',
+  } : {
+    // Shinji (Unit-01) - 暴走暗夜紫绿色调
+    bg: 'bg-[#0a0a0a] text-slate-200 selection:bg-purple-500/30',
+    grid: 'linear-gradient(rgba(168,85,247,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(168,85,247,0.2) 1px, transparent 1px)',
+    blur1: 'bg-purple-900/30',
+    blur2: 'bg-green-900/20',
+    blur3: 'bg-orange-900/10',
+    sidebarBg: 'bg-black/40 border-purple-500/30 shadow-[4px_0_24px_rgba(147,51,234,0.1)]',
+    headerBg: 'bg-black/30 border-purple-500/30',
+    logo: 'text-green-400',
+    logoIcon: 'text-purple-500 fill-purple-500/20',
+    logoSub: 'text-purple-400',
+    sysMenu: 'text-purple-500/70',
+    menuActive: 'bg-purple-900/40 border-purple-500 text-green-400 shadow-[inset_4px_0_0_#22c55e]',
+    menuInactive: 'border-transparent text-slate-400 hover:bg-white/5 hover:text-purple-300',
+    headerTitle: 'text-purple-400',
+    headerSub: 'text-slate-200',
+    btnActive: 'bg-purple-600/20 text-green-400 border border-purple-500/50 shadow-[0_0_10px_rgba(168,85,247,0.2)]',
+    btnInactive: 'text-slate-400 hover:text-purple-300 border border-transparent',
+    statusReady: 'text-black bg-green-500 border border-green-400 shadow-[0_0_8px_rgba(34,197,94,0.6)]',
+    pageTitle: 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]',
+    pageSub: 'text-purple-500',
+    cardBg: 'bg-black/40 border-white/10 hover:border-green-400/60 hover:shadow-[0_0_25px_rgba(34,197,94,0.15)]',
+    cardGradient: 'from-purple-500/10',
+    cardNumber: 'text-green-400/5',
+    cardIconBg: 'bg-purple-900/50 border-purple-500/50 group-hover:bg-green-900/30 group-hover:border-green-400/50',
+    cardIcon: 'text-purple-400 group-hover:text-green-400',
+    cardTitle: 'text-slate-100',
+    cardSub: 'text-slate-500',
+    dirtyBg: 'bg-orange-500/10 border-orange-500/50',
+    dirtyDot: 'bg-orange-500',
+    dirtyPing: 'bg-orange-400',
+    dirtyText: 'text-orange-400',
+    cleanBg: 'border border-slate-700 text-slate-500',
+    pathBg: 'bg-black/50 border-white/5 text-slate-400',
+    pathLabel: 'text-purple-500',
+    branchBg: 'bg-purple-900/30 border-purple-500/30 text-slate-300',
+    taskBg: 'bg-green-900/20 border-green-500/20 text-green-400',
+    cardCorner: 'border-purple-500/50 group-hover:border-green-400',
+    actionBtn: 'bg-purple-600/20 border-purple-500 text-green-400 hover:bg-purple-600/40 hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]',
+    placeholderIcon: 'border-purple-500/30 border-green-400/20 text-purple-400',
+    gridLines: 'rgba(168,85,247,0.1)',
+    inputBg: 'bg-black/60 border-purple-500/50 text-green-400 focus:border-green-400 focus:ring-2 focus:ring-green-400/20 placeholder:text-purple-900',
+    tabActive: 'border-green-400 text-green-400 bg-gradient-to-t from-green-400/10 to-transparent',
+    tabInactive: 'border-transparent text-slate-500 hover:text-purple-400 hover:border-purple-500/50',
+    badgeExec: 'bg-green-900/30 border-green-500/50 text-green-400 shadow-[0_0_8px_rgba(34,197,94,0.3)]',
+    badgeWarn: 'bg-orange-900/30 border-orange-500/50 text-orange-400 shadow-[0_0_8px_rgba(249,115,22,0.3)]',
+    badgeDraft: 'bg-white/5 border-white/10 text-slate-400',
+    btnGhost: 'text-slate-500 hover:text-green-400 hover:bg-green-400/10',
+    btnDanger: 'text-slate-500 hover:text-red-500 hover:bg-red-500/10',
+    modalOverlay: 'bg-black/60 backdrop-blur-sm',
+    modalBox: 'bg-[#0a0a0a] border border-orange-500/50 shadow-[0_0_40px_rgba(249,115,22,0.15)]',
+    modalTitle: 'text-orange-500',
+    modalTitleInfo: 'text-purple-400',
+    treeItemHover: 'hover:bg-purple-900/30',
+    treePathBar: 'bg-purple-900/20 border-purple-500/30 text-purple-400',
+  };
+
+  // --- 模拟数据与状态管理 ---
+  const [projects, setProjects] = useState([
+    { id: '1', name: 'eat-frontend', path: '/Users/dev/eat-frontend', defaultBranch: 'main', taskCount: 3, status: 'dirty' },
+    { id: '2', name: 'backend-api', path: '/Users/dev/backend-api', defaultBranch: 'master', taskCount: 1, status: 'clean' },
+    { id: '3', name: 'magi-core-sys', path: '/Users/nerv/magi', defaultBranch: 'casper', taskCount: 7, status: 'dirty' },
+    { id: '4', name: 'evangelion-ui', path: '/Users/nerv/eva-ui', defaultBranch: 'develop', taskCount: 0, status: 'clean' },
+  ]);
+
+  const [tasks, setTasks] = useState([
+    { id: 'TASK-001', title: '实现用户鉴权模块', description: '集成 JWT，完成登录、注册、Token续期及中间件拦截功能。Agent 将修改 auth.go 并在 redis 中缓存 session。需要确保所有 API 都能正常拦截未授权请求。', status: 'EXECUTING', baseBranch: 'main', taskBranch: 'eat/auth-module', category: 'ACTIVE', progress: 65 },
+    { id: 'TASK-002', title: '重构前端路由体系', description: '将现有的 React Router v5 彻底升级至 v6，并支持基于角色的动态路由加载。', status: 'PLAN_REVIEW', baseBranch: 'main', taskBranch: 'eat/router-v6', category: 'ACTIVE', progress: 20 },
+    { id: 'TASK-003', title: '修复支付回调超时隐患', description: '紧急排查微信支付回调由于数据库事务死锁导致的偶发性超时问题，需要分析慢查询日志。', status: 'ACTION_REQUIRED', baseBranch: 'release-1.2', taskBranch: 'eat/fix-pay-timeout', category: 'ACTIVE', progress: 80 },
+    { id: 'TASK-004', title: '初始化数据库 Schema', description: '根据最新的 PRD 创建基础的用户、订单、商品表结构，并提供 seed 测试数据脚本。', status: 'COMPLETED', baseBranch: 'main', taskBranch: 'eat/init-db', category: 'ARCHIVED', progress: 100 },
+    { id: 'TASK-005', title: 'Docker镜像升级测试', description: '由于上游依赖存在高危漏洞，需要升级所有的 Node.js 基础镜像版本至 20.x，并修复可能产生的包兼容性报错。', status: 'PAUSED', baseBranch: 'main', taskBranch: 'eat/upgrade-node20', category: 'ACTIVE', progress: 30 },
+  ]);
+
+  // 全局搜索状态
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  
+  // 弹窗状态
+  const [projectToDelete, setProjectToDelete] = useState(null);
+  const [taskActionState, setTaskActionState] = useState({ isOpen: false, type: '', task: null });
+  const [deleteBranchChecked, setDeleteBranchChecked] = useState(true);
+  
+  // 注册新项目弹窗状态
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [registerPathInput, setRegisterPathInput] = useState('/Users/dev');
+  const [currentBrowsePath, setCurrentBrowsePath] = useState('/Users/dev');
+
+  // 工具函数：判断任务是否活跃
+  const isTaskActive = (status) => !['PAUSED', 'COMPLETED', 'DRAFT', 'FAILED', 'CANCELLED'].includes(status);
+
+  // --- 操作处理逻辑 ---
+  const handleSelectProject = (project) => {
+    setSelectedProject(project);
+    setProjectView('taskCenter'); 
+  };
+
+  const handleConfirmProjectDelete = () => {
+    if (projectToDelete && projectToDelete.taskCount === 0) {
+      setProjects(prev => prev.filter(p => p.id !== projectToDelete.id));
+      setProjectToDelete(null);
+    }
+  };
+
+  const openTaskModal = (type, task, e) => {
+    e.stopPropagation();
+    if ((type === 'delete' || type === 'archive') && isTaskActive(task.status)) {
+        setTaskActionState({ isOpen: true, type: 'error', task });
+        return;
+    }
+    setDeleteBranchChecked(true);
+    setTaskActionState({ isOpen: true, type, task });
+  };
+
+  const executeTaskAction = () => {
+    const { type, task } = taskActionState;
+    if (!task) return;
+
+    if (type === 'delete') {
+       setTasks(prev => prev.filter(t => t.id !== task.id));
+    } else if (type === 'archive') {
+       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, category: 'ARCHIVED', status: 'COMPLETED' } : t));
+    } else if (type === 'pause') {
+       setTasks(prev => prev.map(t => t.id === task.id ? { 
+         ...t, 
+         status: task.status === 'PAUSED' ? 'EXECUTING' : 'PAUSED' 
+       } : t));
+    }
+    setTaskActionState({ isOpen: false, type: '', task: null });
+  };
+
+  // --- 模拟文件系统数据 ---
+  const mockFileSystem = {
+    '/': [ { name: 'Users', type: 'dir' }, { name: 'var', type: 'dir' }, { name: 'etc', type: 'dir' } ],
+    '/Users': [ { name: 'dev', type: 'dir' }, { name: 'nerv', type: 'dir' }, { name: 'guest', type: 'dir' } ],
+    '/Users/dev': [ 
+      { name: 'eat-frontend', type: 'dir', isGit: true }, 
+      { name: 'backend-api', type: 'dir', isGit: true }, 
+      { name: 'personal', type: 'dir' } 
+    ],
+    '/Users/dev/personal': [ { name: 'test-repo', type: 'dir', isGit: true } ],
+    '/Users/nerv': [ 
+      { name: 'magi', type: 'dir', isGit: true }, 
+      { name: 'eva-ui', type: 'dir', isGit: true }, 
+      { name: 'geo-front', type: 'dir' } 
+    ]
+  };
+
+  // 模拟注册新项目提交
+  const handleRegisterSubmit = () => {
+    if (!registerPathInput) return;
+    const name = registerPathInput.split('/').pop() || 'new-project';
+    const newProject = {
+      id: Math.random().toString(36).substr(2, 5).toUpperCase(),
+      name: name,
+      path: registerPathInput,
+      defaultBranch: 'main',
+      taskCount: 0,
+      status: 'clean'
+    };
+    setProjects([newProject, ...projects]);
+    setIsRegisterModalOpen(false);
+    setRegisterPathInput('/Users/dev');
+    setCurrentBrowsePath('/Users/dev');
+  };
+
+  // --- 弹窗组件：注册新项目 ---
+  const RegisterProjectModal = () => {
+    if (!isRegisterModalOpen) return null;
+
+    // 获取当前目录的内容
+    const currentDirs = mockFileSystem[currentBrowsePath] || [];
+
+    const handleDirClick = (dirName) => {
+      const newPath = currentBrowsePath === '/' ? `/${dirName}` : `${currentBrowsePath}/${dirName}`;
+      setCurrentBrowsePath(newPath);
+      setRegisterPathInput(newPath);
+    };
+
+    const handleGoUp = () => {
+      if (currentBrowsePath === '/') return;
+      const parts = currentBrowsePath.split('/');
+      parts.pop();
+      const newPath = parts.length <= 1 ? '/' : parts.join('/');
+      setCurrentBrowsePath(newPath);
+      setRegisterPathInput(newPath);
+    };
+
+    return (
+      <div className={`fixed inset-0 z-50 flex items-center justify-center transition-all ${theme.modalOverlay}`}>
+        <div className={`w-full max-w-2xl p-6 rounded-sm relative overflow-hidden flex flex-col max-h-[85vh] ${theme.modalBox}`}>
+           <div className="absolute inset-0 pointer-events-none opacity-10" style={{ backgroundImage: theme.grid, backgroundSize: '20px 20px' }}></div>
+           
+           <div className="flex items-center mb-6 relative z-10">
+              <div className={`p-2 rounded-sm mr-3 border ${isRei ? 'bg-cyan-50 border-cyan-200' : 'bg-green-900/20 border-green-500/30'}`}>
+                 <FolderPlus className={`w-5 h-5 ${isRei ? 'text-cyan-600' : 'text-green-400'}`} />
+              </div>
+              <h3 className={`text-xl font-bold tracking-wider ${isRei ? 'text-cyan-700' : 'text-green-400'}`}>
+                注册本地新项目
+              </h3>
+           </div>
+
+           <div className="relative z-10 flex flex-col flex-1 overflow-hidden space-y-4">
+              {/* 上区：手动输入项目路径 */}
+              <div>
+                <label className={`block text-xs font-mono mb-2 ${theme.cardSub}`}>[ TARGET_PATH ] 手动输入路径</label>
+                <div className="relative">
+                  <TerminalSquare className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isRei ? 'text-blue-400' : 'text-purple-500'}`} />
+                  <input 
+                    type="text" 
+                    value={registerPathInput}
+                    onChange={(e) => setRegisterPathInput(e.target.value)}
+                    placeholder="输入本地 Git 仓库绝对路径..."
+                    className={`w-full pl-9 pr-4 py-2.5 rounded-sm outline-none font-mono text-sm transition-all border ${theme.inputBg}`}
+                  />
+                </div>
+              </div>
+
+              {/* 下区：系统文件树 */}
+              <div className="flex flex-col flex-1 overflow-hidden border rounded-sm mt-2" style={{ borderColor: isRei ? 'rgba(59,130,246,0.3)' : 'rgba(168,85,247,0.3)' }}>
+                {/* 树导航条 */}
+                <div className={`px-3 py-2 border-b flex items-center text-xs font-mono tracking-wide ${theme.treePathBar}`}>
+                  <FolderOpen className="w-3.5 h-3.5 mr-2" />
+                  <span className="truncate flex-1 font-bold">{currentBrowsePath}</span>
+                </div>
+                
+                {/* 树列表 */}
+                <div className={`flex-1 overflow-y-auto custom-scrollbar p-2 ${isRei ? 'bg-white/40' : 'bg-black/20'}`}>
+                  {currentBrowsePath !== '/' && (
+                    <div 
+                      onClick={handleGoUp}
+                      className={`flex items-center px-3 py-2 cursor-pointer transition-colors rounded-sm font-mono text-sm ${theme.treeItemHover} ${theme.cardSub}`}
+                    >
+                      <CornerLeftUp className="w-4 h-4 mr-3" />
+                      <span>.. (返回上级)</span>
+                    </div>
+                  )}
+                  
+                  {currentDirs.length === 0 && (
+                    <div className={`px-3 py-4 text-center font-mono text-xs opacity-50 ${theme.cardSub}`}>
+                      当前目录下未发现文件夹。
+                    </div>
+                  )}
+
+                  {currentDirs.map((dir, idx) => (
+                    <div 
+                      key={idx}
+                      onClick={() => handleDirClick(dir.name)}
+                      className={`flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors rounded-sm font-mono text-sm group ${theme.treeItemHover}`}
+                    >
+                      <div className="flex items-center overflow-hidden">
+                        <Folder className={`w-4 h-4 mr-3 shrink-0 ${dir.isGit ? (isRei ? 'text-cyan-500 fill-cyan-500/20' : 'text-green-400 fill-green-400/20') : (isRei ? 'text-blue-400' : 'text-purple-500')}`} />
+                        <span className={`truncate ${theme.cardTitle}`}>{dir.name}</span>
+                      </div>
+                      {dir.isGit && (
+                        <div className={`text-[0.6rem] px-1.5 py-0.5 rounded-sm border opacity-70 group-hover:opacity-100 transition-opacity ${isRei ? 'bg-cyan-50 border-cyan-200 text-cyan-600' : 'bg-green-900/30 border-green-500/50 text-green-400'}`}>
+                          GIT
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+           </div>
+
+           <div className="flex justify-end space-x-3 mt-6 relative z-10 font-mono text-sm">
+             <button 
+                onClick={() => setIsRegisterModalOpen(false)}
+                className={`px-5 py-2 rounded-sm border transition-colors ${theme.btnGhost} ${isRei ? 'border-blue-200' : 'border-white/10'}`}
+             >
+                取消 (CANCEL)
+             </button>
+             <button 
+                onClick={handleRegisterSubmit}
+                className={`px-5 py-2 rounded-sm border transition-colors flex items-center ${isRei ? 'bg-blue-50 text-blue-600 border-blue-300 hover:bg-blue-600 hover:text-white' : 'bg-green-900/30 border-green-500/50 text-green-400 hover:bg-green-500 hover:text-black'}`}
+             >
+                确认注册
+             </button>
+           </div>
+        </div>
+      </div>
+    );
+  };
+
+  // --- 弹窗组件：项目删除拦截 ---
+  const DeleteProjectModal = () => {
+    if (!projectToDelete) return null;
+    const hasActiveTasks = projectToDelete.taskCount > 0;
+    
+    return (
+      <div className={`fixed inset-0 z-50 flex items-center justify-center transition-all ${theme.modalOverlay}`}>
+        <div className={`w-full max-w-md p-6 rounded-sm relative overflow-hidden ${theme.modalBox}`}>
+           <div className="absolute inset-0 pointer-events-none opacity-10" style={{ backgroundImage: theme.grid, backgroundSize: '20px 20px' }}></div>
+           
+           <div className="flex items-start mb-6 relative z-10">
+              <div className={`p-3 rounded-full mr-4 border ${hasActiveTasks ? 'bg-red-500/10 border-red-500/30' : (isRei ? 'bg-amber-500/10 border-amber-500/30' : 'bg-orange-500/10 border-orange-500/30')}`}>
+                 {hasActiveTasks ? <XCircle className="w-6 h-6 text-red-500" /> : <AlertTriangle className={`w-6 h-6 ${theme.modalTitle}`} />}
+              </div>
+              <div>
+                <h3 className={`text-lg font-bold mb-1 tracking-wider ${hasActiveTasks ? 'text-red-500' : theme.modalTitle}`}>
+                  {hasActiveTasks ? '操作被拦截：存在活跃任务' : '确认移除项目注册？'}
+                </h3>
+                <p className={`text-sm font-mono mt-2 leading-relaxed ${theme.cardSub}`}>
+                  {hasActiveTasks ? (
+                    <>
+                      目标项目 <span className="font-bold text-slate-300">[{projectToDelete.name}]</span> 当前仍有 <span className="font-bold text-red-500">{projectToDelete.taskCount}</span> 个活跃任务正在执行中。
+                      <br/><br/>
+                      <span className="text-red-400">系统指令约束：请先将所有活跃任务暂停并归档，或直接删除它们后，再尝试解除项目注册。</span>
+                    </>
+                  ) : (
+                    <>
+                      即将移除对项目 <span className="font-bold text-slate-300">[{projectToDelete.name}]</span> 的接管。
+                      <br/><br/>
+                      <span className={`inline-block px-2 py-1 rounded-sm border ${isRei ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-orange-500/10 border-orange-500/30 text-orange-400'}`}>
+                        ⚠️ 提示：此操作仅在本系统中去除记录，不会删除您的本地仓库。
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
+           </div>
+
+           <div className="flex justify-end space-x-3 relative z-10 font-mono text-sm">
+             {hasActiveTasks ? (
+                <button 
+                  onClick={() => setProjectToDelete(null)}
+                  className={`px-4 py-2 rounded-sm border transition-colors bg-red-500/10 border-red-500/50 text-red-500 hover:bg-red-500 hover:text-white`}
+                >
+                  收到 (ACKNOWLEDGE)
+                </button>
+             ) : (
+                <>
+                  <button 
+                    onClick={() => setProjectToDelete(null)}
+                    className={`px-4 py-2 rounded-sm border transition-colors ${theme.btnGhost} ${isRei ? 'border-blue-200' : 'border-white/10'}`}
+                  >
+                    取消 (CANCEL)
+                  </button>
+                  <button 
+                    onClick={handleConfirmProjectDelete}
+                    className={`px-4 py-2 rounded-sm border transition-colors flex items-center bg-red-500/10 border-red-500/50 text-red-500 hover:bg-red-500 hover:text-white`}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    确认移除
+                  </button>
+                </>
+             )}
+           </div>
+        </div>
+      </div>
+    );
+  };
+
+  // --- 弹窗组件：任务操作 ---
+  const TaskActionModal = () => {
+    if (!taskActionState.isOpen || !taskActionState.task) return null;
+    const { type, task } = taskActionState;
+    
+    let config = {};
+    if (type === 'error') {
+      config = {
+        icon: <XCircle className="w-6 h-6 text-red-500" />,
+        title: '操作被拦截：任务处于活跃状态',
+        colorClass: 'text-red-500 border-red-500/30 bg-red-500/10',
+        content: `任务 [${task.id}] 正在被执行或处于审查流中。为保障数据完整性，系统禁止直接归档或删除活跃任务。请先暂停该任务。`,
+        hideCancel: true,
+        confirmText: '收到 (ACKNOWLEDGE)'
+      };
+    } else if (type === 'delete') {
+      config = {
+        icon: <AlertTriangle className="w-6 h-6 text-red-500" />,
+        title: '彻底销毁任务记录？',
+        colorClass: 'text-red-500 border-red-500/30 bg-red-500/10',
+        content: `即将从系统中永久抹除任务 [${task.id}]：${task.title} 的所有上下文及快照。此操作不可逆！`,
+        showCheckbox: true,
+        confirmText: '确认销毁 (DESTROY)'
+      };
+    } else if (type === 'archive') {
+      config = {
+        icon: <Archive className={`w-6 h-6 ${theme.modalTitleInfo}`} />,
+        title: '将任务转入冷数据归档？',
+        colorClass: `${theme.modalTitleInfo} border-blue-500/30 bg-blue-500/10`,
+        content: `任务 [${task.id}]：${task.title} 将被移出活跃工作台并进入已归档视图。你可以随时在档案库中查阅它的历史。`,
+        confirmText: '确认归档 (ARCHIVE)'
+      };
+    } else if (type === 'pause') {
+      const isPaused = task.status === 'PAUSED';
+      config = {
+        icon: isPaused ? <PlayCircle className={`w-6 h-6 ${theme.modalTitleInfo}`} /> : <PauseCircle className={`w-6 h-6 ${theme.modalTitleInfo}`} />,
+        title: isPaused ? '恢复任务执行流？' : '挂起任务执行流？',
+        colorClass: `${theme.modalTitleInfo} border-blue-500/30 bg-blue-500/10`,
+        content: isPaused 
+          ? `将重新激活任务 [${task.id}]，对应的 Agent 会话和工作流将继续进行。` 
+          : `将中止当前任务 [${task.id}] 的所有 Agent 进程并释放容器资源。你可以随时恢复它。`,
+        confirmText: isPaused ? '确认恢复 (RESUME)' : '确认挂起 (PAUSE)'
+      };
+    }
+
+    return (
+      <div className={`fixed inset-0 z-50 flex items-center justify-center transition-all ${theme.modalOverlay}`}>
+        <div className={`w-full max-w-md p-6 rounded-sm relative overflow-hidden ${theme.modalBox}`}>
+           <div className="absolute inset-0 pointer-events-none opacity-10" style={{ backgroundImage: theme.grid, backgroundSize: '20px 20px' }}></div>
+           
+           <div className="flex items-start mb-6 relative z-10">
+              <div className={`p-3 rounded-full mr-4 border ${config.colorClass}`}>
+                 {config.icon}
+              </div>
+              <div className="flex-1 mt-1">
+                <h3 className={`text-lg font-bold mb-2 tracking-wider ${config.colorClass.split(' ')[0]}`}>
+                  {config.title}
+                </h3>
+                <p className={`text-sm font-mono leading-relaxed ${theme.cardSub}`}>
+                  {config.content}
+                </p>
+
+                {config.showCheckbox && (
+                  <label className="flex items-center space-x-3 mt-4 cursor-pointer p-2 rounded-sm border border-red-500/20 bg-red-500/5 group">
+                    <div className="relative flex items-center justify-center">
+                      <input 
+                        type="checkbox" 
+                        checked={deleteBranchChecked}
+                        onChange={(e) => setDeleteBranchChecked(e.target.checked)}
+                        className="peer appearance-none w-4 h-4 border border-red-500/50 rounded-sm checked:bg-red-500 transition-colors cursor-pointer"
+                      />
+                      <svg className="absolute w-3 h-3 text-white opacity-0 peer-checked:opacity-100 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="text-sm font-mono text-red-400 group-hover:text-red-500 transition-colors">
+                      同时抹除本地对应分支：<br/><span className="font-bold">{task.taskBranch}</span>
+                    </span>
+                  </label>
+                )}
+              </div>
+           </div>
+
+           <div className="flex justify-end space-x-3 relative z-10 font-mono text-sm">
+             {!config.hideCancel && (
+                <button 
+                  onClick={() => setTaskActionState({ isOpen: false, type: '', task: null })}
+                  className={`px-4 py-2 rounded-sm border transition-colors ${theme.btnGhost} ${isRei ? 'border-blue-200' : 'border-white/10'}`}
+                >
+                  取消 (CANCEL)
+                </button>
+             )}
+             <button 
+                onClick={config.hideCancel ? () => setTaskActionState({ isOpen: false, type: '', task: null }) : executeTaskAction}
+                className={`px-4 py-2 rounded-sm border transition-colors flex items-center ${config.hideCancel ? 'bg-red-500/10 border-red-500/50 text-red-500 hover:bg-red-500 hover:text-white' : (type === 'delete' ? 'bg-red-500/10 border-red-500/50 text-red-500 hover:bg-red-500 hover:text-white' : (isRei ? 'bg-blue-50 text-blue-600 border-blue-300 hover:bg-blue-600 hover:text-white' : 'bg-green-900/30 border-green-500/50 text-green-400 hover:bg-green-500 hover:text-black'))}`}
+             >
+                {config.confirmText}
+             </button>
+           </div>
+        </div>
+      </div>
+    );
+  };
+
+  // --- 组件：侧边栏 ---
+  const Sidebar = () => (
+    <div className={`${isSidebarOpen ? 'w-64' : 'w-20'} backdrop-blur-xl border-r flex flex-col h-screen relative z-20 transition-all duration-300 ease-in-out shrink-0 ${theme.sidebarBg}`}>
+      <button 
+        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        className={`absolute -right-3.5 top-8 p-1 rounded-full border shadow-md transition-all z-30 ${isRei ? 'bg-white border-blue-200 text-blue-500 hover:bg-blue-50' : 'bg-black border-purple-500 text-purple-400 hover:bg-purple-900/50'}`}
+      >
+        {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+      </button>
+
+      <div className={`h-20 flex flex-col justify-center ${isSidebarOpen ? 'px-6' : 'px-0 items-center'} border-b relative overflow-hidden transition-colors duration-500 ${isRei ? 'border-blue-200/60' : 'border-purple-500/30'}`}>
+        <div className={`absolute top-0 right-0 w-16 h-full bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,${theme.gridLines}_4px,${theme.gridLines}_8px)]`}></div>
+        <div className={`flex items-center font-black text-2xl tracking-widest z-10 ${theme.logo}`}>
+          <Triangle className={`w-6 h-6 ${isSidebarOpen ? 'mr-2' : ''} ${theme.logoIcon}`} />
+          {isSidebarOpen && <span>E.A.T.</span>}
+        </div>
+        {isSidebarOpen && (
+          <div className={`text-[0.65rem] font-mono tracking-widest mt-1 z-10 whitespace-nowrap ${theme.logoSub}`}>
+            多智能体协作任务部队
+          </div>
+        )}
+      </div>
+
+      <div className={`flex-1 py-6 space-y-2 font-mono text-sm relative z-10 ${isSidebarOpen ? 'px-4' : 'px-2'}`}>
+        {isSidebarOpen && <div className={`text-[10px] mb-2 tracking-widest pl-2 ${theme.sysMenu}`}>系统菜单 //</div>}
+        <button 
+          onClick={() => { setActiveMenu('console'); setSelectedProject(null); }}
+          className={`w-full flex items-center ${isSidebarOpen ? 'px-4 justify-start' : 'px-0 justify-center'} py-3 rounded-sm border transition-all duration-300 ${activeMenu === 'console' && !selectedProject ? theme.menuActive : theme.menuInactive}`}
+        >
+          <LayoutDashboard className={`w-4 h-4 ${isSidebarOpen ? 'mr-3' : ''}`} />
+          {isSidebarOpen && <span>[ 控制台 ]</span>}
+        </button>
+        <button 
+          onClick={() => { setActiveMenu('projects'); setSelectedProject(null); }}
+          className={`w-full flex items-center ${isSidebarOpen ? 'px-4 justify-start' : 'px-0 justify-center'} py-3 rounded-sm border transition-all duration-300 ${activeMenu === 'projects' && !selectedProject ? theme.menuActive : theme.menuInactive}`}
+        >
+          <FolderGit2 className={`w-4 h-4 ${isSidebarOpen ? 'mr-3' : ''}`} />
+          {isSidebarOpen && <span>[ 项目档案库 ]</span>}
+        </button>
+      </div>
+
+      <div className={`p-4 border-t font-mono space-y-2 z-10 flex flex-col ${isRei ? 'border-blue-200/60' : 'border-purple-500/30'}`}>
+        <button 
+          onClick={() => setPilot(isRei ? 'shinji' : 'rei')}
+          className={`w-full flex items-center justify-center py-2.5 rounded-sm border transition-all ${isRei ? 'bg-white/80 border-blue-300 text-blue-600 hover:bg-blue-50' : 'bg-black/50 border-purple-500/50 text-purple-400 hover:bg-purple-900/30'}`}
+        >
+          <RefreshCw className={`w-4 h-4 ${isSidebarOpen ? 'mr-2' : ''}`} />
+          {isSidebarOpen && <span className="text-xs">PILOT: {isRei ? '00_绫波丽' : '01_碇真嗣'}</span>}
+        </button>
+
+        <button 
+          onClick={() => { setActiveMenu('settings'); setSelectedProject(null); }}
+          className={`w-full flex items-center ${isSidebarOpen ? 'px-4 justify-start' : 'px-0 justify-center'} py-3 rounded-sm border transition-all duration-300 ${activeMenu === 'settings' && !selectedProject ? theme.menuActive : theme.menuInactive}`}
+        >
+          <Settings className={`w-4 h-4 ${isSidebarOpen ? 'mr-3' : ''}`} />
+          {isSidebarOpen && <span>[ 系统配置 ]</span>}
+        </button>
+      </div>
+    </div>
+  );
+
+  // --- 组件：顶部导航栏 ---
+  const Header = () => (
+    <div className={`h-16 backdrop-blur-md border-b flex items-center justify-between px-6 z-10 relative transition-colors duration-500 ${theme.headerBg}`}>
+      <div className="flex items-center">
+        {selectedProject ? (
+          <div className="flex items-center font-mono">
+            <span className={`font-bold tracking-wider ${theme.headerTitle}`}>{selectedProject.name}</span>
+            <ChevronRight className="w-4 h-4 mx-3 text-slate-400" />
+            <div className={`flex space-x-2 border p-1 rounded-sm ${isRei ? 'bg-white/50 border-blue-200/50' : 'bg-black/50 border-purple-900/50'}`}>
+              <button 
+                onClick={() => setProjectView('taskCenter')}
+                className={`flex items-center px-4 py-1.5 rounded-sm text-xs tracking-wider transition-all ${projectView === 'taskCenter' ? theme.btnActive : theme.btnInactive}`}
+              >
+                <TerminalSquare className="w-3 h-3 mr-2" />
+                任务中心
+              </button>
+              <button 
+                onClick={() => setProjectView('workbench')}
+                className={`flex items-center px-4 py-1.5 rounded-sm text-xs tracking-wider transition-all ${projectView === 'workbench' ? theme.btnActive : theme.btnInactive}`}
+              >
+                <KanbanSquare className="w-3 h-3 mr-2" />
+                工作台 {selectedTask ? `<${selectedTask}>` : ''}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-3">
+            <div className={`w-2 h-2 animate-pulse ${isRei ? 'bg-cyan-500' : 'bg-purple-500'}`}></div>
+            <h1 className={`text-lg font-bold tracking-widest font-mono ${theme.headerSub}`}>
+              {activeMenu === 'console' && '系统控制台'}
+              {activeMenu === 'projects' && '项目档案库'}
+              {activeMenu === 'settings' && '系统全局配置'}
+            </h1>
+          </div>
+        )}
+      </div>
+      <div className="flex items-center space-x-6 text-xs font-mono">
+        <div className="text-slate-500 flex flex-col items-end">
+          <span>同步率: <span className={theme.logo}>400%</span></span>
+          <span className="text-[0.6rem] tracking-widest">本地连接: 活跃</span>
+        </div>
+        <div className={`flex items-center px-3 py-1 rounded-sm border font-bold tracking-widest ${theme.statusReady}`}>
+          <Cpu className="w-4 h-4 mr-2" />
+          DOCKER 就绪
+        </div>
+      </div>
+    </div>
+  );
+
+  // --- 页面：项目列表 (全局入口) ---
+  const ProjectListPage = () => {
+    // 根据搜索词过滤项目
+    const filteredProjects = useMemo(() => {
+      return projects.filter(p => p.name.toLowerCase().includes(projectSearchQuery.toLowerCase()));
+    }, [projects, projectSearchQuery]);
+
+    return (
+      <div className="p-8 max-w-7xl mx-auto relative z-10 h-full overflow-y-auto custom-scrollbar">
+        <div className={`flex flex-col sm:flex-row sm:justify-between sm:items-end mb-10 border-b pb-4 space-y-4 sm:space-y-0 ${isRei ? 'border-blue-200/50' : 'border-white/10'}`}>
+          <div>
+            <div className={`font-mono text-sm tracking-[0.2em] mb-1 ${theme.pageSub}`}>目标选择 //</div>
+            <h2 className={`text-3xl font-black tracking-widest ${theme.pageTitle}`}>本地项目库</h2>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            {/* 项目搜索框 */}
+            <div className="relative w-full sm:w-64 group">
+              <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${isRei ? 'text-blue-400 group-focus-within:text-cyan-500' : 'text-purple-500 group-focus-within:text-green-400'}`} />
+              <input 
+                type="text" 
+                placeholder="检索项目名称..." 
+                value={projectSearchQuery}
+                onChange={(e) => setProjectSearchQuery(e.target.value)}
+                className={`w-full pl-9 pr-4 py-2 rounded-sm outline-none font-mono text-sm transition-all border ${theme.inputBg}`}
+              />
+            </div>
+
+            <button 
+              onClick={() => setIsRegisterModalOpen(true)}
+              className={`flex items-center px-5 py-2 rounded-sm font-mono text-sm transition-all border shrink-0 ${theme.actionBtn}`}
+            >
+              <FolderPlus className="w-4 h-4 mr-2" />
+              注册新项目
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {filteredProjects.map(project => (
+            <div 
+              key={project.id} 
+              onClick={() => handleSelectProject(project)}
+              className={`group relative backdrop-blur-md border p-6 rounded-sm cursor-pointer transition-all duration-500 overflow-hidden hover:-translate-y-1 flex flex-col ${theme.cardBg}`}
+            >
+              <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl to-transparent pointer-events-none ${theme.cardGradient}`}></div>
+              <div className={`absolute bottom-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 text-[10rem] font-black leading-none pointer-events-none translate-x-4 translate-y-8 font-mono ${theme.cardNumber}`}>
+                {project.id.padStart(2, '0')}
+              </div>
+              
+              <div className="flex justify-between items-start mb-6 relative z-10">
+                <div className="flex items-start">
+                  <div className={`p-2.5 rounded-sm transition-colors border ${theme.cardIconBg}`}>
+                    <FolderGit2 className={`w-6 h-6 transition-colors ${theme.cardIcon}`} />
+                  </div>
+                  <div className="ml-4">
+                    <h3 className={`text-xl font-bold tracking-wide ${theme.cardTitle}`}>{project.name}</h3>
+                    <div className={`text-xs font-mono mt-1 ${theme.cardSub}`}>系统编号: {project.id.padStart(4, '0')}</div>
+                  </div>
+                </div>
+                {project.status === 'dirty' ? (
+                  <div className={`flex items-center px-2 py-1 border rounded-sm shrink-0 ${theme.dirtyBg}`}>
+                    <span className="flex h-2 w-2 relative mr-2">
+                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${theme.dirtyPing}`}></span>
+                      <span className={`relative inline-flex rounded-full h-2 w-2 ${theme.dirtyDot}`}></span>
+                    </span>
+                    <span className={`text-[0.6rem] font-mono tracking-widest ${theme.dirtyText}`}>未提交</span>
+                  </div>
+                ) : (
+                  <div className={`text-[0.6rem] font-mono tracking-widest px-2 py-1 rounded-sm shrink-0 ${theme.cleanBg}`}>已同步</div>
+                )}
+              </div>
+              
+              <div className={`text-xs mb-6 font-mono truncate p-2 rounded-sm border ${theme.pathBg}`} title={project.path}>
+                <span className={`mr-2 ${theme.pathLabel}`}>路径:</span>{project.path}
+              </div>
+              
+              <div className={`flex items-center justify-between text-xs pt-4 border-t font-mono relative z-10 mt-auto ${isRei ? 'border-blue-100' : 'border-white/10'}`}>
+                <div className={`flex items-center ${theme.cardSub}`}>
+                  <span className={`mr-2 ${theme.pathLabel}`}>基线:</span>
+                  <span className={`px-2 py-0.5 rounded-sm ${theme.branchBg}`}>{project.defaultBranch}</span>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <div className={`px-2 py-0.5 rounded-sm border ${project.taskCount > 0 ? (isRei ? 'border-cyan-400 text-cyan-600 bg-cyan-50' : 'border-green-500/50 text-green-400 bg-green-900/30') : theme.taskBg}`}>
+                    活跃任务: {project.taskCount}
+                  </div>
+                  <button 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      setProjectToDelete(project); 
+                    }}
+                    className={`p-1 rounded-sm transition-colors ${theme.btnDanger}`}
+                    title="解除项目注册"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className={`absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 transition-colors ${theme.cardCorner}`}></div>
+              <div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 transition-colors ${theme.cardCorner}`}></div>
+            </div>
+          ))}
+        </div>
+        
+        {filteredProjects.length === 0 && (
+          <div className={`flex flex-col items-center justify-center py-20 font-mono ${theme.cardSub}`}>
+            <AlertTriangle className={`w-8 h-8 mb-4 opacity-50 ${isRei ? 'text-blue-400' : 'text-purple-500'}`} />
+            <div>系统未检索到符合条件的本地项目记录。</div>
+          </div>
+        )}
+        
+        {projects.length > 0 && filteredProjects.length > 0 && (
+           <div className={`text-center mt-12 text-xs font-mono opacity-60 flex items-center justify-center space-x-2 ${theme.cardSub}`}>
+              <Info className="w-4 h-4" /> <span>提示：系统会自动监测注册项目的本地 Git 状态</span>
+           </div>
+        )}
+      </div>
+    );
+  };
+
+  // --- 页面：任务中心 (项目级) ---
+  const TaskCenterPage = () => {
+    const [filter, setFilter] = useState('ACTIVE');
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const filteredTasks = useMemo(() => {
+      return tasks.filter(task => {
+        const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) || task.id.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesFilter = filter === 'ALL' || task.category === filter || (filter === 'ACTIVE' && task.category !== 'ARCHIVED');
+        return matchesSearch && matchesFilter;
+      });
+    }, [filter, searchQuery, tasks]);
+
+    const getStatusBadge = (status) => {
+      switch(status) {
+        case 'EXECUTING': 
+          return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono font-bold tracking-wider ${theme.badgeExec}`}>[ 执行中 ]</span>;
+        case 'ACTION_REQUIRED':
+          return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono font-bold tracking-wider ${theme.badgeWarn}`}>[ 需要处理 ]</span>;
+        case 'PLAN_REVIEW':
+          return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono font-bold tracking-wider ${theme.badgeWarn.replace('red', 'amber').replace('orange', 'yellow')}`}>[ 计划审阅 ]</span>;
+        case 'PAUSED':
+          return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono tracking-wider ${theme.badgeDraft}`}>[ 已暂停 ]</span>;
+        default:
+          return <span className={`px-2 py-0.5 border rounded-sm text-xs font-mono tracking-wider ${theme.badgeDraft}`}>[ {status} ]</span>;
+      }
+    };
+
+    return (
+      <div className="p-8 max-w-7xl mx-auto relative z-10 h-full flex flex-col">
+        <div className={`flex justify-between items-end mb-6 border-b pb-4 shrink-0 ${isRei ? 'border-blue-200/50' : 'border-white/10'}`}>
+          <div>
+            <div className={`font-mono text-sm tracking-[0.2em] mb-1 ${theme.pageSub}`}>OPERATIONAL_HUB //</div>
+            <h2 className={`text-3xl font-black tracking-widest ${theme.pageTitle}`}>任务指挥中心</h2>
+          </div>
+          <button className={`flex items-center px-5 py-2 rounded-sm font-mono text-sm transition-all border shadow-lg ${theme.actionBtn}`}>
+            <FolderPlus className="w-4 h-4 mr-2" />
+            发布新任务
+          </button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 shrink-0">
+          <div className={`flex space-x-1 font-mono text-sm border-b ${isRei ? 'border-blue-200/50' : 'border-white/10'}`}>
+            {['ALL', 'ACTIVE', 'ARCHIVED'].map(tab => (
+              <button 
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-6 py-2.5 border-b-2 transition-all tracking-wider ${filter === tab ? theme.tabActive : theme.tabInactive}`}
+              >
+                {tab === 'ALL' ? '全部任务' : tab === 'ACTIVE' ? '活跃作战' : '已归档案'}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full sm:w-72 group">
+            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${isRei ? 'text-blue-400 group-focus-within:text-cyan-500' : 'text-purple-500 group-focus-within:text-green-400'}`} />
+            <input 
+              type="text" 
+              placeholder="检索任务代号或名称..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className={`w-full pl-9 pr-4 py-2 rounded-sm outline-none font-mono text-sm transition-all border ${theme.inputBg}`}
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {filteredTasks.map(task => (
+              <div 
+                key={task.id} 
+                onClick={() => { setSelectedTask(task.id); setProjectView('workbench'); }}
+                className={`group relative backdrop-blur-md border p-5 rounded-sm cursor-pointer transition-all duration-300 flex flex-col min-h-[260px] h-auto ${theme.cardBg}`}
+              >
+                <div className="flex justify-between items-center mb-3">
+                  {getStatusBadge(task.status)}
+                  <div className={`text-xs font-mono tracking-widest opacity-60 ${theme.cardSub}`}>{task.id}</div>
+                </div>
+
+                <div className="flex-1">
+                  <h3 className={`text-lg font-bold mb-2 tracking-wide ${theme.cardTitle}`}>{task.title}</h3>
+                  <p className={`text-sm leading-relaxed ${theme.cardSub}`}>
+                    {task.description}
+                  </p>
+                </div>
+
+                <div className={`mt-4 p-2.5 rounded-sm border font-mono text-xs flex items-center justify-between ${theme.pathBg}`}>
+                  <div className="flex items-center overflow-hidden">
+                    <GitBranch className={`w-3.5 h-3.5 mr-2 shrink-0 ${theme.pathLabel}`} />
+                    <span className="truncate max-w-[80px]" title={task.baseBranch}>{task.baseBranch}</span>
+                    <ChevronRight className={`w-3 h-3 mx-1 shrink-0 ${isRei ? 'text-blue-300' : 'text-purple-700'}`} />
+                    <span className={`font-bold truncate ${isRei ? 'text-cyan-600' : 'text-green-400'}`} title={task.taskBranch}>{task.taskBranch}</span>
+                  </div>
+                </div>
+
+                <div className={`flex items-center justify-between mt-4 pt-4 border-t ${isRei ? 'border-blue-100/50' : 'border-white/5'}`}>
+                  <div className="flex-1 mr-4">
+                     <div className={`h-1 w-full rounded-full overflow-hidden ${isRei ? 'bg-blue-100' : 'bg-white/10'}`}>
+                        <div 
+                          className={`h-full transition-all duration-1000 ${isRei ? 'bg-cyan-400' : 'bg-green-400'}`} 
+                          style={{ width: `${task.progress}%` }}
+                        ></div>
+                     </div>
+                  </div>
+
+                  <div className="flex items-center space-x-1 shrink-0">
+                    <button 
+                      onClick={(e) => openTaskModal('pause', task, e)}
+                      className={`p-1.5 rounded-sm transition-colors ${theme.btnGhost}`}
+                      title={task.status === 'PAUSED' ? '恢复执行' : '暂停任务'}
+                    >
+                      {task.status === 'PAUSED' ? <PlayCircle className="w-4 h-4" /> : <PauseCircle className="w-4 h-4" />}
+                    </button>
+                    <button 
+                      onClick={(e) => openTaskModal('archive', task, e)}
+                      className={`p-1.5 rounded-sm transition-colors ${theme.btnGhost}`}
+                      title="归档至冷数据区"
+                    >
+                      <Archive className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={(e) => openTaskModal('delete', task, e)}
+                      className={`p-1.5 rounded-sm transition-colors ${theme.btnDanger}`}
+                      title="彻底抹除记录"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className={`absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 transition-colors ${theme.cardCorner}`}></div>
+                <div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 transition-colors ${theme.cardCorner}`}></div>
+              </div>
+            ))}
+          </div>
+          
+          {filteredTasks.length === 0 && (
+            <div className={`flex flex-col items-center justify-center py-20 font-mono ${theme.cardSub}`}>
+              <AlertTriangle className={`w-8 h-8 mb-4 opacity-50 ${isRei ? 'text-blue-400' : 'text-purple-500'}`} />
+              <div>未检索到符合条件的作战任务。</div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const PlaceholderPage = ({ title, desc }) => (
+    <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] relative z-10">
+      <div className="w-24 h-24 mb-6 relative">
+        <div className={`absolute inset-0 border-2 animate-[spin_10s_linear_infinite] rounded-full ${theme.placeholderIcon}`}></div>
+        <div className={`absolute inset-2 border-2 border-dashed animate-[spin_7s_linear_infinite_reverse] rounded-full ${isRei ? 'border-cyan-400/30' : 'border-green-400/20'}`}></div>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <AlertTriangle className={`w-8 h-8 opacity-50 ${isRei ? 'text-blue-500' : 'text-purple-400'}`} />
+        </div>
+      </div>
+      <h2 className={`text-2xl font-bold mb-2 font-mono tracking-widest ${isRei ? 'text-slate-800' : 'text-slate-200'}`}>[{title}]</h2>
+      <p className="text-slate-500 font-mono text-sm">{desc}</p>
+    </div>
+  );
+
+  return (
+    <div className={`flex h-screen w-full overflow-hidden font-sans relative transition-colors duration-500 ${theme.bg}`}>
+      {/* 网格背景 */}
+      <div className="absolute inset-0 pointer-events-none opacity-20 transition-all duration-500" style={{ backgroundImage: theme.grid, backgroundSize: '40px 40px' }}></div>
+      {/* 模糊色块 */}
+      <div className={`absolute -top-[20%] -left-[10%] w-[50vw] h-[50vw] blur-[120px] rounded-full pointer-events-none transition-colors duration-1000 ${theme.blur1}`}></div>
+      <div className={`absolute -bottom-[20%] -right-[10%] w-[40vw] h-[40vw] blur-[100px] rounded-full pointer-events-none transition-colors duration-1000 ${theme.blur2}`}></div>
+      <div className={`absolute top-[30%] right-[20%] w-[20vw] h-[20vw] blur-[80px] rounded-full pointer-events-none transition-colors duration-1000 ${theme.blur3}`}></div>
+      {/* 扫描线特效 */}
+      <div className="absolute inset-0 pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjEiIGZpbGw9InJnYmEoMCwwLDAsMC4yKSIvPjwvc3ZnPg==')] opacity-50 mix-blend-overlay"></div>
+
+      {/* 弹窗：注册新项目文件树 */}
+      <RegisterProjectModal />
+
+      {/* 弹窗：项目移除拦截与确认 */}
+      <DeleteProjectModal />
+      
+      {/* 弹窗：任务操作（拦截/确认） */}
+      <TaskActionModal />
+
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0 relative z-10">
+        <Header />
+        <main className="flex-1 overflow-hidden relative">
+          {!selectedProject && activeMenu === 'console' && <PlaceholderPage title="系统控制台" desc="等待神经连接... 全局监控指标离线。" />}
+          {!selectedProject && activeMenu === 'projects' && <ProjectListPage />}
+          {!selectedProject && activeMenu === 'settings' && <PlaceholderPage title="系统全局配置" desc="MAGI 系统配置接口已锁定，需解除权限限制。" />}
+          {selectedProject && projectView === 'taskCenter' && <TaskCenterPage />}
+          {selectedProject && projectView === 'workbench' && <PlaceholderPage title="核心工作台" desc="多智能体特遣系统已初始化。正在与本地环境同步..." />}
+        </main>
+      </div>
+    </div>
+  );
+}
