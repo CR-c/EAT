@@ -35,6 +35,7 @@ export function RegisterProjectDialog({
   const [pathInput, setPathInput] = useState("")
   const [browsePath, setBrowsePath] = useState("")
   const [projectColor, setProjectColor] = useState(PRESET_COLORS[0])
+  const [isPinned, setIsPinned] = useState(false)
   const [selectedBranch, setSelectedBranch] = useState("")
   const [duplicateWarningOpen, setDuplicateWarningOpen] = useState(false)
   const [pathHint, setPathHint] = useState<string | null>(null)
@@ -46,6 +47,7 @@ export function RegisterProjectDialog({
       setPathInput("")
       setBrowsePath("")
       setProjectColor(PRESET_COLORS[0])
+      setIsPinned(false)
       setSelectedBranch("")
       setDuplicateWarningOpen(false)
       setPathHint(null)
@@ -141,6 +143,7 @@ export function RegisterProjectDialog({
       await createProject({
         color: projectColor,
         defaultBranch: browse.data?.isGitRepository ? selectedBranch : undefined,
+        isPinned,
         path: targetPath,
       })
       emitProjectRegistryChanged()
@@ -203,38 +206,86 @@ export function RegisterProjectDialog({
 
             <div>
               <label className={cn("mb-2 block font-mono text-xs", theme.cardSub)}>[ PROJECT_COLOR ] 标识颜色</label>
-              <div className="flex flex-wrap items-center gap-3 pl-2">
-                {PRESET_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    aria-label={`选择项目颜色 ${color}`}
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 pl-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
+                  {PRESET_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      aria-label={`选择项目颜色 ${color}`}
+                      className={cn(
+                        "h-6 w-6 rounded-full transition-transform",
+                        projectColor === color
+                          ? isRei
+                            ? "scale-125 ring-2 ring-blue-400 ring-offset-1 ring-offset-white"
+                            : "scale-125 ring-2 ring-green-400 ring-offset-1 ring-offset-[#0a0a0a]"
+                          : "opacity-70 hover:scale-110 hover:opacity-100",
+                      )}
+                      onClick={() => setProjectColor(color)}
+                      style={{ backgroundColor: color }}
+                      type="button"
+                    />
+                  ))}
+                  <div className={cn("mx-1 h-5 w-px", isRei ? "bg-blue-200" : "bg-white/20")} />
+                  <label
+                    className="relative flex h-7 w-7 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-slate-400 shadow-sm transition-transform hover:scale-110"
+                    title="打开调色板选择自定义颜色"
+                  >
+                    <input
+                      className="absolute -left-2 -top-2 h-12 w-12 cursor-pointer opacity-0"
+                      onChange={(event) => setProjectColor(event.target.value)}
+                      type="color"
+                      value={projectColor}
+                    />
+                    <div className="pointer-events-none h-full w-full" style={{ backgroundColor: projectColor }} />
+                  </label>
+                  <span className={cn("ml-1 font-mono text-[0.65rem] uppercase opacity-60", theme.cardSub)}>{projectColor}</span>
+                </div>
+
+                <div className="ml-auto flex items-center gap-3">
+                  <div className={cn("h-5 w-px", isRei ? "bg-blue-200" : "bg-white/20")} />
+                  <label
                     className={cn(
-                      "h-6 w-6 rounded-full transition-transform",
-                      projectColor === color
+                      "group flex cursor-pointer items-center gap-2 rounded-sm border px-2.5 py-1.5 font-mono text-[0.7rem] transition-colors",
+                      isPinned
                         ? isRei
-                          ? "scale-125 ring-2 ring-blue-400 ring-offset-1 ring-offset-white"
-                          : "scale-125 ring-2 ring-green-400 ring-offset-1 ring-offset-[#0a0a0a]"
-                        : "opacity-70 hover:scale-110 hover:opacity-100",
+                          ? "border-blue-300 bg-blue-50/80 text-blue-700"
+                          : "border-green-500/40 bg-green-900/20 text-green-300"
+                        : theme.inputBg,
                     )}
-                    onClick={() => setProjectColor(color)}
-                    style={{ backgroundColor: color }}
-                    type="button"
-                  />
-                ))}
-                <div className={cn("mx-1 h-5 w-px", isRei ? "bg-blue-200" : "bg-white/20")} />
-                <label
-                  className="relative flex h-7 w-7 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-slate-400 shadow-sm transition-transform hover:scale-110"
-                  title="打开调色板选择自定义颜色"
-                >
-                  <input
-                    className="absolute -left-2 -top-2 h-12 w-12 cursor-pointer opacity-0"
-                    onChange={(event) => setProjectColor(event.target.value)}
-                    type="color"
-                    value={projectColor}
-                  />
-                  <div className="h-full w-full pointer-events-none" style={{ backgroundColor: projectColor }} />
-                </label>
-                <span className={cn("ml-1 font-mono text-[0.65rem] uppercase opacity-60", theme.cardSub)}>{projectColor}</span>
+                  >
+                    <input
+                      checked={isPinned}
+                      className="sr-only"
+                      onChange={(event) => setIsPinned(event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "flex h-3.5 w-3.5 items-center justify-center rounded-[2px] border transition-colors",
+                        isPinned
+                          ? isRei
+                            ? "border-blue-500 bg-blue-500"
+                            : "border-green-400 bg-green-400"
+                          : isRei
+                            ? "border-slate-400 bg-white/70"
+                            : "border-white/20 bg-black/30",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 rounded-[1px] transition-opacity",
+                          isPinned
+                            ? isRei
+                              ? "bg-white opacity-100"
+                              : "bg-black opacity-100"
+                            : "opacity-0",
+                        )}
+                      />
+                    </span>
+                    <span className={cn("tracking-wide", theme.cardSub)}>标记项目</span>
+                  </label>
+                </div>
               </div>
             </div>
 

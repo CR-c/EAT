@@ -42,7 +42,7 @@ function DialogContent({ className, children, ...props }: React.ComponentProps<t
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-full p-2 text-muted-foreground transition-colors hover:bg-white/60 hover:text-foreground dark:hover:bg-white/8">
+        <DialogPrimitive.Close className="absolute right-4 top-4 z-20 cursor-pointer rounded-full p-2 text-muted-foreground transition-colors hover:bg-white/60 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-cyan-400/60 dark:hover:bg-white/8">
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
