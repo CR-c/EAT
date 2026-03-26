@@ -70,6 +70,33 @@ func TestTaskReadEndpointsReturnPersistedTaskData(t *testing.T) {
 	`); err != nil {
 		t.Fatalf("insert subtask: %v", err)
 	}
+	if _, err := db.Exec(`
+		INSERT INTO agent_sessions (
+			id, task_id, sub_task_id, agent_type, session_type, sandbox_type, container_id, status, pid,
+			started_at, ended_at, exit_code, log_path, first_output_at, output_buffer, output_buffer_max_bytes,
+			created_at, updated_at
+		) VALUES
+			('session-usage-1', 'task-1', 'subtask-1', 'codex-cli', 'WORKER', 'DOCKER', NULL, 'COMPLETED', NULL,
+			 '2026-03-24T00:00:08Z', '2026-03-24T00:00:09Z', 0, NULL, '2026-03-24T00:00:08Z', '', 65536,
+			 '2026-03-24T00:00:08Z', '2026-03-24T00:00:09Z'),
+			('session-usage-2', 'task-1', 'subtask-1', 'codex-cli', 'WORKER', 'DOCKER', NULL, 'COMPLETED', NULL,
+			 '2026-03-24T00:00:10Z', '2026-03-24T00:00:11Z', 0, NULL, '2026-03-24T00:00:10Z', '', 65536,
+			 '2026-03-24T00:00:10Z', '2026-03-24T00:00:11Z')
+	`); err != nil {
+		t.Fatalf("insert sessions: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO session_token_usage (
+			id, session_id, task_id, project_id, sub_task_id, agent_type,
+			input_tokens, output_tokens, total_tokens, turn_count, created_at, updated_at
+		) VALUES
+			('usage-task-1', 'session-usage-1', 'task-1', 'project-1', 'subtask-1', 'codex-cli',
+			 500, 100, 600, 1, '2026-03-24T00:00:09Z', '2026-03-24T00:00:09Z'),
+			('usage-task-2', 'session-usage-2', 'task-1', 'project-1', 'subtask-1', 'codex-cli',
+			 1200, 200, 1400, 1, '2026-03-24T00:00:11Z', '2026-03-24T00:00:11Z')
+	`); err != nil {
+		t.Fatalf("insert usage: %v", err)
+	}
 
 	router := NewRouter(NewHandler(Dependencies{
 		DB:  db,
@@ -89,6 +116,10 @@ func TestTaskReadEndpointsReturnPersistedTaskData(t *testing.T) {
 	}
 	if len(projectTasksPayload["tasks"].([]any)) != 1 {
 		t.Fatalf("unexpected task count: %#v", projectTasksPayload["tasks"])
+	}
+	taskListTokens := projectTasksPayload["tasks"].([]any)[0].(map[string]any)["tokens"].(map[string]any)
+	if taskListTokens["codex-cli"] != float64(2000) {
+		t.Fatalf("unexpected task list tokens: %#v", taskListTokens)
 	}
 
 	taskRequest := httptest.NewRequest(http.MethodGet, "/api/tasks/task-1", nil)
@@ -110,5 +141,9 @@ func TestTaskReadEndpointsReturnPersistedTaskData(t *testing.T) {
 	}
 	if len(taskPayload["subTasks"].([]any)) != 1 {
 		t.Fatalf("unexpected subtasks payload: %#v", taskPayload["subTasks"])
+	}
+	taskTokens := taskPayload["task"].(map[string]any)["tokens"].(map[string]any)
+	if taskTokens["codex-cli"] != float64(2000) {
+		t.Fatalf("unexpected task detail tokens: %#v", taskTokens)
 	}
 }

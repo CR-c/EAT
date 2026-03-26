@@ -356,6 +356,107 @@ func TestProjectPreferencesEndpointPersistsMetadata(t *testing.T) {
 	}
 }
 
+func TestProjectEndpointsReturnAggregatedTokenUsage(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	repoPath := createGitRepository(t, tempDir, "token-repo", "main")
+	router := NewRouter(NewHandler(Dependencies{
+		DB:  db,
+		Bus: eventbus.New(),
+	}))
+
+	registerResponse := performJSONRequest(router, http.MethodPost, "/api/projects", map[string]any{"path": repoPath})
+	if registerResponse.Code != http.StatusCreated {
+		t.Fatalf("unexpected register status: %d body=%s", registerResponse.Code, registerResponse.Body.String())
+	}
+
+	var registerPayload map[string]any
+	if err := json.Unmarshal(registerResponse.Body.Bytes(), &registerPayload); err != nil {
+		t.Fatalf("decode register response: %v", err)
+	}
+	projectID := registerPayload["project"].(map[string]any)["id"].(string)
+
+	if _, err := db.Exec(`
+		INSERT INTO tasks (
+			id, project_id, title, description, lead_agent_type, base_branch, base_commit_sha,
+			task_branch_name, status, plan_version, current_plan_json, approved_plan_json, last_error,
+			archived_at, created_at, updated_at, version
+		) VALUES (
+			'task-token-project', ?, 'Token Task', 'Usage aggregation', 'codex-cli', 'main', 'abc123',
+			'eat-token-project', 'EXECUTING', 1, '{}', '{}', NULL, NULL,
+			'2026-03-24T00:00:01Z', '2026-03-24T00:00:02Z', 0
+		)
+	`, projectID); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO agent_sessions (
+			id, task_id, sub_task_id, agent_type, session_type, sandbox_type, container_id, status, pid,
+			started_at, ended_at, exit_code, log_path, first_output_at, output_buffer, output_buffer_max_bytes,
+			created_at, updated_at
+		) VALUES
+			('session-token-codex', 'task-token-project', NULL, 'codex-cli', 'WORKER', 'DOCKER', NULL, 'COMPLETED', NULL,
+			 '2026-03-24T00:00:03Z', '2026-03-24T00:00:05Z', 0, NULL, '2026-03-24T00:00:04Z', '', 65536,
+			 '2026-03-24T00:00:03Z', '2026-03-24T00:00:05Z'),
+			('session-token-gemini', 'task-token-project', NULL, 'gemini-cli', 'WORKER', 'DOCKER', NULL, 'COMPLETED', NULL,
+			 '2026-03-24T00:00:06Z', '2026-03-24T00:00:08Z', 0, NULL, '2026-03-24T00:00:07Z', '', 65536,
+			 '2026-03-24T00:00:06Z', '2026-03-24T00:00:08Z')
+	`); err != nil {
+		t.Fatalf("insert sessions: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO session_token_usage (
+			id, session_id, task_id, project_id, sub_task_id, agent_type,
+			input_tokens, output_tokens, total_tokens, turn_count, created_at, updated_at
+		) VALUES
+			('usage-project-codex', 'session-token-codex', 'task-token-project', ?, NULL, 'codex-cli',
+			 1200, 300, 1500, 1, '2026-03-24T00:00:05Z', '2026-03-24T00:00:05Z'),
+			('usage-project-gemini', 'session-token-gemini', 'task-token-project', ?, NULL, 'gemini-cli',
+			 700, 200, 900, 1, '2026-03-24T00:00:08Z', '2026-03-24T00:00:08Z')
+	`, projectID, projectID); err != nil {
+		t.Fatalf("insert usage: %v", err)
+	}
+
+	listResponse := performJSONRequest(router, http.MethodGet, "/api/projects", nil)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("unexpected list status: %d body=%s", listResponse.Code, listResponse.Body.String())
+	}
+
+	var listPayload map[string]any
+	if err := json.Unmarshal(listResponse.Body.Bytes(), &listPayload); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	projects := listPayload["projects"].([]any)
+	projectPayload := projects[0].(map[string]any)
+	tokens := projectPayload["tokens"].(map[string]any)
+	if tokens["codex-cli"] != float64(1500) {
+		t.Fatalf("unexpected codex project tokens: %#v", tokens)
+	}
+	if tokens["gemini-cli"] != float64(900) {
+		t.Fatalf("unexpected gemini project tokens: %#v", tokens)
+	}
+
+	detailResponse := performJSONRequest(router, http.MethodGet, "/api/projects/"+projectID, nil)
+	if detailResponse.Code != http.StatusOK {
+		t.Fatalf("unexpected detail status: %d body=%s", detailResponse.Code, detailResponse.Body.String())
+	}
+
+	var detailPayload map[string]any
+	if err := json.Unmarshal(detailResponse.Body.Bytes(), &detailPayload); err != nil {
+		t.Fatalf("decode detail response: %v", err)
+	}
+	detailTokens := detailPayload["project"].(map[string]any)["tokens"].(map[string]any)
+	if detailTokens["codex-cli"] != float64(1500) || detailTokens["gemini-cli"] != float64(900) {
+		t.Fatalf("unexpected detail tokens: %#v", detailTokens)
+	}
+}
+
 func TestProjectDeleteEndpointBlocksActionRequiredTasksUnlessPaused(t *testing.T) {
 	tempDir := t.TempDir()
 
