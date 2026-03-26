@@ -9,6 +9,7 @@ import { getPilotTheme, getProjectColor } from "@/lib/pilot-theme"
 import { cn } from "@/lib/utils"
 import { RegisterProjectDialog } from "@/features/projects/components/register-project-dialog"
 import { UnregisterProjectDialog } from "@/features/projects/components/unregister-project-dialog"
+import { emitProjectRegistryChanged } from "@/lib/project-events"
 import { isTaskExecutionTreeActive } from "@/lib/task-view"
 import type { ProjectRecord, RepoStatus } from "@/lib/types"
 
@@ -71,6 +72,7 @@ export function ProjectsPage() {
             return
           }
           await deleteProject(projectPendingUnregister.project.id)
+          emitProjectRegistryChanged()
           setProjectPendingUnregister(null)
           resource.reload()
         }}

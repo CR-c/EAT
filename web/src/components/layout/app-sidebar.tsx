@@ -11,10 +11,12 @@ import {
 import { useEffect, useMemo, useState } from "react"
 import { NavLink, useLocation, useNavigate, useParams } from "react-router-dom"
 
-import { listProjects, updateProjectPreferences } from "@/lib/api/projects"
+import { listProjects } from "@/lib/api/projects"
 import { useAsyncResource } from "@/hooks/use-async-resource"
+import { subscribeProjectRegistryChanged } from "@/lib/project-events"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme, getProjectColor } from "@/lib/pilot-theme"
+import type { ProjectRecord } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const sidebarOpenStorageKey = "eat.web.sidebar.open"
@@ -22,7 +24,6 @@ const sidebarOpenStorageKey = "eat.web.sidebar.open"
 const navItems = [
   { key: "console", label: "[ 控制台 ]", to: "/console", icon: LayoutDashboard },
   { key: "projects", label: "[ 项目档案库 ]", to: "/projects", icon: FolderGit2 },
-  { key: "settings", label: "[ 系统配置 ]", to: "/settings", icon: Settings },
 ] as const
 
 function getStoredSidebarOpen() {
@@ -47,11 +48,19 @@ export function AppSidebar() {
       return response.projects
     },
   })
-  const allProjects = useMemo(() => projects.data ?? [], [projects.data])
+  const allProjects = useMemo(() => {
+    const uniqueProjects = new Map<string, ProjectRecord>()
+    for (const project of projects.data ?? []) {
+      uniqueProjects.set(project.id, project)
+    }
+    return Array.from(uniqueProjects.values())
+  }, [projects.data])
 
   useEffect(() => {
     window.localStorage.setItem(sidebarOpenStorageKey, isSidebarOpen ? "1" : "0")
   }, [isSidebarOpen])
+
+  useEffect(() => subscribeProjectRegistryChanged(projects.reload), [projects.reload])
 
   const pinnedProjects = useMemo(() => {
     const explicitPinned = allProjects
@@ -60,21 +69,20 @@ export function AppSidebar() {
     return explicitPinned.length > 0 ? explicitPinned : allProjects.slice(0, 3)
   }, [allProjects])
 
-  async function togglePinnedProject(projectIdToToggle: string) {
-    const targetProject = allProjects.find((project) => project.id === projectIdToToggle)
-    if (!targetProject) {
+  function handleProjectsTrigger() {
+    if (isSidebarOpen) {
+      setIsProjectsMenuExpanded(true)
+      navigate("/projects")
       return
     }
-    const currentlyPinned = targetProject.isPinned
-    const nextPinnedOrder = currentlyPinned
-      ? null
-      : Math.max(0, ...allProjects.filter((project) => project.isPinned).map((project) => project.pinnedOrder ?? 0)) + 1
-    await updateProjectPreferences(projectIdToToggle, {
-      color: targetProject.color ?? getProjectColor(targetProject.id),
-      isPinned: !currentlyPinned,
-      pinnedOrder: nextPinnedOrder,
+
+    setIsProjectsMenuExpanded((current) => {
+      const next = !current
+      if (next && !location.pathname.startsWith("/projects")) {
+        navigate("/projects")
+      }
+      return next
     })
-    projects.reload()
   }
 
   return (
@@ -145,6 +153,10 @@ export function AppSidebar() {
                     "flex flex-1 items-center py-3",
                     isSidebarOpen ? "justify-start px-4" : "justify-center px-0",
                   )}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    handleProjectsTrigger()
+                  }}
                   to={item.to}
                 >
                   <item.icon className={cn("h-4 w-4", isSidebarOpen && "mr-3")} />
@@ -213,30 +225,6 @@ export function AppSidebar() {
                     </button>
                   )
                 })}
-
-                {isSidebarOpen && allProjects.length ? (
-                  <div className={cn("px-6 pt-2 text-[11px]", theme.cardSub)}>
-                    {allProjects.map((project) => {
-                      const pinned = project.isPinned
-                      return (
-                        <button
-                          key={project.id}
-                          className={cn(
-                            "flex w-full items-center justify-between rounded-sm px-2 py-1 text-left transition-colors",
-                            theme.treeItemHover,
-                          )}
-                          onClick={() => togglePinnedProject(project.id)}
-                          type="button"
-                        >
-                          <span className="truncate">{project.name}</span>
-                          <span className={cn("text-[10px]", pinned ? theme.pageSub : theme.cardSub)}>
-                            {pinned ? "已置顶" : "置顶"}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : null}
               </div>
             </div>
           ) : (
@@ -274,6 +262,20 @@ export function AppSidebar() {
           <RefreshCw className={cn("h-4 w-4", isSidebarOpen && "mr-2")} />
           {isSidebarOpen ? <span className="text-xs">PILOT: {isRei ? "00_绫波丽" : "01_碇真嗣"}</span> : null}
         </button>
+        <NavLink
+          className={({ isActive }) =>
+            cn(
+              "flex w-full items-center rounded-sm border py-3 transition-all duration-300",
+              isSidebarOpen ? "justify-start px-4" : "justify-center px-0",
+              isActive ? theme.menuActive : theme.menuInactive,
+            )
+          }
+          title="settings"
+          to="/settings"
+        >
+          <Settings className={cn("h-4 w-4", isSidebarOpen && "mr-3")} />
+          {isSidebarOpen ? <span>[ 系统配置 ]</span> : null}
+        </NavLink>
       </div>
     </aside>
   )

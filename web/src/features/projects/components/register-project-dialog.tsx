@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAsyncResource } from "@/hooks/use-async-resource"
+import { emitProjectRegistryChanged } from "@/lib/project-events"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme } from "@/lib/pilot-theme"
 import { cn } from "@/lib/utils"
@@ -110,6 +111,7 @@ export function RegisterProjectDialog({
     setSubmitError(null)
     try {
       await createProject({ color: projectColor, path: targetPath })
+      emitProjectRegistryChanged()
       onOpenChange(false)
       onRegistered()
     } catch (caught) {
