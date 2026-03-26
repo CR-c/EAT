@@ -50,13 +50,11 @@ Add fast post-run feedback for each completed subtask and unlock the efficiency 
 
 ## Likely Touch Points
 
-- `src/repositories/task-repository.js`
-- `src/services/task-service.js`
-- review prompt / parser helpers under `src/services/`
-- `src/services/agent-service.js`
-- `src/ui/app.js`
-- `src/ui/index.html`
-- `src/ui/app.css`
+- historical implementation: `src/repositories/task-repository.js`, `src/services/task-service.js`, `src/services/agent-service.js`, `src/ui/*`
+- current runtime equivalents usually live under:
+  - `backend/internal/task/`
+  - `backend/internal/agent/`
+  - `web/src/features/tasks/`
 - review and execution integration tests
 
 ## API And Event Surface
@@ -114,7 +112,7 @@ Add fast post-run feedback for each completed subtask and unlock the efficiency 
 - Incremental review must not set `ACCEPTED`, `REWORK_REQUIRED`, or `DISCARD_PENDING` status directly.
 - Early rework is a user shortcut, not an authoritative review transition.
 - Preserve review history even if the subtask is reworked multiple times.
-- Current browser app is stateful but framework-free; keep the rework UI additive instead of introducing a second page flow.
+- Historical browser baseline was framework-free. In the current React frontend, keep the rework UI additive instead of introducing an unrelated second page flow.
 
 ## Edge Cases
 

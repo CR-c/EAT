@@ -55,13 +55,12 @@ Merge accepted subtasks deterministically, preserve merge-attempt history, and r
 
 ## Likely Touch Points
 
-- `src/repositories/task-repository.js`
-- `src/services/task-service.js` or a dedicated merge orchestration service
-- `src/services/git-workspace-service.js`
+- historical implementation: `src/repositories/task-repository.js`, `src/services/task-service.js`, `src/services/git-workspace-service.js`, `src/ui/*`
+- current runtime equivalents usually live under:
+  - `backend/internal/task/`
+  - `backend/internal/git/`
+  - `web/src/features/tasks/`
 - repository-validation helpers for target-branch safety checks
-- `src/ui/app.js`
-- `src/ui/index.html`
-- `src/ui/app.css`
 - merge and rebase integration tests
 
 ## API And Event Surface

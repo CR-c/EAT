@@ -28,18 +28,18 @@
 
 ## Deploy Procedure
 
-每次修改后，如果改动影响了服务端 JavaScript，必须重新部署，否则线上仍是旧进程代码。
+每次修改后，只要改动影响了当前运行时产物，就必须重新部署，否则线上仍是旧进程代码。
 
 标准部署步骤：
 
 1. 进入项目目录
    - `cd /home/code/EAT`
-2. 重建前端样式产物
+2. 重建 React 前端产物
    - `npm run build:ui`
-3. 如果改了 `src/services/sandbox-manager.js`、`docker/worker-base/Dockerfile` 或任何 worker 运行时相关代码，先重建 worker 镜像
+3. 如果改了 `backend/internal/sandbox/`、`docker/worker-base/Dockerfile` 或任何 worker 运行时相关代码，先重建 worker 镜像
    - `npm run build:worker-image`
 4. 如有需要先跑测试
-   - `node --test tests/project-api.test.js tests/project-ui.test.js`
+   - `npm test`
 5. 重启服务
    - `systemctl restart eat.service`
 6. 检查服务状态
@@ -51,7 +51,7 @@
 
 ## Notes
 
-- 仅改静态文件时，Node 进程会直接读取磁盘上的最新 `index.html` / `app.css` / `app.js`，但为了避免状态不一致，仍建议按上面的流程统一重启一次。
+- 仅改前端静态产物时，Go 服务也会直接读取最新的 `web/dist`，但为了避免状态不一致，仍建议按上面的流程统一重启一次。
 - 如果改了 `/etc/systemd/system/eat.service`，重启前先执行：
   - `systemctl daemon-reload`
 - 如果改了 `/home/nginx-gateway/nginx.conf`，重载网关：

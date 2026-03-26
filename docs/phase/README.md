@@ -5,6 +5,14 @@
 
 统一文档入口见 [docs/README.md](/home/code/EAT/docs/README.md)，实现规则见 [AGENTS.md](/home/code/EAT/AGENTS.md)。
 
+## 历史实现说明
+
+这些 phase 文档定义的是交付合同和能力落地顺序，不是当前运行时代码树的逐文件镜像。
+
+- 文中若出现 `src/server/`、`src/ui/` 等路径，应理解为历史交付阶段的实现落点。
+- 当前默认运行时已经收敛为 Go 后端加 React 前端，通常对应 `backend/` 与 `web/`。
+- 如果 phase 合同语义与当前实现路径冲突，保留合同语义，代码路径以当前仓库结构为准。
+
 ## 这组文档在整体文档体系中的位置
 
 当前文档分层应这样理解：

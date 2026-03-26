@@ -62,12 +62,12 @@ Make execution observable in real time without overwhelming the user or the brow
 
 ## Likely Touch Points
 
-- `src/services/task-service.js`
-- `src/repositories/task-repository.js`
-- `src/server/app.js`
-- `src/ui/app.js`
-- `src/ui/index.html`
-- `src/ui/app.css`
+- historical implementation: `src/services/task-service.js`, `src/repositories/task-repository.js`, `src/server/app.js`, `src/ui/*`
+- current runtime equivalents usually live under:
+  - `backend/internal/task/`
+  - `backend/internal/api/`
+  - `web/src/features/tasks/`
+  - `web/src/lib/`
 - execution integration tests and UI tests
 
 ## Backend Tasks
@@ -113,7 +113,7 @@ Make execution observable in real time without overwhelming the user or the brow
 - The UI should remain useful even if no terminal is expanded.
 - Tail previews should be resilient to ANSI noise.
 - Preserve raw output in logs even if the UI strips or formats escape sequences.
-- Current stack is server-rendered static assets plus browser ES modules; do not assume a bundler or framework runtime exists.
+- Historical baseline used server-rendered static assets plus browser ES modules. In the current runtime, the same product contract is implemented through the React + Vite frontend.
 - If a richer terminal dependency is introduced, it must be loaded lazily and kept optional to the default summary-first path.
 
 ## Edge Cases

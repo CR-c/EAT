@@ -340,7 +340,7 @@
 每次基础阶段涉及 schema 讨论时，按以下顺序核对：
 
 1. `docs/PRD.md`
-2. `src/repositories/*`
+2. 当前运行时 repository 实现（Go 主路径下通常为 `backend/internal/store/`、`backend/internal/project/`、`backend/internal/task/`；历史实现可参考 `src/repositories/*`）
 3. `prisma/migrations/*`
 4. `prisma/schema.prisma`
 

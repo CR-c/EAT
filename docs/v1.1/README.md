@@ -3,6 +3,14 @@
 本目录承载 EAT 的扩展交付阶段，也就是 phase `17` 到 `22`。  
 统一文档入口见 [docs/README.md](/home/code/EAT/docs/README.md)，实现规则见 [AGENTS.md](/home/code/EAT/AGENTS.md)。
 
+## 历史实现说明
+
+本目录描述的是扩展阶段的产品合同和交付顺序，不保证每一处实现备注都与当前代码目录完全一致。
+
+- 早期扩展阶段写作时，仓库仍处在 Node 到 Go、原生前端到 React 的迁移过程中。
+- 因此，文中的局部实现路径更适合被理解为“当时建议的改动落点”，不是当前运行时真相。
+- 当前运行时结构优先参考仓库根 [README.md](/home/code/EAT/README.md)、[docs/ARCHITECTURE.md](/home/code/EAT/docs/ARCHITECTURE.md) 和实际代码。
+
 在 `PRD v4.0` 之前，这组文档以 “v1.1 路线” 的方式存在；现在它们应被理解为：
 
 `同一产品线中的后续扩展阶段文档`

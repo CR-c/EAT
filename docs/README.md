@@ -20,6 +20,12 @@
 
 - [PRD.md](/home/code/EAT/docs/PRD.md)
 
+### 交付合同与历史实现说明
+
+- `docs/phase/` 与 `docs/v1.1/` 主要承担交付合同、状态机约束和设计背景说明，不应直接视为当前运行时代码结构。
+- 某些 phase 文档中的文件路径和实现备注仍保留了历史 Node / 原生前端落地痕迹；这些内容用于说明当时的交付切片，不代表当前前端运行时。
+- 当前实现真相优先参考仓库根 [README.md](/home/code/EAT/README.md)、[ARCHITECTURE.md](/home/code/EAT/docs/ARCHITECTURE.md) 与实际代码。
+
 ### 基础交付阶段 01-16
 
 - [phase/README.md](/home/code/EAT/docs/phase/README.md)
@@ -49,3 +55,4 @@
 - 产品定义冲突 → 以 [PRD.md](/home/code/EAT/docs/PRD.md) 为准
 - phase 与说明文档冲突 → 以 phase 文档为准
 - schema / repository / migration 描述冲突 → 以运行时 repository 和已落地 SQL migrations 为准
+- phase 文档中的历史实现路径与当前代码不一致时 → 以当前代码和 [ARCHITECTURE.md](/home/code/EAT/docs/ARCHITECTURE.md) 为准，同时保留 phase 合同语义

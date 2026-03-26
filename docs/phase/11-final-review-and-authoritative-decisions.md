@@ -46,13 +46,11 @@ Implement the task-level final review that converts advisory incremental signals
 
 ## Likely Touch Points
 
-- `src/repositories/task-repository.js`
-- `src/services/task-service.js`
-- review prompt / diff aggregation helpers under `src/services/`
-- `src/services/git-workspace-service.js` or adjacent git helpers for diff collection
-- `src/ui/app.js`
-- `src/ui/index.html`
-- `src/ui/app.css`
+- historical implementation: `src/repositories/task-repository.js`, `src/services/task-service.js`, `src/services/git-workspace-service.js`, `src/ui/*`
+- current runtime equivalents usually live under:
+  - `backend/internal/task/`
+  - `backend/internal/git/`
+  - `web/src/features/tasks/`
 - final-review integration tests
 
 ## API And Event Surface

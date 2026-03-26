@@ -2,13 +2,11 @@
   "name": "eat",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "build:ui": "cd web && pnpm build",
     "build:worker-image": "docker build -t eat/worker-base:latest -f docker/worker-base/Dockerfile .",
     "start": "cd backend && go run ./cmd/eat",
     "start:go": "cd backend && go run ./cmd/eat",
-    "start:node": "node src/server/index.js",
-    "test": "node --test"
+    "test": "cd backend && go test ./... && cd ../web && pnpm lint && pnpm build"
   }
 }

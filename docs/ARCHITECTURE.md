@@ -4,6 +4,13 @@
 
 这份文档解释仓库当前“已经实现的系统形态”。它不替代 `docs/PRD.md` 和 phase 文档；当实现说明与产品规范冲突时，以规范为准。
 
+当前默认运行时已经收敛为：
+
+- Go 后端
+- React + Vite 前端
+- SQLite 本地持久化
+- Docker sandboxed worker execution
+
 ## 一句话定义
 
 EAT 是一个本地优先、人工监督、以 Git 分支和 Docker 沙箱为执行边界的多 Agent 工程编排工作台。
@@ -132,7 +139,7 @@ EAT 是一个本地优先、人工监督、以 Git 分支和 Docker 沙箱为执
 - `CANCELLED`
 - `DISCARDED`
 
-代码中的状态枚举定义在 `src/repositories/task-repository.js`，说明文档和 UI 文案应继续复用这些名字。
+代码中的状态枚举当前以 Go 运行时实现为准，说明文档和 UI 文案应继续复用这些名字。
 
 ## 执行链路
 
@@ -244,47 +251,46 @@ Worker 结束后，子任务进入 `REVIEW_PENDING`。随后：
 
 ## 代码分层
 
-### `src/server/`
+### `backend/cmd/eat/`
 
-原生 HTTP 路由层，负责：
+Go 后端启动入口。
+
+### `backend/internal/api/`
+
+HTTP 路由层，负责：
 
 - 静态资源输出
 - JSON API
 - SSE 事件流
 - 错误码到 HTTP 响应的转换
 
-### `src/services/`
+### `backend/internal/task/`
 
-核心业务层，主要包括：
+任务生命周期、计划、执行、团队视图、运行看板、集成收口等核心业务逻辑。
 
-- `project-service.js`
-- `task-service.js`
-- `sandbox-manager.js`
-- `preview-service.js`
-- `metrics-service.js`
-- `repo-validation-service.js`
-- `git-workspace-service.js`
-- `task-templates.js`
+### `backend/internal/project/`
 
-### `src/repositories/`
+项目注册、仓库状态探测、偏好设置等项目域逻辑。
 
-SQLite 数据访问层。运行时直接使用 `node:sqlite`，并在启动时执行 `prisma/migrations/` 中的 SQL migration。
+### `backend/internal/store/`
 
-### `src/agents/`
+SQLite 打开、migration 应用和基础持久化能力。
+
+### `backend/internal/agent/`
 
 Agent contract、registry 与内置 adapter 定义。当前内置运行时中：
 
 - `codex-cli` 为真实运行时
 - `claude-cli` / `gemini-cli` 为 stub
 
-### `src/ui/`
+### `web/src/`
 
-原生 SPA 资源，包括：
+React 前端应用，包括：
 
-- `index.html`
-- `app.js`
-- `view-model.js`
-- Tailwind 构建产物 `app.css`
+- 页面路由
+- 布局与共享组件
+- API wrapper
+- 主题、偏好和视图状态
 
 ## API 面概览
 
@@ -294,16 +300,19 @@ Agent contract、registry 与内置 adapter 定义。当前内置运行时中：
 
 - `POST /api/projects`
 - `GET /api/projects`
-- `GET /api/projects/browse`
-- `GET /api/projects/:id`
-- `GET /api/projects/:id/repo-status`
-- `DELETE /api/projects/:id`
+- `GET /api/project-directories`
+- `GET /api/projects/{projectId}`
+- `DELETE /api/projects/{projectId}`
+- `GET /api/projects/{projectId}/repository-status`
+- `PUT /api/projects/{projectId}/preferences`
+- `GET /api/projects/{projectId}/tasks`
 
 ### Agent / 系统 / 指标
 
 - `GET /api/agents`
 - `GET /api/agents/health`
-- `GET /api/system/docker-health`
+- `GET /api/system/health`
+- `GET /api/system/docker`
 - `GET /api/system/sandbox-policy`
 - `GET /api/metrics/summary`
 - `GET /api/metrics/export`
@@ -312,46 +321,50 @@ Agent contract、registry 与内置 adapter 定义。当前内置运行时中：
 
 - `POST /api/tasks`
 - `POST /api/guided-tasks`
-- `GET /api/projects/:id/tasks`
-- `GET /api/tasks/:id`
-- `POST /api/tasks/:id/start-clarification`
-- `POST /api/tasks/:id/messages`
-- `POST /api/tasks/:id/confirm-requirements`
-- `PUT /api/tasks/:id/current-plan`
-- `POST /api/tasks/:id/plan-seed`
-- `POST /api/tasks/:id/approve-plan`
+- `GET /api/tasks/{taskId}`
+- `POST /api/tasks/{taskId}/clarification-sessions`
+- `POST /api/tasks/{taskId}/messages`
+- `DELETE /api/tasks/{taskId}/lead-sessions/current`
+- `POST /api/tasks/{taskId}/requirement-confirmations`
+- `PUT /api/tasks/{taskId}/plan`
+- `POST /api/tasks/{taskId}/plan-seeds`
+- `POST /api/tasks/{taskId}/plan-approvals`
+- `POST /api/tasks/{taskId}/replan-requests`
 
 ### 运行期控制
 
-- `GET /api/tasks/:id/events`
-- `GET /api/tasks/:id/team`
-- `GET /api/tasks/:id/board`
-- `POST /api/tasks/:id/mailbox`
-- `POST /api/tasks/:id/pause`
-- `POST /api/tasks/:id/resume`
-- `POST /api/tasks/:id/archive`
-- `POST /api/tasks/:id/unarchive`
-- `DELETE /api/tasks/:id`
+- `GET /api/tasks/{taskId}/events`
+- `GET /api/tasks/{taskId}/team`
+- `GET /api/tasks/{taskId}/board`
+- `GET /api/tasks/{taskId}/runtime`
+- `GET /api/tasks/{taskId}/diff`
+- `POST /api/tasks/{taskId}/mailbox-messages`
+- `POST /api/tasks/{taskId}/pauses`
+- `DELETE /api/tasks/{taskId}/pauses/current`
+- `POST /api/tasks/{taskId}/archives`
+- `DELETE /api/tasks/{taskId}/archives/current`
+- `DELETE /api/tasks/{taskId}`
+- `POST /api/tasks/{taskId}/plan-snapshot-restores`
 
 ### 子任务与集成
 
-- `POST /api/subtasks/:id/retry`
-- `POST /api/subtasks/:id/rework`
-- `POST /api/subtasks/:id/reassign`
-- `POST /api/subtasks/:id/change-agent`
-- `POST /api/subtasks/:id/cancel`
-- `POST /api/subtasks/:id/confirm-discard`
-- `POST /api/subtasks/:id/rebase-retry`
-- `POST /api/tasks/:id/integration-runs`
-- `POST /api/integration-runs/:id/retry`
-- `POST /api/integration-runs/:id/rollback`
-- `POST /api/integration-queue-items/:id/dequeue`
+- `POST /api/subtasks/{subTaskId}/retry-requests`
+- `POST /api/subtasks/{subTaskId}/rework-requests`
+- `POST /api/subtasks/{subTaskId}/reassignments`
+- `POST /api/subtasks/{subTaskId}/agent-changes`
+- `POST /api/subtasks/{subTaskId}/cancellations`
+- `POST /api/subtasks/{subTaskId}/discard-confirmations`
+- `POST /api/subtasks/{subTaskId}/rebase-retries`
+- `POST /api/tasks/{taskId}/integration-runs`
+- `POST /api/integration-runs/{integrationRunId}/retry-requests`
+- `POST /api/integration-runs/{integrationRunId}/rollback-requests`
+- `POST /api/integration-queue-items/{integrationQueueItemId}/dequeue-requests`
 
 ### 预览
 
-- `GET /api/tasks/:id/preview`
-- `POST /api/tasks/:id/preview/start`
-- `POST /api/tasks/:id/preview/stop`
+- `GET /api/tasks/{taskId}/preview`
+- `POST /api/tasks/{taskId}/preview-sessions`
+- `DELETE /api/tasks/{taskId}/preview-sessions/current`
 
 ## 持久化与运行时目录
 
@@ -364,18 +377,13 @@ Agent contract、registry 与内置 adapter 定义。当前内置运行时中：
 
 ## 测试覆盖
 
-测试目录按能力切分，典型文件包括：
+当前主路径的自动化校验主要包括：
 
-- `tests/project-api.test.js`
-- `tests/task-api.test.js`
-- `tests/clarification-flow.test.js`
-- `tests/worker-execution.test.js`
-- `tests/preview-api.test.js`
-- `tests/metrics-api.test.js`
-- `tests/system-api.test.js`
-- `tests/e2e-workspace-flow.test.js`
+- `cd backend && go test ./...`
+- `cd web && pnpm lint`
+- `cd web && pnpm build`
 
-这意味着仓库并不只是“文档先行”的原型，而是已经有一组围绕 API、服务和 UI 流程的自动化校验。
+历史 Node 测试目录已经移除，因此旧 `tests/*.js` 文件列表不再代表当前仓库状态。
 
 ## 文档关系
 

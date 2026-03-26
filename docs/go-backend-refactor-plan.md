@@ -5,7 +5,7 @@
 
 ## 概述
 
-将 Node.js 后端 (`src/server/` + `src/services/`) 完整迁移到 Go (`backend/`)。Go 后端现为默认运行入口，Node 保留为回滚路径。
+将 Node.js 后端 (`src/server/` + `src/services/`) 完整迁移到 Go (`backend/`)。Go 后端现为唯一运行入口，旧 Node 实现已从主分支移除。
 
 ## 迁移范围
 
@@ -40,16 +40,15 @@
 
 ```
 npm start        → Go 后端 (backend/cmd/eat)
-npm run start:node → Node 回滚入口
 ```
 
 默认监听 `127.0.0.1:3000`。
 
 ## 测试基线
 
-- `go test ./...` — 通过
-- `go test -race ./...` — 通过
-- `npm test` — 126/126 通过（Node 回归基线）
+- `go test ./...` — 当前主路径验证方式
+- `cd web && pnpm lint && pnpm build` — 当前前端验证方式
+- `npm test` — 根目录聚合验证入口
 
 ## 目录结构
 

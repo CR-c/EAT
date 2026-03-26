@@ -8,7 +8,7 @@ Close the loop on reliability and product feedback by making task/session metric
 
 - The repository already persists projects, tasks, plan snapshots, attachments, messages, sessions, and subtasks.
 - Later phases are expected to add append-only review history, merge history, and cleanup-warning persistence.
-- The current stack is a local Node server with SQLite-backed repositories and no external analytics pipeline.
+- The current stack is local-first with SQLite-backed repositories and no external analytics pipeline.
 - Metrics should therefore be derived from repository queries and exported locally.
 
 ## PRD Coverage
@@ -44,10 +44,12 @@ Close the loop on reliability and product feedback by making task/session metric
 
 ## Likely Touch Points
 
-- repository query modules under `src/repositories/`
-- `src/server/app.js`
-- a dedicated metrics service under `src/services/`
-- optional lightweight UI surface under `src/ui/`
+- historical implementation: `src/repositories/`, `src/server/app.js`, `src/services/`, optional `src/ui/`
+- current runtime equivalents usually live under:
+  - `backend/internal/metrics/`
+  - `backend/internal/api/`
+  - `backend/internal/store/`
+  - optional `web/src/features/system/`
 - metrics integration and seeded-history tests
 
 ## API And Event Surface

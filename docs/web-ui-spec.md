@@ -938,7 +938,7 @@ Accept: text/event-stream
 
 ## 十二、国际化
 
-系统支持中文和英文双语。当前 `view-model.js` 已包含完整的 `zh-CN` 和 `en` 翻译映射。
+系统支持中文和英文双语。当前主路径由 React 前端负责维护 `zh-CN` 和 `en` 翻译映射；`view-model.js` 属于历史实现。
 
 ### 关键翻译项
 

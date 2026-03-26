@@ -42,12 +42,11 @@ Finish the task lifecycle cleanly by attempting worktree cleanup on terminal sta
 
 ## Likely Touch Points
 
-- `src/services/task-service.js` or a dedicated cleanup service
-- `src/services/git-workspace-service.js`
-- `src/repositories/task-repository.js`
-- `src/ui/app.js`
-- `src/ui/index.html`
-- `src/ui/app.css`
+- historical implementation: `src/services/task-service.js`, `src/services/git-workspace-service.js`, `src/repositories/task-repository.js`, `src/ui/*`
+- current runtime equivalents usually live under:
+  - `backend/internal/task/`
+  - `backend/internal/git/`
+  - `web/src/features/tasks/`
 - cleanup-focused tests
 
 ## API And Event Surface
