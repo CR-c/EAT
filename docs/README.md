@@ -39,6 +39,7 @@
 
 - [ARCHITECTURE.md](/home/code/EAT/docs/ARCHITECTURE.md)
 - [GO-DEVELOPMENT-CONVENTIONS.md](/home/code/EAT/docs/GO-DEVELOPMENT-CONVENTIONS.md)
+- [GO-CONVENTIONS-GAP-CHECK.md](/home/code/EAT/docs/GO-CONVENTIONS-GAP-CHECK.md)
 - [EAT-user-guide.md](/home/code/EAT/docs/EAT-user-guide.md)
 - [go-backend-refactor-plan.md](/home/code/EAT/docs/go-backend-refactor-plan.md) — Go 迁移完成记录
 
