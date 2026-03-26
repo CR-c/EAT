@@ -174,7 +174,7 @@ func TestTaskTeamBoardAndMailboxEndpointsReturnPersistedReadModels(t *testing.T)
 func containsNodeWithInbox(nodes []any, subTaskID string, inboxCount float64) bool {
 	for _, entry := range nodes {
 		node := entry.(map[string]any)
-		if node["subtaskId"] == subTaskID && node["mailboxInboxCount"].(float64) == inboxCount {
+		if node["subTaskId"] == subTaskID && node["mailboxInboxCount"].(float64) == inboxCount {
 			return true
 		}
 	}

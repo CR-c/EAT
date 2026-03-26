@@ -192,8 +192,8 @@ func TestApprovePlanEndpointPublishesSubTaskAssignmentEvents(t *testing.T) {
 	if sessionStartedPayload["taskId"] != "task-approve-events" || sessionStartedPayload["sessionType"] != "WORKER" || sessionStartedPayload["status"] != "PENDING" {
 		t.Fatalf("unexpected session started payload: %#v", sessionStartedPayload)
 	}
-	if sessionStartedPayload["subtaskId"] == nil {
-		t.Fatalf("expected worker session payload to include subtaskId: %#v", sessionStartedPayload)
+	if sessionStartedPayload["subTaskId"] == nil {
+		t.Fatalf("expected worker session payload to include subTaskId: %#v", sessionStartedPayload)
 	}
 
 	teamUpdatedEvent := mustReadEvent(t, events)

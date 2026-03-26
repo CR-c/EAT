@@ -38,13 +38,13 @@ type TaskRepository interface {
 
 // Minimal record types the orchestrator needs.
 type TaskRecord struct {
-	ID              string
-	ProjectID       string
-	Title           string
-	Status          string
-	BaseCommitSha   string
-	BaseBranch      string
-	TaskBranchName  string
+	ID             string
+	ProjectID      string
+	Title          string
+	Status         string
+	BaseCommitSha  string
+	BaseBranch     string
+	TaskBranchName string
 }
 
 type SubTaskRecord struct {
@@ -139,14 +139,14 @@ type Orchestrator struct {
 
 func New(repo TaskRepository, agents *agent.Service, sbx *sandbox.Manager, bus *eventbus.Bus) *Orchestrator {
 	return &Orchestrator{
-		repo:          repo,
-		agents:        agents,
-		sandbox:       sbx,
-		eventBus:      bus,
-		workers:       make(map[string]*WorkerHandle),
-		stopCh:        make(chan struct{}),
-		reviewEngine:  &ReviewEngine{},
-		mergeEngine:   &MergeEngine{},
+		repo:         repo,
+		agents:       agents,
+		sandbox:      sbx,
+		eventBus:     bus,
+		workers:      make(map[string]*WorkerHandle),
+		stopCh:       make(chan struct{}),
+		reviewEngine: &ReviewEngine{},
+		mergeEngine:  &MergeEngine{},
 	}
 }
 
@@ -297,14 +297,14 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 
 	// Publish events
 	o.publish(task.ID, "subtask:status", map[string]any{
-		"subtaskId": subTask.ID,
+		"subTaskId": subTask.ID,
 		"status":    "RUNNING",
 		"taskId":    task.ID,
 	})
 	o.publish(task.ID, "session:started", map[string]any{
 		"sessionId":   runtime.SessionID,
 		"containerId": runtime.ContainerID,
-		"subtaskId":   subTask.ID,
+		"subTaskId":   subTask.ID,
 		"taskId":      task.ID,
 	})
 
@@ -315,7 +315,7 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 		o.publish(task.ID, "session:output", map[string]any{
 			"chunk":     chunk,
 			"sessionId": runtime.SessionID,
-			"subtaskId": subTask.ID,
+			"subTaskId": subTask.ID,
 			"taskId":    task.ID,
 		})
 	})
@@ -360,8 +360,8 @@ func (o *Orchestrator) handleWorkerExit(ctx context.Context, taskID, subTaskID, 
 		exitCodePtr = nil
 	}
 	_ = o.repo.UpdateSession(ctx, sessionID, UpdateSessionInput{
-		Status:  sessionStatus,
-		EndedAt: endedAt,
+		Status:   sessionStatus,
+		EndedAt:  endedAt,
 		ExitCode: exitCodePtr,
 	})
 	_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{
@@ -373,11 +373,11 @@ func (o *Orchestrator) handleWorkerExit(ctx context.Context, taskID, subTaskID, 
 		"sessionId": sessionID,
 		"exitCode":  exitCode,
 		"status":    sessionStatus,
-		"subtaskId": subTaskID,
+		"subTaskId": subTaskID,
 		"taskId":    taskID,
 	})
 	o.publish(taskID, "subtask:status", map[string]any{
-		"subtaskId": subTaskID,
+		"subTaskId": subTaskID,
 		"status":    subTaskStatus,
 		"taskId":    taskID,
 	})
@@ -426,7 +426,7 @@ func (o *Orchestrator) progressDependencySchedule(ctx context.Context, taskID st
 		}
 		_ = o.repo.UpdateSubTask(ctx, st.ID, UpdateSubTaskInput{Status: "PENDING"})
 		o.publish(taskID, "subtask:status", map[string]any{
-			"subtaskId": st.ID,
+			"subTaskId": st.ID,
 			"status":    "PENDING",
 			"taskId":    taskID,
 		})
@@ -450,7 +450,7 @@ func (o *Orchestrator) failSubTaskLaunch(ctx context.Context, task *TaskRecord, 
 		Content:   fmt.Sprintf("Worker launch failed: %s", message),
 	})
 	o.publish(task.ID, "subtask:status", map[string]any{
-		"subtaskId": subTask.ID,
+		"subTaskId": subTask.ID,
 		"status":    "FAILED",
 		"taskId":    task.ID,
 	})
@@ -532,7 +532,7 @@ func (o *Orchestrator) killAndRetryWorker(ctx context.Context, h *WorkerHandle, 
 
 	o.publish(h.TaskID, "watchdog:timeout", map[string]any{
 		"reason":    reason,
-		"subtaskId": h.SubTaskID,
+		"subTaskId": h.SubTaskID,
 		"taskId":    h.TaskID,
 	})
 
@@ -541,7 +541,7 @@ func (o *Orchestrator) killAndRetryWorker(ctx context.Context, h *WorkerHandle, 
 	if err == nil && claimed {
 		_ = o.repo.UpdateSubTask(ctx, h.SubTaskID, UpdateSubTaskInput{Status: "PENDING"})
 		o.publish(h.TaskID, "subtask:status", map[string]any{
-			"subtaskId": h.SubTaskID,
+			"subTaskId": h.SubTaskID,
 			"status":    "PENDING",
 			"taskId":    h.TaskID,
 		})
@@ -553,7 +553,7 @@ func (o *Orchestrator) killAndRetryWorker(ctx context.Context, h *WorkerHandle, 
 			LastError: &errMsg,
 		})
 		o.publish(h.TaskID, "subtask:status", map[string]any{
-			"subtaskId": h.SubTaskID,
+			"subTaskId": h.SubTaskID,
 			"status":    "FAILED",
 			"taskId":    h.TaskID,
 		})
@@ -692,7 +692,7 @@ func (o *Orchestrator) syncSubTaskIntoMainline(ctx context.Context, taskID, subT
 	if git.BranchMergedInto(ctx, repoPath, subTask.BranchName, taskBranch) {
 		_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{Status: "MERGED"})
 		o.publish(taskID, "subtask:status", map[string]any{
-			"subtaskId": subTaskID,
+			"subTaskId": subTaskID,
 			"status":    "MERGED",
 			"taskId":    taskID,
 		})
@@ -719,7 +719,7 @@ func (o *Orchestrator) syncSubTaskIntoMainline(ctx context.Context, taskID, subT
 			LastError: &errMsg,
 		})
 		o.publish(taskID, "subtask:status", map[string]any{
-			"subtaskId": subTaskID,
+			"subTaskId": subTaskID,
 			"status":    "FAILED",
 			"taskId":    taskID,
 		})
@@ -729,13 +729,13 @@ func (o *Orchestrator) syncSubTaskIntoMainline(ctx context.Context, taskID, subT
 	// Mark as merged
 	_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{Status: "MERGED"})
 	o.publish(taskID, "subtask:status", map[string]any{
-		"subtaskId": subTaskID,
+		"subTaskId": subTaskID,
 		"status":    "MERGED",
 		"taskId":    taskID,
 	})
 	o.publish(taskID, "task:mainline-updated", map[string]any{
 		"taskId":    taskID,
-		"subtaskId": subTaskID,
+		"subTaskId": subTaskID,
 		"branch":    subTask.BranchName,
 	})
 }

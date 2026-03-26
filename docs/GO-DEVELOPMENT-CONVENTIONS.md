@@ -126,6 +126,48 @@ EAT 当前后端应优先使用以下形态：
 
 不要为了“分层漂亮”把一个很小的功能拆成过多包。
 
+### 5. 大业务包的落地模式
+
+当一个 bounded context 已经承担多个稳定子职责时，默认先在包内拆文件，而不是先拆包。
+
+例如 `internal/task` 可以在保持单包的前提下，按下面结构组织：
+
+- 核心定义
+  - `service.go`
+  - `task_constants.go`
+  - `task_error_codes.go`
+- 生命周期 / 计划 / 子任务 / 集成 / mailbox
+  - `task_lifecycle_service.go`
+  - `task_plan_service.go`
+  - `task_subtask_service.go`
+  - `task_integration_service.go`
+  - `task_mailbox_service.go`
+- 查询与视图
+  - `task_query_service.go`
+  - `task_team_view.go`
+  - `task_board_view.go`
+  - `task_runtime_view.go`
+  - `task_view_helpers.go`
+- 数据访问
+  - `task_repository.go`
+  - `subtask_repository.go`
+  - `session_repository.go`
+  - `mailbox_repository.go`
+  - `integration_repository.go`
+- 类型
+  - `task_lifecycle_types.go`
+  - `task_plan_types.go`
+  - `task_query_types.go`
+  - `task_mailbox_types.go`
+  - `task_subtask_types.go`
+  - `task_integration_types.go`
+
+默认优先级：
+
+1. 先保留单包
+2. 在包内按职责拆文件
+3. 只有当依赖方向、初始化边界、测试边界都已经稳定，且单包维护成本明显升高时，再考虑拆成多个包
+
 ## 二、包与命名规范
 
 ### 1. 包名
@@ -145,6 +187,40 @@ EAT 当前后端应优先使用以下形态：
   - `errors.go`
   - `preview_service.go`
 - 测试文件和被测文件保持邻近。
+
+当单个业务包规模增大时，允许继续按职责拆成多文件，但不要拆成无边界的碎片。默认优先按这些稳定职责拆：
+
+- 核心骨架
+  - `service.go`
+  - `constants.go`
+  - `error_codes.go`
+- use case 编排
+  - `task_plan_service.go`
+  - `task_lifecycle_service.go`
+  - `task_mailbox_service.go`
+- 查询与视图
+  - `task_query_service.go`
+  - `task_team_view.go`
+  - `task_board_view.go`
+  - `task_runtime_view.go`
+- 数据访问
+  - `task_repository.go`
+  - `subtask_repository.go`
+  - `session_repository.go`
+- 类型定义
+  - `task_plan_types.go`
+  - `task_lifecycle_types.go`
+  - `task_query_types.go`
+- 共享支持
+  - `task_support.go`
+  - `task_events.go`
+
+拆分原则：
+
+- 按 use case、查询视图、repository、types 这类稳定边界聚合
+- 不按“一个函数一个文件”拆
+- 共享 helper 只放真正跨多个文件复用、且语义稳定的函数
+- 当拆分后依然属于同一业务域时，优先保持单包，不急于拆成多个子包
 
 ### 3. 类型命名
 
