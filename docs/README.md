@@ -11,7 +11,8 @@
 3. [phase/README.md](/home/code/EAT/docs/phase/README.md)
 4. [v1.1/README.md](/home/code/EAT/docs/v1.1/README.md)
 5. [ARCHITECTURE.md](/home/code/EAT/docs/ARCHITECTURE.md)
-6. [EAT-user-guide.md](/home/code/EAT/docs/EAT-user-guide.md)
+6. [GO-DEVELOPMENT-CONVENTIONS.md](/home/code/EAT/docs/GO-DEVELOPMENT-CONVENTIONS.md)
+7. [EAT-user-guide.md](/home/code/EAT/docs/EAT-user-guide.md)
 
 ## 文档分层
 
@@ -37,6 +38,7 @@
 ### 实现与运维
 
 - [ARCHITECTURE.md](/home/code/EAT/docs/ARCHITECTURE.md)
+- [GO-DEVELOPMENT-CONVENTIONS.md](/home/code/EAT/docs/GO-DEVELOPMENT-CONVENTIONS.md)
 - [EAT-user-guide.md](/home/code/EAT/docs/EAT-user-guide.md)
 - [go-backend-refactor-plan.md](/home/code/EAT/docs/go-backend-refactor-plan.md) — Go 迁移完成记录
 
