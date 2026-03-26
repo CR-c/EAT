@@ -6,6 +6,7 @@ import { deleteProject, getProjectRepoStatus, listProjectTasks, listProjects, up
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme, getProjectColor } from "@/lib/pilot-theme"
+import { formatTokenAmount, sortUsedTokenEntries } from "@/lib/token-display"
 import { cn } from "@/lib/utils"
 import { RegisterProjectDialog } from "@/features/projects/components/register-project-dialog"
 import { UnregisterProjectDialog } from "@/features/projects/components/unregister-project-dialog"
@@ -27,8 +28,11 @@ function TokenUsageBadges({
   isRei: boolean
   tokens?: Record<string, number> | null
 }) {
-  const entries = tokens ? Object.entries(tokens) : []
-  const items: Array<[string, number]> = entries.length > 0 ? entries : [["codex-cli", 0]]
+  const items = sortUsedTokenEntries(tokens)
+
+  if (items.length === 0) {
+    return null
+  }
 
   return (
     <div className="mt-3 flex flex-wrap gap-2">
@@ -48,16 +52,6 @@ function TokenUsageBadges({
       ))}
     </div>
   )
-}
-
-function formatTokenAmount(amount: number) {
-  if (amount >= 1_000_000) {
-    return `${(amount / 1_000_000).toFixed(amount >= 10_000_000 ? 0 : 1)}m`
-  }
-  if (amount >= 1_000) {
-    return `${(amount / 1_000).toFixed(amount >= 10_000 ? 0 : 1)}k`
-  }
-  return String(amount)
 }
 
 export function ProjectsPage() {

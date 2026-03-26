@@ -7,6 +7,7 @@ import { archiveTask, deleteTask, pauseTask, resumeTask } from "@/lib/api/tasks"
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme } from "@/lib/pilot-theme"
+import { formatTokenAmount, sortUsedTokenEntries } from "@/lib/token-display"
 import { cn } from "@/lib/utils"
 import { TaskActionDialog } from "@/features/tasks/components/task-action-dialog"
 import { isTaskArchived, isTaskOperational } from "@/lib/task-view"
@@ -240,8 +241,11 @@ function TokenUsageBadges({
   isRei: boolean
   tokens?: Record<string, number> | null
 }) {
-  const entries = tokens ? Object.entries(tokens) : []
-  const items: Array<[string, number]> = entries.length > 0 ? entries : [["codex-cli", 0]]
+  const items = sortUsedTokenEntries(tokens)
+
+  if (items.length === 0) {
+    return null
+  }
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -261,16 +265,6 @@ function TokenUsageBadges({
       ))}
     </div>
   )
-}
-
-function formatTokenAmount(amount: number) {
-  if (amount >= 1_000_000) {
-    return `${(amount / 1_000_000).toFixed(amount >= 10_000_000 ? 0 : 1)}m`
-  }
-  if (amount >= 1_000) {
-    return `${(amount / 1_000).toFixed(amount >= 10_000 ? 0 : 1)}k`
-  }
-  return String(amount)
 }
 
 function getTaskProgress(status: string) {

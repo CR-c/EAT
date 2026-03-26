@@ -16,6 +16,7 @@ import { listProjects, listProjectTasks } from "@/lib/api/projects"
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme } from "@/lib/pilot-theme"
+import { formatTokenAmount } from "@/lib/token-display"
 import { cn } from "@/lib/utils"
 
 export function ConsolePage() {
@@ -266,16 +267,6 @@ function MetricPanel({
       <div className={cn("font-mono text-4xl font-black tracking-wider", accent)}>{value}</div>
     </div>
   )
-}
-
-function formatTokenAmount(amount: number) {
-  if (amount >= 1_000_000) {
-    return `${(amount / 1_000_000).toFixed(amount >= 10_000_000 ? 0 : 1)}m`
-  }
-  if (amount >= 1_000) {
-    return `${(amount / 1_000).toFixed(amount >= 10_000 ? 0 : 1)}k`
-  }
-  return String(amount)
 }
 
 function TaskStatus({
