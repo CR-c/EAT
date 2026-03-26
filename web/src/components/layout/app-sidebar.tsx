@@ -63,10 +63,9 @@ export function AppSidebar() {
   useEffect(() => subscribeProjectRegistryChanged(projects.reload), [projects.reload])
 
   const pinnedProjects = useMemo(() => {
-    const explicitPinned = allProjects
+    return allProjects
       .filter((project) => project.isPinned)
       .sort((left, right) => (left.pinnedOrder ?? Number.MAX_SAFE_INTEGER) - (right.pinnedOrder ?? Number.MAX_SAFE_INTEGER))
-    return explicitPinned.length > 0 ? explicitPinned : allProjects.slice(0, 3)
   }, [allProjects])
 
   function handleProjectsTrigger() {

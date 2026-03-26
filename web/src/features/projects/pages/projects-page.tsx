@@ -94,6 +94,7 @@ export function ProjectsPage() {
   )
 
   async function handleTogglePin(project: ProjectRecord) {
+    const nextPinned = !project.isPinned
     const nextPinnedOrder = project.isPinned
       ? null
       : Math.max(
@@ -103,9 +104,24 @@ export function ProjectsPage() {
             .map((item) => item.project.pinnedOrder ?? 0)),
         ) + 1
 
+    resource.setData((current) =>
+      current?.map((item) =>
+        item.project.id === project.id
+          ? {
+              ...item,
+              project: {
+                ...item.project,
+                isPinned: nextPinned,
+                pinnedOrder: nextPinnedOrder,
+              },
+            }
+          : item,
+      ),
+    )
+
     await updateProjectPreferences(project.id, {
       color: project.color ?? getProjectColor(project.id),
-      isPinned: !project.isPinned,
+      isPinned: nextPinned,
       pinnedOrder: nextPinnedOrder,
     })
     emitProjectRegistryChanged()
