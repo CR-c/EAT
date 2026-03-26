@@ -1,16 +1,16 @@
-import { LoaderCircle } from "lucide-react"
+import { AlertTriangle, LoaderCircle, XCircle } from "lucide-react"
 import { useState } from "react"
 
-import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { usePreferences } from "@/lib/preferences"
+import { getPilotTheme } from "@/lib/pilot-theme"
+import { cn } from "@/lib/utils"
 
 interface UnregisterProjectDialogProps {
   open: boolean
@@ -27,7 +27,8 @@ export function UnregisterProjectDialog({
   projectName,
   taskCount,
 }: UnregisterProjectDialogProps) {
-  const { t } = usePreferences()
+  const { pilot } = usePreferences()
+  const theme = getPilotTheme(pilot)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const blocked = taskCount > 0
@@ -47,34 +48,71 @@ export function UnregisterProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t("unregisterProject")}</DialogTitle>
-          <DialogDescription>
-            {projectName} · {t("unregisterProjectHint")}
-          </DialogDescription>
+      <DialogContent className={cn("max-w-md rounded-sm border p-6", theme.modalBox)}>
+        <div
+          className="pointer-events-none absolute inset-0 opacity-10"
+          style={{ backgroundImage: theme.grid, backgroundSize: "20px 20px" }}
+        />
+        <DialogHeader className="relative z-10">
+          <div className="flex items-start">
+            <div className={cn("mr-4 rounded-full border p-3", blocked ? "border-red-500/30 bg-red-500/10" : "border-orange-500/30 bg-orange-500/10")}>
+              {blocked ? <XCircle className="h-6 w-6 text-red-500" /> : <AlertTriangle className="h-6 w-6 text-orange-500" />}
+            </div>
+            <div>
+              <DialogTitle className={cn("mb-1 text-lg font-bold tracking-wider", blocked ? "text-red-500" : theme.modalTitle)}>
+                {blocked ? "操作被拦截：存在活跃任务" : "确认移除项目注册？"}
+              </DialogTitle>
+              <p className={cn("mt-2 font-mono text-sm leading-relaxed", theme.cardSub)}>
+                {blocked ? (
+                  <>
+                    目标项目 <span className="font-bold text-slate-300">[{projectName}]</span> 当前仍有{" "}
+                    <span className="font-bold text-red-500">{taskCount}</span> 个活跃任务正在执行中。
+                    <br />
+                    <br />
+                    <span className="text-red-400">请先结束执行中的任务树，再尝试取消注册。</span>
+                  </>
+                ) : (
+                  <>
+                    即将移除对项目 <span className="font-bold text-slate-300">[{projectName}]</span> 的接管。
+                    <br />
+                    <br />
+                    <span className={cn("inline-block rounded-sm border px-2 py-1", theme.pathBg)}>
+                      此操作仅去除 EAT 注册记录，不会删除本地仓库。
+                    </span>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
         </DialogHeader>
 
-        <div className="rounded-[1.4rem] border border-white/40 bg-white/50 p-4 text-sm dark:border-white/10 dark:bg-white/6">
-          {blocked ? t("unregisterProjectBlocked") : t("unregisterProjectHint")}
-        </div>
+        {error ? <div className="relative z-10 font-mono text-sm text-red-500">{error}</div> : null}
 
-        {blocked ? (
-          <div className="rounded-[1.3rem] border border-red-400/25 bg-red-400/8 p-4 text-sm text-red-700 dark:text-red-200">
-            Active execution task trees: {taskCount}
-          </div>
-        ) : null}
-
-        {error ? <div className="text-sm text-red-600 dark:text-red-300">{error}</div> : null}
-
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            {t("cancel")}
-          </Button>
-          <Button disabled={blocked || isSubmitting} variant="destructive" onClick={handleConfirm}>
-            {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-            {t("confirm")}
-          </Button>
+        <DialogFooter className="relative z-10">
+          {blocked ? (
+            <button
+              className="rounded-sm border border-red-500/50 bg-red-500/10 px-4 py-2 font-mono text-sm text-red-500 transition-colors hover:bg-red-500 hover:text-white"
+              onClick={() => onOpenChange(false)}
+              type="button"
+            >
+              收到 (ACKNOWLEDGE)
+            </button>
+          ) : (
+            <>
+              <button className={cn("rounded-sm border px-4 py-2 font-mono text-sm transition-colors", theme.btnGhost)} onClick={() => onOpenChange(false)} type="button">
+                取消 (CANCEL)
+              </button>
+              <button
+                className="flex items-center rounded-sm border border-red-500/50 bg-red-500/10 px-4 py-2 font-mono text-sm text-red-500 transition-colors hover:bg-red-500 hover:text-white"
+                disabled={isSubmitting}
+                onClick={handleConfirm}
+                type="button"
+              >
+                {isSubmitting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
+                确认移除
+              </button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
