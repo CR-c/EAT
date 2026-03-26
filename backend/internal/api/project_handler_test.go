@@ -108,6 +108,60 @@ func TestProjectBrowseEndpoint(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("unexpected entries length: %d", len(entries))
 	}
+
+	repoRequest := httptest.NewRequest(http.MethodGet, "/api/project-directories?path="+filepath.Join(tempDir, "browse-repo"), nil)
+	repoResponse := httptest.NewRecorder()
+	router.ServeHTTP(repoResponse, repoRequest)
+	if repoResponse.Code != http.StatusOK {
+		t.Fatalf("unexpected repo browse status: %d body=%s", repoResponse.Code, repoResponse.Body.String())
+	}
+
+	var repoPayload map[string]any
+	if err := json.Unmarshal(repoResponse.Body.Bytes(), &repoPayload); err != nil {
+		t.Fatalf("decode repo browse response: %v", err)
+	}
+	if repoPayload["isGitRepository"] != true {
+		t.Fatalf("expected git repository payload, got %#v", repoPayload["isGitRepository"])
+	}
+	if repoPayload["repoStatus"] == nil {
+		t.Fatalf("expected repoStatus for git repository browse payload")
+	}
+}
+
+func TestProjectRegisterEndpointAcceptsSelectedDefaultBranch(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	repoPath := createGitRepository(t, tempDir, "branch-register-repo", "main")
+	runGit(t, repoPath, "checkout", "-b", "feature/dialog")
+	runGit(t, repoPath, "checkout", "main")
+
+	router := NewRouter(NewHandler(Dependencies{
+		DB:  db,
+		Bus: eventbus.New(),
+	}))
+
+	registerResponse := performJSONRequest(router, http.MethodPost, "/api/projects", map[string]any{
+		"path":          repoPath,
+		"defaultBranch": "feature/dialog",
+	})
+	if registerResponse.Code != http.StatusCreated {
+		t.Fatalf("unexpected register status: %d body=%s", registerResponse.Code, registerResponse.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(registerResponse.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode register response: %v", err)
+	}
+	projectPayload := payload["project"].(map[string]any)
+	if projectPayload["defaultBranch"] != "feature/dialog" {
+		t.Fatalf("unexpected defaultBranch: %#v", projectPayload["defaultBranch"])
+	}
 }
 
 func TestProjectDeleteEndpointRemovesProjectWithoutTasks(t *testing.T) {

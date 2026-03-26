@@ -44,6 +44,7 @@ export interface BrowseResult {
   entries: DirectoryEntry[]
   isGitRepository: boolean
   parentPath?: string | null
+  repoStatus?: RepoStatus
   roots: DirectoryRoot[]
 }
 
@@ -396,6 +397,7 @@ export interface MetricsSummaryResponse {
 export interface CreateProjectInput {
   path: string
   color?: string
+  defaultBranch?: string
   isPinned?: boolean
   pinnedOrder?: number | null
 }

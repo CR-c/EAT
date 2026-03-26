@@ -25,6 +25,7 @@ const (
 	ErrorCodePathNotDirectory         = "PATH_NOT_DIRECTORY"
 	ErrorCodeNotGitRepository         = "NOT_GIT_REPOSITORY"
 	ErrorCodeBareGitRepository        = "BARE_GIT_REPOSITORY"
+	ErrorCodeSelectedBranchNotFound   = "SELECTED_BRANCH_NOT_FOUND"
 )
 
 const defaultDirectoryEntryLimit = 200
@@ -41,10 +42,11 @@ type Service struct {
 }
 
 type RegisterInput struct {
-	Path        string `json:"path"`
-	Color       string `json:"color"`
-	IsPinned    bool   `json:"isPinned"`
-	PinnedOrder *int64 `json:"pinnedOrder"`
+	Path          string `json:"path"`
+	Color         string `json:"color"`
+	DefaultBranch string `json:"defaultBranch"`
+	IsPinned      bool   `json:"isPinned"`
+	PinnedOrder   *int64 `json:"pinnedOrder"`
 }
 
 type UpdateProjectPreferencesInput struct {
@@ -77,6 +79,7 @@ type BrowseResult struct {
 	Entries         []DirectoryEntry `json:"entries"`
 	IsGitRepository bool             `json:"isGitRepository"`
 	ParentPath      *string          `json:"parentPath"`
+	RepoStatus      *RepoStatus      `json:"repoStatus,omitempty"`
 	Roots           []DirectoryRoot  `json:"roots"`
 }
 
@@ -113,6 +116,16 @@ func (s *Service) RegisterProject(ctx context.Context, input RegisterInput) (*Pr
 	defaultBranch := ""
 	if repoStatus.DefaultBranch != nil {
 		defaultBranch = *repoStatus.DefaultBranch
+	}
+	if requestedBranch := strings.TrimSpace(input.DefaultBranch); requestedBranch != "" {
+		if !git.BranchExists(ctx, canonicalPath, requestedBranch) {
+			return nil, nil, failure(
+				ErrorCodeSelectedBranchNotFound,
+				"Selected branch does not exist in the repository.",
+				map[string]any{"branch": requestedBranch, "path": canonicalPath},
+			)
+		}
+		defaultBranch = requestedBranch
 	}
 
 	projectRecord, err := s.repository.CreateProject(ctx, CreateProjectRecordInput{
@@ -306,6 +319,12 @@ func (s *Service) BrowseDirectories(ctx context.Context, requestedPath string, i
 		parentPath = &parent
 	}
 
+	isGitRepository := hasGitMarker(currentPath)
+	var repoStatus *RepoStatus
+	if isGitRepository {
+		repoStatus, _ = probeRepositoryStatus(ctx, currentPath)
+	}
+
 	roots, err := buildDirectoryRoots()
 	if err != nil {
 		return nil, failure("ROOT_DISCOVERY_FAILED", err.Error(), nil)
@@ -314,8 +333,9 @@ func (s *Service) BrowseDirectories(ctx context.Context, requestedPath string, i
 	return &BrowseResult{
 		CurrentPath:     currentPath,
 		Entries:         directories,
-		IsGitRepository: hasGitMarker(currentPath),
+		IsGitRepository: isGitRepository,
 		ParentPath:      parentPath,
+		RepoStatus:      repoStatus,
 		Roots:           roots,
 	}, nil
 }
