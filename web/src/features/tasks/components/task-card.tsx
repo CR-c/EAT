@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { usePreferences } from "@/lib/preferences"
 import { getTaskProgress } from "@/lib/task-view"
 import type { TaskRecord } from "@/lib/types"
 import { TaskStatusBadge } from "@/features/tasks/components/task-status-badge"
@@ -16,6 +17,8 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ onAction, projectId, task }: TaskCardProps) {
+  const { t } = usePreferences()
+
   return (
     <Card className="h-full transition-transform hover:-translate-y-1">
       <CardHeader className="gap-4">
@@ -35,14 +38,14 @@ export function TaskCard({ onAction, projectId, task }: TaskCardProps) {
         <div className="rounded-[1.4rem] border border-white/40 bg-white/55 p-4 text-sm dark:border-white/10 dark:bg-white/6">
           <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.25em] text-muted-foreground">
             <span>{task.baseBranch}</span>
-            <span>{task.taskBranchName ?? "No branch yet"}</span>
+            <span>{task.taskBranchName ?? t("common.autoBranch")}</span>
           </div>
           <Progress value={getTaskProgress(task)} />
         </div>
 
         <div className="mt-auto flex items-center justify-between">
           <Button asChild variant="secondary">
-            <Link to={`/projects/${projectId}/workbench?taskId=${task.id}`}>Open</Link>
+            <Link to={`/projects/${projectId}/workbench?taskId=${task.id}`}>{t("common.open")}</Link>
           </Button>
 
           <div className="flex items-center gap-1">
@@ -56,7 +59,7 @@ export function TaskCard({ onAction, projectId, task }: TaskCardProps) {
                   {task.status === "PAUSED" ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{task.status === "PAUSED" ? "Resume" : "Pause"}</TooltipContent>
+              <TooltipContent>{task.status === "PAUSED" ? t("common.resume") : t("common.pause")}</TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -65,7 +68,7 @@ export function TaskCard({ onAction, projectId, task }: TaskCardProps) {
                   <Archive className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Archive</TooltipContent>
+              <TooltipContent>{t("task.action.archive.confirm")}</TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -74,7 +77,7 @@ export function TaskCard({ onAction, projectId, task }: TaskCardProps) {
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Delete</TooltipContent>
+              <TooltipContent>{t("common.delete")}</TooltipContent>
             </Tooltip>
           </div>
         </div>

@@ -35,7 +35,7 @@ export function ProjectCard({ activeTaskCount, onUnregister, project, repoStatus
 
           <div className="flex items-center gap-2">
             <Badge variant={dirty ? "destructive" : "secondary"}>
-              {dirty ? "Dirty" : "Clean"}
+              {dirty ? t("projects.uncommitted") : t("projects.synced")}
             </Badge>
             <Button size="icon" variant="ghost" onClick={() => onUnregister(project)}>
               <Trash2 className="h-4 w-4" />
@@ -47,32 +47,32 @@ export function ProjectCard({ activeTaskCount, onUnregister, project, repoStatus
       <CardContent className="flex h-full flex-col gap-5">
         <div className="rounded-[1.4rem] border border-white/40 bg-white/55 p-4 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/6">
           <div className="mb-2 text-xs uppercase tracking-[0.25em] text-cyan-700/75 dark:text-cyan-200/80">
-            {t("path")}
+            {t("common.path")}
           </div>
           <div className="break-all text-foreground/85">{project.path}</div>
         </div>
 
         <div className="flex items-center justify-between gap-3 text-sm">
           <div>
-            <div className="text-xs uppercase tracking-[0.25em] text-muted-foreground">{t("baseBranch")}</div>
+            <div className="text-xs uppercase tracking-[0.25em] text-muted-foreground">{t("common.baseBranch")}</div>
             <div className="mt-1 font-medium">{project.defaultBranch || repoStatus?.defaultBranch || "—"}</div>
           </div>
           <div className="flex flex-col items-end gap-2">
             <Badge variant="outline">
-              {t("activeTasks")}: {activeTaskCount}
+              {t("common.activeTasks")}: {activeTaskCount}
             </Badge>
-            <span className="text-xs text-muted-foreground">All tasks: {totalTaskCount}</span>
+            <span className="text-xs text-muted-foreground">{t("common.allTasks")}: {totalTaskCount}</span>
           </div>
         </div>
 
         <Button asChild className="mt-auto rounded-[1.4rem]">
-          <Link to={`/projects/${project.id}/tasks`}>Open Project</Link>
+          <Link to={`/projects/${project.id}/tasks`}>{t("common.open")}</Link>
         </Button>
 
         {repoStatus?.recentBranches?.length ? (
           <div className="rounded-[1.4rem] border border-white/40 bg-white/45 p-4 dark:border-white/10 dark:bg-white/6">
             <div className="mb-3 text-xs uppercase tracking-[0.25em] text-muted-foreground">
-              Recent Branches
+              {t("common.branch")}
             </div>
             <div className="flex flex-wrap gap-2">
               {repoStatus.recentBranches.slice(0, 4).map((branch) => (
@@ -85,7 +85,7 @@ export function ProjectCard({ activeTaskCount, onUnregister, project, repoStatus
         ) : (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <AlertTriangle className="h-4 w-4" />
-            <span>No recent branch metadata.</span>
+            <span>{t("common.noData")}</span>
           </div>
         )}
       </CardContent>

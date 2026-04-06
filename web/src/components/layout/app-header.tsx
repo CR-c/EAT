@@ -13,7 +13,7 @@ export function AppHeader() {
   const location = useLocation()
   const { projectId } = useParams()
   const [searchParams] = useSearchParams()
-  const { locale, pilot, setLocale } = usePreferences()
+  const { locale, pilot, setLocale, t } = usePreferences()
   const theme = getPilotTheme(pilot)
   const isRei = pilot === "rei"
 
@@ -67,16 +67,16 @@ export function AppHeader() {
             >
               <HeaderLink active={isTaskCenter} themeClass={isTaskCenter ? theme.tabActive : theme.tabInactive} to={`/projects/${projectId}/tasks`}>
                 <TerminalSquare className="mr-2 h-3 w-3" />
-                任务中心
+                {t("header.taskCenter")}
               </HeaderLink>
               <HeaderLink active={isWorkbench} themeClass={isWorkbench ? theme.tabActive : theme.tabInactive} to={`/projects/${projectId}/workbench${selectedTask ? `?taskId=${selectedTask}` : ""}`}>
                 <KanbanSquare className="mr-2 h-3 w-3" />
-                工作台 {selectedTask ? `<${selectedTask}>` : ""}
+                {selectedTask ? t("header.workbenchWithTask", { taskId: selectedTask }) : t("header.workbench")}
               </HeaderLink>
               {isCreateTask ? (
                 <span className={cn("flex items-center rounded-sm px-4 py-1.5 text-xs tracking-wider", theme.tabActive)}>
                   <FolderPlus className="mr-2 h-3 w-3" />
-                  发布任务
+                  {t("common.publishTask")}
                 </span>
               ) : null}
             </div>
@@ -84,14 +84,14 @@ export function AppHeader() {
         ) : (
           <div className="min-w-0">
             <div className={cn("font-mono text-sm tracking-[0.2em]", theme.pageSub)}>
-              {system.data?.docker.available ? "LOCAL_FIRST //" : "SYSTEM_OFFLINE //"}
+              {(system.data?.docker.available ? t("header.localFirst") : t("header.systemOffline"))} {t("common.subtitleSlash")}
             </div>
             <div className={cn("font-mono text-2xl font-black tracking-widest", theme.pageTitle)}>
               {location.pathname.startsWith("/settings")
-                ? "系统全局配置"
+                ? t("header.settingsTitle")
                 : location.pathname.startsWith("/projects")
-                  ? "本地项目库"
-                  : "系统控制台"}
+                  ? t("header.projectsTitle")
+                  : t("header.consoleTitle")}
             </div>
           </div>
         )}

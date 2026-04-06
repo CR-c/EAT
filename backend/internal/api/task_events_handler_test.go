@@ -28,8 +28,9 @@ func TestStartClarificationAndPauseEndpointsPublishRealtimeEvents(t *testing.T) 
 	defer unsubscribe()
 
 	router := NewRouter(NewHandler(Dependencies{
-		DB:  db,
-		Bus: bus,
+		DB:           db,
+		Bus:          bus,
+		AgentService: newFakeLeadAgentService(t, "请补充验收标准。"),
 	}))
 
 	startResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-events/clarification-sessions", map[string]any{
@@ -55,6 +56,24 @@ func TestStartClarificationAndPauseEndpointsPublishRealtimeEvents(t *testing.T) 
 	sessionStartedPayload := decodeEventPayload(t, sessionStartedEvent)
 	if sessionStartedPayload["taskId"] != "task-events" || sessionStartedPayload["sessionType"] != "LEAD" || sessionStartedPayload["status"] != "RUNNING" {
 		t.Fatalf("unexpected session started payload: %#v", sessionStartedPayload)
+	}
+
+	sessionOutputEvent := mustReadEvent(t, events)
+	if sessionOutputEvent.Name != "session:output" {
+		t.Fatalf("unexpected session output event: %s", sessionOutputEvent.Name)
+	}
+	sessionOutputPayload := decodeEventPayload(t, sessionOutputEvent)
+	if sessionOutputPayload["taskId"] != "task-events" || sessionOutputPayload["chunk"] != "请补充验收标准。" {
+		t.Fatalf("unexpected session output payload: %#v", sessionOutputPayload)
+	}
+
+	leadMessageEvent := mustReadEvent(t, events)
+	if leadMessageEvent.Name != "task:lead-message" {
+		t.Fatalf("unexpected lead message event: %s", leadMessageEvent.Name)
+	}
+	leadMessagePayload := decodeEventPayload(t, leadMessageEvent)
+	if leadMessagePayload["taskId"] != "task-events" || leadMessagePayload["role"] != "AGENT" || leadMessagePayload["content"] != "请补充验收标准。" {
+		t.Fatalf("unexpected lead message payload: %#v", leadMessagePayload)
 	}
 
 	pauseResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-events/pauses", nil)

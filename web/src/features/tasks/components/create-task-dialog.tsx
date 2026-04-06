@@ -84,7 +84,7 @@ export function CreateTaskDialog({
       onOpenChange(false)
       onCreated()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Create task failed.")
+      setError(caught instanceof Error ? caught.message : t("task.create.submit"))
     } finally {
       setIsSubmitting(false)
     }
@@ -102,29 +102,29 @@ export function CreateTaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t("newTask")}</DialogTitle>
+          <DialogTitle>{t("task.new")}</DialogTitle>
           <DialogDescription>
-            Create a task through the Go backend with the current project as target.
+            {t("task.create.dialogHint")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4">
           <div className="grid gap-2">
-            <label className="text-sm font-medium">{t("title")}</label>
+            <label className="text-sm font-medium">{t("common.title")}</label>
             <Input value={title} onChange={(event) => setTitle(event.target.value)} />
           </div>
 
           <div className="grid gap-2">
-            <label className="text-sm font-medium">{t("description")}</label>
+            <label className="text-sm font-medium">{t("common.description")}</label>
             <Textarea value={description} onChange={(event) => setDescription(event.target.value)} />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="grid gap-2">
-              <label className="text-sm font-medium">{t("leadAgent")}</label>
+              <label className="text-sm font-medium">{t("common.leadAgent")}</label>
               <Select value={leadAgentType} onValueChange={setLeadAgentType}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select lead agent" />
+                  <SelectValue placeholder={t("common.select")} />
                 </SelectTrigger>
                 <SelectContent>
                   {agents.data?.leadCandidates.map((candidate) => (
@@ -137,10 +137,10 @@ export function CreateTaskDialog({
             </div>
 
             <div className="grid gap-2">
-              <label className="text-sm font-medium">{t("baseBranch")}</label>
+              <label className="text-sm font-medium">{t("common.baseBranch")}</label>
               <Select value={baseBranch} onValueChange={setBaseBranch}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select base branch" />
+                  <SelectValue placeholder={t("common.select")} />
                 </SelectTrigger>
                 <SelectContent>
                   {branchCandidates.map((branch) => (
@@ -158,14 +158,14 @@ export function CreateTaskDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            {t("cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             disabled={isSubmitting || !title.trim() || !description.trim() || !leadAgentType || !baseBranch}
             onClick={handleCreate}
           >
             {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-            {t("create")}
+            {t("common.create")}
           </Button>
         </DialogFooter>
       </DialogContent>

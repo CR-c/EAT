@@ -49,6 +49,12 @@
 - [EAT-user-guide.md](/home/code/EAT/docs/EAT-user-guide.md)
 - [go-backend-refactor-plan.md](/home/code/EAT/docs/go-backend-refactor-plan.md) — Go 迁移完成记录
 
+### 测试与验收记录
+
+- [manual-web-golden-path-test-2026-03-27.md](/home/code/EAT/docs/manual-web-golden-path-test-2026-03-27.md) — 本次 Web 黄金路径比对测试任务文档
+- [manual-web-golden-path-test-report-2026-03-27.md](/home/code/EAT/docs/manual-web-golden-path-test-report-2026-03-27.md) — 本次 Web 黄金路径比对测试报告
+- [manual-web-golden-path-fix-list-2026-03-27.md](/home/code/EAT/docs/manual-web-golden-path-fix-list-2026-03-27.md) — 基于测试报告整理的修复清单
+
 ## 解释规则
 
 - 实现规则冲突 → 以 [AGENTS.md](/home/code/EAT/AGENTS.md) 为准

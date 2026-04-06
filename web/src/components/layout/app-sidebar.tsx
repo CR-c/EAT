@@ -13,6 +13,7 @@ import { NavLink, useLocation, useNavigate, useParams } from "react-router-dom"
 
 import { listProjects } from "@/lib/api/projects"
 import { useAsyncResource } from "@/hooks/use-async-resource"
+import { getPilotTitle } from "@/lib/i18n"
 import { subscribeProjectRegistryChanged } from "@/lib/project-events"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme, getProjectColor } from "@/lib/pilot-theme"
@@ -22,8 +23,8 @@ import { cn } from "@/lib/utils"
 const sidebarOpenStorageKey = "eat.web.sidebar.open"
 
 const navItems = [
-  { key: "console", label: "[ 控制台 ]", to: "/console", icon: LayoutDashboard },
-  { key: "projects", label: "[ 项目档案库 ]", to: "/projects", icon: FolderGit2 },
+  { key: "console", to: "/console", icon: LayoutDashboard },
+  { key: "projects", to: "/projects", icon: FolderGit2 },
 ] as const
 
 function getStoredSidebarOpen() {
@@ -34,7 +35,7 @@ export function AppSidebar() {
   const navigate = useNavigate()
   const location = useLocation()
   const { projectId } = useParams()
-  const { pilot, setPilot } = usePreferences()
+  const { locale, pilot, setPilot, t } = usePreferences()
   const theme = getPilotTheme(pilot)
   const isRei = pilot === "rei"
   const [isSidebarOpen, setIsSidebarOpen] = useState(getStoredSidebarOpen)
@@ -125,7 +126,7 @@ export function AppSidebar() {
         </div>
         {isSidebarOpen ? (
           <div className={cn("z-10 mt-1 whitespace-nowrap font-mono text-[0.65rem] tracking-widest", theme.logoSub)}>
-            多智能体协作任务部队
+            {t("header.localFirst")}
           </div>
         ) : null}
       </div>
@@ -136,7 +137,11 @@ export function AppSidebar() {
           isSidebarOpen ? "space-y-2 px-4" : "space-y-2 px-2",
         )}
       >
-        {isSidebarOpen ? <div className={cn("mb-2 pl-2 text-[10px] tracking-widest", theme.sysMenu)}>系统菜单 //</div> : null}
+        {isSidebarOpen ? (
+          <div className={cn("mb-2 pl-2 text-[10px] tracking-widest", theme.sysMenu)}>
+            {t("nav.systemMenu")} {t("common.subtitleSlash")}
+          </div>
+        ) : null}
 
         {navItems.map((item) =>
           item.key === "projects" ? (
@@ -159,7 +164,7 @@ export function AppSidebar() {
                   to={item.to}
                 >
                   <item.icon className={cn("h-4 w-4", isSidebarOpen && "mr-3")} />
-                  {isSidebarOpen ? <span>{item.label}</span> : null}
+                  {isSidebarOpen ? <span>{t(`nav.${item.key}`)}</span> : null}
                 </NavLink>
                 {isSidebarOpen ? (
                   <button
@@ -240,7 +245,7 @@ export function AppSidebar() {
               to={item.to}
             >
               <item.icon className={cn("h-4 w-4", isSidebarOpen && "mr-3")} />
-              {isSidebarOpen ? <span>{item.label}</span> : null}
+              {isSidebarOpen ? <span>{t(`nav.${item.key}`)}</span> : null}
             </NavLink>
           ),
         )}
@@ -255,11 +260,11 @@ export function AppSidebar() {
               : "border-purple-500/50 bg-black/50 text-purple-400 hover:bg-purple-900/30",
           )}
           onClick={() => setPilot(isRei ? "shinji" : "rei")}
-          title={`切换至 ${isRei ? "01_碇真嗣" : "00_绫波丽"}`}
+          title={t("pilot.toggleTo", { pilot: getPilotTitle(locale, isRei ? "shinji" : "rei") })}
           type="button"
         >
           <RefreshCw className={cn("h-4 w-4", isSidebarOpen && "mr-2")} />
-          {isSidebarOpen ? <span className="text-xs">PILOT: {isRei ? "00_绫波丽" : "01_碇真嗣"}</span> : null}
+          {isSidebarOpen ? <span className="text-xs">PILOT: {getPilotTitle(locale, pilot)}</span> : null}
         </button>
         <NavLink
           className={({ isActive }) =>
@@ -269,11 +274,11 @@ export function AppSidebar() {
               isActive ? theme.menuActive : theme.menuInactive,
             )
           }
-          title="settings"
+          title={t("nav.settings")}
           to="/settings"
         >
           <Settings className={cn("h-4 w-4", isSidebarOpen && "mr-3")} />
-          {isSidebarOpen ? <span>[ 系统配置 ]</span> : null}
+          {isSidebarOpen ? <span>{t("nav.settings")}</span> : null}
         </NavLink>
       </div>
     </aside>

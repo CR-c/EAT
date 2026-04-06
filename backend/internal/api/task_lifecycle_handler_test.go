@@ -111,6 +111,7 @@ func TestArchiveUnarchiveDeleteEndpointsManageLifecycleAndBranchCleanup(t *testi
 	router := NewRouter(NewHandler(Dependencies{
 		DB:             db,
 		Bus:            eventbus.New(),
+		AgentService:   newFakeLeadAgentService(t, "请先补充删除前的确认条件。"),
 		UploadRootPath: filepath.Join(tempDir, "uploads"),
 	}))
 
@@ -208,6 +209,7 @@ func TestPauseEndpointRequiresPauseBeforeDeleteAndCancelsLeadSession(t *testing.
 	router := NewRouter(NewHandler(Dependencies{
 		DB:             db,
 		Bus:            eventbus.New(),
+		AgentService:   newFakeLeadAgentService(t, "请先补充删除前的确认条件。"),
 		UploadRootPath: filepath.Join(tempDir, "uploads"),
 	}))
 
@@ -308,8 +310,9 @@ func TestResumeTaskEndpointReturnsTaskToMergingWhenSubtasksAreResolved(t *testin
 	}
 
 	router := NewRouter(NewHandler(Dependencies{
-		DB:  db,
-		Bus: eventbus.New(),
+		DB:           db,
+		Bus:          eventbus.New(),
+		AgentService: newFakeLeadAgentService(t, "当前约束已基本清晰。"),
 	}))
 
 	response := performJSONRequest(router, http.MethodDelete, "/api/tasks/task-action-required/pauses/current", nil)
@@ -335,8 +338,9 @@ func TestConfirmRequirementsAndStopLeadSessionEndpointsUseStaticLeadSessionState
 	insertProjectAndTask(t, db, "project-1", "task-clarifying", "DRAFT", 0, "")
 
 	router := NewRouter(NewHandler(Dependencies{
-		DB:  db,
-		Bus: eventbus.New(),
+		DB:           db,
+		Bus:          eventbus.New(),
+		AgentService: newFakeLeadAgentService(t, "当前约束已基本清晰。"),
 	}))
 
 	startResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-clarifying/clarification-sessions", map[string]any{
@@ -374,6 +378,10 @@ func TestConfirmRequirementsAndStopLeadSessionEndpointsUseStaticLeadSessionState
 	if messageResponse.Code != http.StatusCreated {
 		t.Fatalf("unexpected message status: %d body=%s", messageResponse.Code, messageResponse.Body.String())
 	}
+	messagePayload := decodeJSONMap(t, messageResponse.Body.Bytes())
+	if messagePayload["message"].(map[string]any)["role"] != "USER" {
+		t.Fatalf("unexpected clarification message payload: %#v", messagePayload["message"])
+	}
 
 	confirmResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-clarifying/requirement-confirmations", nil)
 	if confirmResponse.Code != http.StatusOK {
@@ -386,6 +394,19 @@ func TestConfirmRequirementsAndStopLeadSessionEndpointsUseStaticLeadSessionState
 	}
 	if confirmPayload["message"].(map[string]any)["role"] != "SYSTEM" {
 		t.Fatalf("unexpected confirmation message payload: %#v", confirmPayload["message"])
+	}
+
+	confirmedDetailResponse := performJSONRequest(router, http.MethodGet, "/api/tasks/task-clarifying", nil)
+	if confirmedDetailResponse.Code != http.StatusOK {
+		t.Fatalf("unexpected confirmed detail status: %d body=%s", confirmedDetailResponse.Code, confirmedDetailResponse.Body.String())
+	}
+	confirmedDetailPayload := decodeJSONMap(t, confirmedDetailResponse.Body.Bytes())
+	messages := confirmedDetailPayload["messages"].([]any)
+	if len(messages) != 5 {
+		t.Fatalf("unexpected clarification transcript payload: %#v", confirmedDetailPayload["messages"])
+	}
+	if messages[1].(map[string]any)["role"] != "AGENT" || messages[3].(map[string]any)["role"] != "AGENT" {
+		t.Fatalf("expected persisted agent replies in transcript: %#v", confirmedDetailPayload["messages"])
 	}
 }
 

@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -279,4 +280,45 @@ func (r *Repository) UpdateSession(ctx context.Context, sessionID string, input 
 	}
 
 	return &nextSession, nil
+}
+
+func (r *Repository) AppendSessionOutput(ctx context.Context, sessionID string, chunk string) error {
+	if strings.TrimSpace(chunk) == "" {
+		return nil
+	}
+
+	currentSession, err := r.FindSessionByID(ctx, sessionID)
+	if err != nil || currentSession == nil {
+		return err
+	}
+
+	nextOutput := currentSession.OutputBuffer + chunk
+	maxBytes := currentSession.OutputBufferMaxBytes
+	if maxBytes <= 0 {
+		maxBytes = 65536
+	}
+	if int64(len(nextOutput)) > maxBytes {
+		nextOutput = nextOutput[len(nextOutput)-int(maxBytes):]
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	firstOutputAt := currentSession.FirstOutputAt
+	if firstOutputAt == nil {
+		firstOutputAt = &now
+	}
+
+	_, err = r.exec().ExecContext(ctx, `
+		UPDATE agent_sessions
+		SET
+			first_output_at = ?,
+			output_buffer = ?,
+			updated_at = ?
+		WHERE id = ?
+	`,
+		firstOutputAt,
+		nextOutput,
+		now,
+		sessionID,
+	)
+	return err
 }

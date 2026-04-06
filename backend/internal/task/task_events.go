@@ -59,6 +59,32 @@ func (s *Service) publishSession(taskID, eventName string, session *Session) {
 	})
 }
 
+func (s *Service) publishSessionOutput(taskID string, session *Session, chunk string) {
+	if session == nil || strings.TrimSpace(chunk) == "" {
+		return
+	}
+	s.publish(taskID, "session:output", map[string]any{
+		"chunk":     chunk,
+		"sessionId": session.ID,
+		"subTaskId": session.SubTaskID,
+		"taskId":    taskID,
+	})
+}
+
+func (s *Service) publishLeadMessage(taskID string, message *Message) {
+	if message == nil {
+		return
+	}
+	s.publish(taskID, "task:lead-message", map[string]any{
+		"content":   message.Content,
+		"createdAt": message.CreatedAt,
+		"id":        message.ID,
+		"role":      message.Role,
+		"subTaskId": message.SubTaskID,
+		"taskId":    taskID,
+	})
+}
+
 func (s *Service) publishSubTaskAssigned(taskID string, subTask *SubTask) {
 	if subTask == nil {
 		return

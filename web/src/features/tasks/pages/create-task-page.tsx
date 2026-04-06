@@ -16,6 +16,7 @@ import { Link, useNavigate, useParams } from "react-router-dom"
 import { getProject } from "@/lib/api/projects"
 import { createTask } from "@/lib/api/tasks"
 import { getAgents } from "@/lib/api/system"
+import { getAgentDescription } from "@/lib/i18n"
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme } from "@/lib/pilot-theme"
@@ -32,7 +33,7 @@ interface PendingAttachment {
 export function CreateTaskPage() {
   const navigate = useNavigate()
   const { projectId = "" } = useParams()
-  const { pilot } = usePreferences()
+  const { locale, pilot, t } = usePreferences()
   const theme = getPilotTheme(pilot)
   const isRei = pilot === "rei"
   const [title, setTitle] = useState("")
@@ -118,7 +119,7 @@ export function CreateTaskPage() {
       })
       navigate(`/projects/${project.data.project.id}/workbench?taskId=${response.task.id}`)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Create task failed.")
+      setError(caught instanceof Error ? caught.message : t("task.create.submit"))
     } finally {
       setIsSubmitting(false)
     }
@@ -127,7 +128,7 @@ export function CreateTaskPage() {
   const agentCards =
     agents.data?.leadCandidates.map((candidate) => ({
       id: candidate.agentName,
-      desc: candidate.capabilities.description,
+      desc: getAgentDescription(locale, candidate.agentName, candidate.capabilities.description),
       icon:
         candidate.agentName === "gemini-cli"
           ? Sparkles
@@ -149,37 +150,39 @@ export function CreateTaskPage() {
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <div className={cn("mb-1 font-mono text-sm tracking-[0.2em]", theme.pageSub)}>INITIATE_OPERATION //</div>
-          <h2 className={cn("font-mono text-2xl font-black tracking-widest", theme.pageTitle)}>发布新任务</h2>
+          <div className={cn("mb-1 font-mono text-sm tracking-[0.2em]", theme.pageSub)}>
+            {t("task.create.subtitle")} {t("common.subtitleSlash")}
+          </div>
+          <h2 className={cn("font-mono text-2xl font-black tracking-widest", theme.pageTitle)}>{t("task.create.title")}</h2>
         </div>
       </div>
 
       <div className="flex-1 space-y-6 overflow-y-auto pb-10">
         <section className={cn("relative rounded-sm border p-5 backdrop-blur-md", theme.cardBg)}>
-          <TagLabel isRei={isRei} label="[ 01_BASIC_INFO ]" />
+          <TagLabel isRei={isRei} label={t("task.create.sectionBasic")} />
           <div className="mt-5 space-y-4">
-            <FieldLabel label="任务代号 (TASK_TITLE)" required theme={theme} />
+            <FieldLabel label={t("task.create.titleLabel")} required theme={theme} />
             <input
               className={cn("w-full rounded-sm border px-3 py-2 font-mono text-sm outline-none transition-all", theme.inputBg)}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="如：实现用户鉴权模块 / 修复支付超时 BUG"
+              placeholder={t("task.create.titlePlaceholder")}
               type="text"
               value={title}
             />
 
             <div>
-              <FieldLabel label="需求描述 (REQUIREMENTS)" theme={theme} />
+              <FieldLabel label={t("task.create.descriptionLabel")} theme={theme} />
               <textarea
                 className={cn("w-full resize-none rounded-sm border px-3 py-2 font-mono text-sm outline-none transition-all", theme.inputBg)}
                 onChange={(event) => setDescription(event.target.value)}
-                placeholder="详细描述本次任务的目标、期望行为，或直接粘贴 PRD 链接..."
+                placeholder={t("task.create.descriptionPlaceholder")}
                 rows={4}
                 value={description}
               />
             </div>
 
             <div>
-              <FieldLabel label="参考附件 (ATTACHMENTS)" theme={theme} />
+              <FieldLabel label={t("task.create.uploadLabel")} theme={theme} />
               <label
                 className={cn(
                   "group flex w-full cursor-pointer flex-col items-center justify-center rounded-sm border border-dashed p-4 transition-colors",
@@ -191,7 +194,7 @@ export function CreateTaskPage() {
                 <input className="hidden" multiple onChange={handleFileChange} type="file" />
                 <UploadCloud className={cn("mb-2 h-6 w-6 opacity-60 transition-opacity group-hover:opacity-100", isRei ? "text-blue-500" : "text-purple-400")} />
                 <span className={cn("text-xs font-mono opacity-60 transition-opacity group-hover:opacity-100", theme.cardSub)}>
-                  点击上传设计图、PRD 等参考文件
+                  {t("task.create.attachmentsHint")}
                 </span>
               </label>
 
@@ -220,10 +223,10 @@ export function CreateTaskPage() {
         </section>
 
         <section className={cn("relative rounded-sm border p-5 backdrop-blur-md", theme.cardBg)}>
-          <TagLabel isRei={isRei} label="[ 02_GIT_RESOURCES ]" />
+          <TagLabel isRei={isRei} label={t("task.create.sectionGit")} />
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <FieldLabel icon={GitBranch} label="基线分支 (BASE)" theme={theme} />
+              <FieldLabel icon={GitBranch} label={t("common.baseBranch")} theme={theme} />
               <select
                 className={cn("w-full appearance-none rounded-sm border px-3 py-2 font-mono text-sm outline-none transition-all", theme.inputBg)}
                 onChange={(event) => setBaseBranch(event.target.value)}
@@ -237,23 +240,23 @@ export function CreateTaskPage() {
               </select>
             </div>
             <div>
-              <FieldLabel icon={GitMerge} label="目标工作分支 (TARGET)" required theme={theme} />
+              <FieldLabel icon={GitMerge} label={t("task.create.targetBranchLabel")} required theme={theme} />
               <input
                 className={cn("w-full rounded-sm border px-3 py-2 font-mono text-sm outline-none transition-all", theme.inputBg)}
                 onChange={(event) => setTaskBranch(event.target.value)}
-                placeholder="输入工作分支名称..."
+                placeholder={t("task.create.branchPlaceholder")}
                 type="text"
                 value={taskBranch}
               />
               <div className={cn("mt-2 font-mono text-[11px]", theme.cardSub)}>
-                后端会校验分支名，并在冲突时自动生成唯一分支。
+                {t("task.create.branchHint")}
               </div>
             </div>
           </div>
         </section>
 
         <section className={cn("relative rounded-sm border p-5 backdrop-blur-md", theme.cardBg)}>
-          <TagLabel isRei={isRei} label="[ 03_LEAD_AGENT ]" />
+          <TagLabel isRei={isRei} label={t("task.create.leadAgentSection")} />
           <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {agentCards.map((agent) => {
               const Icon = agent.icon
@@ -301,7 +304,7 @@ export function CreateTaskPage() {
 
       <div className={cn("mt-auto flex items-center justify-end space-x-4 border-t pt-4", isRei ? "border-blue-200/20" : "border-purple-500/20")}>
         <Link className={cn("rounded-sm border px-6 py-2 font-mono text-sm tracking-widest transition-colors", theme.btnGhost, isRei ? "border-blue-200" : "border-purple-500/30")} to={`/projects/${projectId}/tasks`}>
-          放弃 (CANCEL)
+          {t("task.create.abandon")}
         </Link>
         <button
           className={cn(
@@ -317,7 +320,7 @@ export function CreateTaskPage() {
           type="button"
         >
           <PlayCircle className="mr-2 h-4 w-4" />
-          {isSubmitting ? "创建中..." : "确认发布 (EXECUTE)"}
+          {isSubmitting ? t("task.create.submitting") : t("task.create.submit")}
         </button>
       </div>
     </div>

@@ -31,7 +31,7 @@ export function TaskActionDialog({
   open,
   task,
 }: TaskActionDialogProps) {
-  const { pilot } = usePreferences()
+  const { pilot, t } = usePreferences()
   const theme = getPilotTheme(pilot)
   const [deleteBranches, setDeleteBranches] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -47,38 +47,38 @@ export function TaskActionDialog({
     { confirmText: string; content: string; icon: ReactNode; title: string; tone: string }
   > = {
     archive: {
-      confirmText: "确认归档 (ARCHIVE)",
-      content: `任务 [${task.id}]：${task.title} 将被移出活跃工作台并进入已归档视图。`,
+      confirmText: t("task.action.archive.confirm"),
+      content: t("task.action.archive.content", { taskId: task.id, title: task.title }),
       icon: <Archive className={cn("h-6 w-6", theme.modalTitleInfo)} />,
-      title: "将任务转入冷数据归档？",
+      title: t("task.action.archive.title"),
       tone: `${theme.modalTitleInfo} border-blue-500/30 bg-blue-500/10`,
     },
     blocked: {
-      confirmText: "收到 (ACKNOWLEDGE)",
-      content: `任务 [${task.id}] 正在活跃流转中。请先暂停任务，再执行归档或删除。`,
+      confirmText: t("common.acknowledge"),
+      content: t("task.action.blocked.content", { taskId: task.id }),
       icon: <XCircle className="h-6 w-6 text-red-500" />,
-      title: "操作被拦截：任务处于活跃状态",
+      title: t("task.action.blocked.title"),
       tone: "text-red-500 border-red-500/30 bg-red-500/10",
     },
     delete: {
-      confirmText: "确认销毁 (DESTROY)",
-      content: `即将从系统中永久抹除任务 [${task.id}]：${task.title} 的上下文及快照。此操作不可逆。`,
+      confirmText: t("task.action.delete.confirm"),
+      content: t("task.action.delete.content", { taskId: task.id, title: task.title }),
       icon: <AlertTriangle className="h-6 w-6 text-red-500" />,
-      title: "彻底销毁任务记录？",
+      title: t("task.action.delete.title"),
       tone: "text-red-500 border-red-500/30 bg-red-500/10",
     },
     pause: {
-      confirmText: "确认挂起 (PAUSE)",
-      content: `将中止当前任务 [${task.id}] 的所有 Agent 进程并释放容器资源。`,
+      confirmText: t("task.action.pause.confirm"),
+      content: t("task.action.pause.content", { taskId: task.id }),
       icon: <PauseCircle className={cn("h-6 w-6", theme.modalTitleInfo)} />,
-      title: "挂起任务执行流？",
+      title: t("task.action.pause.title"),
       tone: `${theme.modalTitleInfo} border-blue-500/30 bg-blue-500/10`,
     },
     resume: {
-      confirmText: "确认恢复 (RESUME)",
-      content: `将重新激活任务 [${task.id}]，对应的 Agent 会话和工作流将继续进行。`,
+      confirmText: t("task.action.resume.confirm"),
+      content: t("task.action.resume.content", { taskId: task.id }),
       icon: <PlayCircle className={cn("h-6 w-6", theme.modalTitleInfo)} />,
-      title: "恢复任务执行流？",
+      title: t("task.action.resume.title"),
       tone: `${theme.modalTitleInfo} border-blue-500/30 bg-blue-500/10`,
     },
   }
@@ -90,7 +90,7 @@ export function TaskActionDialog({
       await onConfirm({ deleteBranches })
       onOpenChange(false)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Task action failed.")
+      setError(caught instanceof Error ? caught.message : t(`task.action.${mode}.title`))
     } finally {
       setIsSubmitting(false)
     }
@@ -119,18 +119,18 @@ export function TaskActionDialog({
           <label className="relative z-10 flex cursor-pointer items-center gap-3 rounded-sm border border-red-500/20 bg-red-500/5 p-3">
             <input checked={deleteBranches} onChange={(event) => setDeleteBranches(event.target.checked)} type="checkbox" />
             <span className="font-mono text-sm text-red-400">
-              同时抹除本地对应分支：
+              {t("task.action.deleteBranch")}
               <br />
-              <span className="font-bold">{task.taskBranchName ?? "自动分支"}</span>
+              <span className="font-bold">{task.taskBranchName ?? t("common.autoBranch")}</span>
             </span>
           </label>
         ) : null}
 
         {mode === "pause" || mode === "resume" ? (
           <div className={cn("relative z-10 rounded-sm border p-3 font-mono text-xs", theme.pathBg)}>
-            当前任务状态: {task.status}
+            {t("common.status")}: {t(`status.${task.status}`)}
             <br />
-            操作目标: {isPaused && mode === "resume" ? "恢复执行链路" : "挂起执行链路"}
+            {t("common.stage")}: {isPaused && mode === "resume" ? t("task.action.resume.target") : t("task.action.pause.target")}
           </div>
         ) : null}
 
@@ -139,7 +139,7 @@ export function TaskActionDialog({
         <DialogFooter className="relative z-10">
           {mode !== "blocked" ? (
             <button className={cn("rounded-sm border px-4 py-2 font-mono text-sm transition-colors", theme.btnGhost)} onClick={() => onOpenChange(false)} type="button">
-              取消 (CANCEL)
+              {t("common.cancel")}
             </button>
           ) : null}
           <button

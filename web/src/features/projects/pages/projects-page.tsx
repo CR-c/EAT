@@ -56,7 +56,7 @@ function TokenUsageBadges({
 
 export function ProjectsPage() {
   const navigate = useNavigate()
-  const { pilot } = usePreferences()
+  const { pilot, t } = usePreferences()
   const theme = getPilotTheme(pilot)
   const isRei = pilot === "rei"
   const [query, setQuery] = useState("")
@@ -159,8 +159,10 @@ export function ProjectsPage() {
         <div className="mx-auto flex max-w-7xl flex-col">
           <div className={cn("mb-10 flex flex-col space-y-4 border-b pb-4 sm:flex-row sm:items-end sm:justify-between sm:space-y-0", theme.sidebarBorder)}>
             <div>
-              <div className={cn("mb-1 font-mono text-sm tracking-[0.2em]", theme.pageSub)}>目标选择 //</div>
-              <h2 className={cn("font-mono text-3xl font-black tracking-widest", theme.pageTitle)}>本地项目库</h2>
+              <div className={cn("mb-1 font-mono text-sm tracking-[0.2em]", theme.pageSub)}>
+                {t("projects.subtitle")} {t("common.subtitleSlash")}
+              </div>
+              <h2 className={cn("font-mono text-3xl font-black tracking-widest", theme.pageTitle)}>{t("projects.title")}</h2>
             </div>
             <div className="flex items-center space-x-4">
               <div className="group relative w-full sm:w-64">
@@ -168,7 +170,7 @@ export function ProjectsPage() {
                 <input
                   className={cn("w-full rounded-sm border py-2 pl-9 pr-4 font-mono text-sm outline-none transition-all", theme.inputBg)}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="检索项目名称..."
+                  placeholder={t("projects.searchPlaceholder")}
                   type="text"
                   value={query}
                 />
@@ -179,7 +181,7 @@ export function ProjectsPage() {
                 type="button"
               >
                 <FolderPlus className="mr-2 h-4 w-4" />
-                注册新项目
+                {t("projects.register")}
               </button>
             </div>
           </div>
@@ -210,7 +212,7 @@ export function ProjectsPage() {
                             <div className="mr-2 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
                             {item.project.name}
                           </h3>
-                          <div className={cn("mt-1 font-mono text-xs", theme.cardSub)}>系统编号: {item.project.id}</div>
+                          <div className={cn("mt-1 font-mono text-xs", theme.cardSub)}>{t("projects.systemId", { id: item.project.id })}</div>
                         </div>
                       </div>
                       {dirty ? (
@@ -219,17 +221,17 @@ export function ProjectsPage() {
                             <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", theme.dirtyPing)} />
                             <span className={cn("relative inline-flex h-2 w-2 rounded-full", theme.dirtyDot)} />
                           </span>
-                          <span className={cn("font-mono text-[0.6rem] tracking-widest", theme.dirtyText)}>未提交</span>
+                          <span className={cn("font-mono text-[0.6rem] tracking-widest", theme.dirtyText)}>{t("projects.uncommitted")}</span>
                         </div>
                       ) : (
                         <div className={cn("shrink-0 rounded-sm px-2 py-1 font-mono text-[0.6rem] tracking-widest", theme.cleanBg)}>
-                          已同步
+                          {t("projects.synced")}
                         </div>
                       )}
                     </div>
 
                     <div className={cn("mb-6 truncate rounded-sm border p-2 font-mono text-xs", theme.pathBg)} title={item.project.path}>
-                      <span className={cn("mr-2", theme.pathLabel)}>路径:</span>
+                      <span className={cn("mr-2", theme.pathLabel)}>{t("common.path")}:</span>
                       {item.project.path}
                     </div>
 
@@ -239,14 +241,14 @@ export function ProjectsPage() {
 
                     <div className={cn("relative z-10 mt-auto flex items-center justify-between border-t pt-4 font-mono text-xs", isRei ? "border-blue-100" : "border-white/10")}>
                       <div className={cn("flex items-center", theme.cardSub)}>
-                        <span className={cn("mr-2", theme.pathLabel)}>基线:</span>
+                        <span className={cn("mr-2", theme.pathLabel)}>{t("common.baseBranch")}:</span>
                         <span className={cn("rounded-sm px-2 py-0.5", theme.branchBg)}>
                           {item.project.defaultBranch || item.repoStatus?.defaultBranch || "main"}
                         </span>
                       </div>
                       <div className="flex items-center space-x-2">
                         <div className={cn("rounded-sm border px-2 py-0.5", item.activeTaskCount > 0 ? theme.taskBg : theme.cleanBg)}>
-                          活跃任务: {item.activeTaskCount}
+                          {t("projects.activeTasksLabel")}: {item.activeTaskCount}
                         </div>
                         <button
                           className={cn(
@@ -263,7 +265,7 @@ export function ProjectsPage() {
                           }}
                           type="button"
                         >
-                          {item.project.isPinned ? "取消标记" : "标 记"}
+                          {item.project.isPinned ? t("projects.unpin") : t("projects.pin")}
                         </button>
                         <button
                           className={cn("rounded-sm p-1 transition-colors", theme.btnDanger)}
@@ -286,7 +288,7 @@ export function ProjectsPage() {
 
               {!resource.isLoading && filtered.length === 0 ? (
                 <div className={cn("col-span-1 rounded-sm border border-dashed p-8 text-center font-mono text-sm lg:col-span-2", isRei ? "border-blue-200 bg-white/50 text-blue-400" : "border-purple-500/30 bg-black/20 text-purple-500/70")}>
-                  未发现符合条件的项目记录。
+                  {t("common.noResults")}
                 </div>
               ) : null}
             </div>

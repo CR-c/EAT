@@ -21,6 +21,7 @@ import (
 type Dependencies struct {
 	DB              *store.DB
 	Bus             *eventbus.Bus
+	AgentService    *agent.Service
 	UploadRootPath  string
 	PreviewRootPath string
 	UIRootPath      string
@@ -41,6 +42,10 @@ type Handler struct {
 
 func NewHandler(deps Dependencies) *Handler {
 	sandboxManager := sandbox.NewManager()
+	agentService := deps.AgentService
+	if agentService == nil {
+		agentService = agent.NewService(sandboxManager)
+	}
 	uploadRootPath := filepath.Join(".", "uploads")
 	if deps.UploadRootPath != "" {
 		uploadRootPath = deps.UploadRootPath
@@ -60,19 +65,19 @@ func NewHandler(deps Dependencies) *Handler {
 		})
 	}
 
-	return &Handler{
+		return &Handler{
 		db:             deps.DB,
 		bus:            deps.Bus,
 		sandbox:        sandboxManager,
 		metricsService: metrics.NewService(deps.DB.DB),
 		previewService: previewService,
 		projectService: project.NewService(project.NewRepository(deps.DB.DB)),
-		agentService:   agent.NewService(sandboxManager),
+		agentService:   agentService,
 		uiRootPath:     uiRootPath,
 		taskService: task.NewService(task.Dependencies{
 			Repository:        task.NewRepository(deps.DB.DB),
 			ProjectRepository: project.NewRepository(deps.DB.DB),
-			AgentService:      agent.NewService(sandboxManager),
+			AgentService:      agentService,
 			Bus:               deps.Bus,
 			UploadRootPath:    uploadRootPath,
 		}),
@@ -142,6 +147,7 @@ func mapTaskErrorStatus(code string) int {
 		"TASK_CREATE_FAILED",
 		"TASK_CURRENT_PLAN_UPDATE_FAILED",
 		"TASK_DIFF_READ_FAILED",
+		"TASK_LEAD_REPLY_FAILED",
 		"TASK_MESSAGES_READ_FAILED",
 		"TASK_ATTACHMENTS_READ_FAILED",
 		"TASK_GATE_RESULTS_READ_FAILED",

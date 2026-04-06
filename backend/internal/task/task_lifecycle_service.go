@@ -179,31 +179,32 @@ func (s *Service) StartClarification(ctx context.Context, taskID string, input S
 		return nil, failure(ErrorCodeTaskMessageRequired, "Message content is required.", map[string]any{"taskId": taskID})
 	}
 
-	session, err := s.createSyntheticLeadSession(ctx, taskRecord)
-	if err != nil {
-		return nil, failure("TASK_SESSION_CREATE_FAILED", err.Error(), nil)
+	leadReply, _, serviceError := s.runClarificationLeadTurn(ctx, taskRecord, content)
+	if serviceError != nil {
+		return nil, serviceError
 	}
 
 	nextStatus := taskStatusClarifying
-	nextTask, err := s.repository.UpdateTask(ctx, taskID, UpdateTaskInput{
-		Status:       &nextStatus,
-		LastError:    nil,
-		SetLastError: true,
-	})
-	if err != nil {
-		return nil, failure("TASK_UPDATE_FAILED", err.Error(), nil)
-	}
-
-	if _, err := s.repository.CreateMessage(ctx, CreateMessageInput{
-		TaskID:  taskID,
-		Role:    messageRoleUser,
-		Content: content,
-	}); err != nil {
-		return nil, failure("TASK_MESSAGE_CREATE_FAILED", err.Error(), nil)
+	nextTask, session, sessionCreated, _, agentMessage, serviceError := s.persistClarificationTurn(
+		ctx,
+		taskRecord,
+		content,
+		leadReply.Response,
+		leadReply.RawOutput,
+		&nextStatus,
+	)
+	if serviceError != nil {
+		return nil, serviceError
 	}
 
 	s.publishTaskStatus(taskID, nextTask.Status, nil)
-	s.publishSession(taskID, "session:started", session)
+	if sessionCreated {
+		s.publishSession(taskID, "session:started", session)
+	}
+	s.publishSessionOutput(taskID, session, leadReply.Response)
+	if agentMessage != nil {
+		s.publishLeadMessage(taskID, agentMessage)
+	}
 
 	return &StartClarificationResult{
 		Session: session,
@@ -230,6 +231,38 @@ func (s *Service) SendTaskMessage(ctx context.Context, taskID string, input Send
 	content := normalizeRequiredString(input.Content)
 	if content == "" {
 		return nil, failure(ErrorCodeTaskMessageRequired, "Message content is required.", map[string]any{"taskId": taskID})
+	}
+
+	if taskRecord.Status == taskStatusClarifying {
+		leadReply, _, serviceError := s.runClarificationLeadTurn(ctx, taskRecord, content)
+		if serviceError != nil {
+			return nil, serviceError
+		}
+
+		nextTask, session, sessionCreated, userMessage, agentMessage, serviceError := s.persistClarificationTurn(
+			ctx,
+			taskRecord,
+			content,
+			leadReply.Response,
+			leadReply.RawOutput,
+			nil,
+		)
+		if serviceError != nil {
+			return nil, serviceError
+		}
+
+		if sessionCreated {
+			s.publishSession(taskID, "session:started", session)
+		}
+		s.publishSessionOutput(taskID, session, leadReply.Response)
+		if agentMessage != nil {
+			s.publishLeadMessage(taskID, agentMessage)
+		}
+
+		return &SendTaskMessageResult{
+			Message: userMessage,
+			Task:    nextTask,
+		}, nil
 	}
 
 	if _, err := s.ensureSyntheticLeadSession(ctx, taskRecord); err != nil {

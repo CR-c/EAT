@@ -29,7 +29,7 @@ export function RegisterProjectDialog({
   onRegistered,
   open,
 }: RegisterProjectDialogProps) {
-  const { pilot } = usePreferences()
+  const { t, pilot } = usePreferences()
   const theme = getPilotTheme(pilot)
   const isRei = pilot === "rei"
   const [pathInput, setPathInput] = useState("")
@@ -150,7 +150,7 @@ export function RegisterProjectDialog({
       onOpenChange(false)
       onRegistered()
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Register project failed."
+      const message = caught instanceof Error ? caught.message : t("projects.register")
       if (message.toLowerCase().includes("already registered")) {
         setDuplicateWarningOpen(true)
         return
@@ -175,14 +175,14 @@ export function RegisterProjectDialog({
                 <FolderPlus className={cn("h-5 w-5", isRei ? "text-cyan-600" : "text-green-400")} />
               </div>
               <DialogTitle className={cn("font-mono text-xl font-bold tracking-wider", isRei ? "text-cyan-700" : "text-green-400")}>
-                注册本地新项目
+                {t("projects.register")}
               </DialogTitle>
             </div>
           </DialogHeader>
 
           <div className="relative z-10 flex min-h-0 flex-1 flex-col space-y-4 overflow-hidden">
             <div>
-              <label className={cn("mb-2 block font-mono text-xs", theme.cardSub)}>[ TARGET_PATH ] 手动输入路径</label>
+              <label className={cn("mb-2 block font-mono text-xs", theme.cardSub)}>{t("projects.registerPath")}</label>
               <div className="relative">
                 <TerminalSquare className={cn("absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2", isRei ? "text-blue-400" : "text-purple-500")} />
                 <input
@@ -192,7 +192,7 @@ export function RegisterProjectDialog({
                     setPathHint(null)
                     setSubmitError(null)
                   }}
-                  placeholder="输入本地 Git 仓库绝对路径..."
+                  placeholder={t("projects.pathHint")}
                   type="text"
                   value={pathInput}
                 />
@@ -205,13 +205,13 @@ export function RegisterProjectDialog({
             </div>
 
             <div>
-              <label className={cn("mb-2 block font-mono text-xs", theme.cardSub)}>[ PROJECT_COLOR ] 标识颜色</label>
+              <label className={cn("mb-2 block font-mono text-xs", theme.cardSub)}>{t("projects.registerColor")}</label>
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 pl-2">
                 <div className="flex min-w-0 flex-wrap items-center gap-3">
                   {PRESET_COLORS.map((color) => (
                     <button
                       key={color}
-                      aria-label={`选择项目颜色 ${color}`}
+                      aria-label={`${t("projects.registerColor")} ${color}`}
                       className={cn(
                         "h-6 w-6 rounded-full transition-transform",
                         projectColor === color
@@ -228,7 +228,7 @@ export function RegisterProjectDialog({
                   <div className={cn("mx-1 h-5 w-px", isRei ? "bg-blue-200" : "bg-white/20")} />
                   <label
                     className="relative flex h-7 w-7 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-slate-400 shadow-sm transition-transform hover:scale-110"
-                    title="打开调色板选择自定义颜色"
+                    title={t("projects.registerColor")}
                   >
                     <input
                       className="absolute -left-2 -top-2 h-12 w-12 cursor-pointer opacity-0"
@@ -283,7 +283,7 @@ export function RegisterProjectDialog({
                         )}
                       />
                     </span>
-                    <span className={cn("tracking-wide", theme.cardSub)}>标记项目</span>
+                    <span className={cn("tracking-wide", theme.cardSub)}>{t("projects.markProject")}</span>
                   </label>
                 </div>
               </div>
@@ -297,7 +297,7 @@ export function RegisterProjectDialog({
             >
               <div className={cn("flex items-center border-b px-3 py-2 font-mono text-xs tracking-wide", theme.treePathBar)}>
                 <FolderOpen className="mr-2 h-3.5 w-3.5" />
-                <span className="flex-1 truncate font-bold">{currentPath || "浏览目录"}</span>
+                <span className="flex-1 truncate font-bold">{currentPath || t("common.directoryBrowse")}</span>
                 {browse.isLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
               </div>
 
@@ -310,13 +310,13 @@ export function RegisterProjectDialog({
                       type="button"
                     >
                       <CornerLeftUp className="mr-3 h-4 w-4" />
-                      <span>.. (返回上级)</span>
+                      <span>{t("projects.goParent")}</span>
                     </button>
                   ) : null}
 
                   {!browse.isLoading && entries.length === 0 ? (
                     <div className={cn("px-3 py-4 text-center font-mono text-xs opacity-50", theme.cardSub)}>
-                      当前目录下未发现文件夹。
+                      {t("projects.noDirectories")}
                     </div>
                   ) : null}
 
@@ -362,7 +362,7 @@ export function RegisterProjectDialog({
               {browse.data?.isGitRepository && branchCandidates.length > 0 ? (
                 <div className={cn("flex items-center gap-3 border-t px-3 py-2.5", isRei ? "border-blue-200/70 bg-white/45" : "border-white/10 bg-black/30")}>
                   <label className={cn("shrink-0 font-mono text-[0.65rem] tracking-wide", theme.cardSub)}>
-                    [ TARGET_BRANCH ]
+                    {t("projects.registerBranch")}
                   </label>
                   <select
                     className={cn("min-w-0 flex-1 rounded-sm border px-3 py-2 font-mono text-sm outline-none transition-all", theme.inputBg)}
@@ -388,7 +388,7 @@ export function RegisterProjectDialog({
               onClick={() => onOpenChange(false)}
               type="button"
             >
-              取消 (CANCEL)
+              {t("common.cancel")}
             </button>
             <button
               className={cn(
@@ -400,7 +400,7 @@ export function RegisterProjectDialog({
               type="button"
             >
               {isSubmitting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
-              确认注册
+              {t("projects.registerConfirm")}
             </button>
           </DialogFooter>
         </DialogContent>
@@ -419,18 +419,18 @@ export function RegisterProjectDialog({
               </div>
               <div>
                 <DialogTitle className={cn("mb-1 text-lg font-bold tracking-wider", theme.modalTitle)}>
-                  项目已存在注册记录
+                  {t("projects.duplicateTitle")}
                 </DialogTitle>
                 <p className={cn("mt-2 font-mono text-sm leading-relaxed", theme.cardSub)}>
-                  目标仓库 <span className="font-bold text-slate-300">[{targetPath || pathInput.trim()}]</span> 已经注册。
+                  {t("projects.duplicateRegistered", { path: targetPath || pathInput.trim() })}
                   <br />
                   <br />
                   <span className={cn("inline-block rounded-sm border px-2 py-1", theme.pathBg)}>
-                    当前选择分支: {selectedBranch || browse.data?.repoStatus?.defaultBranch || "未识别"}
+                    {t("projects.registerDuplicateBranch", { branch: selectedBranch || browse.data?.repoStatus?.defaultBranch || t("projects.unidentified") })}
                   </span>
                   <br />
                   <br />
-                  请直接进入已有项目继续操作；当前产品仍按仓库路径去重。
+                  {t("projects.duplicateHint")}
                 </p>
               </div>
             </div>
@@ -442,7 +442,7 @@ export function RegisterProjectDialog({
               onClick={() => setDuplicateWarningOpen(false)}
               type="button"
             >
-              收到 (ACKNOWLEDGE)
+              {t("common.acknowledge")}
             </button>
           </DialogFooter>
         </DialogContent>

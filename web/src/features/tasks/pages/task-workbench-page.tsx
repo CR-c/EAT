@@ -34,6 +34,7 @@ import {
   startClarification,
 } from "@/lib/api/tasks"
 import { listProjectTasks } from "@/lib/api/projects"
+import { getTaskStatusLabel, getWorkbenchStageLabel, translate } from "@/lib/i18n"
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme } from "@/lib/pilot-theme"
@@ -63,7 +64,7 @@ interface DiffFile {
 export function TaskWorkbenchPage() {
   const { projectId = "" } = useParams()
   const [searchParams] = useSearchParams()
-  const { pilot } = usePreferences()
+  const { locale, pilot, t } = usePreferences()
   const theme = getPilotTheme(pilot)
   const taskId = searchParams.get("taskId")
   const [chatInput, setChatInput] = useState("")
@@ -117,7 +118,7 @@ export function TaskWorkbenchPage() {
   const stage = deriveWorkbenchStage(task)
   const parsedPlan = useMemo(() => parseTaskPlan(detail.data), [detail.data])
   const planLayers = useMemo(() => groupPlanNodes(parsedPlan.nodes), [parsedPlan.nodes])
-  const graphNodes = useMemo(() => getExecutionNodes(detail.data, runtime.data), [detail.data, runtime.data])
+  const graphNodes = useMemo(() => getExecutionNodes(detail.data, runtime.data, locale), [detail.data, locale, runtime.data])
   const activeNode = graphNodes.find((node) => node.id === activeNodeId) ?? graphNodes[0]
   const diffFiles = useMemo(() => buildDiffFiles(diff.data), [diff.data])
 
@@ -152,7 +153,7 @@ export function TaskWorkbenchPage() {
       runtime.reload()
       tasks.reload()
     } catch (caught) {
-      setMutationError(caught instanceof Error ? caught.message : "Message send failed.")
+      setMutationError(caught instanceof Error ? caught.message : t("common.send"))
     } finally {
       setIsMutating(false)
     }
@@ -171,7 +172,7 @@ export function TaskWorkbenchPage() {
       runtime.reload()
       tasks.reload()
     } catch (caught) {
-      setMutationError(caught instanceof Error ? caught.message : "Requirements confirmation failed.")
+      setMutationError(caught instanceof Error ? caught.message : t("task.workbench.confirmRequirements"))
     } finally {
       setIsMutating(false)
     }
@@ -190,7 +191,7 @@ export function TaskWorkbenchPage() {
       runtime.reload()
       tasks.reload()
     } catch (caught) {
-      setMutationError(caught instanceof Error ? caught.message : "Plan approval failed.")
+      setMutationError(caught instanceof Error ? caught.message : t("task.workbench.approvePlan"))
     } finally {
       setIsMutating(false)
     }
@@ -201,14 +202,14 @@ export function TaskWorkbenchPage() {
       return
     }
     const feedback = Object.entries(nodeAnnotations)
-      .map(([id, note]) => `节点 [${id}]: ${note}`)
+      .map(([id, note]) => t("task.workbench.replanNote", { nodeId: id, note }))
       .join("\n")
     setIsMutating(true)
     setMutationError(null)
     try {
       await requestTaskReplan(taskId, {
         annotations: Object.entries(nodeAnnotations).map(([nodeId, note]) => ({ nodeId, note })),
-        reason: feedback || "计划有误，我们需要重新梳理。",
+        reason: feedback || t("task.workbench.replanDefaultReason"),
       })
       setNodeAnnotations({})
       detail.reload()
@@ -216,7 +217,7 @@ export function TaskWorkbenchPage() {
       runtime.reload()
       tasks.reload()
     } catch (caught) {
-      setMutationError(caught instanceof Error ? caught.message : "Re-plan request failed.")
+      setMutationError(caught instanceof Error ? caught.message : t("task.workbench.planReject"))
     } finally {
       setIsMutating(false)
     }
@@ -224,7 +225,7 @@ export function TaskWorkbenchPage() {
 
   return (
     <div className="relative z-10 flex h-full flex-col overflow-hidden">
-      <WorkbenchTopBar stage={stage} task={task} theme={theme} />
+      <WorkbenchTopBar locale={locale} stage={stage} task={task} theme={theme} />
       {mutationError ? (
         <div className="border-b border-red-500/30 bg-red-500/10 px-6 py-3 font-mono text-xs text-red-500">
           {mutationError}
@@ -234,7 +235,7 @@ export function TaskWorkbenchPage() {
       {!taskId ? (
         <EmptyWorkbench theme={theme} />
       ) : detail.isLoading ? (
-        <div className={cn("flex h-full items-center justify-center font-mono text-sm", theme.cardSub)}>正在同步任务工作台...</div>
+        <div className={cn("flex h-full items-center justify-center font-mono text-sm", theme.cardSub)}>{t("common.loadingWorkbench")}</div>
       ) : detail.error ? (
         <div className={cn("m-8 rounded-sm border p-6 font-mono text-sm", theme.cardBg)}>{detail.error}</div>
       ) : detail.data ? (
@@ -294,22 +295,18 @@ export function TaskWorkbenchPage() {
 }
 
 function WorkbenchTopBar({
+  locale,
   stage,
   task,
   theme,
 }: {
+  locale: "zh-CN" | "en"
   stage: WorkbenchStage
   task?: TaskRecord
   theme: ReturnType<typeof getPilotTheme>
 }) {
   const stages: WorkbenchStage[] = ["CLARIFYING", "PLAN_REVIEW", "EXECUTING", "COMPLETED"]
   const currentIndex = stages.indexOf(stage)
-  const labels: Record<WorkbenchStage, string> = {
-    CLARIFYING: "01_需求澄清",
-    PLAN_REVIEW: "02_计划审阅",
-    EXECUTING: "03_并行执行",
-    COMPLETED: "04_合并收尾",
-  }
 
   return (
     <div className={cn("flex h-16 shrink-0 items-center justify-between border-b bg-black/10 px-6 backdrop-blur-sm", theme.sidebarBorder)}>
@@ -325,7 +322,7 @@ function WorkbenchTopBar({
             <span className={cn("mr-4 max-w-xs truncate font-bold", theme.cardTitle)}>{task.title}</span>
             <div className={cn("flex items-center rounded-sm border px-2 py-1 text-xs", theme.pathBg)}>
               <GitBranch className={cn("mr-1.5 h-3 w-3", theme.pathLabel)} />
-              {task.taskBranchName ?? "自动分支"}
+              {task.taskBranchName ?? translate(locale, "common.autoBranch")}
             </div>
           </>
         ) : null}
@@ -341,7 +338,7 @@ function WorkbenchTopBar({
               : theme.badgeDraft
           return (
             <div key={item} className="flex shrink-0 items-center">
-              <div className={cn("rounded-sm border px-2 py-1 transition-all duration-500", style)}>{labels[item]}</div>
+              <div className={cn("rounded-sm border px-2 py-1 transition-all duration-500", style)}>{getWorkbenchStageLabel(locale, item)}</div>
               {index < stages.length - 1 ? <ChevronRight className={cn("mx-1 h-3 w-3", isPassed ? theme.pageSub : theme.cardSub)} /> : null}
             </div>
           )
@@ -368,19 +365,20 @@ function ClarifyingView({
   onSendMessage: () => void
   theme: ReturnType<typeof getPilotTheme>
 }) {
+  const { locale, t } = usePreferences()
   const docReady = detail.messages.length > 0
-  const specLines = buildSpecContent(detail)
+  const specLines = buildSpecContent(detail, locale)
 
   return (
     <div className="flex h-full w-full overflow-hidden">
       <div className={cn("flex w-1/2 flex-col border-r", theme.sidebarBorder)}>
         <div className={cn("border-b p-4 font-mono text-xs font-bold tracking-widest", theme.treePathBar)}>
           <TerminalSquare className="mr-2 inline-block h-4 w-4" />
-          COMMAND_CLI //
+          {t("task.workbench.commandCli")} {t("common.subtitleSlash")}
         </div>
         <div className="flex-1 space-y-6 overflow-y-auto p-6 pb-6">
           {detail.messages.length === 0 ? (
-            <ChatBubble content="[SYSTEM] 神经连接尚未建立。请输入首条指令以启动 Lead Agent 澄清流程。" role="agent" theme={theme} />
+            <ChatBubble content={t("task.workbench.chatSystemBoot")} role="agent" theme={theme} />
           ) : (
             detail.messages.map((message) => (
               <ChatBubble key={message.id} content={message.content} role={message.role === "USER" ? "user" : "agent"} theme={theme} />
@@ -398,7 +396,7 @@ function ClarifyingView({
                   onSendMessage()
                 }
               }}
-              placeholder="继续对话以修改规格，无需打回..."
+              placeholder={t("task.workbench.chatPlaceholder")}
               type="text"
               value={chatInput}
             />
@@ -423,7 +421,7 @@ function ClarifyingView({
         <div className={cn("flex items-center justify-between border-b p-4", theme.sidebarBorder)}>
           <div className={cn("flex items-center font-mono text-xs font-bold tracking-widest", theme.pageSub)}>
             <FileText className="mr-2 h-4 w-4" />
-            /eat/task.md
+            {t("task.workbench.specFile")}
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-8">
@@ -460,7 +458,7 @@ function ClarifyingView({
             type="button"
           >
             <CheckCircle2 className="mr-2 h-4 w-4" />
-            确认文档，进入计划审阅
+            {t("task.workbench.confirmRequirements")}
           </button>
         </div>
       </div>
@@ -493,6 +491,7 @@ function PlanReviewView({
   task?: TaskRecord
   theme: ReturnType<typeof getPilotTheme>
 }) {
+  const { t } = usePreferences()
   const hasAnnotations = Object.keys(nodeAnnotations).length > 0
 
   return (
@@ -500,17 +499,17 @@ function PlanReviewView({
       <div className="mb-6 text-center">
         <h3 className={cn("mb-2 flex items-center justify-center font-mono text-xl font-bold tracking-widest", theme.pageSub)}>
           <Network className="mr-2 h-5 w-5" />
-          任务分配拓扑图 (DAG_PLAN)
+          {t("task.workbench.planReviewTitle")}
         </h3>
         <p className={cn("font-mono text-sm", theme.cardSub)}>
-          Lead Agent 已拆解任务。点击卡片可添加批注，确认无误后执行。
+          {t("task.workbench.planHelp")}
         </p>
       </div>
 
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center space-y-6 pb-20">
         {planLayers.length === 0 ? (
           <div className={cn("w-full rounded-sm border border-dashed p-10 text-center font-mono text-sm", theme.cardBg)}>
-            当前任务还没有可审阅计划。若任务状态是 `PLANNING`，说明后端已进入生成计划阶段，等待 Lead 返回即可。
+            {t("task.workbench.planEmpty")}
           </div>
         ) : (
           planLayers.map((layer, layerIndex) => (
@@ -538,11 +537,11 @@ function PlanReviewView({
                         {node.recommended_agent ?? task?.leadAgentType ?? "agent"}
                       </div>
                     </div>
-                    <h4 className={cn("mb-2 text-sm font-bold", theme.cardTitle)}>{node.title ?? node.role ?? "未命名节点"}</h4>
+                    <h4 className={cn("mb-2 text-sm font-bold", theme.cardTitle)}>{node.title ?? node.role ?? t("task.workbench.unnamedNode")}</h4>
                     <p className={cn("text-sm", theme.cardSub)}>{node.description}</p>
                     {node.depends_on?.length ? (
                       <div className={cn("mb-2 mt-3 font-mono text-[0.65rem] opacity-60", theme.cardSub)}>
-                        依赖: [{node.depends_on.join(", ")}]
+                        {t("task.workbench.dependencies")}: [{node.depends_on.join(", ")}]
                       </div>
                     ) : null}
                     {isEditing ? (
@@ -551,7 +550,7 @@ function PlanReviewView({
                           autoFocus
                           className={cn("w-full rounded-sm border px-2 py-1 font-mono text-xs outline-none", theme.inputBg)}
                           onChange={(event) => onNodeAnnotationChange(nodeId, event.target.value)}
-                          placeholder="输入修改批注..."
+                          placeholder={t("task.workbench.writeNote")}
                           rows={2}
                           value={note ?? ""}
                         />
@@ -560,12 +559,12 @@ function PlanReviewView({
                           onClick={onFinishAnnotating}
                           type="button"
                         >
-                          完成
+                          {t("task.workbench.noteDone")}
                         </button>
                       </div>
                     ) : note ? (
                       <div className={cn("mt-3 rounded-sm border p-2 font-mono text-xs", theme.pathBg)}>
-                        批注: {note}
+                        {t("task.workbench.note")}: {note}
                       </div>
                     ) : null}
                   </div>
@@ -583,7 +582,7 @@ function PlanReviewView({
           onClick={onReplan}
           type="button"
         >
-          {hasAnnotations ? "带着批注打回重拟 (RE_PLAN)" : "无批注打回 (REJECT)"}
+          {hasAnnotations ? t("task.workbench.planRejectWithNotes") : t("task.workbench.planReject")}
         </button>
         <button
           className={cn(
@@ -597,7 +596,7 @@ function PlanReviewView({
           type="button"
         >
           <PlayCircle className="mr-2 h-5 w-5" />
-          确认无误，开始并行执行
+          {t("task.workbench.approvePlan")}
         </button>
       </div>
     </div>
@@ -619,11 +618,14 @@ function ExecutingView({
   onSelectNode: (nodeId: string) => void
   theme: ReturnType<typeof getPilotTheme>
 }) {
+  const { t } = usePreferences()
   return (
     <div className="flex h-full w-full overflow-hidden">
       <div className={cn("flex w-1/3 max-w-[320px] shrink-0 flex-col border-r", theme.sidebarBorder, theme.shell)}>
         <div className={cn("flex items-center justify-between border-b p-4 font-mono text-xs font-bold tracking-widest", theme.treePathBar)}>
-          <span>WORKER_STATUS //</span>
+          <span>
+            {t("task.workbench.workerStatus")} {t("common.subtitleSlash")}
+          </span>
           <Activity className="h-4 w-4 animate-pulse" />
         </div>
         <div className="flex-1 space-y-3 overflow-y-auto p-4">
@@ -667,11 +669,11 @@ function ExecutingView({
             bash - {activeNode?.id ?? "LEAD_AGENT"}
           </div>
           <div className="rounded-sm border border-white/10 px-2 py-0.5 text-slate-400">
-            {detail.board ? "BOARD_LINKED" : "LOCAL_BUFFER"}
+            {detail.board ? t("task.workbench.boardLinked") : t("task.workbench.localBuffer")}
           </div>
         </div>
         <div className={cn("flex-1 overflow-y-auto p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap", theme.terminalBg)}>
-          {activeNode?.logs ?? "[SYS] No runtime logs yet."}
+          {activeNode?.logs ?? t("task.workbench.runtimeNoLogs")}
           {activeNode?.status === "running" ? <span className="ml-1 inline-block h-4 w-2 animate-pulse bg-current align-middle" /> : null}
         </div>
       </div>
@@ -694,6 +696,7 @@ function CompletedView({
   selectedDiffFile: DiffFile | null
   theme: ReturnType<typeof getPilotTheme>
 }) {
+  const { locale, t } = usePreferences()
   const fileTree = buildFileTree(diffFiles)
 
   return (
@@ -702,7 +705,7 @@ function CompletedView({
         <div className={cn("flex items-center justify-between border-b p-4 font-mono text-xs font-bold tracking-widest", theme.treePathBar)}>
           <span className="flex items-center">
             <FolderOpen className="mr-2 h-4 w-4" />
-            FILES
+            {t("task.workbench.files")}
           </span>
           <span className="rounded-sm border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-500">
             +{diff?.summary.additions ?? 0} / -{diff?.summary.deletions ?? 0}
@@ -711,7 +714,7 @@ function CompletedView({
         <div className="flex-1 overflow-y-auto p-2">
           <div className="mb-3 mt-2 px-2">
             <div className={cn("w-full rounded-sm border py-1.5 pl-8 pr-3 font-mono text-xs", theme.inputBg)}>
-              筛选文件...
+              {t("task.workbench.fileFilter")}
             </div>
           </div>
           <div className="font-mono text-xs">
@@ -725,7 +728,7 @@ function CompletedView({
         </div>
         <div className={cn("border-t p-4", theme.sidebarBorder, theme.shell)}>
           <div className={cn("rounded-sm border px-3 py-2 font-mono text-xs", theme.pathBg)}>
-            {diff?.available ? `基于 ${diff.baseRef}...${diff.headRef} 的真实任务差异。` : diff?.reason ?? "当前任务暂无可用差异。"}
+            {diff?.available ? t("task.workbench.diffReady", { baseRef: diff.baseRef, headRef: diff.headRef }) : diff?.reason ?? t("task.workbench.diffEmpty")}
           </div>
         </div>
       </div>
@@ -747,7 +750,7 @@ function CompletedView({
             </div>
           </div>
           <div className="flex-1 overflow-y-auto bg-[#1e1e1e] py-2 font-mono text-[0.8rem] leading-relaxed">
-            {(selectedDiffFile.diff || "[SYS] 暂无 patch 内容。").split("\n").map((line, index) => {
+            {(selectedDiffFile.diff || t("task.workbench.diffPlaceholder")).split("\n").map((line, index) => {
               const { bgClass, lineClass } = getDiffLineClasses(line)
               return (
                 <div key={`${line}-${index}`} className={cn("flex px-4 py-0.5 hover:bg-white/5", bgClass)}>
@@ -762,7 +765,7 @@ function CompletedView({
         <div className={cn("flex flex-1 items-center justify-center font-mono text-sm", theme.shell, theme.cardSub)}>
           <div className="flex flex-col items-center">
             <FileDiff className="mb-4 h-12 w-12 opacity-20" />
-            请在左侧选中文件以审查代码差异
+            {t("task.workbench.selectNodeFile")}
           </div>
         </div>
       )}
@@ -771,28 +774,28 @@ function CompletedView({
         <div className={cn("flex items-center justify-between border-b p-4", theme.sidebarBorder)}>
           <div className={cn("flex items-center font-mono text-xs font-bold tracking-widest", theme.pageSub)}>
             <Bot className="mr-2 h-4 w-4" />
-            LEAD_AGENT // 审查
+            {t("task.workbench.leadAgentReview")}
           </div>
         </div>
         <div className="flex-1 space-y-4 overflow-y-auto p-4 pb-32">
           <ChatBubble
-            content="已汇总代码。请左侧查看单一文件的 Diff。若有问题，请在此通知我进行修补或回滚。"
+            content={t("task.workbench.reviewPatch")}
             role="agent"
             theme={theme}
           />
           <div className={cn("rounded-sm border p-3 font-mono text-xs", theme.pathBg)}>
-            当前任务状态: {detail.task.status}
+            {t("task.workbench.summary.taskStatus")}: {getTaskStatusLabel(locale, detail.task.status)}
             <br />
-            子任务数量: {detail.subTasks.length}
+            {t("task.workbench.summary.subTasks")}: {detail.subTasks.length}
             <br />
-            历史消息: {detail.messages.length}
+            {t("task.workbench.summary.historyMessages")}: {detail.messages.length}
           </div>
         </div>
         <div className={cn("absolute bottom-0 left-0 right-0 bg-gradient-to-t p-4 pt-12", pilotGradient(theme))}>
           <div className="relative flex w-full items-center">
             <input
               className={cn("w-full rounded-sm border py-2 pl-3 pr-8 font-mono text-xs outline-none transition-all shadow-sm", theme.inputBg)}
-              placeholder="下达修复指令..."
+              placeholder={t("task.workbench.reviewPlaceholder")}
               readOnly
               type="text"
             />
@@ -807,10 +810,11 @@ function CompletedView({
 }
 
 function EmptyWorkbench({ theme }: { theme: ReturnType<typeof getPilotTheme> }) {
+  const { t } = usePreferences()
   return (
     <div className="flex h-full items-center justify-center">
       <div className={cn("rounded-sm border border-dashed px-8 py-10 font-mono text-sm", theme.cardBg)}>
-        先从左侧任务中心选择一个任务，再进入工作台。
+        {t("task.empty")}
       </div>
     </div>
   )
@@ -825,12 +829,13 @@ function ChatBubble({
   role: "agent" | "user"
   theme: ReturnType<typeof getPilotTheme>
 }) {
+  const { t } = usePreferences()
   return (
     <div className={cn("flex", role === "user" ? "justify-end" : "justify-start")}>
       <div className={cn("max-w-[85%] rounded-sm border p-4 backdrop-blur-md", role === "user" ? theme.chatUser : theme.chatAgent)}>
         <div className="mb-2 flex items-center font-mono text-[0.65rem] opacity-60">
           {role === "user" ? <RefreshCw className="mr-1 h-3 w-3" /> : <Bot className="mr-1 h-3 w-3" />}
-          {role === "user" ? "COMMANDER // LOCAL" : "LEAD_AGENT // CODEX-CLI"}
+          {role === "user" ? t("task.workbench.role.user") : t("task.workbench.role.agent")}
         </div>
         <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">{content}</div>
       </div>
@@ -851,28 +856,28 @@ function deriveWorkbenchStage(task?: TaskRecord): WorkbenchStage {
   }
 }
 
-function buildSpecContent(detail: TaskDetail) {
+function buildSpecContent(detail: TaskDetail, locale: "zh-CN" | "en") {
   const lines = [
-    `# 任务规格说明：${detail.task.title}`,
+    `# ${translate(locale, "task.workbench.spec.title", { title: detail.task.title })}`,
     "",
-    "## 1. 目标与范围",
-    detail.task.description || "等待补充任务描述。",
+    `## ${translate(locale, "task.workbench.spec.goal")}`,
+    detail.task.description || translate(locale, "task.workbench.spec.goalEmpty"),
     "",
-    "## 2. 当前上下文",
-    `- Task ID: ${detail.task.id}`,
-    `- Lead Agent: ${detail.task.leadAgentType}`,
-    `- Base Branch: ${detail.task.baseBranch}`,
-    `- Task Branch: ${detail.task.taskBranchName ?? "自动生成中"}`,
+    `## ${translate(locale, "task.workbench.spec.context")}`,
+    `- ${translate(locale, "task.workbench.spec.taskId", { taskId: detail.task.id })}`,
+    `- ${translate(locale, "task.workbench.spec.leadAgent", { agent: detail.task.leadAgentType })}`,
+    `- ${translate(locale, "task.workbench.spec.baseBranch", { branch: detail.task.baseBranch })}`,
+    `- ${translate(locale, "task.workbench.spec.taskBranch", { branch: detail.task.taskBranchName ?? translate(locale, "common.autoGenerated") })}`,
     "",
-    "## 3. 参考附件",
+    `## ${translate(locale, "task.workbench.spec.attachments")}`,
     ...(detail.attachments.length
-      ? detail.attachments.map((item) => `- ${item.fileName} (${item.fileType})`)
-      : ["- 暂无附件"]),
+      ? detail.attachments.map((item) => `- ${translate(locale, "task.workbench.spec.attachmentItem", { name: item.fileName, type: item.fileType })}`)
+      : [`- ${translate(locale, "task.workbench.spec.attachmentsEmpty")}`]),
     "",
-    "## 4. 最近消息",
+    `## ${translate(locale, "task.workbench.spec.messages")}`,
     ...(detail.messages.length
       ? detail.messages.slice(-3).map((item) => `- [${item.role}] ${item.content}`)
-      : ["- 尚未开始对话"]),
+      : [`- ${translate(locale, "task.workbench.spec.messagesEmpty")}`]),
   ]
   return lines.map((line) => {
     if (line.startsWith("# ")) {
@@ -945,7 +950,7 @@ interface ExecutionNode {
   status: "done" | "pending" | "running"
 }
 
-function getExecutionNodes(detail?: TaskDetail, runtime?: TaskRuntime): ExecutionNode[] {
+function getExecutionNodes(detail?: TaskDetail, runtime?: TaskRuntime, locale: "zh-CN" | "en" = "zh-CN"): ExecutionNode[] {
   if (!detail) {
     return []
   }
@@ -954,7 +959,7 @@ function getExecutionNodes(detail?: TaskDetail, runtime?: TaskRuntime): Executio
       agent: node.agentType,
       branch: node.branchName ?? undefined,
       id: node.id,
-      logs: node.logsPreview || "[SYS] No runtime logs yet.",
+      logs: node.logsPreview || translate(locale, "task.workbench.runtimeNoLogs"),
       name: node.title,
       status:
         node.status === "RUNNING" || node.status === "EXECUTING"
@@ -970,8 +975,8 @@ function getExecutionNodes(detail?: TaskDetail, runtime?: TaskRuntime): Executio
     agent: detail.task.leadAgentType,
     branch: detail.task.taskBranchName ?? undefined,
     id: "LEAD_AGENT",
-    logs: leadSession?.outputBuffer || "[SYS] Lead orchestration waiting for runtime output...",
-    name: "总控与监听台",
+    logs: leadSession?.outputBuffer || translate(locale, "task.workbench.runtimeLeadWaiting"),
+    name: translate(locale, "task.workbench.runtimeNodeName"),
     status: detail.task.status === "EXECUTING" ? "running" : detail.task.status === "COMPLETED" ? "done" : "pending",
   }
 
@@ -983,7 +988,11 @@ function getExecutionNodes(detail?: TaskDetail, runtime?: TaskRuntime): Executio
       id: subTask.branchSuffix || subTask.id,
       logs:
         session?.outputBuffer ||
-        `[SYS] ${subTask.title}\n[SYS] 状态: ${subTask.status}\n[SYS] Worktree: ${subTask.worktreePath ?? "pending"}`,
+        translate(locale, "task.workbench.runtimeNodeLog", {
+          status: translate(locale, `status.${subTask.status}`),
+          title: subTask.title,
+          worktree: subTask.worktreePath ?? translate(locale, "task.workbench.runtimePending"),
+        }),
       name: subTask.displayName ?? subTask.title,
       status:
         subTask.status === "RUNNING"

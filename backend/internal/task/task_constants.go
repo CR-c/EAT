@@ -36,6 +36,7 @@ const (
 )
 
 const (
+	messageRoleAgent  = "AGENT"
 	messageRoleSystem = "SYSTEM"
 	messageRoleUser   = "USER"
 )

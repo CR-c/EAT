@@ -1,7 +1,10 @@
 package agent
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -33,8 +36,21 @@ type AttachmentRef struct {
 
 // Service manages agent definitions and spawning.
 type Service struct {
-	sandbox *sandbox.Manager
+	sandbox         *sandbox.Manager
+	leadTurnRunners map[string]LeadTurnRunner
 }
+
+type LeadTurnConfig struct {
+	Prompt  string
+	WorkDir string
+}
+
+type LeadTurnResult struct {
+	Response  string
+	RawOutput string
+}
+
+type LeadTurnRunner func(ctx context.Context, config LeadTurnConfig) (*LeadTurnResult, error)
 
 type CapabilitySet struct {
 	CanOrchestrate           bool     `json:"canOrchestrate"`
@@ -78,7 +94,39 @@ type HealthSnapshot struct {
 }
 
 func NewService(sandboxManager *sandbox.Manager) *Service {
-	return &Service{sandbox: sandboxManager}
+	return &Service{
+		sandbox: sandboxManager,
+		leadTurnRunners: map[string]LeadTurnRunner{
+			"codex-cli": runCodexLeadTurn,
+		},
+	}
+}
+
+func (s *Service) SetLeadTurnRunner(agentType string, runner LeadTurnRunner) {
+	if strings.TrimSpace(agentType) == "" {
+		return
+	}
+	if s.leadTurnRunners == nil {
+		s.leadTurnRunners = make(map[string]LeadTurnRunner)
+	}
+	s.leadTurnRunners[agentType] = runner
+}
+
+func (s *Service) RunLeadTurn(ctx context.Context, agentType string, config LeadTurnConfig) (*LeadTurnResult, error) {
+	if strings.TrimSpace(agentType) == "" {
+		return nil, fmt.Errorf("agent type is required")
+	}
+	if strings.TrimSpace(config.Prompt) == "" {
+		return nil, fmt.Errorf("lead prompt is required")
+	}
+	if s.leadTurnRunners == nil {
+		return nil, fmt.Errorf("no lead turn runners are configured")
+	}
+	runner := s.leadTurnRunners[agentType]
+	if runner == nil {
+		return nil, fmt.Errorf("agent %s does not support lead turns", agentType)
+	}
+	return runner(ctx, config)
 }
 
 func (s *Service) ListAgents() []Descriptor {
@@ -294,6 +342,91 @@ func spawnCodexWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnCon
 	})
 
 	return runtime, nil
+}
+
+func runCodexLeadTurn(ctx context.Context, config LeadTurnConfig) (*LeadTurnResult, error) {
+	args := []string{
+		"exec",
+		"--skip-git-repo-check",
+		"--color", "never",
+		"--json",
+	}
+	if strings.TrimSpace(config.WorkDir) != "" {
+		args = append(args, "--cd", config.WorkDir)
+	}
+	if model := strings.TrimSpace(os.Getenv("EAT_CODEX_MODEL")); model != "" {
+		args = append(args, "--model", model)
+	}
+	args = append(args, config.Prompt)
+
+	cmd := exec.CommandContext(ctx, "codex", args...)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		errText := strings.TrimSpace(stderr.String())
+		if errText == "" {
+			errText = strings.TrimSpace(stdout.String())
+		}
+		if errText != "" {
+			return nil, fmt.Errorf("codex lead turn failed: %w: %s", err, errText)
+		}
+		return nil, fmt.Errorf("codex lead turn failed: %w", err)
+	}
+
+	response, parseErr := extractCodexLeadResponse(stdout.String())
+	if parseErr != nil {
+		return nil, parseErr
+	}
+
+	return &LeadTurnResult{
+		Response:  response,
+		RawOutput: stdout.String(),
+	}, nil
+}
+
+func extractCodexLeadResponse(raw string) (string, error) {
+	type codexItem struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	type codexEvent struct {
+		Type string    `json:"type"`
+		Item codexItem `json:"item"`
+	}
+
+	parts := make([]string, 0, 1)
+	scanner := bufio.NewScanner(strings.NewReader(raw))
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		var event codexEvent
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		if event.Type != "item.completed" || event.Item.Type != "agent_message" {
+			continue
+		}
+		text := strings.TrimSpace(event.Item.Text)
+		if text != "" {
+			parts = append(parts, text)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+
+	response := strings.TrimSpace(strings.Join(parts, "\n\n"))
+	if response == "" {
+		return "", fmt.Errorf("codex lead turn produced no agent message")
+	}
+	return response, nil
 }
 
 func buildCodexPrompt(config SpawnConfig) string {
