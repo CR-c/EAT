@@ -1,16 +1,19 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"eat/backend/internal/agent"
 	"eat/backend/internal/eventbus"
 	"eat/backend/internal/metrics"
+	"eat/backend/internal/orchestrator"
 	"eat/backend/internal/preview"
 	"eat/backend/internal/project"
 	"eat/backend/internal/sandbox"
@@ -22,6 +25,7 @@ type Dependencies struct {
 	DB              *store.DB
 	Bus             *eventbus.Bus
 	AgentService    *agent.Service
+	EnableRuntime   bool
 	UploadRootPath  string
 	PreviewRootPath string
 	UIRootPath      string
@@ -37,6 +41,8 @@ type Handler struct {
 	projectService *project.Service
 	agentService   *agent.Service
 	taskService    *task.Service
+	orchestrator   *orchestrator.Orchestrator
+	startedAt      time.Time
 	uiRootPath     string
 }
 
@@ -51,6 +57,8 @@ func NewHandler(deps Dependencies) *Handler {
 		uploadRootPath = deps.UploadRootPath
 	}
 	uiRootPath := resolveUIRootPath(deps.UIRootPath)
+	taskRepository := task.NewRepository(deps.DB.DB)
+	projectRepository := project.NewRepository(deps.DB.DB)
 
 	previewService := deps.PreviewService
 	if previewService == nil {
@@ -59,29 +67,63 @@ func NewHandler(deps Dependencies) *Handler {
 			previewRootPath = deps.PreviewRootPath
 		}
 		previewService = preview.NewService(preview.Dependencies{
-			ProjectRepository: project.NewRepository(deps.DB.DB),
-			TaskRepository:    task.NewRepository(deps.DB.DB),
+			ProjectRepository: projectRepository,
+			TaskRepository:    taskRepository,
 			PreviewRootPath:   previewRootPath,
 		})
 	}
 
-		return &Handler{
+	taskService := task.NewService(task.Dependencies{
+		Repository:        taskRepository,
+		ProjectRepository: projectRepository,
+		AgentService:      agentService,
+		Bus:               deps.Bus,
+		UploadRootPath:    uploadRootPath,
+	})
+
+	var runtimeOrchestrator *orchestrator.Orchestrator
+	if deps.EnableRuntime {
+		repositoryAdapter := orchestrator.NewTaskRepositoryAdapter(taskRepository, projectRepository)
+		runtimeOrchestrator = orchestrator.New(repositoryAdapter, agentService, sandboxManager, deps.Bus)
+
+		launchPendingWorkers := func(ctx context.Context, taskID string) {
+			runtimeOrchestrator.LaunchApprovedSubTasks(ctx, taskID)
+		}
+		taskService.OnPlanApproved = launchPendingWorkers
+		taskService.OnWorkerQueued = launchPendingWorkers
+		taskService.OnIntegrationQueued = func(ctx context.Context, _ string) {
+			runtimeOrchestrator.TriggerIntegrationTick(ctx)
+		}
+	}
+
+	return &Handler{
 		db:             deps.DB,
 		bus:            deps.Bus,
 		sandbox:        sandboxManager,
 		metricsService: metrics.NewService(deps.DB.DB),
 		previewService: previewService,
-		projectService: project.NewService(project.NewRepository(deps.DB.DB)),
+		projectService: project.NewService(projectRepository),
 		agentService:   agentService,
+		taskService:    taskService,
+		orchestrator:   runtimeOrchestrator,
+		startedAt:      time.Now().UTC(),
 		uiRootPath:     uiRootPath,
-		taskService: task.NewService(task.Dependencies{
-			Repository:        task.NewRepository(deps.DB.DB),
-			ProjectRepository: project.NewRepository(deps.DB.DB),
-			AgentService:      agentService,
-			Bus:               deps.Bus,
-			UploadRootPath:    uploadRootPath,
-		}),
 	}
+}
+
+func (h *Handler) StartRuntime(ctx context.Context) {
+	if h.orchestrator == nil {
+		return
+	}
+	h.orchestrator.Start()
+	h.orchestrator.TriggerIntegrationTick(ctx)
+}
+
+func (h *Handler) StopRuntime(ctx context.Context) error {
+	if h.orchestrator == nil {
+		return nil
+	}
+	return h.orchestrator.GracefulStop(ctx)
 }
 
 func respondJSON(w http.ResponseWriter, status int, payload any) {

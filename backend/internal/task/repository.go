@@ -229,15 +229,33 @@ type CreateSessionInput struct {
 }
 
 type UpdateSessionInput struct {
-	Status        *string
-	SetStatus     bool
-	EndedAt       *string
-	SetEndedAt    bool
-	ExitCode      *int64
-	SetExitCode   bool
-	OutputBuffer  *string
-	SetOutputBuff bool
-	UpdatedAt     *string
+	AgentType               *string
+	SetAgentType            bool
+	SessionType             *string
+	SetSessionType          bool
+	SandboxType             *string
+	SetSandboxType          bool
+	ContainerID             *string
+	SetContainerID          bool
+	Status                  *string
+	SetStatus               bool
+	PID                     *int64
+	SetPID                  bool
+	StartedAt               *string
+	SetStartedAt            bool
+	EndedAt                 *string
+	SetEndedAt              bool
+	ExitCode                *int64
+	SetExitCode             bool
+	LogPath                 *string
+	SetLogPath              bool
+	FirstOutputAt           *string
+	SetFirstOutputAt        bool
+	OutputBuffer            *string
+	SetOutputBuff           bool
+	OutputBufferMaxBytes    *int64
+	SetOutputBufferMaxBytes bool
+	UpdatedAt               *string
 }
 
 type CreateMailboxMessageInput struct {
@@ -320,6 +338,16 @@ type UpdateIntegrationQueueItemInput struct {
 	Status          *string
 	MergedCommitSHA *string
 	SetMergedCommit bool
+}
+
+type CreateGateResultInput struct {
+	ID               string
+	IntegrationRunID string
+	GateType         string
+	Status           string
+	Summary          string
+	DetailsJSON      map[string]any
+	CreatedAt        string
 }
 
 func NewRepository(db *sql.DB) *Repository {

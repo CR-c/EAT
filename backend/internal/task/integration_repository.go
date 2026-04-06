@@ -3,6 +3,8 @@ package task
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -132,6 +134,56 @@ func (r *Repository) ListIntegrationRunsByTaskID(ctx context.Context, taskID str
 		WHERE task_id = ?
 		ORDER BY created_at ASC, id ASC
 	`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]IntegrationRun, 0)
+	for rows.Next() {
+		var item IntegrationRun
+		if err := rows.Scan(
+			&item.ID,
+			&item.TaskID,
+			&item.IntegrationBranch,
+			&item.Status,
+			&item.StartedAt,
+			&item.EndedAt,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) ListIntegrationRunsByStatuses(ctx context.Context, statuses []string, limit int) ([]IntegrationRun, error) {
+	if len(statuses) == 0 {
+		return []IntegrationRun{}, nil
+	}
+
+	placeholders := make([]string, 0, len(statuses))
+	args := make([]any, 0, len(statuses)+1)
+	for _, status := range statuses {
+		placeholders = append(placeholders, "?")
+		args = append(args, status)
+	}
+
+	query := `
+		SELECT
+			id, task_id, integration_branch, status, started_at, ended_at, created_at, updated_at
+		FROM integration_runs
+		WHERE status IN (` + strings.Join(placeholders, ", ") + `)
+		ORDER BY created_at ASC, id ASC
+	`
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+
+	rows, err := r.exec().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -333,4 +385,52 @@ func (r *Repository) ListGateResultsByIntegrationRunID(ctx context.Context, inte
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (r *Repository) CreateGateResult(ctx context.Context, input CreateGateResultInput) (*GateResult, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	record := &GateResult{
+		ID:               input.ID,
+		IntegrationRunID: input.IntegrationRunID,
+		GateType:         input.GateType,
+		Status:           input.Status,
+		Summary:          input.Summary,
+		DetailsJSON:      cloneJSONObject(input.DetailsJSON),
+		CreatedAt:        input.CreatedAt,
+	}
+	if record.ID == "" {
+		record.ID = uuid.NewString()
+	}
+	if record.CreatedAt == "" {
+		record.CreatedAt = now
+	}
+
+	var detailsJSON *string
+	if len(record.DetailsJSON) > 0 {
+		encoded, err := json.Marshal(record.DetailsJSON)
+		if err != nil {
+			return nil, err
+		}
+		encodedString := string(encoded)
+		detailsJSON = &encodedString
+	}
+
+	_, err := r.exec().ExecContext(ctx, `
+		INSERT INTO gate_results (
+			id, integration_run_id, gate_type, status, summary, details_json, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`,
+		record.ID,
+		record.IntegrationRunID,
+		record.GateType,
+		record.Status,
+		record.Summary,
+		detailsJSON,
+		record.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return record, nil
 }

@@ -42,6 +42,7 @@ func (s *Service) StartIntegrationRun(ctx context.Context, taskID string) (*Inte
 			"status":            result.IntegrationRun.Status,
 			"taskId":            taskID,
 		})
+		s.notifyIntegrationQueued(taskID)
 	}
 	return result, nil
 }
@@ -90,6 +91,7 @@ func (s *Service) RetryIntegrationRun(ctx context.Context, integrationRunID stri
 			"status":            result.IntegrationRun.Status,
 			"taskId":            taskRecord.ID,
 		})
+		s.notifyIntegrationQueued(taskRecord.ID)
 	}
 	return result, nil
 }

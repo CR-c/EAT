@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -97,7 +98,8 @@ func NewService(sandboxManager *sandbox.Manager) *Service {
 	return &Service{
 		sandbox: sandboxManager,
 		leadTurnRunners: map[string]LeadTurnRunner{
-			"codex-cli": runCodexLeadTurn,
+			"claude-cli": runClaudeLeadTurn,
+			"codex-cli":  runCodexLeadTurn,
 		},
 	}
 }
@@ -193,17 +195,17 @@ func builtInDefinitions() []builtInDefinition {
 	return []builtInDefinition{
 		{
 			Name:        "claude-cli",
-			RuntimeMode: "STUB",
+			RuntimeMode: "REAL",
 			Capabilities: CapabilitySet{
 				CanOrchestrate:           true,
 				CanExecute:               true,
-				Description:              "Anthropic Claude CLI placeholder adapter until a documented real runtime is wired in.",
+				Description:              "Anthropic Claude Code for host-side lead flows and Docker-sandboxed worker execution.",
 				SupportedSandboxTypes:    []string{"HOST", "DOCKER"},
 				SupportsInteractiveInput: true,
 				SupportsVision:           true,
 			},
-			Health: func(*sandbox.Manager) HealthSnapshot { return stubHealth("claude-cli") },
-			Spawn:  nil,
+			Health: func(mgr *sandbox.Manager) HealthSnapshot { return cliHealth("claude-cli", "claude", mgr) },
+			Spawn:  spawnClaudeWorker,
 		},
 		{
 			Name:        "codex-cli",
@@ -221,17 +223,17 @@ func builtInDefinitions() []builtInDefinition {
 		},
 		{
 			Name:        "gemini-cli",
-			RuntimeMode: "STUB",
+			RuntimeMode: "REAL",
 			Capabilities: CapabilitySet{
 				CanOrchestrate:           false,
 				CanExecute:               true,
-				Description:              "Google Gemini CLI placeholder adapter until a documented real runtime is wired in.",
-				SupportedSandboxTypes:    []string{"HOST"},
+				Description:              "Google Gemini CLI for Docker-sandboxed worker execution.",
+				SupportedSandboxTypes:    []string{"HOST", "DOCKER"},
 				SupportsInteractiveInput: true,
 				SupportsVision:           true,
 			},
-			Health: func(*sandbox.Manager) HealthSnapshot { return stubHealth("gemini-cli") },
-			Spawn:  nil,
+			Health: func(mgr *sandbox.Manager) HealthSnapshot { return cliHealth("gemini-cli", "gemini", mgr) },
+			Spawn:  spawnGeminiWorker,
 		},
 	}
 }
@@ -344,6 +346,132 @@ func spawnCodexWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnCon
 	return runtime, nil
 }
 
+func spawnClaudeWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (*sandbox.ContainerRuntime, error) {
+	binaryPath, err := resolveCLIPath("claude")
+	if err != nil {
+		return nil, err
+	}
+
+	runtimeHomePath, cleanup, err := prepareRuntimeHome("claude", []copySpec{
+		{src: filepath.Join(mustUserHomeDir(), ".claude"), dst: ".claude", dir: true},
+		{src: filepath.Join(mustUserHomeDir(), ".claude.json"), dst: ".claude.json"},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	command := []string{
+		binaryPath,
+		"-p",
+		"--output-format", "stream-json",
+		"--dangerously-skip-permissions",
+	}
+	if strings.TrimSpace(config.WorkDir) != "" {
+		command = append(command, "--add-dir", config.WorkDir)
+	}
+	if model := strings.TrimSpace(os.Getenv("EAT_CLAUDE_MODEL")); model != "" {
+		command = append(command, "--model", model)
+	}
+	command = append(command, buildClaudePrompt(config))
+
+	runtime, err := spawnSandboxedCLIWorker(ctx, mgr, config, runtimeHomePath, []string{binaryPath}, command, map[string]string{
+		"HOME": runtimeHomePath,
+	})
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	runtime.OnExit(func(int) { cleanup() })
+	return runtime, nil
+}
+
+func spawnGeminiWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (*sandbox.ContainerRuntime, error) {
+	scriptPath, err := resolveCLIPath("gemini")
+	if err != nil {
+		return nil, err
+	}
+	packageRoot, err := resolveGeminiPackageRoot(scriptPath)
+	if err != nil {
+		return nil, err
+	}
+	nodePath, err := resolveCLIPath("node")
+	if err != nil {
+		return nil, err
+	}
+
+	runtimeHomePath, cleanup, err := prepareRuntimeHome("gemini", []copySpec{
+		{src: filepath.Join(mustUserHomeDir(), ".gemini"), dst: ".gemini", dir: true},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	command := []string{
+		nodePath,
+		filepath.Join(packageRoot, "dist", "index.js"),
+		"--prompt", buildGeminiPrompt(config),
+		"--output-format", "stream-json",
+		"--yolo",
+	}
+	if strings.TrimSpace(config.WorkDir) != "" {
+		command = append(command, "--include-directories", config.WorkDir)
+	}
+	if model := strings.TrimSpace(os.Getenv("EAT_GEMINI_MODEL")); model != "" {
+		command = append(command, "--model", model)
+	}
+
+	runtime, err := spawnSandboxedCLIWorker(ctx, mgr, config, runtimeHomePath, []string{packageRoot, nodePath}, command, map[string]string{
+		"HOME": runtimeHomePath,
+	})
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	runtime.OnExit(func(int) { cleanup() })
+	return runtime, nil
+}
+
+func runClaudeLeadTurn(ctx context.Context, config LeadTurnConfig) (*LeadTurnResult, error) {
+	args := []string{
+		"-p",
+		"--output-format", "text",
+		"--dangerously-skip-permissions",
+	}
+	if strings.TrimSpace(config.WorkDir) != "" {
+		args = append(args, "--add-dir", config.WorkDir)
+	}
+	if model := strings.TrimSpace(os.Getenv("EAT_CLAUDE_MODEL")); model != "" {
+		args = append(args, "--model", model)
+	}
+	args = append(args, config.Prompt)
+
+	cmd := exec.CommandContext(ctx, "claude", args...)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		errText := strings.TrimSpace(stderr.String())
+		if errText == "" {
+			errText = strings.TrimSpace(stdout.String())
+		}
+		if errText != "" {
+			return nil, fmt.Errorf("claude lead turn failed: %w: %s", err, errText)
+		}
+		return nil, fmt.Errorf("claude lead turn failed: %w", err)
+	}
+
+	response := strings.TrimSpace(stdout.String())
+	if response == "" {
+		return nil, fmt.Errorf("claude lead turn produced no output")
+	}
+
+	return &LeadTurnResult{
+		Response:  response,
+		RawOutput: stdout.String(),
+	}, nil
+}
+
 func runCodexLeadTurn(ctx context.Context, config LeadTurnConfig) (*LeadTurnResult, error) {
 	args := []string{
 		"exec",
@@ -452,32 +580,240 @@ func resolveGitRoot(dir string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+type copySpec struct {
+	src string
+	dst string
+	dir bool
+}
+
+func spawnSandboxedCLIWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig, runtimeHomePath string, executablePaths []string, command []string, env map[string]string) (*sandbox.ContainerRuntime, error) {
+	if mgr == nil {
+		return nil, fmt.Errorf("docker sandbox manager is required for worker sessions")
+	}
+
+	gitRoot := config.WorkDir
+	if resolved, err := resolveGitRoot(config.WorkDir); err == nil {
+		gitRoot = resolved
+	}
+
+	readonlyMounts := []string{"/etc/ssl/certs"}
+	for _, executablePath := range executablePaths {
+		if executablePath == "" {
+			continue
+		}
+		readonlyMounts = append(readonlyMounts, executablePath)
+		if resolved, err := filepath.EvalSymlinks(executablePath); err == nil && resolved != executablePath {
+			readonlyMounts = append(readonlyMounts, resolved)
+		}
+	}
+
+	sandboxCfg := sandbox.SandboxConfig{
+		ContainerImage:  mgr.WorkerImage,
+		ContainerUser:   mgr.ContainerUser,
+		NetworkProfile:  "ISOLATED",
+		WorkDir:         config.WorkDir,
+		ReadwriteMounts: uniqueStrings([]string{config.WorkDir, gitRoot, runtimeHomePath}),
+		ReadonlyMounts:  uniqueStrings(readonlyMounts),
+	}
+
+	return mgr.SpawnContainerSession(ctx, sandboxCfg, command, env)
+}
+
+func prepareRuntimeHome(prefix string, copies []copySpec) (string, func(), error) {
+	home, _ := os.UserHomeDir()
+	runtimeRoot := os.Getenv("EAT_" + strings.ToUpper(strings.ReplaceAll(prefix, "-", "_")) + "_RUNTIME_ROOT")
+	if runtimeRoot == "" {
+		runtimeRoot = filepath.Join(home, ".eat-"+prefix+"-runtime")
+	}
+
+	runtimeHomePath := filepath.Join(runtimeRoot, "session-"+uuid.NewString())
+	if err := os.MkdirAll(runtimeHomePath, 0o755); err != nil {
+		return "", nil, fmt.Errorf("create runtime home for %s: %w", prefix, err)
+	}
+
+	for _, spec := range copies {
+		if spec.src == "" {
+			continue
+		}
+		if err := copyIntoRuntime(runtimeHomePath, spec); err != nil {
+			_ = os.RemoveAll(runtimeHomePath)
+			return "", nil, err
+		}
+	}
+
+	return runtimeHomePath, func() { _ = os.RemoveAll(runtimeHomePath) }, nil
+}
+
+func copyIntoRuntime(runtimeHomePath string, spec copySpec) error {
+	info, err := os.Stat(spec.src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect auth source %s: %w", spec.src, err)
+	}
+
+	dstPath := filepath.Join(runtimeHomePath, spec.dst)
+	if spec.dir || info.IsDir() {
+		return copyDir(spec.src, dstPath)
+	}
+	return copyFile(spec.src, dstPath, info.Mode())
+}
+
+func copyDir(src, dst string) error {
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return fmt.Errorf("create dir %s: %w", dst, err)
+	}
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("read dir %s: %w", src, err)
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("read info for %s: %w", srcPath, err)
+		}
+		if err := copyFile(srcPath, dstPath, info.Mode()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyFile(src, dst string, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return fmt.Errorf("create parent dir for %s: %w", dst, err)
+	}
+	input, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", src, err)
+	}
+	defer input.Close()
+
+	output, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode.Perm())
+	if err != nil {
+		return fmt.Errorf("create %s: %w", dst, err)
+	}
+	defer output.Close()
+
+	if _, err := io.Copy(output, input); err != nil {
+		return fmt.Errorf("copy %s -> %s: %w", src, dst, err)
+	}
+	return nil
+}
+
+func resolveCLIPath(binary string) (string, error) {
+	path, err := exec.LookPath(binary)
+	if err != nil {
+		return "", fmt.Errorf("%s is not installed or not available on PATH", binary)
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(path); resolveErr == nil {
+		return resolved, nil
+	}
+	return path, nil
+}
+
+func resolveGeminiPackageRoot(scriptPath string) (string, error) {
+	start := scriptPath
+	info, err := os.Stat(start)
+	if err != nil {
+		return "", fmt.Errorf("inspect gemini cli path %s: %w", scriptPath, err)
+	}
+	if !info.IsDir() {
+		start = filepath.Dir(start)
+	}
+
+	for current := start; current != "" && current != filepath.Dir(current); current = filepath.Dir(current) {
+		packageJSON := filepath.Join(current, "package.json")
+		if stat, statErr := os.Stat(packageJSON); statErr == nil && !stat.IsDir() {
+			return current, nil
+		}
+	}
+
+	return "", fmt.Errorf("resolve gemini package root from %s: package.json not found", scriptPath)
+}
+
+func buildClaudePrompt(config SpawnConfig) string {
+	return buildGenericWorkerPrompt(config)
+}
+
+func buildGeminiPrompt(config SpawnConfig) string {
+	return buildGenericWorkerPrompt(config)
+}
+
+func buildGenericWorkerPrompt(config SpawnConfig) string {
+	parts := []string{strings.TrimSpace(config.Prompt)}
+	if strings.TrimSpace(config.BranchName) != "" {
+		parts = append(parts, "Current branch: "+config.BranchName)
+	}
+	if strings.TrimSpace(config.WorkDir) != "" {
+		parts = append(parts, "Working directory: "+config.WorkDir)
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
+}
+
+func mustUserHomeDir() string {
+	home, _ := os.UserHomeDir()
+	return home
+}
+
 func codexHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
+	return cliHealth("codex-cli", "codex", sandboxManager)
+}
+
+func cliHealth(adapterName, binary string, sandboxManager *sandbox.Manager) HealthSnapshot {
 	snapshot := HealthSnapshot{
 		Available:   true,
 		RuntimeMode: "REAL",
 		Checks:      []HealthCheck{},
 	}
 
-	if _, err := exec.LookPath("codex"); err != nil {
+	commandEnvVar := fmt.Sprintf("EAT_%s_WORKER_COMMAND", strings.ToUpper(strings.ReplaceAll(strings.TrimSuffix(adapterName, "-cli"), "-", "_")))
+	commandOverride := strings.TrimSpace(os.Getenv(commandEnvVar))
+	if commandOverride != "" {
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{
+			Name:    "runtime-command",
+			Status:  "PASS",
+			Message: fmt.Sprintf("%s is configured via %s.", adapterName, commandEnvVar),
+		})
+	} else if _, err := exec.LookPath(binary); err != nil {
 		return HealthSnapshot{
 			Available:   false,
 			RuntimeMode: "REAL",
 			Checks: []HealthCheck{
-				{Name: "binary", Status: "FAIL", Message: "codex is not installed or not available on PATH."},
+				{Name: "binary", Status: "FAIL", Message: fmt.Sprintf("%s is not installed or not available on PATH.", binary)},
 			},
 			FailureReason: &FailureReason{
 				Code:    "BINARY_MISSING",
-				Message: "codex is not installed or not available on PATH.",
+				Message: fmt.Sprintf("%s is not installed or not available on PATH.", binary),
 			},
 		}
+	} else {
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{
+			Name:    "binary",
+			Status:  "PASS",
+			Message: fmt.Sprintf("%s binary is available.", binary),
+		})
 	}
 
-	snapshot.Checks = append(snapshot.Checks, HealthCheck{
-		Name:    "binary",
-		Status:  "PASS",
-		Message: "codex binary is available.",
-	})
+	if authCheck, failure := cliAuthCheck(adapterName); authCheck.Name != "" {
+		snapshot.Checks = append(snapshot.Checks, authCheck)
+		if failure != nil {
+			snapshot.Available = false
+			if snapshot.FailureReason == nil {
+				snapshot.FailureReason = failure
+			}
+		}
+	}
 
 	if sandboxManager != nil {
 		dockerHealth := sandboxManager.DockerHealth(context.Background())
@@ -485,38 +821,90 @@ func codexHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
 			snapshot.Checks = append(snapshot.Checks, HealthCheck{
 				Name:    "worker-sandbox",
 				Status:  "PASS",
-				Message: "Docker worker sandbox is available for Codex worker sessions.",
+				Message: fmt.Sprintf("Docker worker sandbox is available for %s sessions.", adapterName),
 			})
 		} else {
+			snapshot.Available = false
 			snapshot.Checks = append(snapshot.Checks, HealthCheck{
 				Name:    "worker-sandbox",
-				Status:  "WARN",
+				Status:  "FAIL",
 				Message: dockerHealth.Reason,
 			})
+			if snapshot.FailureReason == nil {
+				snapshot.FailureReason = &FailureReason{
+					Code:    "DOCKER_UNAVAILABLE",
+					Message: dockerHealth.Reason,
+				}
+			}
 		}
 	}
 
 	return snapshot
 }
 
-func stubHealth(name string) HealthSnapshot {
-	return HealthSnapshot{
-		Available:   false,
-		RuntimeMode: "STUB",
-		Version:     name + "@stub",
-		Checks: []HealthCheck{
-			{Name: "runtime", Status: "FAIL", Message: "This built-in adapter is still running in explicit stub mode and is not treated as a real CLI."},
-			{Name: "binary", Status: "SKIP", Message: "Binary and auth checks are skipped until a real runtime is implemented."},
-		},
-		FailureReason: &FailureReason{
-			Code:    "HEALTH_CHECK_FAILED",
-			Message: "Stub adapter is not treated as a real CLI runtime.",
-			Details: map[string]any{
-				"adapter":     name,
-				"runtimeMode": "STUB",
-			},
-		},
+func cliAuthCheck(adapterName string) (HealthCheck, *FailureReason) {
+	switch adapterName {
+	case "claude-cli":
+		if strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) != "" {
+			return HealthCheck{
+				Name:    "auth",
+				Status:  "PASS",
+				Message: "Claude authentication is available via ANTHROPIC_API_KEY.",
+			}, nil
+		}
+		authPath := filepath.Join(mustUserHomeDir(), ".claude.json")
+		if pathExists(authPath) || pathExists(filepath.Join(mustUserHomeDir(), ".claude")) {
+			return HealthCheck{
+				Name:    "auth",
+				Status:  "PASS",
+				Message: "Claude authentication is available from the local Claude runtime directory.",
+			}, nil
+		}
+		message := "Claude authentication is missing. Configure ~/.claude.json or ANTHROPIC_API_KEY."
+		return HealthCheck{
+				Name:    "auth",
+				Status:  "FAIL",
+				Message: message,
+			}, &FailureReason{
+				Code:    "AUTH_MISSING",
+				Message: message,
+			}
+	case "gemini-cli":
+		if strings.TrimSpace(os.Getenv("GOOGLE_API_KEY")) != "" || strings.TrimSpace(os.Getenv("GEMINI_API_KEY")) != "" {
+			return HealthCheck{
+				Name:    "auth",
+				Status:  "PASS",
+				Message: "Gemini authentication is available via API key environment variables.",
+			}, nil
+		}
+		authPath := filepath.Join(mustUserHomeDir(), ".gemini", "google_accounts.json")
+		if pathExists(authPath) {
+			return HealthCheck{
+				Name:    "auth",
+				Status:  "PASS",
+				Message: "Gemini authentication is available from ~/.gemini/google_accounts.json.",
+			}, nil
+		}
+		message := "Gemini authentication is missing. Configure ~/.gemini/google_accounts.json, GOOGLE_API_KEY, or GEMINI_API_KEY."
+		return HealthCheck{
+				Name:    "auth",
+				Status:  "FAIL",
+				Message: message,
+			}, &FailureReason{
+				Code:    "AUTH_MISSING",
+				Message: message,
+			}
 	}
+
+	return HealthCheck{}, nil
+}
+
+func pathExists(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func uniqueStrings(input []string) []string {

@@ -15,12 +15,14 @@ type Error struct {
 }
 
 type Service struct {
-	repository        *Repository
-	projectRepository *project.Repository
-	agentService      *agent.Service
-	bus               *eventbus.Bus
-	uploadRootPath    string
-	OnPlanApproved    func(ctx context.Context, taskID string) // Called after successful plan approval
+	repository          *Repository
+	projectRepository   *project.Repository
+	agentService        *agent.Service
+	bus                 *eventbus.Bus
+	uploadRootPath      string
+	OnPlanApproved      func(ctx context.Context, taskID string) // Called after successful plan approval
+	OnWorkerQueued      func(ctx context.Context, taskID string)
+	OnIntegrationQueued func(ctx context.Context, taskID string)
 }
 
 type Dependencies struct {
@@ -47,4 +49,18 @@ func (s *Service) ListProjectTasks(ctx context.Context, projectID string, includ
 		return nil, err
 	}
 	return decorateTasks(tasks), nil
+}
+
+func (s *Service) notifyWorkerQueued(taskID string) {
+	if s.OnWorkerQueued == nil || taskID == "" {
+		return
+	}
+	go s.OnWorkerQueued(context.Background(), taskID)
+}
+
+func (s *Service) notifyIntegrationQueued(taskID string) {
+	if s.OnIntegrationQueued == nil || taskID == "" {
+		return
+	}
+	go s.OnIntegrationQueued(context.Background(), taskID)
 }

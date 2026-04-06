@@ -33,10 +33,12 @@ func main() {
 	handler := api.NewHandler(api.Dependencies{
 		DB:              db,
 		Bus:             bus,
+		EnableRuntime:   true,
 		UploadRootPath:  uploadRootPath,
 		PreviewRootPath: previewRootPath,
 		UIRootPath:      uiRootPath,
 	})
+	handler.StartRuntime(context.Background())
 
 	server := &http.Server{
 		Addr:              addr,
@@ -58,6 +60,10 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	if err := handler.StopRuntime(ctx); err != nil {
+		log.Printf("runtime shutdown: %v", err)
+	}
 
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("shutdown: %v", err)

@@ -222,8 +222,26 @@ func (r *Repository) UpdateSession(ctx context.Context, sessionID string, input 
 	}
 
 	nextSession := *currentSession
+	if input.SetAgentType {
+		nextSession.AgentType = derefOr(nextSession.AgentType, input.AgentType)
+	}
+	if input.SetSessionType {
+		nextSession.SessionType = derefOr(nextSession.SessionType, input.SessionType)
+	}
+	if input.SetSandboxType {
+		nextSession.SandboxType = derefOr(nextSession.SandboxType, input.SandboxType)
+	}
+	if input.SetContainerID {
+		nextSession.ContainerID = input.ContainerID
+	}
 	if input.SetStatus {
 		nextSession.Status = derefOr(nextSession.Status, input.Status)
+	}
+	if input.SetPID {
+		nextSession.PID = input.PID
+	}
+	if input.SetStartedAt {
+		nextSession.StartedAt = input.StartedAt
 	}
 	if input.SetEndedAt {
 		nextSession.EndedAt = input.EndedAt
@@ -231,8 +249,17 @@ func (r *Repository) UpdateSession(ctx context.Context, sessionID string, input 
 	if input.SetExitCode {
 		nextSession.ExitCode = input.ExitCode
 	}
+	if input.SetLogPath {
+		nextSession.LogPath = input.LogPath
+	}
+	if input.SetFirstOutputAt {
+		nextSession.FirstOutputAt = input.FirstOutputAt
+	}
 	if input.SetOutputBuff {
 		nextSession.OutputBuffer = derefOr(nextSession.OutputBuffer, input.OutputBuffer)
+	}
+	if input.SetOutputBufferMaxBytes && input.OutputBufferMaxBytes != nil {
+		nextSession.OutputBufferMaxBytes = *input.OutputBufferMaxBytes
 	}
 	if input.UpdatedAt != nil {
 		nextSession.UpdatedAt = *input.UpdatedAt

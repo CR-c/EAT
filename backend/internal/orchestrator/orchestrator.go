@@ -28,6 +28,7 @@ type TaskRepository interface {
 	FindTaskByID(ctx context.Context, taskID string) (*TaskRecord, error)
 	FindSubTaskByID(ctx context.Context, subTaskID string) (*SubTaskRecord, error)
 	ListSubTasksByTaskID(ctx context.Context, taskID string) ([]SubTaskRecord, error)
+	ListSessionsBySubTaskID(ctx context.Context, subTaskID string) ([]SessionRecord, error)
 	FindProjectByID(ctx context.Context, projectID string) (*ProjectRecord, error)
 	AccumulateSessionTokenUsage(ctx context.Context, input tokenusage.SessionInput) error
 	UpdateSession(ctx context.Context, sessionID string, input UpdateSessionInput) error
@@ -67,22 +68,34 @@ type ProjectRecord struct {
 	Path string
 }
 
+type SessionRecord struct {
+	ID     string
+	Status string
+}
+
 type UpdateSessionInput struct {
-	Status      string
-	ContainerID string
-	PID         int
-	StartedAt   string
-	EndedAt     string
-	ExitCode    *int
+	Status               *string
+	ContainerID          *string
+	PID                  *int64
+	StartedAt            *string
+	LogPath              *string
+	FirstOutputAt        *string
+	OutputBufferMaxBytes *int64
+	EndedAt              *string
+	ExitCode             *int
+	SetExitCode          bool
 }
 
 type UpdateSubTaskInput struct {
-	Status    string
-	LastError *string
+	Status         *string
+	LastError      *string
+	BranchName     *string
+	StartCommitSHA *string
+	WorktreePath   *string
 }
 
 type UpdateTaskInput struct {
-	Status    string
+	Status    *string
 	LastError *string
 }
 
@@ -135,8 +148,9 @@ type Orchestrator struct {
 
 	cancelledSessions sync.Map // sessionID -> bool
 
-	reviewEngine *ReviewEngine
-	mergeEngine  *MergeEngine
+	reviewEngine      *ReviewEngine
+	mergeEngine       *MergeEngine
+	integrationEngine *IntegrationEngine
 }
 
 func New(repo TaskRepository, agents *agent.Service, sbx *sandbox.Manager, bus *eventbus.Bus) *Orchestrator {
@@ -149,12 +163,16 @@ func New(repo TaskRepository, agents *agent.Service, sbx *sandbox.Manager, bus *
 		stopCh:       make(chan struct{}),
 		reviewEngine: &ReviewEngine{},
 		mergeEngine:  &MergeEngine{},
+		integrationEngine: NewIntegrationEngine(
+			defaultIntegrationPollInterval,
+		),
 	}
 }
 
 // Start begins the watchdog scan loop.
 func (o *Orchestrator) Start() {
 	go o.watchdogLoop()
+	go o.integrationLoop()
 }
 
 // GracefulStop stops the orchestrator and kills all running workers.
@@ -175,6 +193,73 @@ func (o *Orchestrator) GracefulStop(ctx context.Context) error {
 		}
 	})
 	return nil
+}
+
+func (o *Orchestrator) IntegrationSnapshot() IntegrationRuntimeSnapshot {
+	if o.integrationEngine == nil {
+		return IntegrationRuntimeSnapshot{}
+	}
+	return o.integrationEngine.Snapshot()
+}
+
+func (o *Orchestrator) WorkerStats() map[string]int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	return map[string]int{
+		"running":   len(o.workers),
+		"pool_size": MaxConcurrentWorkers,
+	}
+}
+
+func (o *Orchestrator) resolveLaunchSessionID(ctx context.Context, subTaskID string) (string, error) {
+	sessions, err := o.repo.ListSessionsBySubTaskID(ctx, subTaskID)
+	if err != nil {
+		return "", err
+	}
+
+	for index := len(sessions) - 1; index >= 0; index-- {
+		session := sessions[index]
+		if session.Status == "PENDING" {
+			return session.ID, nil
+		}
+	}
+
+	for index := len(sessions) - 1; index >= 0; index-- {
+		session := sessions[index]
+		if session.Status == "" {
+			return session.ID, nil
+		}
+	}
+
+	return "", nil
+}
+
+func (o *Orchestrator) integrationLoop() {
+	integrationRepo, ok := any(o.repo).(IntegrationRuntimeRepository)
+	if !ok || o.integrationEngine == nil {
+		return
+	}
+
+	ticker := time.NewTicker(o.integrationEngine.PollInterval())
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-o.stopCh:
+			return
+		case <-ticker.C:
+			o.integrationEngine.Tick(context.Background(), integrationRepo, o.publish)
+		}
+	}
+}
+
+func (o *Orchestrator) TriggerIntegrationTick(ctx context.Context) {
+	integrationRepo, ok := any(o.repo).(IntegrationRuntimeRepository)
+	if !ok || o.integrationEngine == nil {
+		return
+	}
+	o.integrationEngine.Tick(ctx, integrationRepo, o.publish)
 }
 
 // LaunchApprovedSubTasks finds PENDING subtasks with satisfied dependencies and launches them.
@@ -258,6 +343,16 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 	// Build prompt
 	prompt := buildWorkerPrompt(task, &subTask)
 
+	sessionID, err := o.resolveLaunchSessionID(ctx, subTask.ID)
+	if err != nil {
+		o.failSubTaskLaunch(ctx, task, subTask, fmt.Sprintf("Failed to resolve worker session: %s", err.Error()))
+		return
+	}
+	if sessionID == "" {
+		o.failSubTaskLaunch(ctx, task, subTask, "No pending worker session is available for launch.")
+		return
+	}
+
 	// Spawn agent session
 	runtime, err := o.agents.SpawnSession(ctx, subTask.AgentType, agent.SpawnConfig{
 		Prompt:     prompt,
@@ -268,11 +363,12 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 		o.failSubTaskLaunch(ctx, task, subTask, fmt.Sprintf("Failed to spawn worker: %s", err.Error()))
 		return
 	}
+	runtime.SessionID = sessionID
 
 	now := time.Now()
 	handle := &WorkerHandle{
 		Runtime:      runtime,
-		SessionID:    runtime.SessionID,
+		SessionID:    sessionID,
 		TaskID:       task.ID,
 		SubTaskID:    subTask.ID,
 		StartedAt:    now,
@@ -280,16 +376,19 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 	}
 
 	// Update session to RUNNING
-	_ = o.repo.UpdateSession(ctx, runtime.SessionID, UpdateSessionInput{
-		Status:      "RUNNING",
-		ContainerID: runtime.ContainerID,
-		PID:         runtime.PID,
-		StartedAt:   now.Format(time.RFC3339),
+	startedAt := now.UTC().Format(time.RFC3339Nano)
+	containerID := runtime.ContainerID
+	pid := int64(runtime.PID)
+	_ = o.repo.UpdateSession(ctx, sessionID, UpdateSessionInput{
+		Status:      stringPointer("RUNNING"),
+		ContainerID: stringPointer(containerID),
+		PID:         &pid,
+		StartedAt:   &startedAt,
 	})
 
 	// Update subtask to RUNNING
 	_ = o.repo.UpdateSubTask(ctx, subTask.ID, UpdateSubTaskInput{
-		Status: "RUNNING",
+		Status: stringPointer("RUNNING"),
 	})
 
 	// Register with worker map
@@ -304,7 +403,7 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 		"taskId":    task.ID,
 	})
 	o.publish(task.ID, "session:started", map[string]any{
-		"sessionId":   runtime.SessionID,
+		"sessionId":   sessionID,
 		"containerId": runtime.ContainerID,
 		"subTaskId":   subTask.ID,
 		"taskId":      task.ID,
@@ -313,9 +412,9 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 	// Wire output callback
 	runtime.OnOutput(func(chunk string) {
 		handle.touchOutput()
-		_ = o.repo.AppendSessionOutput(ctx, runtime.SessionID, chunk)
+		_ = o.repo.AppendSessionOutput(ctx, sessionID, chunk)
 		for _, usage := range collectSessionTokenUsage(chunk) {
-			usage.SessionID = runtime.SessionID
+			usage.SessionID = sessionID
 			usage.TaskID = task.ID
 			usage.ProjectID = task.ProjectID
 			usage.SubTaskID = &subTask.ID
@@ -324,7 +423,7 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 		}
 		o.publish(task.ID, "session:output", map[string]any{
 			"chunk":     chunk,
-			"sessionId": runtime.SessionID,
+			"sessionId": sessionID,
 			"subTaskId": subTask.ID,
 			"taskId":    task.ID,
 		})
@@ -332,7 +431,7 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 
 	// Wire exit callback
 	runtime.OnExit(func(exitCode int) {
-		o.handleWorkerExit(ctx, task.ID, subTask.ID, runtime.SessionID, exitCode)
+		o.handleWorkerExit(ctx, task.ID, subTask.ID, sessionID, exitCode)
 	})
 }
 
@@ -369,13 +468,15 @@ func (o *Orchestrator) handleWorkerExit(ctx context.Context, taskID, subTaskID, 
 	if wasCancelled {
 		exitCodePtr = nil
 	}
+	endedAtValue := endedAt
 	_ = o.repo.UpdateSession(ctx, sessionID, UpdateSessionInput{
-		Status:   sessionStatus,
-		EndedAt:  endedAt,
-		ExitCode: exitCodePtr,
+		Status:      &sessionStatus,
+		EndedAt:     &endedAtValue,
+		ExitCode:    exitCodePtr,
+		SetExitCode: true,
 	})
 	_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{
-		Status:    subTaskStatus,
+		Status:    &subTaskStatus,
 		LastError: lastError,
 	})
 
@@ -434,7 +535,7 @@ func (o *Orchestrator) progressDependencySchedule(ctx context.Context, taskID st
 		if !areDependenciesSatisfied(st, subTasks) {
 			continue
 		}
-		_ = o.repo.UpdateSubTask(ctx, st.ID, UpdateSubTaskInput{Status: "PENDING"})
+		_ = o.repo.UpdateSubTask(ctx, st.ID, UpdateSubTaskInput{Status: stringPointer("PENDING")})
 		o.publish(taskID, "subtask:status", map[string]any{
 			"subTaskId": st.ID,
 			"status":    "PENDING",
@@ -449,8 +550,15 @@ func (o *Orchestrator) progressDependencySchedule(ctx context.Context, taskID st
 
 func (o *Orchestrator) failSubTaskLaunch(ctx context.Context, task *TaskRecord, subTask SubTaskRecord, message string) {
 	errMsg := message
+	if sessionID, err := o.resolveLaunchSessionID(ctx, subTask.ID); err == nil && sessionID != "" {
+		endedAt := time.Now().UTC().Format(time.RFC3339Nano)
+		_ = o.repo.UpdateSession(ctx, sessionID, UpdateSessionInput{
+			Status:  stringPointer("FAILED"),
+			EndedAt: &endedAt,
+		})
+	}
 	_ = o.repo.UpdateSubTask(ctx, subTask.ID, UpdateSubTaskInput{
-		Status:    "FAILED",
+		Status:    stringPointer("FAILED"),
 		LastError: &errMsg,
 	})
 	_ = o.repo.CreateMessage(ctx, CreateMessageInput{
@@ -467,7 +575,7 @@ func (o *Orchestrator) failSubTaskLaunch(ctx context.Context, task *TaskRecord, 
 
 	// Set task to ACTION_REQUIRED
 	_ = o.repo.UpdateTask(ctx, task.ID, UpdateTaskInput{
-		Status:    "ACTION_REQUIRED",
+		Status:    stringPointer("ACTION_REQUIRED"),
 		LastError: &errMsg,
 	})
 	o.publish(task.ID, "task:status", map[string]any{
@@ -527,9 +635,10 @@ func (o *Orchestrator) killAndRetryWorker(ctx context.Context, h *WorkerHandle, 
 
 	// Update session to FAILED
 	endedAt := time.Now().Format(time.RFC3339)
+	endedAtValue := endedAt
 	_ = o.repo.UpdateSession(ctx, h.SessionID, UpdateSessionInput{
-		Status:  "FAILED",
-		EndedAt: endedAt,
+		Status:  stringPointer("FAILED"),
+		EndedAt: &endedAtValue,
 	})
 
 	// Log watchdog event
@@ -549,7 +658,7 @@ func (o *Orchestrator) killAndRetryWorker(ctx context.Context, h *WorkerHandle, 
 	// Auto-retry if within limit
 	claimed, err := o.repo.AtomicClaimRetry(ctx, h.SubTaskID, MaxAutoRetries)
 	if err == nil && claimed {
-		_ = o.repo.UpdateSubTask(ctx, h.SubTaskID, UpdateSubTaskInput{Status: "PENDING"})
+		_ = o.repo.UpdateSubTask(ctx, h.SubTaskID, UpdateSubTaskInput{Status: stringPointer("PENDING")})
 		o.publish(h.TaskID, "subtask:status", map[string]any{
 			"subTaskId": h.SubTaskID,
 			"status":    "PENDING",
@@ -559,7 +668,7 @@ func (o *Orchestrator) killAndRetryWorker(ctx context.Context, h *WorkerHandle, 
 	} else {
 		errMsg := reason
 		_ = o.repo.UpdateSubTask(ctx, h.SubTaskID, UpdateSubTaskInput{
-			Status:    "FAILED",
+			Status:    stringPointer("FAILED"),
 			LastError: &errMsg,
 		})
 		o.publish(h.TaskID, "subtask:status", map[string]any{
@@ -638,8 +747,9 @@ func (o *Orchestrator) prepareSubTaskWorkspace(ctx context.Context, task *TaskRe
 
 		subTask.BranchName = resolvedName
 		_ = o.repo.UpdateSubTask(ctx, subTask.ID, UpdateSubTaskInput{
-			Status:    subTask.Status,
-			LastError: nil,
+			Status:     &subTask.Status,
+			LastError:  nil,
+			BranchName: &subTask.BranchName,
 		})
 	} else {
 		baseSHA := task.BaseCommitSha
@@ -661,9 +771,36 @@ func (o *Orchestrator) prepareSubTaskWorkspace(ctx context.Context, task *TaskRe
 			return nil, fmt.Errorf("create worktree: %w", err)
 		}
 		subTask.WorktreePath = worktreePath
+		startCommitSHA, resolveErr := git.ResolveRevision(ctx, worktreePath, "HEAD")
+		if resolveErr == nil {
+			_ = o.repo.UpdateSubTask(ctx, subTask.ID, UpdateSubTaskInput{
+				Status:         &subTask.Status,
+				LastError:      nil,
+				BranchName:     &subTask.BranchName,
+				StartCommitSHA: &startCommitSHA,
+				WorktreePath:   &subTask.WorktreePath,
+			})
+		} else {
+			_ = o.repo.UpdateSubTask(ctx, subTask.ID, UpdateSubTaskInput{
+				Status:       &subTask.Status,
+				LastError:    nil,
+				BranchName:   &subTask.BranchName,
+				WorktreePath: &subTask.WorktreePath,
+			})
+		}
 	} else {
 		if err := git.EnsureWorktree(ctx, repoPath, subTask.WorktreePath, subTask.BranchName); err != nil {
 			return nil, fmt.Errorf("ensure worktree: %w", err)
+		}
+		startCommitSHA, resolveErr := git.ResolveRevision(ctx, subTask.WorktreePath, "HEAD")
+		if resolveErr == nil {
+			_ = o.repo.UpdateSubTask(ctx, subTask.ID, UpdateSubTaskInput{
+				Status:         &subTask.Status,
+				LastError:      nil,
+				BranchName:     &subTask.BranchName,
+				StartCommitSHA: &startCommitSHA,
+				WorktreePath:   &subTask.WorktreePath,
+			})
 		}
 	}
 
@@ -700,7 +837,7 @@ func (o *Orchestrator) syncSubTaskIntoMainline(ctx context.Context, taskID, subT
 
 	// Check if already merged
 	if git.BranchMergedInto(ctx, repoPath, subTask.BranchName, taskBranch) {
-		_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{Status: "MERGED"})
+		_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{Status: stringPointer("MERGED")})
 		o.publish(taskID, "subtask:status", map[string]any{
 			"subTaskId": subTaskID,
 			"status":    "MERGED",
@@ -721,11 +858,11 @@ func (o *Orchestrator) syncSubTaskIntoMainline(ctx context.Context, taskID, subT
 		_ = git.AbortMerge(ctx, repoPath)
 		errMsg := fmt.Sprintf("Merge conflict merging %s into %s: %s", subTask.BranchName, taskBranch, mergeResult.Stderr)
 		_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{
-			Status:    "FAILED",
+			Status:    stringPointer("FAILED"),
 			LastError: &errMsg,
 		})
 		_ = o.repo.UpdateTask(ctx, taskID, UpdateTaskInput{
-			Status:    "ACTION_REQUIRED",
+			Status:    stringPointer("ACTION_REQUIRED"),
 			LastError: &errMsg,
 		})
 		o.publish(taskID, "subtask:status", map[string]any{
@@ -737,7 +874,7 @@ func (o *Orchestrator) syncSubTaskIntoMainline(ctx context.Context, taskID, subT
 	}
 
 	// Mark as merged
-	_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{Status: "MERGED"})
+	_ = o.repo.UpdateSubTask(ctx, subTaskID, UpdateSubTaskInput{Status: stringPointer("MERGED")})
 	o.publish(taskID, "subtask:status", map[string]any{
 		"subTaskId": subTaskID,
 		"status":    "MERGED",
@@ -781,18 +918,11 @@ func (o *Orchestrator) maybeStartFinalReview(ctx context.Context, taskID string)
 			return
 		}
 
-		// Transition to REVIEWING
-		_ = o.repo.UpdateTask(ctx, taskID, UpdateTaskInput{Status: "REVIEWING"})
+		// Move the task into merge-time handling once all worker branches are terminal.
+		_ = o.repo.UpdateTask(ctx, taskID, UpdateTaskInput{Status: stringPointer("MERGING")})
 		o.publish(taskID, "task:status", map[string]any{
 			"taskId": taskID,
-			"status": "REVIEWING",
-		})
-
-		// For now, auto-approve final review (real implementation would run a review agent)
-		_ = o.repo.UpdateTask(ctx, taskID, UpdateTaskInput{Status: "DONE"})
-		o.publish(taskID, "task:status", map[string]any{
-			"taskId": taskID,
-			"status": "DONE",
+			"status": "MERGING",
 		})
 	})
 }

@@ -20,7 +20,7 @@ import {
   TerminalSquare,
   X,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 
 import {
@@ -39,7 +39,7 @@ import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme } from "@/lib/pilot-theme"
 import { cn } from "@/lib/utils"
-import type { TaskDetail, TaskDiff, TaskRecord, TaskRuntime } from "@/lib/types"
+import type { SubTaskRecord, TaskDetail, TaskDiff, TaskRecord, TaskRuntime, TaskSession } from "@/lib/types"
 
 type WorkbenchStage = "CLARIFYING" | "PLAN_REVIEW" | "EXECUTING" | "COMPLETED"
 
@@ -74,6 +74,17 @@ export function TaskWorkbenchPage() {
   const [selectedDiffFile, setSelectedDiffFile] = useState<DiffFile | null>(null)
   const [mutationError, setMutationError] = useState<string | null>(null)
   const [isMutating, setIsMutating] = useState(false)
+  const [liveDetail, setLiveDetail] = useState<TaskDetail | undefined>(undefined)
+  const [liveRuntime, setLiveRuntime] = useState<TaskRuntime | undefined>(undefined)
+  const detailRef = useRef<TaskDetail | undefined>(undefined)
+  const runtimeRef = useRef<TaskRuntime | undefined>(undefined)
+  const reloadTimerRef = useRef<number | null>(null)
+  const reloadActionsRef = useRef({
+    detailReload: () => {},
+    runtimeReload: () => {},
+    diffReload: () => {},
+    tasksReload: () => {},
+  })
 
   const tasks = useAsyncResource({
     deps: [projectId],
@@ -114,13 +125,124 @@ export function TaskWorkbenchPage() {
     },
   })
 
-  const task = detail.data?.task
+  const effectiveDetail = liveDetail ?? detail.data
+  const effectiveRuntime = liveRuntime ?? runtime.data ?? detail.data?.runtime
+  const task = effectiveDetail?.task
   const stage = deriveWorkbenchStage(task)
-  const parsedPlan = useMemo(() => parseTaskPlan(detail.data), [detail.data])
+  const parsedPlan = useMemo(() => parseTaskPlan(effectiveDetail), [effectiveDetail])
   const planLayers = useMemo(() => groupPlanNodes(parsedPlan.nodes), [parsedPlan.nodes])
-  const graphNodes = useMemo(() => getExecutionNodes(detail.data, runtime.data, locale), [detail.data, locale, runtime.data])
+  const graphNodes = useMemo(
+    () => getExecutionNodes(effectiveDetail, effectiveRuntime, locale),
+    [effectiveDetail, effectiveRuntime, locale],
+  )
   const activeNode = graphNodes.find((node) => node.id === activeNodeId) ?? graphNodes[0]
   const diffFiles = useMemo(() => buildDiffFiles(diff.data), [diff.data])
+
+  useEffect(() => {
+    reloadActionsRef.current = {
+      detailReload: detail.reload,
+      runtimeReload: runtime.reload,
+      diffReload: diff.reload,
+      tasksReload: tasks.reload,
+    }
+  }, [detail.reload, diff.reload, runtime.reload, tasks.reload])
+
+  useEffect(() => {
+    setLiveDetail(detail.data)
+  }, [detail.data])
+
+  useEffect(() => {
+    setLiveRuntime(runtime.data ?? detail.data?.runtime)
+  }, [detail.data?.runtime, runtime.data])
+
+  useEffect(() => {
+    detailRef.current = effectiveDetail
+  }, [effectiveDetail])
+
+  useEffect(() => {
+    runtimeRef.current = effectiveRuntime
+  }, [effectiveRuntime])
+
+  useEffect(() => {
+    if (!taskId) {
+      setLiveDetail(undefined)
+      setLiveRuntime(undefined)
+      return
+    }
+
+    const source = new EventSource(`/api/tasks/${encodeURIComponent(taskId)}/events`)
+    const integrationEvents = new Set([
+      "integration:queued",
+      "integration:started",
+      "integration:gate-result",
+      "integration:completed",
+      "integration:failed",
+    ])
+    const liveEvents = new Set([
+      "session:started",
+      "session:output",
+      "session:ended",
+      "subtask:status",
+      "task:status",
+      ...integrationEvents,
+    ])
+
+    const scheduleReload = (scope: "runtime" | "full") => {
+      if (reloadTimerRef.current !== null) {
+        return
+      }
+      reloadTimerRef.current = window.setTimeout(() => {
+        reloadTimerRef.current = null
+        if (scope === "full") {
+          reloadActionsRef.current.detailReload()
+          reloadActionsRef.current.diffReload()
+          reloadActionsRef.current.tasksReload()
+        }
+        reloadActionsRef.current.runtimeReload()
+      }, 500)
+    }
+
+    const handleEvent = (eventName: string, event: MessageEvent<string>) => {
+      if (!liveEvents.has(eventName)) {
+        return
+      }
+      const payload = parseSSEPayload(event.data)
+      if (!payload) {
+        return
+      }
+
+      setLiveDetail((current) =>
+        applyRealtimeEventToDetail(current ?? detailRef.current, eventName, payload, new Date().toISOString()),
+      )
+      setLiveRuntime((current) =>
+        applyRealtimeEventToRuntime(current ?? runtimeRef.current, eventName, payload),
+      )
+
+      if (integrationEvents.has(eventName)) {
+        scheduleReload("full")
+      }
+    }
+
+    const listeners: Array<{ name: string; handler: (event: MessageEvent<string>) => void }> = []
+    liveEvents.forEach((name) => {
+      const handler = (event: MessageEvent<string>) => handleEvent(name, event)
+      listeners.push({ name, handler })
+      source.addEventListener(name, handler)
+    })
+
+    source.onerror = () => {
+      scheduleReload("runtime")
+    }
+
+    return () => {
+      listeners.forEach(({ name, handler }) => source.removeEventListener(name, handler))
+      source.close()
+      if (reloadTimerRef.current !== null) {
+        window.clearTimeout(reloadTimerRef.current)
+        reloadTimerRef.current = null
+      }
+    }
+  }, [taskId])
 
   useEffect(() => {
     if (graphNodes.length > 0) {
@@ -234,16 +356,16 @@ export function TaskWorkbenchPage() {
 
       {!taskId ? (
         <EmptyWorkbench theme={theme} />
-      ) : detail.isLoading ? (
+      ) : detail.isLoading && !effectiveDetail ? (
         <div className={cn("flex h-full items-center justify-center font-mono text-sm", theme.cardSub)}>{t("common.loadingWorkbench")}</div>
-      ) : detail.error ? (
+      ) : detail.error && !effectiveDetail ? (
         <div className={cn("m-8 rounded-sm border p-6 font-mono text-sm", theme.cardBg)}>{detail.error}</div>
-      ) : detail.data ? (
+      ) : effectiveDetail ? (
         <>
           {(stage === "CLARIFYING" || task?.status === "DRAFT") && (
             <ClarifyingView
               chatInput={chatInput}
-              detail={detail.data}
+              detail={effectiveDetail}
               isMutating={isMutating}
               onConfirmRequirements={handleConfirmRequirements}
               onInputChange={setChatInput}
@@ -272,7 +394,7 @@ export function TaskWorkbenchPage() {
             <ExecutingView
               activeNode={activeNode}
               activeNodeId={activeNodeId}
-              detail={detail.data}
+              detail={effectiveDetail}
               nodes={graphNodes}
               onSelectNode={setActiveNodeId}
               theme={theme}
@@ -280,7 +402,7 @@ export function TaskWorkbenchPage() {
           )}
           {stage === "COMPLETED" && (
             <CompletedView
-              detail={detail.data}
+              detail={effectiveDetail}
               diff={diff.data}
               diffFiles={diffFiles}
               onSelectDiffFile={setSelectedDiffFile}
@@ -841,6 +963,401 @@ function ChatBubble({
       </div>
     </div>
   )
+}
+
+function parseSSEPayload(data: string): Record<string, unknown> | null {
+  if (!data) {
+    return null
+  }
+  try {
+    return JSON.parse(data) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function applyRealtimeEventToDetail(
+  detail: TaskDetail | undefined,
+  eventName: string,
+  payload: Record<string, unknown>,
+  eventAt: string,
+): TaskDetail | undefined {
+  if (!detail) {
+    return detail
+  }
+
+  if (eventName === "task:status") {
+    const nextStatus = asString(payload.status)
+    if (!nextStatus) {
+      return detail
+    }
+    const reason = asNullableString(payload.reason)
+    return {
+      ...detail,
+      task: {
+        ...detail.task,
+        status: nextStatus,
+        lastError: reason,
+      },
+    }
+  }
+
+  if (eventName === "subtask:status") {
+    const subTaskID = asString(payload.subTaskId) ?? asString(payload.id)
+    if (!subTaskID) {
+      return detail
+    }
+    const subTasks = detail.subTasks.map((subTask) => {
+      if (subTask.id !== subTaskID) {
+        return subTask
+      }
+      return patchSubTaskFromPayload(subTask, payload)
+    })
+    return { ...detail, subTasks }
+  }
+
+  if (eventName === "session:started" || eventName === "session:ended" || eventName === "session:output") {
+    const sessions = patchSessionsFromPayload(detail.sessions, eventName, payload)
+    if (sessions === detail.sessions) {
+      return detail
+    }
+    return { ...detail, sessions }
+  }
+
+  if (eventName.startsWith("integration:")) {
+    return {
+      ...detail,
+      integration: {
+        ...detail.integration,
+        realtime: {
+          eventName,
+          eventAt,
+          payload,
+        },
+      },
+    }
+  }
+
+  return detail
+}
+
+function applyRealtimeEventToRuntime(
+  runtime: TaskRuntime | undefined,
+  eventName: string,
+  payload: Record<string, unknown>,
+): TaskRuntime | undefined {
+  if (!runtime) {
+    return runtime
+  }
+
+  if (eventName === "task:status") {
+    const nextStatus = asString(payload.status)
+    if (!nextStatus) {
+      return runtime
+    }
+    const nextWorkspaceStage = workspaceStageForTaskStatus(nextStatus)
+    return {
+      ...runtime,
+      taskStatus: nextStatus,
+      workspaceStage: nextWorkspaceStage,
+      workspaceStageLabel: nextWorkspaceStage,
+    }
+  }
+
+  if (eventName === "subtask:status") {
+    const subTaskID = asString(payload.subTaskId) ?? asString(payload.id)
+    if (!subTaskID) {
+      return runtime
+    }
+    const status = asString(payload.status)
+    const title = asString(payload.title)
+    const agentType = asString(payload.agentType)
+    const branchName = asNullableString(payload.branchName)
+    let patched = false
+    const nodes = runtime.nodes.map((node) => {
+      if (node.subTaskId !== subTaskID && node.id !== subTaskID) {
+        return node
+      }
+      patched = true
+      return {
+        ...node,
+        title: title ?? node.title,
+        status: status ?? node.status,
+        agentType: agentType ?? node.agentType,
+        branchName: branchName ?? node.branchName,
+        errorReason: asNullableString(payload.lastError) ?? node.errorReason,
+      }
+    })
+    if (!patched) {
+      return runtime
+    }
+    return {
+      ...runtime,
+      nodes,
+      summary: summarizeRuntime(nodes),
+    }
+  }
+
+  if (eventName === "session:started" || eventName === "session:ended" || eventName === "session:output") {
+    const sessionID = asString(payload.sessionId)
+    const subTaskID = asString(payload.subTaskId)
+    const nodeID = subTaskID ?? "lead"
+    let patched = false
+    const nodes = runtime.nodes.map((node) => {
+      const isLeadNode = node.nodeType === "LEAD" || node.id === "lead"
+      const matchesBySubTask = subTaskID ? node.subTaskId === subTaskID || node.id === subTaskID : false
+      const matchesBySession = sessionID ? node.sessionId === sessionID : false
+      const matchesLead = !subTaskID && isLeadNode
+      if (!matchesBySubTask && !matchesBySession && !matchesLead && node.id !== nodeID) {
+        return node
+      }
+      patched = true
+      if (eventName === "session:output") {
+        const chunk = asString(payload.chunk)
+        if (!chunk) {
+          return node
+        }
+        return {
+          ...node,
+          sessionId: sessionID ?? node.sessionId,
+          logsPreview: trimTail(node.logsPreview + chunk, 4000),
+          status: node.status === "PENDING" ? "RUNNING" : node.status,
+        }
+      }
+      if (eventName === "session:started") {
+        return {
+          ...node,
+          sessionId: sessionID ?? node.sessionId,
+          startedAt: asNullableString(payload.startedAt) ?? node.startedAt,
+          status: "RUNNING",
+        }
+      }
+      const sessionStatus = asString(payload.status)
+      return {
+        ...node,
+        sessionId: sessionID ?? node.sessionId,
+        endedAt: asNullableString(payload.endedAt) ?? node.endedAt,
+        exitCode: asNullableNumber(payload.exitCode) ?? node.exitCode,
+        status: mapSessionStatusToNodeStatus(sessionStatus, node.status),
+        errorReason: sessionStatus === "FAILED" ? `Session ${sessionID ?? ""} failed.` : node.errorReason,
+      }
+    })
+    if (!patched) {
+      return runtime
+    }
+    return {
+      ...runtime,
+      nodes,
+      summary: summarizeRuntime(nodes),
+    }
+  }
+
+  return runtime
+}
+
+function patchSubTaskFromPayload(subTask: SubTaskRecord, payload: Record<string, unknown>): SubTaskRecord {
+  return {
+    ...subTask,
+    title: asString(payload.title) ?? subTask.title,
+    description: asString(payload.description) ?? subTask.description,
+    branchSuffix: asString(payload.branchSuffix) ?? subTask.branchSuffix,
+    branchName: asNullableString(payload.branchName) ?? subTask.branchName,
+    agentType: asString(payload.agentType) ?? subTask.agentType,
+    status: asString(payload.status) ?? subTask.status,
+    lastError: asNullableString(payload.lastError) ?? subTask.lastError,
+    retryCount: asNumber(payload.retryCount) ?? subTask.retryCount,
+    displayName: asNullableString(payload.displayName) ?? subTask.displayName,
+    assignmentSource: asNullableString(payload.assignmentSource) ?? subTask.assignmentSource,
+    runSummary: asNullableString(payload.runSummary) ?? subTask.runSummary,
+  }
+}
+
+function patchSessionsFromPayload(
+  sessions: TaskSession[],
+  eventName: string,
+  payload: Record<string, unknown>,
+): TaskSession[] {
+  const sessionID = asString(payload.sessionId) ?? asString(payload.id)
+  if (!sessionID) {
+    return sessions
+  }
+  const existingIndex = sessions.findIndex((session) => session.id === sessionID)
+  const existing = existingIndex >= 0 ? sessions[existingIndex] : undefined
+  const next = patchSession(existing, eventName, payload)
+  if (!next) {
+    return sessions
+  }
+  if (existingIndex < 0) {
+    return [...sessions, next]
+  }
+  const patched = [...sessions]
+  patched[existingIndex] = next
+  return patched
+}
+
+function patchSession(
+  existing: TaskSession | undefined,
+  eventName: string,
+  payload: Record<string, unknown>,
+): TaskSession | null {
+  const now = new Date().toISOString()
+  const outputBufferMaxBytes = asNumber(payload.outputBufferMaxBytes) ?? existing?.outputBufferMaxBytes ?? 65536
+  const baseline: TaskSession = existing ?? {
+    id: asString(payload.sessionId) ?? asString(payload.id) ?? "",
+    taskId: asString(payload.taskId) ?? "",
+    subTaskId: asNullableString(payload.subTaskId),
+    agentType: asString(payload.agentType) ?? "",
+    sessionType: asString(payload.sessionType) ?? "WORKER",
+    sandboxType: asString(payload.sandboxType) ?? "DOCKER",
+    containerId: asNullableString(payload.containerId),
+    status: asString(payload.status) ?? "PENDING",
+    pid: asNullableNumber(payload.pid),
+    startedAt: asNullableString(payload.startedAt),
+    endedAt: asNullableString(payload.endedAt),
+    exitCode: asNullableNumber(payload.exitCode),
+    logPath: asNullableString(payload.logPath),
+    firstOutputAt: asNullableString(payload.firstOutputAt),
+    outputBuffer: asString(payload.outputBuffer) ?? "",
+    outputBufferMaxBytes,
+    createdAt: now,
+    updatedAt: now,
+  }
+  if (!baseline.id) {
+    return null
+  }
+
+  if (eventName === "session:output") {
+    const chunk = asString(payload.chunk)
+    if (!chunk) {
+      return baseline
+    }
+    return {
+      ...baseline,
+      firstOutputAt: baseline.firstOutputAt ?? now,
+      outputBuffer: trimTail((baseline.outputBuffer ?? "") + chunk, outputBufferMaxBytes),
+      status: baseline.status === "PENDING" ? "RUNNING" : baseline.status,
+      updatedAt: now,
+    }
+  }
+
+  return {
+    ...baseline,
+    taskId: asString(payload.taskId) ?? baseline.taskId,
+    subTaskId: asNullableString(payload.subTaskId) ?? baseline.subTaskId,
+    agentType: asString(payload.agentType) ?? baseline.agentType,
+    sessionType: asString(payload.sessionType) ?? baseline.sessionType,
+    sandboxType: asString(payload.sandboxType) ?? baseline.sandboxType,
+    containerId: asNullableString(payload.containerId) ?? baseline.containerId,
+    status: asString(payload.status) ?? baseline.status,
+    pid: asNullableNumber(payload.pid) ?? baseline.pid,
+    startedAt: asNullableString(payload.startedAt) ?? baseline.startedAt,
+    endedAt: asNullableString(payload.endedAt) ?? baseline.endedAt,
+    exitCode: asNullableNumber(payload.exitCode) ?? baseline.exitCode,
+    logPath: asNullableString(payload.logPath) ?? baseline.logPath,
+    firstOutputAt: asNullableString(payload.firstOutputAt) ?? baseline.firstOutputAt,
+    outputBuffer: asString(payload.outputBuffer) ?? baseline.outputBuffer,
+    outputBufferMaxBytes,
+    updatedAt: now,
+  }
+}
+
+function summarizeRuntime(nodes: TaskRuntime["nodes"]): TaskRuntime["summary"] {
+  let running = 0
+  let waiting = 0
+  let failed = 0
+  let workerCount = 0
+
+  nodes.forEach((node) => {
+    if (node.nodeType === "SUBTASK") {
+      workerCount += 1
+    }
+    if (node.status === "RUNNING" || node.status === "EXECUTING") {
+      running += 1
+      return
+    }
+    if (node.status === "FAILED" || node.status === "CANCELLED" || node.status === "DISCARD_PENDING" || node.status === "REWORK_REQUIRED") {
+      failed += 1
+      return
+    }
+    if (node.status === "PENDING" || node.status === "BLOCKED" || node.status === "READY" || node.status === "REVIEW_PENDING") {
+      waiting += 1
+    }
+  })
+
+  return {
+    failed,
+    running,
+    total: nodes.length,
+    waiting,
+    workerCount,
+  }
+}
+
+function mapSessionStatusToNodeStatus(sessionStatus: string | undefined, fallback: string): string {
+  switch (sessionStatus) {
+    case "RUNNING":
+      return "RUNNING"
+    case "COMPLETED":
+      return "REVIEW_PENDING"
+    case "FAILED":
+      return "FAILED"
+    case "CANCELLED":
+      return "CANCELLED"
+    default:
+      return fallback
+  }
+}
+
+function workspaceStageForTaskStatus(status: string): string {
+  switch (status) {
+    case "COMPLETED":
+      return "COMPLETED"
+    case "EXECUTING":
+    case "ACTION_REQUIRED":
+    case "REVIEWING":
+    case "MERGING":
+      return "EXECUTING"
+    case "PLAN_REVIEW":
+    case "PLANNING":
+      return "PLAN_REVIEW"
+    default:
+      return "CLARIFYING"
+  }
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+function asNullableString(value: unknown): string | null | undefined {
+  if (value === null) {
+    return null
+  }
+  return asString(value)
+}
+
+function asNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value
+  }
+  return undefined
+}
+
+function asNullableNumber(value: unknown): number | null | undefined {
+  if (value === null) {
+    return null
+  }
+  return asNumber(value)
+}
+
+function trimTail(value: string, maxBytes: number): string {
+  if (maxBytes <= 0) {
+    return value
+  }
+  if (value.length <= maxBytes) {
+    return value
+  }
+  return value.slice(value.length - maxBytes)
 }
 
 function deriveWorkbenchStage(task?: TaskRecord): WorkbenchStage {

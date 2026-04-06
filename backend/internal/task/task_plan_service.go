@@ -477,6 +477,7 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 		if s.OnPlanApproved != nil {
 			go s.OnPlanApproved(context.Background(), taskID)
 		}
+		s.notifyWorkerQueued(taskID)
 	}
 
 	return result, nil

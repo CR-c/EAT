@@ -39,6 +39,7 @@ func (s *Service) RetrySubTask(ctx context.Context, subTaskID string, input Retr
 	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
 	if result.Session != nil {
 		s.publishSession(taskRecord.ID, "session:started", result.Session)
+		s.notifyWorkerQueued(taskRecord.ID)
 	}
 	if result.Task != nil && result.Task.Status != taskRecord.Status {
 		s.publishTaskStatus(result.Task.ID, result.Task.Status, nil)
@@ -94,6 +95,7 @@ func (s *Service) ReworkSubTask(ctx context.Context, subTaskID string, input Rew
 	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
 	if result.Session != nil {
 		s.publishSession(taskRecord.ID, "session:started", result.Session)
+		s.notifyWorkerQueued(taskRecord.ID)
 	}
 	s.publishTeamUpdated(taskRecord.ID)
 	return result, nil
@@ -186,6 +188,9 @@ func (s *Service) CancelSubTask(ctx context.Context, subTaskID string) (*SubTask
 			releasedSessionCopy := releasedSession
 			s.publishSession(taskRecord.ID, "session:started", &releasedSessionCopy)
 		}
+		if len(scheduleResult.ReleasedSessions) > 0 {
+			s.notifyWorkerQueued(taskRecord.ID)
+		}
 		if scheduleResult.Task != nil && result.Task != nil && shouldPublishTaskStatus(result.Task, scheduleResult.Task) {
 			s.publishTaskStatus(scheduleResult.Task.ID, scheduleResult.Task.Status, scheduleResult.Task.LastError)
 			result.Task = scheduleResult.Task
@@ -249,6 +254,7 @@ func (s *Service) ReassignSubTask(ctx context.Context, subTaskID string, input R
 	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
 	if result.Session != nil {
 		s.publishSession(taskRecord.ID, "session:started", result.Session)
+		s.notifyWorkerQueued(taskRecord.ID)
 	}
 	if result.Task != nil && result.Task.Status != taskRecord.Status {
 		s.publishTaskStatus(result.Task.ID, result.Task.Status, nil)
@@ -309,6 +315,7 @@ func (s *Service) ChangeSubTaskAgent(ctx context.Context, subTaskID string, inpu
 	s.publishSubTaskStatus(taskRecord.ID, result.SubTask)
 	if result.Session != nil {
 		s.publishSession(taskRecord.ID, "session:started", result.Session)
+		s.notifyWorkerQueued(taskRecord.ID)
 	}
 	if result.Task != nil && result.Task.Status != taskRecord.Status {
 		s.publishTaskStatus(result.Task.ID, result.Task.Status, nil)
@@ -391,6 +398,9 @@ func (s *Service) ConfirmDiscardSubTask(ctx context.Context, subTaskID string) (
 		for _, releasedSession := range scheduleResult.ReleasedSessions {
 			releasedSessionCopy := releasedSession
 			s.publishSession(taskRecord.ID, "session:started", &releasedSessionCopy)
+		}
+		if len(scheduleResult.ReleasedSessions) > 0 {
+			s.notifyWorkerQueued(taskRecord.ID)
 		}
 		if scheduleResult.Task != nil && result.Task != nil && shouldPublishTaskStatus(result.Task, scheduleResult.Task) {
 			s.publishTaskStatus(scheduleResult.Task.ID, scheduleResult.Task.Status, scheduleResult.Task.LastError)
