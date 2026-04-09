@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-这份文档解释仓库当前“已经实现的系统形态”。它不替代 `docs/PRD.md` 和 phase 文档；当实现说明与产品规范冲突时，以规范为准。
+这份文档解释仓库当前“已经实现的系统形态”。它不替代 `docs/PRD.md`；当实现说明与产品规范冲突时，以 PRD 为准。
 
 当前默认运行时已经收敛为：
 
@@ -10,6 +10,8 @@
 - React + Vite 前端
 - SQLite 本地持久化
 - Docker sandboxed worker execution
+
+本文优先描述“当前主干已经实现了什么”。如果历史文档、设计稿、`prisma/schema.prisma` 与本文冲突，应先回到当前代码、router 和 SQL migrations 复核。
 
 ## 一句话定义
 
@@ -240,6 +242,8 @@ Worker 结束后，子任务进入 `REVIEW_PENDING`。随后：
 - 默认挂载只允许 worktree、附件和受控运行时目录
 - 不暴露 `~`、`~/.ssh` 等宿主关键目录
 
+当前实现还有一个重要前置条件：CLI runtime 健康检查会把 Docker Worker sandbox 一并纳入可用性判断。默认配置下，本地缺少 `eat/worker-base:latest` 时，Agent 会被标记为不可用，任务创建与执行链路都会被拦截。
+
 ### 预览沙箱
 
 `PreviewService` 会为可预览目标创建独立 worktree，并在容器中启动预览命令。当前支持的预览目标类型包括：
@@ -280,8 +284,10 @@ SQLite 打开、migration 应用和基础持久化能力。
 
 Agent contract、registry 与内置 adapter 定义。当前内置运行时中：
 
-- `codex-cli` 为真实运行时
-- `claude-cli` / `gemini-cli` 为 stub
+- `codex-cli` 为真实运行时，支持 Lead 与 Worker
+- `claude-cli` 为真实运行时，支持 Lead 与 Worker
+- `gemini-cli` 为真实运行时，当前只作为 Worker 候选
+- 当前默认验证最充分的产品主路径仍然是 `codex-cli`
 
 ### `web/src/`
 
@@ -375,6 +381,8 @@ React 前端应用，包括：
 - Worker worktree：`/tmp/.eat-worktrees`
 - Preview worktree：`/tmp/.eat-preview-worktrees`
 
+数据库结构的当前真相以 `prisma/migrations/` 和 repository 实现为准。`prisma/schema.prisma` 当前不是最新运行时表的完整镜像，尤其不要只凭 schema 文件判断 `agent_sessions`、integration 相关表和最新字段。
+
 ## 测试覆盖
 
 当前主路径的自动化校验主要包括：
@@ -383,16 +391,16 @@ React 前端应用，包括：
 - `cd web && pnpm lint`
 - `cd web && pnpm build`
 
-历史 Node 测试目录已经移除，因此旧 `tests/*.js` 文件列表不再代表当前仓库状态。
+仓库中目前没有常驻的 Web E2E 自动化测试套件；当前前端验证主要依赖 `pnpm build`、人工操作和后端 API 测试。
 
 ## 文档关系
 
 推荐阅读顺序：
 
 1. `docs/PRD.md`
-2. `docs/phase/README.md`
-3. 本文档
-4. `docs/EAT-user-guide.md`
-5. `docs/v1.1/README.md`
+2. 本文档
+3. `docs/API-REFERENCE.md`
+4. `docs/GO-DEVELOPMENT-CONVENTIONS.md`
+5. `docs/EAT-user-guide.md`
 
-如果你要继续开发，请先服从 PRD 和 phase 文档；如果你要先快速熟悉仓库，再从本文档进入代码。
+如果你要继续开发，请先服从 PRD；如果你要先快速熟悉仓库，再从本文档进入代码。

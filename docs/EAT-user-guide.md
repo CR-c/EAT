@@ -2,6 +2,7 @@
 
 > 版本 0.1.0 | 最后更新 2026-03-26
 > 注：当前默认运行时是 Go 后端 + React 前端。本文部分截图来自历史界面基线，若与当前界面存在差异，以运行中的产品为准。
+> 注：本文描述当前操作流程，但详细 API 仍以 `backend/internal/api/router.go` 为准。
 
 ## 目录
 
@@ -23,7 +24,6 @@
   - [运行看板](#运行看板)
   - [指标（Metrics）](#指标metrics)
 - [常见问题](#常见问题)
-- [API 参考](#api-参考)
 
 ---
 
@@ -64,6 +64,14 @@
 ---
 
 ## 快速开始
+
+### 0. 运行前置条件
+
+- 已安装 Go、Node.js、pnpm、Git、Docker
+- 已安装并登录默认 Lead CLI：`codex-cli`
+- 已构建本地 Worker 镜像：`npm run build:worker-image`
+
+当前默认运行时会把 Docker Worker sandbox 纳入 Agent 健康检查；如果本地缺少 `eat/worker-base:latest`，创建任务时会被系统拦截。
 
 ### 1. 启动服务器
 
@@ -125,7 +133,7 @@ npm start
    - **分支模式**：选择「新建基线分支」或「使用已有分支」
    - **起始分支**：选择从哪个分支创建新基线
    - **新基线分支名**：如 `task/todo-list`
-   - **Lead Agent**：选择编排 Agent（如 `codex-cli`）
+   - **Lead Agent**：选择编排 Agent（默认验证最充分的是 `codex-cli`）
 
 4. **填写任务信息**：
    - **任务标题**：简洁描述任务目标
@@ -152,7 +160,7 @@ npm start
 ### 技术要求
 - 前端使用现有的 UI 框架
 - 后端提供 RESTful API
-- 数据存储使用 PostgreSQL
+- 数据存储沿用当前项目主路径（默认 SQLite）
 
 ### 验收标准
 - 所有 CRUD 操作正常工作
@@ -382,62 +390,12 @@ A: 点击顶部导航右侧的「English / 中文」按钮即可切换。
 
 ---
 
-## API 参考
+## 开发接口说明
 
-### 项目管理
+面向开发与联调的完整接口列表，请直接查看 [API-REFERENCE.md](/home/code/EAT/docs/API-REFERENCE.md)。
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/projects` | 注册项目 |
-| GET | `/api/projects` | 获取项目列表 |
-| GET | `/api/projects/:id` | 获取项目详情 |
-| DELETE | `/api/projects/:id` | 删除项目 |
-| GET | `/api/projects/:id/repo-status` | 获取仓库状态 |
-| GET | `/api/projects/browse` | 浏览目录 |
-
-### 任务管理
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/tasks` | 创建任务 |
-| POST | `/api/guided-tasks` | 引导式创建任务 |
-| GET | `/api/tasks/:id` | 获取任务详情 |
-| DELETE | `/api/tasks/:id` | 删除任务 |
-| POST | `/api/tasks/:id/start-clarification` | 开始澄清 |
-| POST | `/api/tasks/:id/messages` | 发送消息 |
-| POST | `/api/tasks/:id/confirm-requirements` | 确认需求 |
-| PUT | `/api/tasks/:id/current-plan` | 更新计划 |
-| POST | `/api/tasks/:id/approve-plan` | 批准计划 |
-| POST | `/api/tasks/:id/pause` | 暂停任务 |
-| POST | `/api/tasks/:id/resume` | 恢复任务 |
-| POST | `/api/tasks/:id/archive` | 归档任务 |
-
-### 执行监控
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/tasks/:id/board` | 获取看板数据 |
-| GET | `/api/tasks/:id/team` | 获取团队数据 |
-| GET | `/api/tasks/:id/events` | SSE 实时事件流 |
-| POST | `/api/tasks/:id/mailbox` | 发送信箱消息 |
-
-### 预览管理
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/tasks/:id/preview` | 获取预览状态 |
-| POST | `/api/tasks/:id/preview/start` | 启动预览 |
-| POST | `/api/tasks/:id/preview/stop` | 停止预览 |
-
-### 系统
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/agents` | Agent 目录 |
-| GET | `/api/agents/health` | Agent 健康状态 |
-| GET | `/api/task-templates` | 任务模板列表 |
-| GET | `/api/metrics/summary` | 指标摘要 |
+如果接口说明与运行中的系统不一致，以 [`backend/internal/api/router.go`](/home/code/EAT/backend/internal/api/router.go) 为准。
 
 ---
 
-*本文档基于 E2E 自动化测试结果自动生成，配图均为 Playwright 浏览器截图。*
+*本文档是面向操作者的当前流程说明；部分截图来自历史界面基线，API 与运行时行为以 `backend/internal/api/router.go` 和当前实现为准。*

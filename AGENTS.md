@@ -19,6 +19,7 @@ Before making implementation decisions, read:
 
 1. `AGENTS.md`
 2. `docs/README.md`
+3. The smallest relevant current doc under `docs/`
 
 Then branch into the smallest relevant document set for the current task.
 
@@ -37,62 +38,35 @@ Read in this order:
 
 Rules:
 
-- Do not default to the earliest incomplete phase for ordinary bugfixes or localized feature work.
 - Inspect the existing code before assuming scaffolding or behavior.
-- Read only the phase docs that directly define the contract you are touching.
+- Prefer current runtime docs over historical planning artifacts.
 
-### B. Foundation Phase Work (`docs/phase/01-16`)
+### B. Product Semantics Or State Machine Work
 
-Use this path only when the user explicitly asks for phase delivery work, or the requested change is clearly defined as foundation-phase scope.
+Use this path when the task changes product semantics, state machines, operator checkpoints, review authority, merge history, or user-visible task lifecycle behavior.
 
 Read in this order:
 
 1. `docs/PRD.md`
-2. `docs/phase/README.md`
-3. `docs/phase/PRISMA-MIGRATIONS.md`
-4. `docs/phase/API-EVENT-EXAMPLES.md`
-5. `docs/phase/CHECKLISTS.md`
-6. The active phase doc in `docs/phase/`
-7. If working from Vibe Kanban issues, `docs/phase/ISSUE-WORKSPACE-PLAYBOOK.md`
+2. `docs/ARCHITECTURE.md`
+3. `docs/API-REFERENCE.md`
+4. The relevant implementation files
 
 Before coding, summarize:
 
-- phase goal
+- product goal
 - scope boundaries
 - required schema changes
 - required API and event changes
 - required UI changes
 - required tests
 
-### C. Extended Phase Work (`docs/v1.1/17-22`)
-
-Use this path only when the user explicitly asks for extended-phase work, or the requested change is clearly defined there.
+### C. Documentation Work
 
 Read in this order:
 
-1. `docs/PRD.md`
-2. `docs/phase/README.md`
-3. `docs/v1.1/README.md`
-4. `docs/v1.1/PRISMA-MIGRATIONS.md`
-5. `docs/v1.1/API-EVENT-EXAMPLES.md`
-6. `docs/v1.1/CHECKLISTS.md`
-7. The active phase doc in `docs/v1.1/`
-
-Before coding, summarize:
-
-- phase goal
-- scope boundaries
-- required schema changes
-- required API and event changes
-- required UI changes
-- required tests
-
-### D. Documentation Work
-
-Read in this order:
-
-1. `docs/PRD.md`
-2. `docs/README.md`
+1. `docs/README.md`
+2. `docs/PRD.md`
 3. The directly affected docs
 4. Relevant implementation files when the docs describe runtime behavior
 
@@ -100,9 +74,9 @@ Read in this order:
 
 If documents conflict:
 
-- `docs/PRD.md` overrides phase docs
-- phase docs override ad hoc assumptions
-- implementation notes and guides do not override PRD or phase contracts
+- `docs/PRD.md` overrides other repository docs for product intent
+- current implementation docs do not override PRD
+- implementation notes and guides do not override PRD
 - preserve documented names for states, fields, events, models, and transitions
 
 If code and docs conflict:
@@ -155,22 +129,13 @@ When rewriting or integrating docs:
 
 - keep `docs/README.md` as the unified docs entrypoint
 - keep `docs/PRD.md` as the only top-level product definition
-- treat `docs/phase/` as foundation delivery contracts
-- treat `docs/v1.1/` as extended delivery contracts, not a competing PRD
+- keep `docs/API-REFERENCE.md` as the current human-readable API surface
 - if runtime behavior is described, verify against the current code before rewriting
 - do not reintroduce obsolete `FR-*`, legacy MVP-era section references, or fake API paths
-- if you change terminology in one core doc, propagate it through related indexes, checklists, and examples
+- do not recreate large historical planning trees unless the user explicitly asks for them
+- if you change terminology in one core doc, propagate it through related current docs
 
 ## Expected Output
-
-At the end of a phase-oriented implementation task, report:
-
-- completed items
-- changed files
-- remaining unchecked items from the phase checklist
-- test results
-- blockers or assumptions
-- whether the repository is ready for the next phase
 
 At the end of a documentation task, report:
 
@@ -183,15 +148,7 @@ At the end of a documentation task, report:
 
 - Unified docs entry: `docs/README.md`
 - Product spec: `docs/PRD.md`
-- Foundation phase index: `docs/phase/README.md`
-- Foundation phase tasks: `docs/phase/CHECKLISTS.md`
-- Foundation schema rollout: `docs/phase/PRISMA-MIGRATIONS.md`
-- Foundation API and event examples: `docs/phase/API-EVENT-EXAMPLES.md`
-- Extended phase index: `docs/v1.1/README.md`
-- Extended phase tasks: `docs/v1.1/CHECKLISTS.md`
-- Extended schema rollout: `docs/v1.1/PRISMA-MIGRATIONS.md`
-- Extended API and event examples: `docs/v1.1/API-EVENT-EXAMPLES.md`
 - Runtime/implementation overview: `docs/ARCHITECTURE.md`
+- Current API reference: `docs/API-REFERENCE.md`
 - Go backend conventions: `docs/GO-DEVELOPMENT-CONVENTIONS.md`
 - User-facing guide: `docs/EAT-user-guide.md`
-- Issue/workspace execution guide: `docs/phase/ISSUE-WORKSPACE-PLAYBOOK.md`

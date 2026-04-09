@@ -12,9 +12,9 @@
 - 错误处理
 - 测试与迁移
 
-它是仓库级工程规范，不替代 `docs/PRD.md`、phase 文档或运行时实现说明。
+它是仓库级工程规范，不替代 `docs/PRD.md` 或运行时实现说明。
 
-如果产品语义与本规范冲突，以 `docs/PRD.md` 和相关 phase 文档为准。
+如果产品语义与本规范冲突，以 `docs/PRD.md` 为准。
 
 ## 参考基线
 
@@ -390,7 +390,7 @@ repository 不应承担：
 - repository、migration、运行时结构体字段名要保持一致语义
 - 若 schema 与文档冲突：
   - 运行时事实描述以已落地 migration 和 repository 为准
-  - 产品语义仍以 PRD / phase 文档为准
+  - 产品语义仍以 PRD 为准
 
 ## 八、测试规范
 
