@@ -1,5 +1,6 @@
 import { deleteJson, fetchJson, postJson, putJson } from "@/lib/api/client"
 import type {
+  CreateGuidedTaskInput,
   CreateTaskInput,
   ReplanRequestInput,
   TaskDiff,
@@ -10,6 +11,7 @@ import type {
   TaskPreview,
   TaskRecord,
   TaskRuntime,
+  TaskTemplateSummary,
 } from "@/lib/types"
 
 export function getTask(taskId: string, signal?: AbortSignal) {
@@ -18,6 +20,14 @@ export function getTask(taskId: string, signal?: AbortSignal) {
 
 export function createTask(input: CreateTaskInput) {
   return postJson<{ task: TaskRecord }>("/api/tasks", input)
+}
+
+export function createGuidedTask(input: CreateGuidedTaskInput) {
+  return postJson<{ task: TaskRecord; currentPlan: Record<string, unknown> }>("/api/guided-tasks", input)
+}
+
+export function listTaskTemplates(signal?: AbortSignal) {
+  return fetchJson<{ templates: TaskTemplateSummary[] }>("/api/task-templates", { signal })
 }
 
 export function startClarification(taskId: string, input: StartClarificationInput) {

@@ -58,6 +58,8 @@ export interface TaskRecord {
   baseBranch: string
   baseCommitSha: string
   taskBranchName?: string | null
+  taskType?: string
+  planOrigin?: string | null
   status: string
   workspaceStage?: string
   workspaceStageLabel?: string
@@ -422,6 +424,17 @@ export interface CreateTaskInput {
     mimeType: string
     contentBase64?: string
   }>
+}
+
+export interface CreateGuidedTaskInput extends CreateTaskInput {
+  templateId: string
+  agentType?: string
+}
+
+export interface TaskTemplateSummary {
+  id: string
+  nodeCount: number
+  roles: string[]
 }
 
 export interface StartClarificationInput {

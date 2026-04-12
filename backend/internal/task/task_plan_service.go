@@ -73,6 +73,98 @@ func (s *Service) CreateGuidedTask(ctx context.Context, input CreateGuidedTaskRe
 	}, nil
 }
 
+func (s *Service) buildSeededPlanForTask(taskRecord *Task) (*tasktemplates.Plan, *Error) {
+	if taskRecord == nil {
+		return nil, failure(ErrorCodeTaskNotFound, "Task not found.", nil)
+	}
+
+	templateID := strings.TrimSpace(s.inferTemplateIDForTask(taskRecord))
+	if templateID == "" {
+		return nil, failure(ErrorCodePlanTemplateNotFound, "No matching task template was found for the current task.", map[string]any{"taskId": taskRecord.ID})
+	}
+
+	workerAgentType := s.resolveDefaultTemplateAgentType(taskRecord, "")
+	seed := tasktemplates.BuildSeed(templateID, tasktemplates.BuildOptions{
+		AgentType:   workerAgentType,
+		Description: taskRecord.Description,
+		Title:       taskRecord.Title,
+	})
+	if seed == nil {
+		return nil, failure(ErrorCodePlanTemplateNotFound, "Requested plan template was not found.", map[string]any{"taskId": taskRecord.ID, "templateId": templateID})
+	}
+
+	normalizedPlan, validationError := s.normalizeAndValidatePlan(seed.Plan)
+	if validationError != nil {
+		return nil, validationError
+	}
+
+	return &normalizedPlan, nil
+}
+
+func (s *Service) persistGeneratedPlan(ctx context.Context, taskID string, plan tasktemplates.Plan) (*Task, *PlanSnapshot, *Error) {
+	currentPlanJSONBytes, err := json.Marshal(plan)
+	if err != nil {
+		return nil, nil, failure("PLAN_SERIALIZATION_FAILED", err.Error(), nil)
+	}
+	currentPlanJSON := string(currentPlanJSONBytes)
+	status := "PLAN_REVIEW"
+	defaultPlanVersion := int64(1)
+
+	var (
+		nextTask *Task
+		snapshot *PlanSnapshot
+	)
+
+	txErr := s.repository.RunInTransaction(ctx, func(repository *Repository) error {
+		currentTask, readErr := repository.FindTaskByID(ctx, taskID)
+		if readErr != nil {
+			return readErr
+		}
+		if currentTask == nil {
+			return serviceFailure{payload: failure(ErrorCodeTaskNotFound, "Task not found.", map[string]any{"taskId": taskID})}
+		}
+
+		nextPlanVersion := currentTask.PlanVersion + 1
+		if nextPlanVersion <= 0 {
+			nextPlanVersion = defaultPlanVersion
+		}
+
+		updatedTask, updateErr := repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+			Status:             &status,
+			PlanVersion:        &nextPlanVersion,
+			CurrentPlanJSON:    &currentPlanJSON,
+			SetCurrentPlanJSON: true,
+			LastError:          nil,
+			SetLastError:       true,
+		})
+		if updateErr != nil {
+			return updateErr
+		}
+		nextTask = updatedTask
+
+		createdSnapshot, snapshotErr := repository.CreatePlanSnapshot(ctx, CreatePlanSnapshotInput{
+			TaskID:  taskID,
+			Version: updatedTask.PlanVersion,
+			Source:  planSnapshotSourceLeadGenerated,
+			Payload: currentPlanJSON,
+		})
+		if snapshotErr != nil {
+			return snapshotErr
+		}
+		snapshot = createdSnapshot
+		return nil
+	})
+	if txErr != nil {
+		var opErr serviceFailure
+		if errors.As(txErr, &opErr) {
+			return nil, nil, opErr.payload
+		}
+		return nil, nil, failure("PLAN_SNAPSHOT_CREATE_FAILED", txErr.Error(), map[string]any{"taskId": taskID})
+	}
+
+	return nextTask, snapshot, nil
+}
+
 func (s *Service) ApplyPlanSeed(ctx context.Context, taskID string, input PlanSeedRequest) (*PlanSeedResult, *Error) {
 	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
 	if err != nil {
@@ -653,6 +745,23 @@ func (s *Service) resolveDefaultTemplateAgentType(taskRecord *Task, requestedAge
 	}
 
 	return "codex-cli"
+}
+
+func (s *Service) inferTemplateIDForTask(taskRecord *Task) string {
+	text := strings.ToLower(strings.TrimSpace(strings.Join([]string{taskRecord.Title, taskRecord.Description}, "\n")))
+
+	switch {
+	case strings.Contains(text, "todo"):
+		return "full-stack-web-app"
+	case strings.Contains(text, "frontend") || strings.Contains(text, "ui") || strings.Contains(text, "页面"):
+		return "frontend-feature"
+	case strings.Contains(text, "api") || strings.Contains(text, "backend") || strings.Contains(text, "接口"):
+		return "backend-api"
+	case strings.Contains(text, "refactor") || strings.Contains(text, "重构"):
+		return "repo-wide-refactor"
+	default:
+		return "full-stack-web-app"
+	}
 }
 
 func normalizePlan(plan tasktemplates.Plan) tasktemplates.Plan {

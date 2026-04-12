@@ -8,11 +8,15 @@
 
 1. [AGENTS.md](/home/code/EAT/AGENTS.md)
 2. [README.md](/home/code/EAT/README.md)
-3. [PRD.md](/home/code/EAT/docs/PRD.md)
-4. [ARCHITECTURE.md](/home/code/EAT/docs/ARCHITECTURE.md)
-5. [API-REFERENCE.md](/home/code/EAT/docs/API-REFERENCE.md)
-6. [GO-DEVELOPMENT-CONVENTIONS.md](/home/code/EAT/docs/GO-DEVELOPMENT-CONVENTIONS.md)
-7. [EAT-user-guide.md](/home/code/EAT/docs/EAT-user-guide.md)
+3. [HERMES-AUTONOMY-TRIAL.md](/home/code/EAT/docs/HERMES-AUTONOMY-TRIAL.md)
+4. [HERMES-FIRST-TRIAL-PROMPT.md](/home/code/EAT/docs/HERMES-FIRST-TRIAL-PROMPT.md)
+5. [EAT-EVAT-TODO-BENCHMARK.md](/home/code/EAT/docs/EAT-EVAT-TODO-BENCHMARK.md)
+6. [EAT-EVAT-TODO-TASK.md](/home/code/EAT/docs/EAT-EVAT-TODO-TASK.md)
+7. [PRD.md](/home/code/EAT/docs/PRD.md)
+8. [ARCHITECTURE.md](/home/code/EAT/docs/ARCHITECTURE.md)
+9. [API-REFERENCE.md](/home/code/EAT/docs/API-REFERENCE.md)
+10. [GO-DEVELOPMENT-CONVENTIONS.md](/home/code/EAT/docs/GO-DEVELOPMENT-CONVENTIONS.md)
+11. [EAT-user-guide.md](/home/code/EAT/docs/EAT-user-guide.md)
 
 ## 文档分层
 
@@ -31,6 +35,10 @@
 ### 核心文档
 
 - [README.md](/home/code/EAT/README.md) — 仓库总览与本地开发入口
+- [HERMES-AUTONOMY-TRIAL.md](/home/code/EAT/docs/HERMES-AUTONOMY-TRIAL.md) — 在本仓库上试验 Hermes 高自治开发的步骤与边界
+- [HERMES-FIRST-TRIAL-PROMPT.md](/home/code/EAT/docs/HERMES-FIRST-TRIAL-PROMPT.md) — 可直接投喂 Hermes 的首轮试验提示词
+- [EAT-EVAT-TODO-BENCHMARK.md](/home/code/EAT/docs/EAT-EVAT-TODO-BENCHMARK.md) — 用 `evat` 的 Todo 垂直切片验证 EAT 是否真的可用
+- [EAT-EVAT-TODO-TASK.md](/home/code/EAT/docs/EAT-EVAT-TODO-TASK.md) — 可直接在 EAT 中发起的 benchmark 任务描述
 - [PRD.md](/home/code/EAT/docs/PRD.md) — 唯一产品定义
 - [ARCHITECTURE.md](/home/code/EAT/docs/ARCHITECTURE.md) — 当前实现总览
 - [API-REFERENCE.md](/home/code/EAT/docs/API-REFERENCE.md) — 当前 API 资源面

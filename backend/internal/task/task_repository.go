@@ -19,6 +19,8 @@ func (r *Repository) CreateTask(ctx context.Context, input CreateTaskRecordInput
 		BaseBranch:       input.BaseBranch,
 		BaseCommitSHA:    input.BaseCommitSHA,
 		TaskBranchName:   input.TaskBranchName,
+		TaskType:         "NORMAL",
+		PlanOrigin:       nil,
 		Status:           "DRAFT",
 		PlanVersion:      0,
 		CurrentPlanJSON:  nil,

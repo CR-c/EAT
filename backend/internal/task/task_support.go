@@ -25,6 +25,13 @@ func decorateTask(taskRecord *Task) *Task {
 	decorated := *taskRecord
 	decorated.WorkspaceStage = stage
 	decorated.WorkspaceStageLabel = label
+	if strings.TrimSpace(decorated.TaskType) == "" {
+		decorated.TaskType = inferTaskTypeFromPlan(decorated.CurrentPlanJSON)
+	}
+	if decorated.PlanOrigin == nil || strings.TrimSpace(derefString(decorated.PlanOrigin)) == "" {
+		derived := inferPlanOrigin(&decorated)
+		decorated.PlanOrigin = stringPointerValue(derived)
+	}
 	return &decorated
 }
 
@@ -194,4 +201,36 @@ func uniqueStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
+}
+
+func inferTaskTypeFromPlan(currentPlanJSON *string) string {
+	if strings.TrimSpace(derefString(currentPlanJSON)) != "" {
+		return "GUIDED"
+	}
+	return "NORMAL"
+}
+
+func inferPlanOrigin(taskRecord *Task) string {
+	if taskRecord == nil {
+		return "NONE"
+	}
+
+	if strings.TrimSpace(derefString(taskRecord.ApprovedPlanJSON)) == "" && strings.TrimSpace(derefString(taskRecord.CurrentPlanJSON)) == "" {
+		return "NONE"
+	}
+
+	if strings.TrimSpace(derefString(taskRecord.CurrentPlanJSON)) != "" {
+		if strings.Contains(strings.ToLower(derefString(taskRecord.CurrentPlanJSON)), "\"template_id\"") {
+			if strings.TrimSpace(taskRecord.TaskType) == "NORMAL" {
+				return "AUTO_GENERATED"
+			}
+			return "TEMPLATE_SEEDED"
+		}
+	}
+
+	if strings.TrimSpace(derefString(taskRecord.ApprovedPlanJSON)) != "" {
+		return "APPROVED"
+	}
+
+	return "USER_EDITED"
 }

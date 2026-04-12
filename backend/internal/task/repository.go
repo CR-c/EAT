@@ -17,6 +17,8 @@ type Task struct {
 	BaseBranch          string             `json:"baseBranch"`
 	BaseCommitSHA       string             `json:"baseCommitSha"`
 	TaskBranchName      *string            `json:"taskBranchName"`
+	TaskType            string             `json:"taskType"`
+	PlanOrigin          *string            `json:"planOrigin"`
 	Status              string             `json:"status"`
 	WorkspaceStage      string             `json:"workspaceStage,omitempty"`
 	WorkspaceStageLabel string             `json:"workspaceStageLabel,omitempty"`

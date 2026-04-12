@@ -63,6 +63,9 @@ func TestCreateGuidedTaskEndpointSeedsPlanReviewTask(t *testing.T) {
 	if taskPayload["status"] != "PLAN_REVIEW" {
 		t.Fatalf("unexpected task status: %#v", taskPayload["status"])
 	}
+	if taskPayload["currentPlanJson"] == nil {
+		t.Fatalf("expected guided task to include currentPlanJson: %#v", taskPayload)
+	}
 	if taskPayload["planVersion"].(float64) != 1 {
 		t.Fatalf("unexpected plan version: %#v", taskPayload["planVersion"])
 	}

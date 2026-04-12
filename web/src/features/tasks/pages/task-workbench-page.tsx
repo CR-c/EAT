@@ -442,9 +442,15 @@ function WorkbenchTopBar({
               {task.id}
             </div>
             <span className={cn("mr-4 max-w-xs truncate font-bold", theme.cardTitle)}>{task.title}</span>
-            <div className={cn("flex items-center rounded-sm border px-2 py-1 text-xs", theme.pathBg)}>
+            <div className={cn("mr-3 flex items-center rounded-sm border px-2 py-1 text-xs", theme.pathBg)}>
               <GitBranch className={cn("mr-1.5 h-3 w-3", theme.pathLabel)} />
               {task.taskBranchName ?? translate(locale, "common.autoBranch")}
+            </div>
+            <div className={cn("mr-2 rounded-sm border px-2 py-1 font-mono text-[0.65rem]", theme.pathBg)}>
+              {translate(locale, `task.create.taskType.${task.taskType || "NORMAL"}`)}
+            </div>
+            <div className={cn("rounded-sm border px-2 py-1 font-mono text-[0.65rem]", theme.pathBg)}>
+              {translate(locale, `task.create.planOrigin.${task.planOrigin || "NONE"}`)}
             </div>
           </>
         ) : null}
@@ -1361,16 +1367,18 @@ function trimTail(value: string, maxBytes: number): string {
 }
 
 function deriveWorkbenchStage(task?: TaskRecord): WorkbenchStage {
-  switch (task?.workspaceStage ?? task?.status) {
-    case "COMPLETED":
-      return "COMPLETED"
-    case "EXECUTING":
-      return "EXECUTING"
-    case "PLAN_REVIEW":
-      return "PLAN_REVIEW"
-    default:
-      return "CLARIFYING"
+  const stageOrStatus = task?.workspaceStage ?? task?.status
+  if (stageOrStatus === "COMPLETED") {
+    return "COMPLETED"
   }
+  if (stageOrStatus === "EXECUTING") {
+    return "EXECUTING"
+  }
+  if (stageOrStatus === "PLAN_REVIEW") {
+    const hasPlan = Boolean(task?.currentPlanJson ?? task?.approvedPlanJson)
+    return hasPlan ? "PLAN_REVIEW" : "CLARIFYING"
+  }
+  return "CLARIFYING"
 }
 
 function buildSpecContent(detail: TaskDetail, locale: "zh-CN" | "en") {

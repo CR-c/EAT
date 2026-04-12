@@ -582,14 +582,14 @@ func (s *Service) ConfirmRequirements(ctx context.Context, taskID string) (*Conf
 		)
 	}
 
-	nextStatus := taskStatusPlanning
-	nextTask, err := s.repository.UpdateTask(ctx, taskID, UpdateTaskInput{
-		Status:       &nextStatus,
-		LastError:    nil,
-		SetLastError: true,
-	})
-	if err != nil {
-		return nil, failure("TASK_UPDATE_FAILED", err.Error(), nil)
+	seededPlan, serviceError := s.buildSeededPlanForTask(taskRecord)
+	if serviceError != nil {
+		return nil, serviceError
+	}
+
+	nextTask, _, serviceError := s.persistGeneratedPlan(ctx, taskID, *seededPlan)
+	if serviceError != nil {
+		return nil, serviceError
 	}
 
 	message, err := s.repository.CreateMessage(ctx, CreateMessageInput{

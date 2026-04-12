@@ -13,9 +13,9 @@ import type { ChangeEvent, ComponentType } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 
-import { getProject } from "@/lib/api/projects"
-import { createTask } from "@/lib/api/tasks"
-import { getAgents } from "@/lib/api/system"
+import { getProject, getProjectRepoStatus } from "@/lib/api/projects"
+import { createGuidedTask, createTask, listTaskTemplates } from "@/lib/api/tasks"
+import { getAgentHealth, getAgents, getDockerHealth, getSystemHealth } from "@/lib/api/system"
 import { getAgentDescription } from "@/lib/i18n"
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
@@ -42,6 +42,8 @@ export function CreateTaskPage() {
   const [baseBranch, setBaseBranch] = useState("")
   const [taskBranch, setTaskBranch] = useState("")
   const [attachments, setAttachments] = useState<PendingAttachment[]>([])
+  const [creationMode, setCreationMode] = useState<"guided" | "normal">("guided")
+  const [templateId, setTemplateId] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -55,6 +57,36 @@ export function CreateTaskPage() {
     deps: [],
     initialData: undefined,
     load: getAgents,
+  })
+
+  const agentHealth = useAsyncResource({
+    deps: [],
+    initialData: undefined,
+    load: getAgentHealth,
+  })
+
+  const docker = useAsyncResource({
+    deps: [],
+    initialData: undefined,
+    load: getDockerHealth,
+  })
+
+  const system = useAsyncResource({
+    deps: [],
+    initialData: undefined,
+    load: getSystemHealth,
+  })
+
+  const templates = useAsyncResource({
+    deps: [],
+    initialData: undefined,
+    load: listTaskTemplates,
+  })
+
+  const repoStatus = useAsyncResource({
+    deps: [projectId],
+    initialData: undefined,
+    load: async (signal) => getProjectRepoStatus(projectId, signal),
   })
 
   useEffect(() => {
@@ -72,6 +104,24 @@ export function CreateTaskPage() {
       setLeadAgentType(candidate.agentName)
     }
   }, [agents.data, leadAgentType])
+
+  useEffect(() => {
+    const firstTemplate = templates.data?.templates[0]?.id
+    if (firstTemplate && !templateId) {
+      setTemplateId(firstTemplate)
+    }
+  }, [templateId, templates.data])
+
+  useEffect(() => {
+    if (creationMode === "normal") {
+      setTemplateId("")
+      return
+    }
+    const firstTemplate = templates.data?.templates[0]?.id
+    if (firstTemplate && !templateId) {
+      setTemplateId(firstTemplate)
+    }
+  }, [creationMode, templateId, templates.data])
 
   const branchCandidates = useMemo(
     () =>
@@ -102,7 +152,7 @@ export function CreateTaskPage() {
     setIsSubmitting(true)
     setError(null)
     try {
-      const response = await createTask({
+      const basePayload = {
         attachments: attachments.map((item) => ({
           contentBase64: item.contentBase64,
           fileName: item.fileName,
@@ -116,7 +166,13 @@ export function CreateTaskPage() {
         projectId: project.data.project.id,
         taskBranchName: taskBranch,
         title,
-      })
+      }
+      const response = creationMode === "guided" && templateId
+        ? await createGuidedTask({
+            ...basePayload,
+            templateId,
+          })
+        : await createTask(basePayload)
       navigate(`/projects/${project.data.project.id}/workbench?taskId=${response.task.id}`)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("task.create.submit"))
@@ -139,6 +195,42 @@ export function CreateTaskPage() {
       name: candidate.agentName,
       selectable: candidate.selectable,
     })) ?? []
+
+  const selectedLeadHealth = leadAgentType ? agentHealth.data?.agents[leadAgentType] : undefined
+  const preflightChecks = [
+    {
+      key: "repo",
+      label: "Benchmark 仓库",
+      status: project.data?.project ? "ready" : "loading",
+      detail: project.data?.project?.path ?? "正在读取项目路径...",
+    },
+    {
+      key: "git",
+      label: "Git 仓库状态",
+      status: repoStatus.data?.repoStatus ? "ready" : "loading",
+      detail: repoStatus.data?.repoStatus
+        ? `default=${repoStatus.data.repoStatus.defaultBranch ?? "unknown"} / dirty=${repoStatus.data.repoStatus.isDirty ? "yes" : "no"}`
+        : "正在检查仓库状态...",
+    },
+    {
+      key: "docker",
+      label: "Docker / Worker 镜像",
+      status: docker.data?.available && system.data?.docker?.imageReady ? "ready" : docker.data ? "blocked" : "loading",
+      detail: docker.data
+        ? `available=${docker.data.available ? "yes" : "no"} / imageReady=${system.data?.docker?.imageReady ? "yes" : "no"}`
+        : "正在检查 Docker...",
+    },
+    {
+      key: "lead",
+      label: "Lead Runtime",
+      status: selectedLeadHealth?.available ? "ready" : selectedLeadHealth ? "blocked" : "loading",
+      detail: leadAgentType
+        ? selectedLeadHealth?.available
+          ? `${leadAgentType} 可用`
+          : selectedLeadHealth?.failureReason?.message ?? `${leadAgentType} 当前不可用`
+        : "请选择 Lead Agent",
+    },
+  ] as const
 
   return (
     <div className="relative z-10 flex h-full flex-col p-8">
@@ -223,6 +315,28 @@ export function CreateTaskPage() {
         </section>
 
         <section className={cn("relative rounded-sm border p-5 backdrop-blur-md", theme.cardBg)}>
+          <TagLabel isRei={isRei} label={"PRECHECK"} />
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {preflightChecks.map((check) => {
+              const tone =
+                check.status === "ready"
+                  ? isRei
+                    ? "border-cyan-200 bg-cyan-50/60 text-cyan-700"
+                    : "border-green-500/40 bg-green-900/20 text-green-300"
+                  : check.status === "blocked"
+                    ? "border-red-500/40 bg-red-900/20 text-red-300"
+                    : theme.pathBg
+              return (
+                <div key={check.key} className={cn("rounded-sm border p-3 font-mono text-xs", tone)}>
+                  <div className="mb-1 font-bold tracking-widest">{check.label}</div>
+                  <div className="opacity-80">{check.detail}</div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className={cn("relative rounded-sm border p-5 backdrop-blur-md", theme.cardBg)}>
           <TagLabel isRei={isRei} label={t("task.create.sectionGit")} />
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
@@ -252,6 +366,65 @@ export function CreateTaskPage() {
                 {t("task.create.branchHint")}
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className={cn("relative rounded-sm border p-5 backdrop-blur-md", theme.cardBg)}>
+          <TagLabel isRei={isRei} label={"PLAN"} />
+          <div className="mt-5 space-y-4">
+            <FieldLabel label={t("task.create.modeLabel")} theme={theme} />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <button
+                className={cn(
+                  "rounded-sm border p-4 text-left font-mono transition-all",
+                  creationMode === "normal" ? pilotButton(theme) : theme.inputBg,
+                )}
+                onClick={() => setCreationMode("normal")}
+                type="button"
+              >
+                <div className="mb-1 text-sm font-bold tracking-widest">{t("task.create.type.normal")}</div>
+                <div className={cn("text-xs", creationMode === "normal" ? "opacity-90" : theme.cardSub)}>
+                  {t("task.create.type.normalHint")}
+                </div>
+              </button>
+              <button
+                className={cn(
+                  "rounded-sm border p-4 text-left font-mono transition-all",
+                  creationMode === "guided" ? pilotButton(theme) : theme.inputBg,
+                )}
+                onClick={() => setCreationMode("guided")}
+                type="button"
+              >
+                <div className="mb-1 text-sm font-bold tracking-widest">{t("task.create.type.guided")}</div>
+                <div className={cn("text-xs", creationMode === "guided" ? "opacity-90" : theme.cardSub)}>
+                  {t("task.create.type.guidedHint")}
+                </div>
+              </button>
+            </div>
+
+            {creationMode === "guided" ? (
+              <>
+                <FieldLabel label={"任务模板（推荐）"} theme={theme} />
+                <select
+                  className={cn("w-full appearance-none rounded-sm border px-3 py-2 font-mono text-sm outline-none transition-all", theme.inputBg)}
+                  onChange={(event) => setTemplateId(event.target.value)}
+                  value={templateId}
+                >
+                  {(templates.data?.templates ?? []).map((template) => (
+                    <option key={template.id} className="bg-white text-slate-800 dark:bg-slate-950 dark:text-slate-100" value={template.id}>
+                      {template.id} ({template.nodeCount} nodes)
+                    </option>
+                  ))}
+                </select>
+                <div className={cn("font-mono text-[11px]", theme.cardSub)}>
+                  {t("task.create.guidedModeHint")}
+                </div>
+              </>
+            ) : (
+              <div className={cn("rounded-sm border p-3 font-mono text-[11px]", theme.pathBg)}>
+                {t("task.create.normalModeHint")}
+              </div>
+            )}
           </div>
         </section>
 
@@ -309,13 +482,13 @@ export function CreateTaskPage() {
         <button
           className={cn(
             "flex items-center rounded-sm border px-6 py-2 font-mono text-sm font-bold tracking-widest transition-all",
-            !title.trim() || !description.trim() || !leadAgentType || !baseBranch || isSubmitting
+            !title.trim() || !description.trim() || !leadAgentType || !baseBranch || isSubmitting || preflightChecks.some((item) => item.status === "blocked")
               ? "cursor-not-allowed border-slate-500 bg-transparent text-slate-500 opacity-50"
               : isRei
                 ? "border-cyan-400 bg-cyan-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:bg-cyan-600"
                 : "border-green-400 bg-green-500 text-black shadow-[0_0_15px_rgba(34,197,94,0.4)] hover:bg-green-400",
           )}
-          disabled={!title.trim() || !description.trim() || !leadAgentType || !baseBranch || isSubmitting}
+          disabled={!title.trim() || !description.trim() || !leadAgentType || !baseBranch || isSubmitting || preflightChecks.some((item) => item.status === "blocked")}
           onClick={handleCreate}
           type="button"
         >
@@ -368,6 +541,12 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 18)
+}
+
+function pilotButton(theme: ReturnType<typeof getPilotTheme>) {
+  return theme.pageSub.includes("blue")
+    ? "border-cyan-400 bg-cyan-500 text-white hover:bg-cyan-600"
+    : "border-green-400 bg-green-500 text-black hover:bg-green-400"
 }
 
 async function toAttachment(file: File): Promise<PendingAttachment> {

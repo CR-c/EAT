@@ -1,4 +1,4 @@
-import { Archive, FolderPlus, GitBranch, PauseCircle, PlayCircle, Search, Trash2, Zap } from "lucide-react"
+import { Archive, FolderPlus, GitBranch, PauseCircle, PlayCircle, Search, Tag, Trash2, Zap } from "lucide-react"
 import { useDeferredValue, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 
@@ -173,7 +173,14 @@ export function ProjectTasksPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="relative z-10 mt-3">
+                  <div className="relative z-10 mt-3 flex flex-wrap gap-2">
+                    <span className={cn("flex items-center rounded-sm border px-1.5 py-0.5 font-mono text-[0.65rem]", theme.pathBg)}>
+                      <Tag className="mr-1 h-3 w-3 opacity-70" />
+                      {t(`task.create.taskType.${task.taskType || "NORMAL"}`)}
+                    </span>
+                    <span className={cn("flex items-center rounded-sm border px-1.5 py-0.5 font-mono text-[0.65rem]", theme.pathBg)}>
+                      {t(`task.create.planOrigin.${task.planOrigin || "NONE"}`)}
+                    </span>
                     <TokenUsageBadges isRei={isRei} tokens={task.tokens} />
                   </div>
                   <div className={cn("relative z-10 mt-4 flex items-center justify-between border-t pt-4", isRei ? "border-blue-100/50" : "border-white/5")}>

@@ -500,11 +500,15 @@ curl -k -i -s --resolve eat.735678.xyz:443:127.0.0.1 https://eat.735678.xyz/
 
 1. [`AGENTS.md`](/home/code/EAT/AGENTS.md)
 2. [`docs/README.md`](/home/code/EAT/docs/README.md)
-3. [`docs/PRD.md`](/home/code/EAT/docs/PRD.md)
-4. [`docs/ARCHITECTURE.md`](/home/code/EAT/docs/ARCHITECTURE.md)
-5. [`docs/API-REFERENCE.md`](/home/code/EAT/docs/API-REFERENCE.md)
-6. [`docs/GO-DEVELOPMENT-CONVENTIONS.md`](/home/code/EAT/docs/GO-DEVELOPMENT-CONVENTIONS.md)
-7. [`docs/EAT-user-guide.md`](/home/code/EAT/docs/EAT-user-guide.md)
+3. [`docs/HERMES-AUTONOMY-TRIAL.md`](/home/code/EAT/docs/HERMES-AUTONOMY-TRIAL.md)
+4. [`docs/HERMES-FIRST-TRIAL-PROMPT.md`](/home/code/EAT/docs/HERMES-FIRST-TRIAL-PROMPT.md)
+5. [`docs/EAT-EVAT-TODO-BENCHMARK.md`](/home/code/EAT/docs/EAT-EVAT-TODO-BENCHMARK.md)
+6. [`docs/EAT-EVAT-TODO-TASK.md`](/home/code/EAT/docs/EAT-EVAT-TODO-TASK.md)
+7. [`docs/PRD.md`](/home/code/EAT/docs/PRD.md)
+8. [`docs/ARCHITECTURE.md`](/home/code/EAT/docs/ARCHITECTURE.md)
+9. [`docs/API-REFERENCE.md`](/home/code/EAT/docs/API-REFERENCE.md)
+10. [`docs/GO-DEVELOPMENT-CONVENTIONS.md`](/home/code/EAT/docs/GO-DEVELOPMENT-CONVENTIONS.md)
+11. [`docs/EAT-user-guide.md`](/home/code/EAT/docs/EAT-user-guide.md)
 
 如果你要理解“这个仓库现在大概已经实现到了哪里”，优先看：
 
@@ -539,6 +543,10 @@ curl -k -i -s --resolve eat.735678.xyz:443:127.0.0.1 https://eat.735678.xyz/
 
 - 文档入口：[docs/README.md](/home/code/EAT/docs/README.md)
 - Agent 规范：[AGENTS.md](/home/code/EAT/AGENTS.md)
+- Hermes 试验指南：[docs/HERMES-AUTONOMY-TRIAL.md](/home/code/EAT/docs/HERMES-AUTONOMY-TRIAL.md)
+- Hermes 首轮 Prompt：[docs/HERMES-FIRST-TRIAL-PROMPT.md](/home/code/EAT/docs/HERMES-FIRST-TRIAL-PROMPT.md)
+- EAT 评测标准（evat Todo）：[docs/EAT-EVAT-TODO-BENCHMARK.md](/home/code/EAT/docs/EAT-EVAT-TODO-BENCHMARK.md)
+- EAT 基准任务输入：[docs/EAT-EVAT-TODO-TASK.md](/home/code/EAT/docs/EAT-EVAT-TODO-TASK.md)
 - 产品说明：[docs/PRD.md](/home/code/EAT/docs/PRD.md)
 - 当前实现总览：[docs/ARCHITECTURE.md](/home/code/EAT/docs/ARCHITECTURE.md)
 - 当前 API 参考：[docs/API-REFERENCE.md](/home/code/EAT/docs/API-REFERENCE.md)

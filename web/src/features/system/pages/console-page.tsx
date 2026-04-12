@@ -41,6 +41,7 @@ export function ConsolePage() {
     },
   })
 
+  const hasLoaded = Boolean(resource.data)
   const allProjects = resource.data?.projects ?? []
   const allTasks = allProjects.flatMap((item) =>
     item.tasks.map((task) => ({
@@ -49,26 +50,28 @@ export function ConsolePage() {
     })),
   )
   const activeTasks = allTasks.filter(({ task }) => task.archivedAt == null && task.status !== "COMPLETED")
+  const displayedActiveTasks = hasLoaded ? activeTasks : []
+  const displayedProjectCount = hasLoaded ? allProjects.length : 0
   const agentHealth = resource.data?.agents.agents ?? {}
   const totalTokens = resource.data?.metrics.summary.totalTokensUsed ?? 0
 
   const cliStatus = [
     {
       id: "codex-cli",
-      status: agentHealth["codex-cli"]?.available ? t("common.online") : t("common.offline"),
-      latency: agentHealth["codex-cli"]?.available ? "45ms" : "-",
+      status: !hasLoaded ? t("common.loading") : agentHealth["codex-cli"]?.available ? t("common.online") : t("common.offline"),
+      latency: agentHealth["codex-cli"]?.available ? "45ms" : hasLoaded ? "-" : "…",
       icon: Bot,
     },
     {
       id: "claude-cli",
-      status: agentHealth["claude-cli"]?.available ? t("common.online") : t("common.offline"),
-      latency: agentHealth["claude-cli"]?.available ? "120ms" : "-",
+      status: !hasLoaded ? t("common.loading") : agentHealth["claude-cli"]?.available ? t("common.online") : t("common.offline"),
+      latency: agentHealth["claude-cli"]?.available ? "120ms" : hasLoaded ? "-" : "…",
       icon: Radio,
     },
     {
       id: "gemini-cli",
-      status: agentHealth["gemini-cli"]?.available ? t("common.online") : t("common.offline"),
-      latency: agentHealth["gemini-cli"]?.available ? "88ms" : "-",
+      status: !hasLoaded ? t("common.loading") : agentHealth["gemini-cli"]?.available ? t("common.online") : t("common.offline"),
+      latency: agentHealth["gemini-cli"]?.available ? "88ms" : hasLoaded ? "-" : "…",
       icon: Sparkles,
     },
   ]
@@ -93,12 +96,12 @@ export function ConsolePage() {
               <span className="opacity-30">|</span>
               <span className={cn("flex items-center", isRei ? "text-cyan-600" : "text-green-400")}>
                 <Activity className="mr-1 h-3.5 w-3.5" />
-                {t("common.taskCount", { count: activeTasks.length })}
+                {t("common.taskCount", { count: displayedActiveTasks.length })}
               </span>
               <span className="opacity-30">|</span>
               <span className={cn("flex items-center", theme.cardSub)}>
                 <FolderGit2 className="mr-1 h-3.5 w-3.5" />
-                {t("common.projectCount", { count: allProjects.length })}
+                {t("common.projectCount", { count: displayedProjectCount })}
               </span>
             </div>
 
@@ -127,7 +130,7 @@ export function ConsolePage() {
               {t("console.activeZone")}
             </h3>
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-              {activeTasks.map(({ project, task }) => (
+              {displayedActiveTasks.map(({ project, task }) => (
                 <button
                   key={task.id}
                   className={cn("group relative flex flex-col rounded-sm border p-5 text-left transition-all duration-300", theme.cardBg)}
@@ -151,7 +154,7 @@ export function ConsolePage() {
                   <div className={cn("absolute bottom-0 right-0 h-2 w-2 border-b-2 border-r-2", theme.cardCorner)} />
                 </button>
               ))}
-              {activeTasks.length === 0 ? (
+              {displayedActiveTasks.length === 0 ? (
                 <div
                   className={cn(
                     "col-span-full rounded-sm border border-dashed p-8 text-center font-mono text-sm",

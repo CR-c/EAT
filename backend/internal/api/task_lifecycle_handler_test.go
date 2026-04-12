@@ -382,6 +382,9 @@ func TestConfirmRequirementsAndStopLeadSessionEndpointsUseStaticLeadSessionState
 	if messagePayload["message"].(map[string]any)["role"] != "USER" {
 		t.Fatalf("unexpected clarification message payload: %#v", messagePayload["message"])
 	}
+	if messagePayload["task"].(map[string]any)["status"] != "CLARIFYING" {
+		t.Fatalf("expected clarification message to keep task clarifying: %#v", messagePayload["task"])
+	}
 
 	confirmResponse := performJSONRequest(router, http.MethodPost, "/api/tasks/task-clarifying/requirement-confirmations", nil)
 	if confirmResponse.Code != http.StatusOK {
@@ -389,8 +392,11 @@ func TestConfirmRequirementsAndStopLeadSessionEndpointsUseStaticLeadSessionState
 	}
 
 	confirmPayload := decodeJSONMap(t, confirmResponse.Body.Bytes())
-	if confirmPayload["task"].(map[string]any)["status"] != "PLANNING" {
+	if confirmPayload["task"].(map[string]any)["status"] != "PLAN_REVIEW" {
 		t.Fatalf("unexpected confirmed task payload: %#v", confirmPayload["task"])
+	}
+	if confirmPayload["task"].(map[string]any)["currentPlanJson"] == nil {
+		t.Fatalf("expected generated current plan after confirmation: %#v", confirmPayload["task"])
 	}
 	if confirmPayload["message"].(map[string]any)["role"] != "SYSTEM" {
 		t.Fatalf("unexpected confirmation message payload: %#v", confirmPayload["message"])
@@ -407,6 +413,9 @@ func TestConfirmRequirementsAndStopLeadSessionEndpointsUseStaticLeadSessionState
 	}
 	if messages[1].(map[string]any)["role"] != "AGENT" || messages[3].(map[string]any)["role"] != "AGENT" {
 		t.Fatalf("expected persisted agent replies in transcript: %#v", confirmedDetailPayload["messages"])
+	}
+	if len(confirmedDetailPayload["planSnapshots"].([]any)) == 0 {
+		t.Fatalf("expected generated plan snapshot after confirmation: %#v", confirmedDetailPayload["planSnapshots"])
 	}
 }
 
