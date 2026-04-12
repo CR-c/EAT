@@ -41,6 +41,9 @@ export function isTaskExecutionTreeActive(task: TaskRecord) {
 }
 
 export function isTaskOperational(task: TaskRecord) {
+  if (isTaskPaused(task)) {
+    return false
+  }
   return !["PAUSED", "COMPLETED", "FAILED", "CANCELLED"].includes(task.status)
 }
 

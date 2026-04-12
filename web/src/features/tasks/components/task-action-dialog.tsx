@@ -13,6 +13,7 @@ import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme } from "@/lib/pilot-theme"
 import { cn } from "@/lib/utils"
 import type { TaskRecord } from "@/lib/types"
+import { isTaskPaused } from "@/lib/task-view"
 
 type TaskActionMode = "archive" | "delete" | "pause" | "resume" | "blocked"
 
@@ -41,7 +42,7 @@ export function TaskActionDialog({
     return null
   }
 
-  const isPaused = task.status === "PAUSED"
+  const isPaused = isTaskPaused(task)
   const config: Record<
     TaskActionMode,
     { confirmText: string; content: string; icon: ReactNode; title: string; tone: string }

@@ -11,7 +11,7 @@ import { getPilotTheme } from "@/lib/pilot-theme"
 import { formatTokenAmount, sortUsedTokenEntries } from "@/lib/token-display"
 import { cn } from "@/lib/utils"
 import { TaskActionDialog } from "@/features/tasks/components/task-action-dialog"
-import { isTaskArchived, isTaskOperational } from "@/lib/task-view"
+import { isTaskArchived, isTaskOperational, isTaskPaused } from "@/lib/task-view"
 import type { TaskRecord } from "@/lib/types"
 
 type TaskFilter = "all" | "active" | "archived"
@@ -195,11 +195,11 @@ export function ProjectTasksPage() {
                         className={cn("rounded-sm p-1.5 transition-colors", theme.btnGhost)}
                         onClick={(event) => {
                           event.preventDefault()
-                          openAction(task.status === "PAUSED" ? "resume" : "pause", task)
+                          openAction(isTaskPaused(task) ? "resume" : "pause", task)
                         }}
                         type="button"
                       >
-                        {task.status === "PAUSED" ? <PlayCircle className="h-4 w-4" /> : <PauseCircle className="h-4 w-4" />}
+                        {isTaskPaused(task) ? <PlayCircle className="h-4 w-4" /> : <PauseCircle className="h-4 w-4" />}
                       </button>
                       <button
                         className={cn("rounded-sm p-1.5 transition-colors", theme.btnGhost)}
