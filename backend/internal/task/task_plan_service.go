@@ -44,8 +44,14 @@ func (s *Service) CreateGuidedTask(ctx context.Context, input CreateGuidedTaskRe
 	status := "PLAN_REVIEW"
 	planVersion := int64(1)
 
+	guidedType := "GUIDED"
+	templateOrigin := "TEMPLATE_SEEDED"
 	taskRecord, err := s.repository.UpdateTask(ctx, createResult.Task.ID, UpdateTaskInput{
 		Status:             &status,
+		TaskType:           &guidedType,
+		SetTaskType:        true,
+		PlanOrigin:         &templateOrigin,
+		SetPlanOrigin:      true,
 		PlanVersion:        &planVersion,
 		CurrentPlanJSON:    &currentPlanJSON,
 		SetCurrentPlanJSON: true,
@@ -129,8 +135,17 @@ func (s *Service) persistGeneratedPlan(ctx context.Context, taskID string, plan 
 			nextPlanVersion = defaultPlanVersion
 		}
 
+		taskType := inferTaskTypeFromPlan(&currentPlanJSON)
+		planOrigin := "TEMPLATE_SEEDED"
+		if taskType == "NORMAL" {
+			planOrigin = "AUTO_GENERATED"
+		}
 		updatedTask, updateErr := repository.UpdateTask(ctx, taskID, UpdateTaskInput{
 			Status:             &status,
+			TaskType:           &taskType,
+			SetTaskType:        true,
+			PlanOrigin:         &planOrigin,
+			SetPlanOrigin:      true,
 			PlanVersion:        &nextPlanVersion,
 			CurrentPlanJSON:    &currentPlanJSON,
 			SetCurrentPlanJSON: true,
@@ -206,7 +221,10 @@ func (s *Service) ApplyPlanSeed(ctx context.Context, taskID string, input PlanSe
 	}
 	currentPlanJSON := string(currentPlanJSONBytes)
 
+	planOrigin := "TEMPLATE_SEEDED"
 	nextTask, err := s.repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+		PlanOrigin:         &planOrigin,
+		SetPlanOrigin:      true,
 		CurrentPlanJSON:    &currentPlanJSON,
 		SetCurrentPlanJSON: true,
 		LastError:          nil,
@@ -250,7 +268,10 @@ func (s *Service) UpdateCurrentPlan(ctx context.Context, taskID string, input ta
 	}
 	currentPlanJSON := string(currentPlanJSONBytes)
 
+	planOrigin := "USER_EDITED"
 	nextTask, err := s.repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+		PlanOrigin:         &planOrigin,
+		SetPlanOrigin:      true,
 		CurrentPlanJSON:    &currentPlanJSON,
 		SetCurrentPlanJSON: true,
 		LastError:          nil,
@@ -441,7 +462,10 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 			)}
 		}
 
+		planOrigin := "APPROVED"
 		approvedTask, updateErr := repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+			PlanOrigin:          &planOrigin,
+			SetPlanOrigin:       true,
 			CurrentPlanJSON:     &approvedPlanJSON,
 			SetCurrentPlanJSON:  true,
 			ApprovedPlanJSON:    &approvedPlanJSON,
@@ -524,6 +548,8 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 
 		executingStatus := "EXECUTING"
 		executingTask, updateExecutingErr := repository.UpdateTask(ctx, taskID, UpdateTaskInput{
+			PlanOrigin:          &planOrigin,
+			SetPlanOrigin:       true,
 			CurrentPlanJSON:     &approvedPlanJSON,
 			SetCurrentPlanJSON:  true,
 			Status:              &executingStatus,

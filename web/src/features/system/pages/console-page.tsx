@@ -1,4 +1,4 @@
-import { Activity, Bot, FolderGit2, PlayCircle, Radio, Sparkles, Zap } from "lucide-react"
+import { Activity, Bot, FolderGit2, PlayCircle, Radio, Sparkles, Tag, Zap } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 
 import { listProjects, listProjectTasks } from "@/lib/api/projects"
@@ -148,6 +148,15 @@ export function ConsolePage() {
                     <h3 className={cn("mb-1 text-lg font-bold tracking-wide", theme.cardTitle)}>{task.title}</h3>
                     <div className={cn("font-mono text-xs opacity-60", theme.cardSub)}>
                       ID: {task.id} | {t("common.branch")}: {task.taskBranchName ?? t("common.pending")}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span className={cn("flex items-center rounded-sm border px-1.5 py-0.5 font-mono text-[0.65rem]", theme.pathBg)}>
+                        <Tag className="mr-1 h-3 w-3 opacity-70" />
+                        {t(`task.create.taskType.${task.taskType || "NORMAL"}`)}
+                      </span>
+                      <span className={cn("rounded-sm border px-1.5 py-0.5 font-mono text-[0.65rem]", theme.pathBg)}>
+                        {t(`task.create.planOrigin.${task.planOrigin || "NONE"}`)}
+                      </span>
                     </div>
                   </div>
                   <div className={cn("absolute left-0 top-0 h-2 w-2 border-l-2 border-t-2", theme.cardCorner)} />

@@ -12,6 +12,13 @@ func decorateTasks(tasks []Task) []Task {
 		stage, label := workspaceStageForStatus(item.Status)
 		item.WorkspaceStage = stage
 		item.WorkspaceStageLabel = label
+		if strings.TrimSpace(item.TaskType) == "" {
+			item.TaskType = inferTaskTypeFromPlan(item.CurrentPlanJSON)
+		}
+		if item.PlanOrigin == nil || strings.TrimSpace(derefString(item.PlanOrigin)) == "" {
+			derived := inferPlanOrigin(&item)
+			item.PlanOrigin = stringPointerValue(derived)
+		}
 		decorated = append(decorated, item)
 	}
 	return decorated
@@ -204,7 +211,11 @@ func uniqueStrings(values []string) []string {
 }
 
 func inferTaskTypeFromPlan(currentPlanJSON *string) string {
-	if strings.TrimSpace(derefString(currentPlanJSON)) != "" {
+	raw := strings.TrimSpace(derefString(currentPlanJSON))
+	if raw == "" {
+		return "NORMAL"
+	}
+	if strings.Contains(strings.ToLower(raw), "\"template_id\"") {
 		return "GUIDED"
 	}
 	return "NORMAL"

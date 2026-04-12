@@ -35,9 +35,9 @@ func (r *Repository) CreateTask(ctx context.Context, input CreateTaskRecordInput
 	_, err := r.exec().ExecContext(ctx, `
 		INSERT INTO tasks (
 			id, project_id, title, description, lead_agent_type, base_branch, base_commit_sha,
-			task_branch_name, status, plan_version, current_plan_json, approved_plan_json,
+			task_branch_name, task_type, plan_origin, status, plan_version, current_plan_json, approved_plan_json,
 			last_error, archived_at, created_at, updated_at, version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		taskRecord.ID,
 		taskRecord.ProjectID,
@@ -47,6 +47,8 @@ func (r *Repository) CreateTask(ctx context.Context, input CreateTaskRecordInput
 		taskRecord.BaseBranch,
 		taskRecord.BaseCommitSHA,
 		taskRecord.TaskBranchName,
+		taskRecord.TaskType,
+		taskRecord.PlanOrigin,
 		taskRecord.Status,
 		taskRecord.PlanVersion,
 		taskRecord.CurrentPlanJSON,
@@ -129,6 +131,8 @@ func (r *Repository) FindTaskByID(ctx context.Context, taskID string) (*Task, er
 			base_branch,
 			base_commit_sha,
 			task_branch_name,
+			task_type,
+			plan_origin,
 			status,
 			plan_version,
 			current_plan_json,
@@ -152,6 +156,8 @@ func (r *Repository) FindTaskByID(ctx context.Context, taskID string) (*Task, er
 		&task.BaseBranch,
 		&task.BaseCommitSHA,
 		&task.TaskBranchName,
+		&task.TaskType,
+		&task.PlanOrigin,
 		&task.Status,
 		&task.PlanVersion,
 		&task.CurrentPlanJSON,
@@ -182,6 +188,8 @@ func (r *Repository) ListTasksByProjectID(ctx context.Context, projectID string,
 			base_branch,
 			base_commit_sha,
 			task_branch_name,
+			task_type,
+			plan_origin,
 			status,
 			plan_version,
 			current_plan_json,
@@ -217,6 +225,8 @@ func (r *Repository) ListTasksByProjectID(ctx context.Context, projectID string,
 			&task.BaseBranch,
 			&task.BaseCommitSHA,
 			&task.TaskBranchName,
+			&task.TaskType,
+			&task.PlanOrigin,
 			&task.Status,
 			&task.PlanVersion,
 			&task.CurrentPlanJSON,
@@ -357,6 +367,12 @@ func (r *Repository) UpdateTask(ctx context.Context, taskID string, input Update
 	if input.Status != nil {
 		nextTask.Status = *input.Status
 	}
+	if input.SetTaskType {
+		nextTask.TaskType = stringValue(input.TaskType)
+	}
+	if input.SetPlanOrigin {
+		nextTask.PlanOrigin = input.PlanOrigin
+	}
 	if input.PlanVersion != nil {
 		nextTask.PlanVersion = *input.PlanVersion
 	}
@@ -377,6 +393,8 @@ func (r *Repository) UpdateTask(ctx context.Context, taskID string, input Update
 		UPDATE tasks
 		SET
 			status = ?,
+			task_type = ?,
+			plan_origin = ?,
 			plan_version = ?,
 			current_plan_json = ?,
 			approved_plan_json = ?,
@@ -387,6 +405,8 @@ func (r *Repository) UpdateTask(ctx context.Context, taskID string, input Update
 		WHERE id = ?
 	`,
 		nextTask.Status,
+		nextTask.TaskType,
+		nextTask.PlanOrigin,
 		nextTask.PlanVersion,
 		nextTask.CurrentPlanJSON,
 		nextTask.ApprovedPlanJSON,

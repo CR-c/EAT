@@ -33,7 +33,7 @@ func TestTaskReadEndpointsReturnPersistedTaskData(t *testing.T) {
 			archived_at, created_at, updated_at, version
 		) VALUES (
 			'task-1', 'project-1', 'Task One', 'Read side task', 'codex-cli', 'main', 'abc123',
-			'eat-task-one', 'PLAN_REVIEW', 1, '{}', NULL, NULL, NULL,
+			'eat-task-one', 'PLAN_REVIEW', 1, '{"template_id":"full-stack-web-app"}', NULL, NULL, NULL,
 			'2026-03-24T00:00:01Z', '2026-03-24T00:00:02Z', 0
 		)
 	`); err != nil {
@@ -117,9 +117,16 @@ func TestTaskReadEndpointsReturnPersistedTaskData(t *testing.T) {
 	if len(projectTasksPayload["tasks"].([]any)) != 1 {
 		t.Fatalf("unexpected task count: %#v", projectTasksPayload["tasks"])
 	}
-	taskListTokens := projectTasksPayload["tasks"].([]any)[0].(map[string]any)["tokens"].(map[string]any)
+	firstTask := projectTasksPayload["tasks"].([]any)[0].(map[string]any)
+	taskListTokens := firstTask["tokens"].(map[string]any)
 	if taskListTokens["codex-cli"] != float64(2000) {
 		t.Fatalf("unexpected task list tokens: %#v", taskListTokens)
+	}
+	if firstTask["taskType"] != "NORMAL" {
+		t.Fatalf("unexpected task type: %#v", firstTask)
+	}
+	if firstTask["planOrigin"] != "AUTO_GENERATED" {
+		t.Fatalf("unexpected plan origin: %#v", firstTask)
 	}
 
 	taskRequest := httptest.NewRequest(http.MethodGet, "/api/tasks/task-1", nil)
@@ -142,8 +149,15 @@ func TestTaskReadEndpointsReturnPersistedTaskData(t *testing.T) {
 	if len(taskPayload["subTasks"].([]any)) != 1 {
 		t.Fatalf("unexpected subtasks payload: %#v", taskPayload["subTasks"])
 	}
-	taskTokens := taskPayload["task"].(map[string]any)["tokens"].(map[string]any)
+	detailTask := taskPayload["task"].(map[string]any)
+	taskTokens := detailTask["tokens"].(map[string]any)
 	if taskTokens["codex-cli"] != float64(2000) {
 		t.Fatalf("unexpected task detail tokens: %#v", taskTokens)
+	}
+	if detailTask["taskType"] != "NORMAL" {
+		t.Fatalf("unexpected task detail type: %#v", detailTask)
+	}
+	if detailTask["planOrigin"] != "AUTO_GENERATED" {
+		t.Fatalf("unexpected task detail origin: %#v", detailTask)
 	}
 }

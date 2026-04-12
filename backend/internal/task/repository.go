@@ -182,6 +182,10 @@ type Repository struct {
 
 type UpdateTaskInput struct {
 	Status              *string
+	TaskType            *string
+	SetTaskType         bool
+	PlanOrigin          *string
+	SetPlanOrigin       bool
 	PlanVersion         *int64
 	CurrentPlanJSON     *string
 	SetCurrentPlanJSON  bool
