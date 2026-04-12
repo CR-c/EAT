@@ -273,7 +273,6 @@ export function TaskWorkbenchPage() {
       detail.reload()
       diff.reload()
       runtime.reload()
-      tasks.reload()
     } catch (caught) {
       setMutationError(caught instanceof Error ? caught.message : t("common.send"))
     } finally {
@@ -292,7 +291,6 @@ export function TaskWorkbenchPage() {
       detail.reload()
       diff.reload()
       runtime.reload()
-      tasks.reload()
     } catch (caught) {
       setMutationError(caught instanceof Error ? caught.message : t("task.workbench.confirmRequirements"))
     } finally {
@@ -311,7 +309,6 @@ export function TaskWorkbenchPage() {
       detail.reload()
       diff.reload()
       runtime.reload()
-      tasks.reload()
     } catch (caught) {
       setMutationError(caught instanceof Error ? caught.message : t("task.workbench.approvePlan"))
     } finally {
@@ -337,7 +334,6 @@ export function TaskWorkbenchPage() {
       detail.reload()
       diff.reload()
       runtime.reload()
-      tasks.reload()
     } catch (caught) {
       setMutationError(caught instanceof Error ? caught.message : t("task.workbench.planReject"))
     } finally {
