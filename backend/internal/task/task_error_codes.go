@@ -15,6 +15,7 @@ const (
 	ErrorCodeBaseBranchNotFound          = "BASE_BRANCH_NOT_FOUND"
 	ErrorCodeBaseBranchRequired          = "BASE_BRANCH_REQUIRED"
 	ErrorCodeDescriptionRequired         = "DESCRIPTION_REQUIRED"
+	ErrorCodeExecutionAgentUnavailable   = "EXECUTION_AGENT_UNAVAILABLE"
 	ErrorCodeExecutionBackendUnavailable = "EXECUTION_BACKEND_UNAVAILABLE"
 	ErrorCodeInvalidAttachmentPayload    = "INVALID_ATTACHMENT_PAYLOAD"
 	ErrorCodeLeadAgentInvalid            = "LEAD_AGENT_INVALID"

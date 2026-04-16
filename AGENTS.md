@@ -248,7 +248,7 @@ The full test command will fail on plan-approval / execution related tests when 
 
 Observed failure mode:
 
-- plan approval endpoints return `EXECUTION_BACKEND_UNAVAILABLE`
+- plan approval endpoints return `EXECUTION_BACKEND_UNAVAILABLE` 或 `EXECUTION_AGENT_UNAVAILABLE`
 - nested reason is usually still `DOCKER_UNAVAILABLE`
 
 So:

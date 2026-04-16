@@ -7,6 +7,7 @@ import (
 
 	"eat/backend/internal/agent"
 	"eat/backend/internal/sandbox"
+	"eat/backend/internal/workerbackend"
 )
 
 func newFakeLeadAgentService(t *testing.T, reply string) *agent.Service {
@@ -44,4 +45,21 @@ func newUnavailableSandboxManager() *sandbox.Manager {
 	manager := sandbox.NewManager()
 	manager.WorkerImage = "eat/nonexistent:missing"
 	return manager
+}
+
+type alwaysAvailableExecutionBackend struct{}
+
+func (alwaysAvailableExecutionBackend) Kind() string { return workerbackend.KindDocker }
+
+func (alwaysAvailableExecutionBackend) Status(context.Context) workerbackend.Status {
+	return workerbackend.Status{
+		Kind:       workerbackend.KindDocker,
+		Available:  true,
+		Default:    true,
+		TrustLevel: "SANDBOXED",
+	}
+}
+
+func (alwaysAvailableExecutionBackend) StartWorker(context.Context, workerbackend.StartWorkerInput) (workerbackend.RuntimeSession, error) {
+	return nil, nil
 }

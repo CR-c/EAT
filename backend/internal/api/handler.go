@@ -190,7 +190,7 @@ func mapTaskErrorStatus(code string) int {
 	switch code {
 	case task.ErrorCodeTaskNotFound, task.ErrorCodeProjectNotFound, task.ErrorCodePlanTemplateNotFound, task.ErrorCodeAttachmentPathNotFound, task.ErrorCodePlanSnapshotNotFound, task.ErrorCodeSubTaskNotFound, "INTEGRATION_RUN_NOT_FOUND", "INTEGRATION_QUEUE_ITEM_NOT_FOUND":
 		return http.StatusNotFound
-	case task.ErrorCodeExecutionBackendUnavailable:
+	case task.ErrorCodeExecutionBackendUnavailable, task.ErrorCodeExecutionAgentUnavailable:
 		return http.StatusConflict
 	case "TASK_APPROVAL_FAILED",
 		"TASK_CREATE_FAILED",

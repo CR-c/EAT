@@ -441,6 +441,9 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 			},
 		)
 	}
+	if executionValidationError := s.validatePlanExecutionReadiness(ctx, normalizedPlan); executionValidationError != nil {
+		return nil, executionValidationError
+	}
 
 	backendSandboxType := s.defaultWorkerSessionSandboxType(ctx)
 
@@ -766,6 +769,38 @@ func (s *Service) normalizeAndValidatePlan(plan tasktemplates.Plan) (tasktemplat
 		return tasktemplates.Plan{}, validationError
 	}
 	return normalizedPlan, nil
+}
+
+func (s *Service) validatePlanExecutionReadiness(ctx context.Context, plan tasktemplates.Plan) *Error {
+	if s == nil || s.agentService == nil {
+		return failure(ErrorCodeExecutionAgentUnavailable, "Agent registry is unavailable while validating planned worker execution readiness.", nil)
+	}
+	healthSnapshots := s.agentService.GetHealth(ctx)
+	for _, node := range planNodes(plan) {
+		healthSnapshot, ok := healthSnapshots[node.RecommendedAgent]
+		if !ok {
+			return failure(ErrorCodeExecutionAgentUnavailable, "Plan approval requires every planned worker agent to be registered and execution-ready.", map[string]any{
+				"branchSuffix":     node.BranchSuffix,
+				"recommendedAgent": node.RecommendedAgent,
+			})
+		}
+		if healthSnapshot.ExecutionAvailable {
+			continue
+		}
+		failureReason := healthSnapshot.ExecutionFailureReason
+		if failureReason == nil {
+			failureReason = healthSnapshot.FailureReason
+		}
+		details := map[string]any{
+			"branchSuffix":     node.BranchSuffix,
+			"recommendedAgent": node.RecommendedAgent,
+		}
+		if failureReason != nil {
+			details["failureReason"] = failureReason
+		}
+		return failure(ErrorCodeExecutionAgentUnavailable, "Plan approval requires every planned worker agent to be execution-ready.", details)
+	}
+	return nil
 }
 
 func (s *Service) resolveDefaultTemplateAgentType(taskRecord *Task, requestedAgentType string) string {

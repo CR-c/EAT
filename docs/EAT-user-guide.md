@@ -262,9 +262,9 @@ Leader 生成执行计划后，任务进入 `PLAN_REVIEW` 状态。
 - **添加子任务** — 手动添加执行单元
 - **应用模板** — 使用预设模板重置计划
 - **保存草稿** — 保存编辑但不批准
-- **批准草稿** — 锁定计划并开始执行（需要 Worker Backend 已就绪）
+- **批准草稿** — 锁定计划并开始执行（需要 Worker Backend 已就绪，且计划里的 Worker Agent 具备可执行运行时）
 
-如果 Worker Backend 未就绪，批准操作会被系统明确拦截，任务会保持在 `PLAN_REVIEW`。
+如果 Worker Backend 未就绪，或计划中的某个 Worker Agent 缺少 binary / auth 等 execution readiness，批准操作会被系统明确拦截，任务会保持在 `PLAN_REVIEW`。
 
 ---
 

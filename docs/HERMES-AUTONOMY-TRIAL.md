@@ -47,7 +47,7 @@ npm run build:worker-image
 如果这个镜像缺失：
 
 - `npm test` 中部分计划批准 / 执行相关测试会失败
-- 计划批准相关 API 会返回 `EXECUTION_BACKEND_UNAVAILABLE`
+- 计划批准相关 API 会返回 `EXECUTION_BACKEND_UNAVAILABLE` 或 `EXECUTION_AGENT_UNAVAILABLE`
 - 嵌套原因通常仍是 `DOCKER_UNAVAILABLE`
 
 镜像名：

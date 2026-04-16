@@ -253,7 +253,7 @@ eat/worker-base:latest
 
 - 没有本地 `eat/worker-base:latest` 镜像时，`/api/agents/health` 会报告 Worker sandbox 不可用
 - 这不会再阻断普通任务创建、澄清和规划
-- 但 `PLAN_REVIEW` 阶段的批准执行会返回 `EXECUTION_BACKEND_UNAVAILABLE`
+- 但 `PLAN_REVIEW` 阶段的批准执行仍会校验 execution backend 与计划中各 worker agent 的 execution readiness；缺少任一前置条件时会返回 `EXECUTION_BACKEND_UNAVAILABLE` 或 `EXECUTION_AGENT_UNAVAILABLE`
 - 因此本地试跑完整执行主流程前，应先构建 Worker 镜像
 
 ### 启动服务

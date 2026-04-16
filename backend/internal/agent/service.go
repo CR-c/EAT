@@ -44,6 +44,7 @@ type Service struct {
 	sandbox         *sandbox.Manager
 	workerBackends  map[string]workerbackend.Backend
 	defaultBackend  string
+	healthOverrides map[string]HealthSnapshot
 	leadTurnRunners map[string]LeadTurnRunner
 }
 
@@ -106,8 +107,9 @@ type HealthSnapshot struct {
 
 func NewService(sandboxManager *sandbox.Manager) *Service {
 	service := &Service{
-		sandbox:        sandboxManager,
-		workerBackends: map[string]workerbackend.Backend{},
+		sandbox:         sandboxManager,
+		workerBackends:  map[string]workerbackend.Backend{},
+		healthOverrides: map[string]HealthSnapshot{},
 		leadTurnRunners: map[string]LeadTurnRunner{
 			"claude-cli": runClaudeLeadTurn,
 			"codex-cli":  runCodexLeadTurn,
@@ -127,6 +129,16 @@ func (s *Service) SetLeadTurnRunner(agentType string, runner LeadTurnRunner) {
 		s.leadTurnRunners = make(map[string]LeadTurnRunner)
 	}
 	s.leadTurnRunners[agentType] = runner
+}
+
+func (s *Service) SetHealthSnapshot(agentType string, snapshot HealthSnapshot) {
+	if s == nil || strings.TrimSpace(agentType) == "" {
+		return
+	}
+	if s.healthOverrides == nil {
+		s.healthOverrides = make(map[string]HealthSnapshot)
+	}
+	s.healthOverrides[agentType] = snapshot
 }
 
 func (s *Service) RegisterExecutionBackend(backend workerbackend.Backend, isDefault bool) {
@@ -238,6 +250,12 @@ func (s *Service) GetHealth(context.Context) map[string]HealthSnapshot {
 	definitions := builtInDefinitions()
 	result := make(map[string]HealthSnapshot, len(definitions))
 	for _, definition := range definitions {
+		if s != nil && s.healthOverrides != nil {
+			if snapshot, ok := s.healthOverrides[definition.Name]; ok {
+				result[definition.Name] = snapshot
+				continue
+			}
+		}
 		result[definition.Name] = definition.Health(s.sandbox)
 	}
 	return result
@@ -411,6 +429,9 @@ func spawnCodexWorker(ctx context.Context, backend workerbackend.Backend, config
 		"HOME":       runtimeHomePath,
 		"CODEX_HOME": codexHomePath,
 	}
+	if apiKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY")); apiKey != "" {
+		env["OPENAI_API_KEY"] = apiKey
+	}
 
 	runtime, err := backend.StartWorker(ctx, workerbackend.StartWorkerInput{
 		WorkDir:         config.WorkDir,
@@ -462,7 +483,8 @@ func spawnClaudeWorker(ctx context.Context, backend workerbackend.Backend, confi
 	command = append(command, buildClaudePrompt(config))
 
 	runtime, err := spawnSandboxedCLIWorker(ctx, backend, config, runtimeHomePath, []string{binaryPath}, command, map[string]string{
-		"HOME": runtimeHomePath,
+		"HOME":              runtimeHomePath,
+		"ANTHROPIC_API_KEY": strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")),
 	})
 	if err != nil {
 		cleanup()
@@ -507,9 +529,17 @@ func spawnGeminiWorker(ctx context.Context, backend workerbackend.Backend, confi
 		command = append(command, "--model", model)
 	}
 
-	runtime, err := spawnSandboxedCLIWorker(ctx, backend, config, runtimeHomePath, []string{packageRoot, nodePath}, command, map[string]string{
+	env := map[string]string{
 		"HOME": runtimeHomePath,
-	})
+	}
+	if apiKey := strings.TrimSpace(os.Getenv("GOOGLE_API_KEY")); apiKey != "" {
+		env["GOOGLE_API_KEY"] = apiKey
+	}
+	if apiKey := strings.TrimSpace(os.Getenv("GEMINI_API_KEY")); apiKey != "" {
+		env["GEMINI_API_KEY"] = apiKey
+	}
+
+	runtime, err := spawnSandboxedCLIWorker(ctx, backend, config, runtimeHomePath, []string{packageRoot, nodePath}, command, env)
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -954,6 +984,34 @@ func primaryFailureReason(reasons ...*FailureReason) *FailureReason {
 
 func cliAuthCheck(adapterName string) (HealthCheck, *FailureReason) {
 	switch adapterName {
+	case "codex-cli":
+		if strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "" {
+			return HealthCheck{
+				Name:    "auth",
+				Status:  "PASS",
+				Message: "Codex authentication is available via OPENAI_API_KEY.",
+			}, nil
+		}
+		authPath := strings.TrimSpace(os.Getenv("EAT_CODEX_AUTH_PATH"))
+		if authPath == "" {
+			authPath = filepath.Join(mustUserHomeDir(), ".codex", "auth.json")
+		}
+		if pathExists(authPath) {
+			return HealthCheck{
+				Name:    "auth",
+				Status:  "PASS",
+				Message: "Codex authentication is available from the local Codex auth file.",
+			}, nil
+		}
+		message := "Codex authentication is missing. Configure ~/.codex/auth.json, EAT_CODEX_AUTH_PATH, or OPENAI_API_KEY."
+		return HealthCheck{
+				Name:    "auth",
+				Status:  "FAIL",
+				Message: message,
+			}, &FailureReason{
+				Code:    "AUTH_MISSING",
+				Message: message,
+			}
 	case "claude-cli":
 		if strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) != "" {
 			return HealthCheck{
