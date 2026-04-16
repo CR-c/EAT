@@ -69,8 +69,9 @@ type ProjectRecord struct {
 }
 
 type SessionRecord struct {
-	ID     string
-	Status string
+	ID          string
+	SandboxType string
+	Status      string
 }
 
 type UpdateSessionInput struct {
@@ -210,27 +211,35 @@ func (o *Orchestrator) WorkerStats() map[string]int {
 	}
 }
 
-func (o *Orchestrator) resolveLaunchSessionID(ctx context.Context, subTaskID string) (string, error) {
+func (o *Orchestrator) resolveLaunchSession(ctx context.Context, subTaskID string) (*SessionRecord, error) {
 	sessions, err := o.repo.ListSessionsBySubTaskID(ctx, subTaskID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	for index := len(sessions) - 1; index >= 0; index-- {
 		session := sessions[index]
 		if session.Status == "PENDING" {
-			return session.ID, nil
+			return &session, nil
 		}
 	}
 
 	for index := len(sessions) - 1; index >= 0; index-- {
 		session := sessions[index]
 		if session.Status == "" {
-			return session.ID, nil
+			return &session, nil
 		}
 	}
 
-	return "", nil
+	return nil, nil
+}
+
+func normalizeBackendKindFromSandboxType(sandboxType string) string {
+	kind := workerbackend.KindFromSessionSandboxType(sandboxType)
+	if strings.TrimSpace(kind) == "" {
+		return workerbackend.KindDocker
+	}
+	return kind
 }
 
 func (o *Orchestrator) integrationLoop() {
@@ -329,10 +338,14 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 	// Check agent health
 	healthMap := o.agents.GetHealth(ctx)
 	agentHealth, ok := healthMap[subTask.AgentType]
-	if !ok || !agentHealth.Available {
-		msg := "Agent unavailable"
-		if agentHealth.FailureReason != nil {
-			msg = agentHealth.FailureReason.Message
+	if !ok || !agentHealth.ExecutionAvailable {
+		msg := "Agent execution backend unavailable"
+		failureReason := agentHealth.ExecutionFailureReason
+		if failureReason == nil {
+			failureReason = agentHealth.FailureReason
+		}
+		if failureReason != nil {
+			msg = failureReason.Message
 		}
 		o.failSubTaskLaunch(ctx, task, subTask, fmt.Sprintf("Agent %s unavailable: %s", subTask.AgentType, msg))
 		return
@@ -341,21 +354,24 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 	// Build prompt
 	prompt := buildWorkerPrompt(task, &subTask)
 
-	sessionID, err := o.resolveLaunchSessionID(ctx, subTask.ID)
+	launchSession, err := o.resolveLaunchSession(ctx, subTask.ID)
 	if err != nil {
 		o.failSubTaskLaunch(ctx, task, subTask, fmt.Sprintf("Failed to resolve worker session: %s", err.Error()))
 		return
 	}
-	if sessionID == "" {
+	if launchSession == nil {
 		o.failSubTaskLaunch(ctx, task, subTask, "No pending worker session is available for launch.")
 		return
 	}
+	sessionID := launchSession.ID
+	backendKind := normalizeBackendKindFromSandboxType(launchSession.SandboxType)
 
 	// Spawn agent session
 	runtime, err := o.agents.SpawnSession(ctx, subTask.AgentType, agent.SpawnConfig{
-		Prompt:     prompt,
-		WorkDir:    subTask.WorktreePath,
-		BranchName: subTask.BranchName,
+		BackendKind: backendKind,
+		Prompt:      prompt,
+		WorkDir:     subTask.WorktreePath,
+		BranchName:  subTask.BranchName,
 	})
 	if err != nil {
 		o.failSubTaskLaunch(ctx, task, subTask, fmt.Sprintf("Failed to spawn worker: %s", err.Error()))
@@ -556,9 +572,9 @@ func (o *Orchestrator) progressDependencySchedule(ctx context.Context, taskID st
 
 func (o *Orchestrator) failSubTaskLaunch(ctx context.Context, task *TaskRecord, subTask SubTaskRecord, message string) {
 	errMsg := message
-	if sessionID, err := o.resolveLaunchSessionID(ctx, subTask.ID); err == nil && sessionID != "" {
+	if session, err := o.resolveLaunchSession(ctx, subTask.ID); err == nil && session != nil {
 		endedAt := time.Now().UTC().Format(time.RFC3339Nano)
-		_ = o.repo.UpdateSession(ctx, sessionID, UpdateSessionInput{
+		_ = o.repo.UpdateSession(ctx, session.ID, UpdateSessionInput{
 			Status:  stringPointer("FAILED"),
 			EndedAt: &endedAt,
 		})

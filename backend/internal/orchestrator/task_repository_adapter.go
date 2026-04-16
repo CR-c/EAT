@@ -88,8 +88,9 @@ func (a *TaskRepositoryAdapter) ListSessionsBySubTaskID(ctx context.Context, sub
 	result := make([]SessionRecord, 0, len(records))
 	for _, record := range records {
 		result = append(result, SessionRecord{
-			ID:     record.ID,
-			Status: record.Status,
+			ID:          record.ID,
+			SandboxType: record.SandboxType,
+			Status:      record.Status,
 		})
 	}
 	return result, nil

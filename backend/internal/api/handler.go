@@ -81,7 +81,6 @@ func NewHandler(deps Dependencies) *Handler {
 		Repository:        taskRepository,
 		ProjectRepository: projectRepository,
 		AgentService:      agentService,
-		SandboxManager:    sandboxManager,
 		Bus:               deps.Bus,
 		UploadRootPath:    uploadRootPath,
 	})

@@ -442,6 +442,8 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 		)
 	}
 
+	backendSandboxType := s.defaultWorkerSessionSandboxType(ctx)
+
 	result := &ApprovePlanResult{
 		ApprovalReady: true,
 		CurrentPlan:   normalizedPlan,
@@ -546,7 +548,7 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 				SubTaskID:            &subTask.ID,
 				AgentType:            subTask.AgentType,
 				SessionType:          sessionTypeWorker,
-				SandboxType:          sessionSandboxDocker,
+				SandboxType:          backendSandboxType,
 				Status:               "PENDING",
 				OutputBuffer:         "",
 				OutputBufferMaxBytes: 65536,

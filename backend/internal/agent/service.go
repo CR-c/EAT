@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"context"
 	"eat/backend/internal/workerbackend"
+	dockerbackend "eat/backend/internal/workerbackend/docker"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"eat/backend/internal/sandbox"
@@ -20,6 +22,7 @@ import (
 
 // SpawnConfig holds parameters for spawning an agent session.
 type SpawnConfig struct {
+	BackendKind string
 	Prompt      string
 	WorkDir     string
 	BranchName  string
@@ -39,6 +42,8 @@ type AttachmentRef struct {
 // Service manages agent definitions and spawning.
 type Service struct {
 	sandbox         *sandbox.Manager
+	workerBackends  map[string]workerbackend.Backend
+	defaultBackend  string
 	leadTurnRunners map[string]LeadTurnRunner
 }
 
@@ -100,13 +105,18 @@ type HealthSnapshot struct {
 }
 
 func NewService(sandboxManager *sandbox.Manager) *Service {
-	return &Service{
-		sandbox: sandboxManager,
+	service := &Service{
+		sandbox:        sandboxManager,
+		workerBackends: map[string]workerbackend.Backend{},
 		leadTurnRunners: map[string]LeadTurnRunner{
 			"claude-cli": runClaudeLeadTurn,
 			"codex-cli":  runCodexLeadTurn,
 		},
 	}
+	if sandboxManager != nil {
+		service.RegisterExecutionBackend(dockerbackend.New(sandboxManager), true)
+	}
+	return service
 }
 
 func (s *Service) SetLeadTurnRunner(agentType string, runner LeadTurnRunner) {
@@ -117,6 +127,69 @@ func (s *Service) SetLeadTurnRunner(agentType string, runner LeadTurnRunner) {
 		s.leadTurnRunners = make(map[string]LeadTurnRunner)
 	}
 	s.leadTurnRunners[agentType] = runner
+}
+
+func (s *Service) RegisterExecutionBackend(backend workerbackend.Backend, isDefault bool) {
+	if s == nil || backend == nil {
+		return
+	}
+	if s.workerBackends == nil {
+		s.workerBackends = make(map[string]workerbackend.Backend)
+	}
+	kind := strings.TrimSpace(backend.Kind())
+	if kind == "" {
+		return
+	}
+	s.workerBackends[kind] = backend
+	if isDefault || strings.TrimSpace(s.defaultBackend) == "" {
+		s.defaultBackend = kind
+	}
+}
+
+func (s *Service) DefaultExecutionBackendKind() string {
+	if s == nil {
+		return ""
+	}
+	return strings.TrimSpace(s.defaultBackend)
+}
+
+func (s *Service) ExecutionBackends(ctx context.Context) []workerbackend.Status {
+	if s == nil || len(s.workerBackends) == 0 {
+		return nil
+	}
+	result := make([]workerbackend.Status, 0, len(s.workerBackends))
+	for kind, backend := range s.workerBackends {
+		status := backend.Status(ctx)
+		if strings.TrimSpace(status.Kind) == "" {
+			status.Kind = kind
+		}
+		if strings.TrimSpace(s.defaultBackend) != "" && status.Kind == s.defaultBackend {
+			status.Default = true
+		}
+		result = append(result, status)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Default != result[j].Default {
+			return result[i].Default
+		}
+		return result[i].Kind < result[j].Kind
+	})
+	return result
+}
+
+func (s *Service) resolveExecutionBackend(kind string) (workerbackend.Backend, error) {
+	if s == nil || len(s.workerBackends) == 0 {
+		return nil, fmt.Errorf("no execution backend is registered")
+	}
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		kind = strings.TrimSpace(s.defaultBackend)
+	}
+	backend, ok := s.workerBackends[kind]
+	if !ok {
+		return nil, fmt.Errorf("execution backend %s is not registered", kind)
+	}
+	return backend, nil
 }
 
 func (s *Service) RunLeadTurn(ctx context.Context, agentType string, config LeadTurnConfig) (*LeadTurnResult, error) {
@@ -185,7 +258,11 @@ func (s *Service) SpawnSession(ctx context.Context, agentType string, config Spa
 	if def.Spawn == nil {
 		return nil, fmt.Errorf("agent %s has no spawn implementation", agentType)
 	}
-	return def.Spawn(ctx, s.sandbox, config)
+	backend, err := s.resolveExecutionBackend(config.BackendKind)
+	if err != nil {
+		return nil, err
+	}
+	return def.Spawn(ctx, backend, config)
 }
 
 type builtInDefinition struct {
@@ -193,7 +270,7 @@ type builtInDefinition struct {
 	RuntimeMode  string
 	Capabilities CapabilitySet
 	Health       func(*sandbox.Manager) HealthSnapshot
-	Spawn        func(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (workerbackend.RuntimeSession, error)
+	Spawn        func(ctx context.Context, backend workerbackend.Backend, config SpawnConfig) (workerbackend.RuntimeSession, error)
 }
 
 func builtInDefinitions() []builtInDefinition {
@@ -244,9 +321,9 @@ func builtInDefinitions() []builtInDefinition {
 }
 
 // spawnCodexWorker launches a Codex CLI worker inside a Docker container.
-func spawnCodexWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (workerbackend.RuntimeSession, error) {
-	if mgr == nil {
-		return nil, fmt.Errorf("docker sandbox manager is required for Codex worker sessions")
+func spawnCodexWorker(ctx context.Context, backend workerbackend.Backend, config SpawnConfig) (workerbackend.RuntimeSession, error) {
+	if backend == nil {
+		return nil, fmt.Errorf("execution backend is required for Codex worker sessions")
 	}
 
 	codexPackagePath := os.Getenv("EAT_CODEX_PACKAGE_PATH")
@@ -322,22 +399,19 @@ func spawnCodexWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnCon
 		prompt,
 	)
 
-	// Build sandbox config with extra mounts
-	sandboxCfg := sandbox.SandboxConfig{
-		ContainerImage:  mgr.WorkerImage,
-		ContainerUser:   mgr.ContainerUser,
-		NetworkProfile:  "ISOLATED",
-		WorkDir:         config.WorkDir,
-		ReadwriteMounts: uniqueStrings([]string{config.WorkDir, gitRoot, runtimeHomePath}),
-		ReadonlyMounts:  uniqueStrings([]string{codexPackagePath, "/etc/ssl/certs"}),
-	}
-
 	env := map[string]string{
 		"HOME":       runtimeHomePath,
 		"CODEX_HOME": codexHomePath,
 	}
 
-	runtime, err := mgr.SpawnContainerSession(ctx, sandboxCfg, command, env)
+	runtime, err := backend.StartWorker(ctx, workerbackend.StartWorkerInput{
+		WorkDir:         config.WorkDir,
+		Command:         command,
+		Env:             env,
+		NetworkProfile:  "ISOLATED",
+		ReadwriteMounts: uniqueStrings([]string{config.WorkDir, gitRoot, runtimeHomePath}),
+		ReadonlyMounts:  uniqueStrings([]string{codexPackagePath, "/etc/ssl/certs"}),
+	})
 	if err != nil {
 		_ = os.RemoveAll(runtimeHomePath)
 		return nil, err
@@ -351,7 +425,7 @@ func spawnCodexWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnCon
 	return runtime, nil
 }
 
-func spawnClaudeWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (workerbackend.RuntimeSession, error) {
+func spawnClaudeWorker(ctx context.Context, backend workerbackend.Backend, config SpawnConfig) (workerbackend.RuntimeSession, error) {
 	binaryPath, err := resolveCLIPath("claude")
 	if err != nil {
 		return nil, err
@@ -379,7 +453,7 @@ func spawnClaudeWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnCo
 	}
 	command = append(command, buildClaudePrompt(config))
 
-	runtime, err := spawnSandboxedCLIWorker(ctx, mgr, config, runtimeHomePath, []string{binaryPath}, command, map[string]string{
+	runtime, err := spawnSandboxedCLIWorker(ctx, backend, config, runtimeHomePath, []string{binaryPath}, command, map[string]string{
 		"HOME": runtimeHomePath,
 	})
 	if err != nil {
@@ -390,7 +464,7 @@ func spawnClaudeWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnCo
 	return runtime, nil
 }
 
-func spawnGeminiWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (workerbackend.RuntimeSession, error) {
+func spawnGeminiWorker(ctx context.Context, backend workerbackend.Backend, config SpawnConfig) (workerbackend.RuntimeSession, error) {
 	scriptPath, err := resolveCLIPath("gemini")
 	if err != nil {
 		return nil, err
@@ -425,7 +499,7 @@ func spawnGeminiWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnCo
 		command = append(command, "--model", model)
 	}
 
-	runtime, err := spawnSandboxedCLIWorker(ctx, mgr, config, runtimeHomePath, []string{packageRoot, nodePath}, command, map[string]string{
+	runtime, err := spawnSandboxedCLIWorker(ctx, backend, config, runtimeHomePath, []string{packageRoot, nodePath}, command, map[string]string{
 		"HOME": runtimeHomePath,
 	})
 	if err != nil {
@@ -591,9 +665,9 @@ type copySpec struct {
 	dir bool
 }
 
-func spawnSandboxedCLIWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig, runtimeHomePath string, executablePaths []string, command []string, env map[string]string) (workerbackend.RuntimeSession, error) {
-	if mgr == nil {
-		return nil, fmt.Errorf("docker sandbox manager is required for worker sessions")
+func spawnSandboxedCLIWorker(ctx context.Context, backend workerbackend.Backend, config SpawnConfig, runtimeHomePath string, executablePaths []string, command []string, env map[string]string) (workerbackend.RuntimeSession, error) {
+	if backend == nil {
+		return nil, fmt.Errorf("execution backend is required for worker sessions")
 	}
 
 	gitRoot := config.WorkDir
@@ -612,16 +686,14 @@ func spawnSandboxedCLIWorker(ctx context.Context, mgr *sandbox.Manager, config S
 		}
 	}
 
-	sandboxCfg := sandbox.SandboxConfig{
-		ContainerImage:  mgr.WorkerImage,
-		ContainerUser:   mgr.ContainerUser,
-		NetworkProfile:  "ISOLATED",
+	return backend.StartWorker(ctx, workerbackend.StartWorkerInput{
 		WorkDir:         config.WorkDir,
+		Command:         command,
+		Env:             env,
+		NetworkProfile:  "ISOLATED",
 		ReadwriteMounts: uniqueStrings([]string{config.WorkDir, gitRoot, runtimeHomePath}),
 		ReadonlyMounts:  uniqueStrings(readonlyMounts),
-	}
-
-	return mgr.SpawnContainerSession(ctx, sandboxCfg, command, env)
+	})
 }
 
 func prepareRuntimeHome(prefix string, copies []copySpec) (string, func(), error) {

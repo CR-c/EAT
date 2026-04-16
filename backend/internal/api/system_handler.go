@@ -40,7 +40,7 @@ func (h *Handler) DockerHealth(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ExecutionBackends(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]any{
-		"backends": h.sandbox.ExecutionBackends(r.Context()),
+		"backends": h.agentService.ExecutionBackends(r.Context()),
 	})
 }
 

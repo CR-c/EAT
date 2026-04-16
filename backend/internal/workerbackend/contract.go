@@ -1,6 +1,11 @@
 package workerbackend
 
-import "context"
+import (
+	"context"
+	"strings"
+)
+
+const KindDocker = "docker"
 
 // RuntimeMetadata captures backend-specific runtime details without leaking a
 // concrete sandbox/container implementation to orchestrator consumers.
@@ -19,23 +24,58 @@ type RuntimeSession interface {
 	Metadata() RuntimeMetadata
 }
 
-// Health is the normalized readiness shape for an execution backend.
-type Health struct {
-	Available bool
-	Reason    string
-	Details   map[string]any
+// Status is the normalized readiness shape for an execution backend.
+type Status struct {
+	Kind         string   `json:"kind"`
+	Available    bool     `json:"available"`
+	Default      bool     `json:"default"`
+	TrustLevel   string   `json:"trustLevel"`
+	Reason       string   `json:"reason,omitempty"`
+	Dependencies []string `json:"dependencies,omitempty"`
 }
 
-// StartWorkerInput is the minimal contract for launching a worker runtime.
+// StartWorkerInput is the generic contract for launching a worker runtime.
 type StartWorkerInput struct {
-	WorkDir string
-	Command []string
-	Env     map[string]string
+	WorkDir         string
+	Command         []string
+	Env             map[string]string
+	NetworkProfile  string
+	ReadwriteMounts []string
+	ReadonlyMounts  []string
 }
 
 // Backend is the pluggable execution backend contract.
 type Backend interface {
 	Kind() string
-	Health(context.Context) Health
+	Status(context.Context) Status
 	StartWorker(context.Context, StartWorkerInput) (RuntimeSession, error)
+}
+
+func NormalizeKind(kind string) string {
+	return strings.ToLower(strings.TrimSpace(kind))
+}
+
+func SessionSandboxTypeForKind(kind string) string {
+	normalized := NormalizeKind(kind)
+	if normalized == "" {
+		return ""
+	}
+	switch normalized {
+	case KindDocker:
+		return "DOCKER"
+	default:
+		return strings.ToUpper(normalized)
+	}
+}
+
+func KindFromSessionSandboxType(value string) string {
+	normalized := NormalizeKind(value)
+	switch normalized {
+	case "":
+		return ""
+	case "docker":
+		return KindDocker
+	default:
+		return normalized
+	}
 }
