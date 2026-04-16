@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"eat/backend/internal/workerbackend"
@@ -50,5 +52,32 @@ func TestSpawnCodexWorkerPassesOpenAIAPIKeyToExecutionBackend(t *testing.T) {
 	}
 	if backend.lastInput.Env["OPENAI_API_KEY"] != "test-openai-key" {
 		t.Fatalf("expected OPENAI_API_KEY to be forwarded, got %#v", backend.lastInput.Env)
+	}
+}
+
+func TestCodexHealthRequiresWorkerPackageEntrypointForExecutionReadiness(t *testing.T) {
+	binDir := t.TempDir()
+	writeExecutable(t, filepath.Join(binDir, "codex"), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, "node"), "#!/bin/sh\nexit 0\n")
+	t.Setenv("PATH", binDir)
+	t.Setenv("OPENAI_API_KEY", "test-openai-key")
+	t.Setenv("EAT_CODEX_PACKAGE_PATH", filepath.Join(t.TempDir(), "missing-codex-package"))
+
+	snapshot := codexHealth(nil)
+	if !snapshot.OrchestrationAvailable {
+		t.Fatalf("expected codex orchestration to stay available, got %#v", snapshot)
+	}
+	if snapshot.ExecutionAvailable {
+		t.Fatalf("expected codex execution to fail without package entrypoint, got %#v", snapshot)
+	}
+	if snapshot.ExecutionFailureReason == nil || snapshot.ExecutionFailureReason.Code != "RUNTIME_DEPENDENCY_MISSING" {
+		t.Fatalf("unexpected execution failure reason: %#v", snapshot.ExecutionFailureReason)
+	}
+}
+
+func writeExecutable(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("write executable %s: %v", path, err)
 	}
 }

@@ -882,7 +882,124 @@ func mustUserHomeDir() string {
 }
 
 func codexHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
-	return cliHealth("codex-cli", "codex", sandboxManager)
+	snapshot := HealthSnapshot{
+		Available:              true,
+		OrchestrationAvailable: true,
+		ExecutionAvailable:     true,
+		RuntimeMode:            "REAL",
+		Checks:                 []HealthCheck{},
+	}
+
+	if _, err := exec.LookPath("codex"); err != nil {
+		failureReason := &FailureReason{
+			Code:    "BINARY_MISSING",
+			Message: "codex is not installed or not available on PATH.",
+		}
+		snapshot.OrchestrationAvailable = false
+		snapshot.OrchestrationFailureReason = failureReason
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{
+			Name:    "binary",
+			Status:  "FAIL",
+			Message: failureReason.Message,
+		})
+	} else {
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{
+			Name:    "binary",
+			Status:  "PASS",
+			Message: "codex binary is available.",
+		})
+	}
+
+	if _, err := resolveCLIPath("node"); err != nil {
+		failureReason := &FailureReason{
+			Code:    "RUNTIME_DEPENDENCY_MISSING",
+			Message: "node is required for Codex worker execution but is not available on PATH.",
+		}
+		snapshot.ExecutionAvailable = false
+		snapshot.ExecutionFailureReason = failureReason
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{
+			Name:    "runtime-node",
+			Status:  "FAIL",
+			Message: failureReason.Message,
+		})
+	} else {
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{
+			Name:    "runtime-node",
+			Status:  "PASS",
+			Message: "node runtime is available for Codex worker execution.",
+		})
+	}
+
+	codexPackagePath := strings.TrimSpace(os.Getenv("EAT_CODEX_PACKAGE_PATH"))
+	if codexPackagePath == "" {
+		codexPackagePath = "/usr/local/lib/node_modules/@openai/codex"
+	}
+	codexEntrypoint := filepath.Join(codexPackagePath, "bin", "codex.js")
+	if stat, err := os.Stat(codexEntrypoint); err != nil || stat.IsDir() {
+		failureReason := &FailureReason{
+			Code:    "RUNTIME_DEPENDENCY_MISSING",
+			Message: fmt.Sprintf("Codex worker package entrypoint %s is not available.", codexEntrypoint),
+		}
+		if snapshot.ExecutionFailureReason == nil {
+			snapshot.ExecutionFailureReason = failureReason
+		}
+		snapshot.ExecutionAvailable = false
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{
+			Name:    "runtime-package",
+			Status:  "FAIL",
+			Message: failureReason.Message,
+		})
+	} else {
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{
+			Name:    "runtime-package",
+			Status:  "PASS",
+			Message: fmt.Sprintf("Codex worker package entrypoint %s is available.", codexEntrypoint),
+		})
+	}
+
+	if authCheck, failure := cliAuthCheck("codex-cli"); authCheck.Name != "" {
+		snapshot.Checks = append(snapshot.Checks, authCheck)
+		if failure != nil {
+			snapshot.OrchestrationAvailable = false
+			snapshot.ExecutionAvailable = false
+			if snapshot.OrchestrationFailureReason == nil {
+				snapshot.OrchestrationFailureReason = failure
+			}
+			if snapshot.ExecutionFailureReason == nil {
+				snapshot.ExecutionFailureReason = failure
+			}
+		}
+	}
+
+	if sandboxManager != nil {
+		dockerHealth := sandboxManager.DockerHealth(context.Background())
+		if dockerHealth.Available {
+			snapshot.Checks = append(snapshot.Checks, HealthCheck{
+				Name:    "worker-sandbox",
+				Status:  "PASS",
+				Message: "Docker worker sandbox is available for codex-cli sessions.",
+			})
+		} else {
+			snapshot.ExecutionAvailable = false
+			snapshot.Checks = append(snapshot.Checks, HealthCheck{
+				Name:    "worker-sandbox",
+				Status:  "FAIL",
+				Message: dockerHealth.Reason,
+			})
+			if snapshot.ExecutionFailureReason == nil {
+				snapshot.ExecutionFailureReason = &FailureReason{
+					Code:    "DOCKER_UNAVAILABLE",
+					Message: dockerHealth.Reason,
+				}
+			}
+		}
+	}
+
+	snapshot.Available = snapshot.OrchestrationAvailable && snapshot.ExecutionAvailable
+	if snapshot.FailureReason == nil {
+		snapshot.FailureReason = primaryFailureReason(snapshot.OrchestrationFailureReason, snapshot.ExecutionFailureReason)
+	}
+	return snapshot
 }
 
 func cliHealth(adapterName, binary string, sandboxManager *sandbox.Manager) HealthSnapshot {
