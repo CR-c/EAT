@@ -312,7 +312,7 @@ func builtInDefinitions() []builtInDefinition {
 				SupportsInteractiveInput: true,
 				SupportsVision:           true,
 			},
-			Health: func(mgr *sandbox.Manager) HealthSnapshot { return cliHealth("claude-cli", "claude", mgr) },
+			Health: claudeHealth,
 			Spawn:  spawnClaudeWorker,
 		},
 		{
@@ -340,7 +340,7 @@ func builtInDefinitions() []builtInDefinition {
 				SupportsInteractiveInput: true,
 				SupportsVision:           true,
 			},
-			Health: func(mgr *sandbox.Manager) HealthSnapshot { return cliHealth("gemini-cli", "gemini", mgr) },
+			Health: geminiHealth,
 			Spawn:  spawnGeminiWorker,
 		},
 	}
@@ -879,6 +879,135 @@ func buildGenericWorkerPrompt(config SpawnConfig) string {
 func mustUserHomeDir() string {
 	home, _ := os.UserHomeDir()
 	return home
+}
+
+func claudeHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
+	snapshot := HealthSnapshot{
+		Available:              true,
+		OrchestrationAvailable: true,
+		ExecutionAvailable:     true,
+		RuntimeMode:            "REAL",
+		Checks:                 []HealthCheck{},
+	}
+
+	if _, err := exec.LookPath("claude"); err != nil {
+		failureReason := &FailureReason{Code: "BINARY_MISSING", Message: "claude is not installed or not available on PATH."}
+		snapshot.OrchestrationAvailable = false
+		snapshot.ExecutionAvailable = false
+		snapshot.OrchestrationFailureReason = failureReason
+		snapshot.ExecutionFailureReason = failureReason
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "binary", Status: "FAIL", Message: failureReason.Message})
+	} else {
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "binary", Status: "PASS", Message: "claude binary is available."})
+	}
+
+	if authCheck, failure := cliAuthCheck("claude-cli"); authCheck.Name != "" {
+		snapshot.Checks = append(snapshot.Checks, authCheck)
+		if failure != nil {
+			snapshot.OrchestrationAvailable = false
+			snapshot.ExecutionAvailable = false
+			if snapshot.OrchestrationFailureReason == nil {
+				snapshot.OrchestrationFailureReason = failure
+			}
+			if snapshot.ExecutionFailureReason == nil {
+				snapshot.ExecutionFailureReason = failure
+			}
+		}
+	}
+
+	if sandboxManager != nil {
+		dockerHealth := sandboxManager.DockerHealth(context.Background())
+		if dockerHealth.Available {
+			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "worker-sandbox", Status: "PASS", Message: "Docker worker sandbox is available for claude-cli sessions."})
+		} else {
+			snapshot.ExecutionAvailable = false
+			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "worker-sandbox", Status: "FAIL", Message: dockerHealth.Reason})
+			if snapshot.ExecutionFailureReason == nil {
+				snapshot.ExecutionFailureReason = &FailureReason{Code: "DOCKER_UNAVAILABLE", Message: dockerHealth.Reason}
+			}
+		}
+	}
+
+	snapshot.Available = snapshot.OrchestrationAvailable && snapshot.ExecutionAvailable
+	if snapshot.FailureReason == nil {
+		snapshot.FailureReason = primaryFailureReason(snapshot.OrchestrationFailureReason, snapshot.ExecutionFailureReason)
+	}
+	return snapshot
+}
+
+func geminiHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
+	snapshot := HealthSnapshot{
+		Available:              true,
+		OrchestrationAvailable: true,
+		ExecutionAvailable:     true,
+		RuntimeMode:            "REAL",
+		Checks:                 []HealthCheck{},
+	}
+
+	scriptPath, err := resolveCLIPath("gemini")
+	if err != nil {
+		failureReason := &FailureReason{Code: "BINARY_MISSING", Message: "gemini is not installed or not available on PATH."}
+		snapshot.OrchestrationAvailable = false
+		snapshot.ExecutionAvailable = false
+		snapshot.OrchestrationFailureReason = failureReason
+		snapshot.ExecutionFailureReason = failureReason
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "binary", Status: "FAIL", Message: failureReason.Message})
+	} else {
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "binary", Status: "PASS", Message: "gemini binary is available."})
+		if _, err := resolveCLIPath("node"); err != nil {
+			failureReason := &FailureReason{Code: "RUNTIME_DEPENDENCY_MISSING", Message: "node is required for Gemini worker execution but is not available on PATH."}
+			snapshot.ExecutionAvailable = false
+			if snapshot.ExecutionFailureReason == nil {
+				snapshot.ExecutionFailureReason = failureReason
+			}
+			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "runtime-node", Status: "FAIL", Message: failureReason.Message})
+		} else {
+			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "runtime-node", Status: "PASS", Message: "node runtime is available for Gemini worker execution."})
+		}
+		if packageRoot, packageErr := resolveGeminiPackageRoot(scriptPath); packageErr != nil {
+			failureReason := &FailureReason{Code: "RUNTIME_DEPENDENCY_MISSING", Message: packageErr.Error()}
+			snapshot.ExecutionAvailable = false
+			if snapshot.ExecutionFailureReason == nil {
+				snapshot.ExecutionFailureReason = failureReason
+			}
+			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "runtime-package", Status: "FAIL", Message: failureReason.Message})
+		} else {
+			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "runtime-package", Status: "PASS", Message: fmt.Sprintf("Gemini worker package root %s is available.", packageRoot)})
+		}
+	}
+
+	if authCheck, failure := cliAuthCheck("gemini-cli"); authCheck.Name != "" {
+		snapshot.Checks = append(snapshot.Checks, authCheck)
+		if failure != nil {
+			snapshot.OrchestrationAvailable = false
+			snapshot.ExecutionAvailable = false
+			if snapshot.OrchestrationFailureReason == nil {
+				snapshot.OrchestrationFailureReason = failure
+			}
+			if snapshot.ExecutionFailureReason == nil {
+				snapshot.ExecutionFailureReason = failure
+			}
+		}
+	}
+
+	if sandboxManager != nil {
+		dockerHealth := sandboxManager.DockerHealth(context.Background())
+		if dockerHealth.Available {
+			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "worker-sandbox", Status: "PASS", Message: "Docker worker sandbox is available for gemini-cli sessions."})
+		} else {
+			snapshot.ExecutionAvailable = false
+			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "worker-sandbox", Status: "FAIL", Message: dockerHealth.Reason})
+			if snapshot.ExecutionFailureReason == nil {
+				snapshot.ExecutionFailureReason = &FailureReason{Code: "DOCKER_UNAVAILABLE", Message: dockerHealth.Reason}
+			}
+		}
+	}
+
+	snapshot.Available = snapshot.OrchestrationAvailable && snapshot.ExecutionAvailable
+	if snapshot.FailureReason == nil {
+		snapshot.FailureReason = primaryFailureReason(snapshot.OrchestrationFailureReason, snapshot.ExecutionFailureReason)
+	}
+	return snapshot
 }
 
 func codexHealth(sandboxManager *sandbox.Manager) HealthSnapshot {

@@ -75,6 +75,44 @@ func TestCodexHealthRequiresWorkerPackageEntrypointForExecutionReadiness(t *test
 	}
 }
 
+func TestClaudeHealthIgnoresWorkerCommandOverrideWithoutBinary(t *testing.T) {
+	binDir := t.TempDir()
+	t.Setenv("PATH", binDir)
+	t.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+	t.Setenv("EAT_CLAUDE_WORKER_COMMAND", "claude")
+
+	snapshot := claudeHealth(nil)
+	if snapshot.OrchestrationAvailable || snapshot.ExecutionAvailable {
+		t.Fatalf("expected claude health to fail without binary, got %#v", snapshot)
+	}
+	if snapshot.OrchestrationFailureReason == nil || snapshot.OrchestrationFailureReason.Code != "BINARY_MISSING" {
+		t.Fatalf("unexpected orchestration failure reason: %#v", snapshot.OrchestrationFailureReason)
+	}
+}
+
+func TestGeminiHealthRequiresWorkerPackageRootForExecutionReadiness(t *testing.T) {
+	rootDir := t.TempDir()
+	binDir := filepath.Join(rootDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	writeExecutable(t, filepath.Join(binDir, "gemini"), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, "node"), "#!/bin/sh\nexit 0\n")
+	t.Setenv("PATH", binDir)
+	t.Setenv("GEMINI_API_KEY", "test-gemini-key")
+
+	snapshot := geminiHealth(nil)
+	if !snapshot.OrchestrationAvailable {
+		t.Fatalf("expected gemini orchestration to stay available, got %#v", snapshot)
+	}
+	if snapshot.ExecutionAvailable {
+		t.Fatalf("expected gemini execution to fail without package root, got %#v", snapshot)
+	}
+	if snapshot.ExecutionFailureReason == nil || snapshot.ExecutionFailureReason.Code != "RUNTIME_DEPENDENCY_MISSING" {
+		t.Fatalf("unexpected execution failure reason: %#v", snapshot.ExecutionFailureReason)
+	}
+}
+
 func writeExecutable(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
