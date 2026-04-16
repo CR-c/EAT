@@ -11,8 +11,8 @@ import (
 	"eat/backend/internal/agent"
 	"eat/backend/internal/eventbus"
 	"eat/backend/internal/git"
-	"eat/backend/internal/sandbox"
 	"eat/backend/internal/tokenusage"
+	"eat/backend/internal/workerbackend"
 )
 
 const (
@@ -108,7 +108,7 @@ type CreateMessageInput struct {
 
 // WorkerHandle tracks a running worker.
 type WorkerHandle struct {
-	Runtime      *sandbox.ContainerRuntime
+	Runtime      workerbackend.RuntimeSession
 	SessionID    string
 	TaskID       string
 	SubTaskID    string
@@ -137,7 +137,6 @@ func (h *WorkerHandle) totalDuration() time.Duration {
 type Orchestrator struct {
 	repo     TaskRepository
 	agents   *agent.Service
-	sandbox  *sandbox.Manager
 	eventBus *eventbus.Bus
 
 	mu       sync.Mutex
@@ -153,11 +152,10 @@ type Orchestrator struct {
 	integrationEngine *IntegrationEngine
 }
 
-func New(repo TaskRepository, agents *agent.Service, sbx *sandbox.Manager, bus *eventbus.Bus) *Orchestrator {
+func New(repo TaskRepository, agents *agent.Service, bus *eventbus.Bus) *Orchestrator {
 	return &Orchestrator{
 		repo:         repo,
 		agents:       agents,
-		sandbox:      sbx,
 		eventBus:     bus,
 		workers:      make(map[string]*WorkerHandle),
 		stopCh:       make(chan struct{}),
@@ -363,7 +361,6 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 		o.failSubTaskLaunch(ctx, task, subTask, fmt.Sprintf("Failed to spawn worker: %s", err.Error()))
 		return
 	}
-	runtime.SessionID = sessionID
 
 	now := time.Now()
 	handle := &WorkerHandle{
@@ -377,12 +374,21 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 
 	// Update session to RUNNING
 	startedAt := now.UTC().Format(time.RFC3339Nano)
-	containerID := runtime.ContainerID
-	pid := int64(runtime.PID)
+	runtimeMeta := runtime.Metadata()
+	var containerIDPtr *string
+	if strings.TrimSpace(runtimeMeta.ContainerID) != "" {
+		containerID := runtimeMeta.ContainerID
+		containerIDPtr = &containerID
+	}
+	var pidPtr *int64
+	if runtimeMeta.PID > 0 {
+		pid := int64(runtimeMeta.PID)
+		pidPtr = &pid
+	}
 	_ = o.repo.UpdateSession(ctx, sessionID, UpdateSessionInput{
 		Status:      stringPointer("RUNNING"),
-		ContainerID: stringPointer(containerID),
-		PID:         &pid,
+		ContainerID: containerIDPtr,
+		PID:         pidPtr,
 		StartedAt:   &startedAt,
 	})
 
@@ -404,7 +410,7 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 	})
 	o.publish(task.ID, "session:started", map[string]any{
 		"sessionId":   sessionID,
-		"containerId": runtime.ContainerID,
+		"containerId": runtimeMeta.ContainerID,
 		"subTaskId":   subTask.ID,
 		"taskId":      task.ID,
 	})

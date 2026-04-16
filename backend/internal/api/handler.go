@@ -89,7 +89,7 @@ func NewHandler(deps Dependencies) *Handler {
 	var runtimeOrchestrator *orchestrator.Orchestrator
 	if deps.EnableRuntime {
 		repositoryAdapter := orchestrator.NewTaskRepositoryAdapter(taskRepository, projectRepository)
-		runtimeOrchestrator = orchestrator.New(repositoryAdapter, agentService, sandboxManager, deps.Bus)
+		runtimeOrchestrator = orchestrator.New(repositoryAdapter, agentService, deps.Bus)
 
 		launchPendingWorkers := func(ctx context.Context, taskID string) {
 			runtimeOrchestrator.LaunchApprovedSubTasks(ctx, taskID)

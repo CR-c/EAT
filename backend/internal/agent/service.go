@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"eat/backend/internal/workerbackend"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -162,8 +163,8 @@ func (s *Service) GetHealth(context.Context) map[string]HealthSnapshot {
 }
 
 // SpawnSession spawns a worker session for the given agent type.
-// Returns a ContainerRuntime handle for Docker-sandboxed sessions.
-func (s *Service) SpawnSession(ctx context.Context, agentType string, config SpawnConfig) (*sandbox.ContainerRuntime, error) {
+// Returns a generic worker runtime handle backed by the configured execution backend.
+func (s *Service) SpawnSession(ctx context.Context, agentType string, config SpawnConfig) (workerbackend.RuntimeSession, error) {
 	definitions := builtInDefinitions()
 	var def *builtInDefinition
 	for i := range definitions {
@@ -192,7 +193,7 @@ type builtInDefinition struct {
 	RuntimeMode  string
 	Capabilities CapabilitySet
 	Health       func(*sandbox.Manager) HealthSnapshot
-	Spawn        func(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (*sandbox.ContainerRuntime, error)
+	Spawn        func(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (workerbackend.RuntimeSession, error)
 }
 
 func builtInDefinitions() []builtInDefinition {
@@ -243,7 +244,7 @@ func builtInDefinitions() []builtInDefinition {
 }
 
 // spawnCodexWorker launches a Codex CLI worker inside a Docker container.
-func spawnCodexWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (*sandbox.ContainerRuntime, error) {
+func spawnCodexWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (workerbackend.RuntimeSession, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("docker sandbox manager is required for Codex worker sessions")
 	}
@@ -350,7 +351,7 @@ func spawnCodexWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnCon
 	return runtime, nil
 }
 
-func spawnClaudeWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (*sandbox.ContainerRuntime, error) {
+func spawnClaudeWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (workerbackend.RuntimeSession, error) {
 	binaryPath, err := resolveCLIPath("claude")
 	if err != nil {
 		return nil, err
@@ -389,7 +390,7 @@ func spawnClaudeWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnCo
 	return runtime, nil
 }
 
-func spawnGeminiWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (*sandbox.ContainerRuntime, error) {
+func spawnGeminiWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig) (workerbackend.RuntimeSession, error) {
 	scriptPath, err := resolveCLIPath("gemini")
 	if err != nil {
 		return nil, err
@@ -590,7 +591,7 @@ type copySpec struct {
 	dir bool
 }
 
-func spawnSandboxedCLIWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig, runtimeHomePath string, executablePaths []string, command []string, env map[string]string) (*sandbox.ContainerRuntime, error) {
+func spawnSandboxedCLIWorker(ctx context.Context, mgr *sandbox.Manager, config SpawnConfig, runtimeHomePath string, executablePaths []string, command []string, env map[string]string) (workerbackend.RuntimeSession, error) {
 	if mgr == nil {
 		return nil, fmt.Errorf("docker sandbox manager is required for worker sessions")
 	}

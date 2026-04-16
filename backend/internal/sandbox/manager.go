@@ -3,6 +3,7 @@ package sandbox
 import (
 	"bufio"
 	"context"
+	"eat/backend/internal/workerbackend"
 	"fmt"
 	"io"
 	"os"
@@ -137,6 +138,18 @@ func (r *ContainerRuntime) SendInput(message string) error {
 // Wait blocks until the container process exits.
 func (r *ContainerRuntime) Wait() {
 	<-r.done
+}
+
+// Metadata exposes Docker runtime details through the generic worker runtime contract.
+func (r *ContainerRuntime) Metadata() workerbackend.RuntimeMetadata {
+	if r == nil {
+		return workerbackend.RuntimeMetadata{BackendKind: "docker"}
+	}
+	return workerbackend.RuntimeMetadata{
+		BackendKind: "docker",
+		ContainerID: r.ContainerID,
+		PID:         r.PID,
+	}
 }
 
 // Manager manages Docker sandbox containers.

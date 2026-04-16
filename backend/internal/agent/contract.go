@@ -1,6 +1,10 @@
 package agent
 
-import "context"
+import (
+	"context"
+
+	"eat/backend/internal/workerbackend"
+)
 
 type SessionConfig struct {
 	BranchName  string
@@ -9,9 +13,8 @@ type SessionConfig struct {
 	WorkDir     string
 }
 
-type Runtime interface {
-	Kill() error
-}
+// Runtime is kept as a backward-compatible alias for the generic worker runtime contract.
+type Runtime = workerbackend.RuntimeSession
 
 type Adapter interface {
 	Name() string
