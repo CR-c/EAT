@@ -73,6 +73,7 @@ func NewHandler(deps Dependencies) *Handler {
 		previewService = preview.NewService(preview.Dependencies{
 			ProjectRepository: projectRepository,
 			TaskRepository:    taskRepository,
+			ExecutionBackend:  agentService.DefaultExecutionBackend(),
 			PreviewRootPath:   previewRootPath,
 		})
 	}

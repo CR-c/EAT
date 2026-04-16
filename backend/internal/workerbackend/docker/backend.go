@@ -68,6 +68,7 @@ func (b *Backend) StartWorker(ctx context.Context, input workerbackend.StartWork
 		NetworkProfile:  networkProfile,
 		ReadwriteMounts: uniqueStrings(input.ReadwriteMounts),
 		ReadonlyMounts:  uniqueStrings(input.ReadonlyMounts),
+		PublishedPorts:  toSandboxPortMappings(input.PublishedPorts),
 		WorkDir:         input.WorkDir,
 	}
 
@@ -87,6 +88,23 @@ func uniqueStrings(values []string) []string {
 		}
 		seen[value] = struct{}{}
 		result = append(result, value)
+	}
+	return result
+}
+
+func toSandboxPortMappings(values []workerbackend.PortMapping) []sandbox.PortMapping {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]sandbox.PortMapping, 0, len(values))
+	for _, value := range values {
+		if value.HostPort <= 0 || value.ContainerPort <= 0 {
+			continue
+		}
+		result = append(result, sandbox.PortMapping{
+			HostPort:      value.HostPort,
+			ContainerPort: value.ContainerPort,
+		})
 	}
 	return result
 }

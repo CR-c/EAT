@@ -11,6 +11,7 @@ import (
 
 	"eat/backend/internal/project"
 	"eat/backend/internal/task"
+	"eat/backend/internal/workerbackend"
 )
 
 func TestGetTaskPreviewBuildsTargetsAndAppRoots(t *testing.T) {
@@ -236,6 +237,14 @@ func (h *runtimeHarness) Stop() error {
 	defer h.mu.Unlock()
 	h.stopCalled = true
 	return nil
+}
+
+func (h *runtimeHarness) Kill() error {
+	return h.Stop()
+}
+
+func (h *runtimeHarness) Metadata() workerbackend.RuntimeMetadata {
+	return workerbackend.RuntimeMetadata{BackendKind: workerbackend.KindDocker}
 }
 
 func (h *runtimeHarness) emitOutput(chunk string) {

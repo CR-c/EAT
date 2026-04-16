@@ -17,8 +17,10 @@ import (
 	"time"
 
 	"eat/backend/internal/project"
+	"eat/backend/internal/sandbox"
 	"eat/backend/internal/task"
-	"github.com/google/uuid"
+	"eat/backend/internal/workerbackend"
+	dockerbackend "eat/backend/internal/workerbackend/docker"
 )
 
 const (
@@ -167,11 +169,7 @@ type RuntimeInput struct {
 	WorktreePath string
 }
 
-type RuntimeSession interface {
-	OnExit(func(int))
-	OnOutput(func(string))
-	Stop() error
-}
+type RuntimeSession = workerbackend.RuntimeSession
 
 type RuntimeRunner interface {
 	Start(context.Context, RuntimeInput) (RuntimeSession, error)
@@ -181,6 +179,7 @@ type Dependencies struct {
 	ProjectRepository ProjectRepository
 	TaskRepository    TaskRepository
 	Runner            RuntimeRunner
+	ExecutionBackend  workerbackend.Backend
 	PreviewRootPath   string
 	RunCommand        func(context.Context, string, ...string) error
 	FetchReady        func(string) bool
@@ -246,7 +245,11 @@ func NewService(deps Dependencies) *Service {
 
 	runner := deps.Runner
 	if runner == nil {
-		runner = &DockerRunner{Image: defaultPreviewImage}
+		executionBackend := deps.ExecutionBackend
+		if executionBackend == nil {
+			executionBackend = dockerbackend.New(sandbox.NewManager())
+		}
+		runner = &BackendRunner{Backend: executionBackend}
 	}
 
 	return &Service{
@@ -790,53 +793,38 @@ func (s *Service) repoLock(repoPath string) *sync.Mutex {
 	return lock
 }
 
+type BackendRunner struct {
+	Backend workerbackend.Backend
+}
+
+func (r *BackendRunner) Start(ctx context.Context, input RuntimeInput) (RuntimeSession, error) {
+	if r == nil || r.Backend == nil {
+		return nil, fmt.Errorf("preview execution backend is not configured")
+	}
+	return r.Backend.StartWorker(ctx, workerbackend.StartWorkerInput{
+		WorkDir:         input.WorktreePath,
+		Command:         []string{"/bin/bash", "-lc", buildPreviewLaunchCommand(input.AppRoot, input.Command)},
+		NetworkProfile:  "DEFAULT",
+		ReadwriteMounts: []string{input.WorktreePath},
+		PublishedPorts: []workerbackend.PortMapping{{
+			HostPort:      input.Port,
+			ContainerPort: input.Port,
+		}},
+	})
+}
+
 type DockerRunner struct {
 	Image string
 }
 
 func (r *DockerRunner) Start(ctx context.Context, input RuntimeInput) (RuntimeSession, error) {
+	manager := sandbox.NewManager()
 	image := strings.TrimSpace(r.Image)
 	if image == "" {
 		image = defaultPreviewImage
 	}
-	if _, err := exec.LookPath("docker"); err != nil {
-		return nil, err
-	}
-
-	containerName := "eat-preview-" + uuid.NewString()
-	runCtx, cancel := context.WithCancel(ctx)
-	cmd := exec.CommandContext(runCtx,
-		"docker", "run", "--rm", "--name", containerName,
-		"-p", fmt.Sprintf("%d:%d", input.Port, input.Port),
-		"-v", fmt.Sprintf("%s:/workspace", input.WorktreePath),
-		"-w", "/workspace",
-		image,
-		"/bin/bash", "-lc", buildPreviewLaunchCommand(input.AppRoot, input.Command),
-	)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	if err := cmd.Start(); err != nil {
-		cancel()
-		return nil, err
-	}
-
-	session := &dockerRuntimeSession{
-		cancel:        cancel,
-		containerName: containerName,
-	}
-	go session.captureOutput(stdout)
-	go session.captureOutput(stderr)
-	go session.wait(cmd)
-	return session, nil
+	manager.WorkerImage = image
+	return (&BackendRunner{Backend: dockerbackend.New(manager)}).Start(ctx, input)
 }
 
 type dockerRuntimeSession struct {

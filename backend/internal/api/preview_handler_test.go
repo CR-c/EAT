@@ -14,6 +14,7 @@ import (
 	"eat/backend/internal/preview"
 	"eat/backend/internal/project"
 	"eat/backend/internal/task"
+	"eat/backend/internal/workerbackend"
 )
 
 func TestPreviewEndpointsServePreviewServiceContract(t *testing.T) {
@@ -140,6 +141,10 @@ type previewRuntimeSessionHarness struct{}
 func (h *previewRuntimeSessionHarness) OnExit(func(int))      {}
 func (h *previewRuntimeSessionHarness) OnOutput(func(string)) {}
 func (h *previewRuntimeSessionHarness) Stop() error           { return nil }
+func (h *previewRuntimeSessionHarness) Kill() error           { return nil }
+func (h *previewRuntimeSessionHarness) Metadata() workerbackend.RuntimeMetadata {
+	return workerbackend.RuntimeMetadata{BackendKind: workerbackend.KindDocker}
+}
 
 func contains(values []string, target string) bool {
 	for _, value := range values {

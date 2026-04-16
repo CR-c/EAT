@@ -153,6 +153,14 @@ func (s *Service) DefaultExecutionBackendKind() string {
 	return strings.TrimSpace(s.defaultBackend)
 }
 
+func (s *Service) DefaultExecutionBackend() workerbackend.Backend {
+	if s == nil {
+		return nil
+	}
+	backend, _ := s.resolveExecutionBackend("")
+	return backend
+}
+
 func (s *Service) ExecutionBackends(ctx context.Context) []workerbackend.Status {
 	if s == nil || len(s.workerBackends) == 0 {
 		return nil

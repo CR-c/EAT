@@ -34,6 +34,11 @@ type Status struct {
 	Dependencies []string `json:"dependencies,omitempty"`
 }
 
+type PortMapping struct {
+	HostPort      int
+	ContainerPort int
+}
+
 // StartWorkerInput is the generic contract for launching a worker runtime.
 type StartWorkerInput struct {
 	WorkDir         string
@@ -42,6 +47,7 @@ type StartWorkerInput struct {
 	NetworkProfile  string
 	ReadwriteMounts []string
 	ReadonlyMounts  []string
+	PublishedPorts  []PortMapping
 }
 
 // Backend is the pluggable execution backend contract.
