@@ -27,7 +27,7 @@ func (s *Service) CreateGuidedTask(ctx context.Context, input CreateGuidedTaskRe
 		return nil, failure(ErrorCodePlanTemplateNotFound, "Requested plan template was not found.", map[string]any{"templateId": templateID})
 	}
 
-	if validationError := validatePlan(seed.Plan); validationError != nil {
+	if validationError := s.validatePlan(seed.Plan); validationError != nil {
 		return nil, validationError
 	}
 
@@ -211,7 +211,7 @@ func (s *Service) ApplyPlanSeed(ctx context.Context, taskID string, input PlanSe
 		return nil, failure(ErrorCodePlanTemplateNotFound, "Requested plan template was not found.", map[string]any{"templateId": templateID})
 	}
 
-	if validationError := validatePlan(seed.Plan); validationError != nil {
+	if validationError := s.validatePlan(seed.Plan); validationError != nil {
 		return nil, validationError
 	}
 
@@ -719,13 +719,12 @@ func joinPlanNotes(parts ...string) string {
 	return strings.Join(segments, "\n\n")
 }
 
-func validatePlan(plan tasktemplates.Plan) *Error {
+func validatePlanWithAgents(plan tasktemplates.Plan, validAgents map[string]bool) *Error {
 	plan = normalizePlan(plan)
 	if len(planNodes(plan)) == 0 {
 		return failure(ErrorCodeInvalidPlan, "Plan must include at least one node.", nil)
 	}
 
-	validAgents := knownExecutableAgents()
 	knownNodes := make(map[string]bool, len(planNodes(plan)))
 	for index, node := range planNodes(plan) {
 		if strings.TrimSpace(node.Title) == "" {
@@ -763,9 +762,30 @@ func validatePlan(plan tasktemplates.Plan) *Error {
 	return nil
 }
 
+func (s *Service) registeredExecutableAgents() map[string]bool {
+	result := make(map[string]bool)
+	if s == nil || s.agentService == nil {
+		return result
+	}
+	for _, descriptor := range s.agentService.ListAgents() {
+		if descriptor.Capabilities.CanExecute {
+			result[descriptor.Name] = true
+		}
+	}
+	return result
+}
+
+func (s *Service) validatePlan(plan tasktemplates.Plan) *Error {
+	validAgents := s.registeredExecutableAgents()
+	if len(validAgents) == 0 {
+		return failure(ErrorCodeInvalidPlan, "Executable agent registry is unavailable while validating the plan.", nil)
+	}
+	return validatePlanWithAgents(plan, validAgents)
+}
+
 func (s *Service) normalizeAndValidatePlan(plan tasktemplates.Plan) (tasktemplates.Plan, *Error) {
 	normalizedPlan := normalizePlan(plan)
-	if validationError := validatePlan(normalizedPlan); validationError != nil {
+	if validationError := s.validatePlan(normalizedPlan); validationError != nil {
 		return tasktemplates.Plan{}, validationError
 	}
 	return normalizedPlan, nil
@@ -871,12 +891,4 @@ func parsePlanJSON(raw string) *tasktemplates.Plan {
 	}
 	normalized := normalizePlan(plan)
 	return &normalized
-}
-
-func knownExecutableAgents() map[string]bool {
-	return map[string]bool{
-		"claude-cli": true,
-		"codex-cli":  true,
-		"gemini-cli": true,
-	}
 }
