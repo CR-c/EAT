@@ -25,6 +25,7 @@ type Dependencies struct {
 	DB              *store.DB
 	Bus             *eventbus.Bus
 	AgentService    *agent.Service
+	SandboxManager  *sandbox.Manager
 	EnableRuntime   bool
 	UploadRootPath  string
 	PreviewRootPath string
@@ -47,7 +48,10 @@ type Handler struct {
 }
 
 func NewHandler(deps Dependencies) *Handler {
-	sandboxManager := sandbox.NewManager()
+	sandboxManager := deps.SandboxManager
+	if sandboxManager == nil {
+		sandboxManager = sandbox.NewManager()
+	}
 	agentService := deps.AgentService
 	if agentService == nil {
 		agentService = agent.NewService(sandboxManager)
@@ -77,6 +81,7 @@ func NewHandler(deps Dependencies) *Handler {
 		Repository:        taskRepository,
 		ProjectRepository: projectRepository,
 		AgentService:      agentService,
+		SandboxManager:    sandboxManager,
 		Bus:               deps.Bus,
 		UploadRootPath:    uploadRootPath,
 	})
@@ -185,6 +190,8 @@ func mapTaskErrorStatus(code string) int {
 	switch code {
 	case task.ErrorCodeTaskNotFound, task.ErrorCodeProjectNotFound, task.ErrorCodePlanTemplateNotFound, task.ErrorCodeAttachmentPathNotFound, task.ErrorCodePlanSnapshotNotFound, task.ErrorCodeSubTaskNotFound, "INTEGRATION_RUN_NOT_FOUND", "INTEGRATION_QUEUE_ITEM_NOT_FOUND":
 		return http.StatusNotFound
+	case task.ErrorCodeExecutionBackendUnavailable:
+		return http.StatusConflict
 	case "TASK_APPROVAL_FAILED",
 		"TASK_CREATE_FAILED",
 		"TASK_CURRENT_PLAN_UPDATE_FAILED",

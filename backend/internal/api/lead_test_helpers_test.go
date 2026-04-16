@@ -6,12 +6,17 @@ import (
 	"testing"
 
 	"eat/backend/internal/agent"
+	"eat/backend/internal/sandbox"
 )
 
 func newFakeLeadAgentService(t *testing.T, reply string) *agent.Service {
+	return newFakeLeadAgentServiceWithSandbox(t, nil, reply)
+}
+
+func newFakeLeadAgentServiceWithSandbox(t *testing.T, sandboxManager *sandbox.Manager, reply string) *agent.Service {
 	t.Helper()
 
-	service := agent.NewService(nil)
+	service := agent.NewService(sandboxManager)
 	service.SetLeadTurnRunner("codex-cli", func(ctx context.Context, config agent.LeadTurnConfig) (*agent.LeadTurnResult, error) {
 		t.Helper()
 
@@ -33,4 +38,10 @@ func newFakeLeadAgentService(t *testing.T, reply string) *agent.Service {
 	})
 
 	return service
+}
+
+func newUnavailableSandboxManager() *sandbox.Manager {
+	manager := sandbox.NewManager()
+	manager.WorkerImage = "eat/nonexistent:missing"
+	return manager
 }

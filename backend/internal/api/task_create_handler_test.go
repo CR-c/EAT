@@ -129,3 +129,46 @@ func TestCreateTaskEndpointAcceptsCustomTaskBranchName(t *testing.T) {
 		t.Fatalf("expected custom task branch to exist: %v", err)
 	}
 }
+
+func TestCreateTaskEndpointAllowsLeadOnlyModeWhenWorkerBackendIsUnavailable(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	repoPath := createGitRepository(t, tempDir, "task-lead-only-repo", "main")
+	if _, err := db.Exec(`
+		INSERT INTO projects (id, name, path, default_branch, created_at, updated_at)
+		VALUES ('project-lead-only', 'Lead Only Project', ?, 'main', '2026-03-24T00:00:00Z', '2026-03-24T00:00:00Z')
+	`, repoPath); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+
+	sandboxManager := newUnavailableSandboxManager()
+	router := NewRouter(NewHandler(Dependencies{
+		DB:             db,
+		Bus:            eventbus.New(),
+		SandboxManager: sandboxManager,
+		AgentService:   newFakeLeadAgentServiceWithSandbox(t, sandboxManager, "已收到。"),
+		UploadRootPath: filepath.Join(tempDir, "uploads"),
+	}))
+
+	response := performJSONRequest(router, http.MethodPost, "/api/tasks", map[string]any{
+		"projectId":     "project-lead-only",
+		"title":         "Lead only mode",
+		"description":   "Allow task creation without a ready worker backend.",
+		"leadAgentType": "codex-cli",
+		"baseBranch":    "main",
+	})
+	if response.Code != http.StatusCreated {
+		t.Fatalf("unexpected create task status: %d body=%s", response.Code, response.Body.String())
+	}
+
+	payload := decodeJSONMap(t, response.Body.Bytes())
+	if payload["task"].(map[string]any)["status"] != "DRAFT" {
+		t.Fatalf("unexpected task payload: %#v", payload["task"])
+	}
+}

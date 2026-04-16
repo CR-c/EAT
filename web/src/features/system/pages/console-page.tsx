@@ -58,20 +58,20 @@ export function ConsolePage() {
   const cliStatus = [
     {
       id: "codex-cli",
-      status: !hasLoaded ? t("common.loading") : agentHealth["codex-cli"]?.available ? t("common.online") : t("common.offline"),
-      latency: agentHealth["codex-cli"]?.available ? "45ms" : hasLoaded ? "-" : "…",
+      status: !hasLoaded ? t("common.loading") : agentHealth["codex-cli"]?.orchestrationAvailable ? t("common.online") : t("common.offline"),
+      latency: agentHealth["codex-cli"]?.orchestrationAvailable ? "45ms" : hasLoaded ? "-" : "…",
       icon: Bot,
     },
     {
       id: "claude-cli",
-      status: !hasLoaded ? t("common.loading") : agentHealth["claude-cli"]?.available ? t("common.online") : t("common.offline"),
-      latency: agentHealth["claude-cli"]?.available ? "120ms" : hasLoaded ? "-" : "…",
+      status: !hasLoaded ? t("common.loading") : agentHealth["claude-cli"]?.orchestrationAvailable ? t("common.online") : t("common.offline"),
+      latency: agentHealth["claude-cli"]?.orchestrationAvailable ? "120ms" : hasLoaded ? "-" : "…",
       icon: Radio,
     },
     {
       id: "gemini-cli",
-      status: !hasLoaded ? t("common.loading") : agentHealth["gemini-cli"]?.available ? t("common.online") : t("common.offline"),
-      latency: agentHealth["gemini-cli"]?.available ? "88ms" : hasLoaded ? "-" : "…",
+      status: !hasLoaded ? t("common.loading") : agentHealth["gemini-cli"]?.orchestrationAvailable ? t("common.online") : t("common.offline"),
+      latency: agentHealth["gemini-cli"]?.orchestrationAvailable ? "88ms" : hasLoaded ? "-" : "…",
       icon: Sparkles,
     },
   ]

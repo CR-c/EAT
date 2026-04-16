@@ -15,7 +15,7 @@ import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { getProject, getProjectRepoStatus } from "@/lib/api/projects"
 import { createGuidedTask, createTask, listTaskTemplates } from "@/lib/api/tasks"
-import { getAgentHealth, getAgents, getDockerHealth, getSystemHealth } from "@/lib/api/system"
+import { getAgentHealth, getAgents, getExecutionBackends } from "@/lib/api/system"
 import { getAgentDescription } from "@/lib/i18n"
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
@@ -65,16 +65,10 @@ export function CreateTaskPage() {
     load: getAgentHealth,
   })
 
-  const docker = useAsyncResource({
+  const executionBackends = useAsyncResource({
     deps: [],
     initialData: undefined,
-    load: getDockerHealth,
-  })
-
-  const system = useAsyncResource({
-    deps: [],
-    initialData: undefined,
-    load: getSystemHealth,
+    load: getExecutionBackends,
   })
 
   const templates = useAsyncResource({
@@ -197,6 +191,10 @@ export function CreateTaskPage() {
     })) ?? []
 
   const selectedLeadHealth = leadAgentType ? agentHealth.data?.agents[leadAgentType] : undefined
+  const selectedWorkerBackend =
+    executionBackends.data?.backends.find((backend) => backend.default) ?? executionBackends.data?.backends[0]
+  const leadReady = Boolean(selectedLeadHealth?.orchestrationAvailable)
+  const workerBackendReady = Boolean(selectedWorkerBackend?.available)
   const preflightChecks = [
     {
       key: "repo",
@@ -213,22 +211,24 @@ export function CreateTaskPage() {
         : "正在检查仓库状态...",
     },
     {
-      key: "docker",
-      label: "Docker / Worker 镜像",
-      status: docker.data?.available && system.data?.docker?.imageReady ? "ready" : docker.data ? "blocked" : "loading",
-      detail: docker.data
-        ? `available=${docker.data.available ? "yes" : "no"} / imageReady=${system.data?.docker?.imageReady ? "yes" : "no"}`
-        : "正在检查 Docker...",
-    },
-    {
       key: "lead",
       label: "Lead Runtime",
-      status: selectedLeadHealth?.available ? "ready" : selectedLeadHealth ? "blocked" : "loading",
+      status: leadReady ? "ready" : selectedLeadHealth ? "blocked" : "loading",
       detail: leadAgentType
-        ? selectedLeadHealth?.available
-          ? `${leadAgentType} 可用`
-          : selectedLeadHealth?.failureReason?.message ?? `${leadAgentType} 当前不可用`
+        ? leadReady
+          ? `${leadAgentType} 可用于创建 / 澄清 / 规划`
+          : selectedLeadHealth?.orchestrationFailureReason?.message ?? selectedLeadHealth?.failureReason?.message ?? `${leadAgentType} 当前不可用`
         : "请选择 Lead Agent",
+    },
+    {
+      key: "worker-backend",
+      label: "Worker Backend",
+      status: workerBackendReady ? "ready" : selectedWorkerBackend ? "blocked" : "loading",
+      detail: selectedWorkerBackend
+        ? workerBackendReady
+          ? `${selectedWorkerBackend.kind} backend ready / trust=${selectedWorkerBackend.trustLevel}`
+          : selectedWorkerBackend.reason ?? `${selectedWorkerBackend.kind} backend 当前不可用`
+        : "正在检查 Worker Backend...",
     },
   ] as const
 
@@ -334,6 +334,11 @@ export function CreateTaskPage() {
               )
             })}
           </div>
+          {!workerBackendReady && selectedWorkerBackend ? (
+            <div className={cn("mt-3 rounded-sm border p-3 font-mono text-xs", theme.pathBg)}>
+              当前仍可创建并进入澄清 / 规划；批准执行前需先配置可用的 Worker Backend。
+            </div>
+          ) : null}
         </section>
 
         <section className={cn("relative rounded-sm border p-5 backdrop-blur-md", theme.cardBg)}>
@@ -482,13 +487,13 @@ export function CreateTaskPage() {
         <button
           className={cn(
             "flex items-center rounded-sm border px-6 py-2 font-mono text-sm font-bold tracking-widest transition-all",
-            !title.trim() || !description.trim() || !leadAgentType || !baseBranch || isSubmitting || preflightChecks.some((item) => item.status === "blocked")
+            !title.trim() || !description.trim() || !leadAgentType || !baseBranch || isSubmitting || !leadReady
               ? "cursor-not-allowed border-slate-500 bg-transparent text-slate-500 opacity-50"
               : isRei
                 ? "border-cyan-400 bg-cyan-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:bg-cyan-600"
                 : "border-green-400 bg-green-500 text-black shadow-[0_0_15px_rgba(34,197,94,0.4)] hover:bg-green-400",
           )}
-          disabled={!title.trim() || !description.trim() || !leadAgentType || !baseBranch || isSubmitting || preflightChecks.some((item) => item.status === "blocked")}
+          disabled={!title.trim() || !description.trim() || !leadAgentType || !baseBranch || isSubmitting || !leadReady}
           onClick={handleCreate}
           type="button"
         >

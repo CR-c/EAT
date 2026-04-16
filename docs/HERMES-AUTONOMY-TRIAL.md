@@ -46,9 +46,9 @@ npm run build:worker-image
 
 如果这个镜像缺失：
 
-- `npm test` 中部分任务创建测试会失败
-- 任务创建相关 API 会返回 `LEAD_AGENT_UNHEALTHY`
-- 嵌套原因通常是 `DOCKER_UNAVAILABLE`
+- `npm test` 中部分计划批准 / 执行相关测试会失败
+- 计划批准相关 API 会返回 `EXECUTION_BACKEND_UNAVAILABLE`
+- 嵌套原因通常仍是 `DOCKER_UNAVAILABLE`
 
 镜像名：
 
@@ -206,7 +206,7 @@ http://127.0.0.1:3000
 
 这不是 Hermes 本身的问题，而是当前仓库做全自动试验时的真实前置条件：
 
-- 默认 worker 镜像当前本机不存在时，任务创建相关路径会失败
+- 默认 worker 镜像当前本机不存在时，任务创建 / 澄清 / 规划仍可继续，但批准执行与相关测试会失败
 - `npm test` 不是永远纯代码真相，它受 worker image 是否已构建影响
 - `prisma/schema.prisma` 不是完整运行时真相，读表结构要回到 migration 和 repository
 

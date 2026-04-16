@@ -38,6 +38,12 @@ func (h *Handler) DockerHealth(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, h.sandbox.DockerHealth(r.Context()))
 }
 
+func (h *Handler) ExecutionBackends(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]any{
+		"backends": h.sandbox.ExecutionBackends(r.Context()),
+	})
+}
+
 func (h *Handler) SandboxPolicy(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, h.sandbox.Policy())
 }

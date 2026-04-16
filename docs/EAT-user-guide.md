@@ -71,7 +71,7 @@
 - 已安装并登录默认 Lead CLI：`codex-cli`
 - 已构建本地 Worker 镜像：`npm run build:worker-image`
 
-当前默认运行时会把 Docker Worker sandbox 纳入 Agent 健康检查；如果本地缺少 `eat/worker-base:latest`，创建任务时会被系统拦截。
+当前默认运行时已经拆分了 Lead Runtime 与 Worker Backend readiness：如果本地缺少 `eat/worker-base:latest`，你仍然可以创建任务并进入澄清 / 规划，但批准执行前必须先把 Worker Backend 配好。
 
 ### 1. 启动服务器
 
@@ -140,6 +140,10 @@ npm start
    - **需求描述**：详细的需求、技术要求和验收标准
 
 5. 点击「创建任务」按钮提交
+
+说明：
+- 创建任务当前只要求 Lead Runtime 可用
+- Worker Backend 未就绪时，页面会提示“可创建并进入澄清 / 规划；批准执行前需先配置 Worker Backend”
 
 #### 示例：Todo List 任务
 
@@ -258,7 +262,9 @@ Leader 生成执行计划后，任务进入 `PLAN_REVIEW` 状态。
 - **添加子任务** — 手动添加执行单元
 - **应用模板** — 使用预设模板重置计划
 - **保存草稿** — 保存编辑但不批准
-- **批准草稿** — 锁定计划并开始执行
+- **批准草稿** — 锁定计划并开始执行（需要 Worker Backend 已就绪）
+
+如果 Worker Backend 未就绪，批准操作会被系统明确拦截，任务会保持在 `PLAN_REVIEW`。
 
 ---
 

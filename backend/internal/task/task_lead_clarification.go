@@ -30,13 +30,17 @@ func (s *Service) runClarificationLeadTurn(
 	}
 
 	healthSnapshot := s.agentService.GetHealth(ctx)[taskRecord.LeadAgentType]
-	if !healthSnapshot.Available {
+	failureReason := healthSnapshot.OrchestrationFailureReason
+	if failureReason == nil {
+		failureReason = healthSnapshot.FailureReason
+	}
+	if !healthSnapshot.OrchestrationAvailable {
 		return nil, nil, failure(
 			ErrorCodeLeadAgentUnhealthy,
-			"Lead agent is unhealthy and cannot reply to clarification messages.",
+			"Lead agent orchestration runtime is unavailable and cannot reply to clarification messages.",
 			map[string]any{
 				"leadAgentType": taskRecord.LeadAgentType,
-				"failureReason": healthSnapshot.FailureReason,
+				"failureReason": failureReason,
 			},
 		)
 	}

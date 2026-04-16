@@ -34,6 +34,7 @@
 | GET | `/api/agents` | 获取 Agent 目录 |
 | GET | `/api/agents/health` | 获取 Agent 健康状态 |
 | GET | `/api/system/health` | 获取系统健康状态 |
+| GET | `/api/system/execution-backends` | 获取当前 execution backend 列表与 readiness |
 | GET | `/api/system/docker` | 获取 Docker 健康状态 |
 | GET | `/api/system/sandbox-policy` | 获取当前沙箱策略 |
 | GET | `/api/task-templates` | 获取任务模板列表 |

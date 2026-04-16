@@ -87,11 +87,15 @@ type FailureReason struct {
 }
 
 type HealthSnapshot struct {
-	Available     bool           `json:"available"`
-	RuntimeMode   string         `json:"runtimeMode"`
-	Version       string         `json:"version,omitempty"`
-	Checks        []HealthCheck  `json:"checks"`
-	FailureReason *FailureReason `json:"failureReason,omitempty"`
+	Available                  bool           `json:"available"`
+	OrchestrationAvailable     bool           `json:"orchestrationAvailable"`
+	ExecutionAvailable         bool           `json:"executionAvailable"`
+	RuntimeMode                string         `json:"runtimeMode"`
+	Version                    string         `json:"version,omitempty"`
+	Checks                     []HealthCheck  `json:"checks"`
+	FailureReason              *FailureReason `json:"failureReason,omitempty"`
+	OrchestrationFailureReason *FailureReason `json:"orchestrationFailureReason,omitempty"`
+	ExecutionFailureReason     *FailureReason `json:"executionFailureReason,omitempty"`
 }
 
 func NewService(sandboxManager *sandbox.Manager) *Service {
@@ -772,9 +776,11 @@ func codexHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
 
 func cliHealth(adapterName, binary string, sandboxManager *sandbox.Manager) HealthSnapshot {
 	snapshot := HealthSnapshot{
-		Available:   true,
-		RuntimeMode: "REAL",
-		Checks:      []HealthCheck{},
+		Available:              true,
+		OrchestrationAvailable: true,
+		ExecutionAvailable:     true,
+		RuntimeMode:            "REAL",
+		Checks:                 []HealthCheck{},
 	}
 
 	commandEnvVar := fmt.Sprintf("EAT_%s_WORKER_COMMAND", strings.ToUpper(strings.ReplaceAll(strings.TrimSuffix(adapterName, "-cli"), "-", "_")))
@@ -786,16 +792,21 @@ func cliHealth(adapterName, binary string, sandboxManager *sandbox.Manager) Heal
 			Message: fmt.Sprintf("%s is configured via %s.", adapterName, commandEnvVar),
 		})
 	} else if _, err := exec.LookPath(binary); err != nil {
+		failureReason := &FailureReason{
+			Code:    "BINARY_MISSING",
+			Message: fmt.Sprintf("%s is not installed or not available on PATH.", binary),
+		}
 		return HealthSnapshot{
-			Available:   false,
-			RuntimeMode: "REAL",
+			Available:              false,
+			OrchestrationAvailable: false,
+			ExecutionAvailable:     false,
+			RuntimeMode:            "REAL",
 			Checks: []HealthCheck{
 				{Name: "binary", Status: "FAIL", Message: fmt.Sprintf("%s is not installed or not available on PATH.", binary)},
 			},
-			FailureReason: &FailureReason{
-				Code:    "BINARY_MISSING",
-				Message: fmt.Sprintf("%s is not installed or not available on PATH.", binary),
-			},
+			FailureReason:              failureReason,
+			OrchestrationFailureReason: failureReason,
+			ExecutionFailureReason:     failureReason,
 		}
 	} else {
 		snapshot.Checks = append(snapshot.Checks, HealthCheck{
@@ -808,9 +819,13 @@ func cliHealth(adapterName, binary string, sandboxManager *sandbox.Manager) Heal
 	if authCheck, failure := cliAuthCheck(adapterName); authCheck.Name != "" {
 		snapshot.Checks = append(snapshot.Checks, authCheck)
 		if failure != nil {
-			snapshot.Available = false
-			if snapshot.FailureReason == nil {
-				snapshot.FailureReason = failure
+			snapshot.OrchestrationAvailable = false
+			snapshot.ExecutionAvailable = false
+			if snapshot.OrchestrationFailureReason == nil {
+				snapshot.OrchestrationFailureReason = failure
+			}
+			if snapshot.ExecutionFailureReason == nil {
+				snapshot.ExecutionFailureReason = failure
 			}
 		}
 	}
@@ -824,14 +839,14 @@ func cliHealth(adapterName, binary string, sandboxManager *sandbox.Manager) Heal
 				Message: fmt.Sprintf("Docker worker sandbox is available for %s sessions.", adapterName),
 			})
 		} else {
-			snapshot.Available = false
+			snapshot.ExecutionAvailable = false
 			snapshot.Checks = append(snapshot.Checks, HealthCheck{
 				Name:    "worker-sandbox",
 				Status:  "FAIL",
 				Message: dockerHealth.Reason,
 			})
-			if snapshot.FailureReason == nil {
-				snapshot.FailureReason = &FailureReason{
+			if snapshot.ExecutionFailureReason == nil {
+				snapshot.ExecutionFailureReason = &FailureReason{
 					Code:    "DOCKER_UNAVAILABLE",
 					Message: dockerHealth.Reason,
 				}
@@ -839,7 +854,21 @@ func cliHealth(adapterName, binary string, sandboxManager *sandbox.Manager) Heal
 		}
 	}
 
+	snapshot.Available = snapshot.OrchestrationAvailable && snapshot.ExecutionAvailable
+	if snapshot.FailureReason == nil {
+		snapshot.FailureReason = primaryFailureReason(snapshot.OrchestrationFailureReason, snapshot.ExecutionFailureReason)
+	}
+
 	return snapshot
+}
+
+func primaryFailureReason(reasons ...*FailureReason) *FailureReason {
+	for _, reason := range reasons {
+		if reason != nil {
+			return reason
+		}
+	}
+	return nil
 }
 
 func cliAuthCheck(adapterName string) (HealthCheck, *FailureReason) {

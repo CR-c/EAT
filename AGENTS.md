@@ -241,19 +241,19 @@ These are especially important for autonomous runs.
 
 ### 1. `npm test` currently depends on the worker image
 
-The full test command will fail on task-creation related tests when the local Docker image is missing:
+The full test command will fail on plan-approval / execution related tests when the local Docker image is missing:
 
 - required image: `eat/worker-base:latest`
 - build command: `npm run build:worker-image`
 
 Observed failure mode:
 
-- task creation endpoints return `LEAD_AGENT_UNHEALTHY`
-- nested reason: `DOCKER_UNAVAILABLE`
+- plan approval endpoints return `EXECUTION_BACKEND_UNAVAILABLE`
+- nested reason is usually still `DOCKER_UNAVAILABLE`
 
 So:
 
-- if task creation tests fail for worker health reasons, build the worker image first
+- if plan approval / execution tests fail for worker backend reasons, build the worker image first
 - do not misdiagnose this as an API regression until the image exists locally
 
 ### 2. Autonomy trials should read the dedicated trial guide

@@ -1,7 +1,7 @@
 import { Gauge, Globe2, Palette } from "lucide-react"
 import type { ComponentType, ReactNode } from "react"
 
-import { getDockerHealth, getSandboxPolicy } from "@/lib/api/system"
+import { getExecutionBackends, getSandboxPolicy } from "@/lib/api/system"
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { getPilotDescription, getPilotTitle } from "@/lib/i18n"
 import { usePreferences } from "@/lib/preferences"
@@ -17,8 +17,8 @@ export function SettingsPage() {
     deps: [],
     initialData: undefined,
     load: async (signal) => {
-      const [docker, policy] = await Promise.all([getDockerHealth(signal), getSandboxPolicy(signal)])
-      return { docker, policy }
+      const [executionBackends, policy] = await Promise.all([getExecutionBackends(signal), getSandboxPolicy(signal)])
+      return { executionBackends, policy }
     },
   })
 
@@ -82,11 +82,35 @@ export function SettingsPage() {
               <div className={cn("font-mono text-sm", theme.cardTitle)}>{resource.data?.policy.previewDefault ?? "—"}</div>
             </SettingBox>
 
-            <SettingBox icon={Palette} label={t("settings.docker")} theme={theme}>
-              <div className={cn("font-mono text-sm", theme.cardTitle)}>
-                {resource.data?.docker.available ? t("settings.docker") : resource.data?.docker.reason ?? "—"}
-              </div>
-            </SettingBox>
+            <div className="md:col-span-2">
+              <SettingBox icon={Palette} label={t("settings.executionBackends")} theme={theme}>
+                <div className="space-y-3">
+                  {(resource.data?.executionBackends.backends ?? []).map((backend) => (
+                    <div key={backend.kind} className={cn("rounded-sm border p-3 font-mono text-xs", backend.available ? theme.pathBg : "border-red-500/40 bg-red-900/20 text-red-300")}>
+                      <div className={cn("flex flex-wrap items-center gap-2 text-sm font-bold", theme.cardTitle)}>
+                        <span>{backend.kind}</span>
+                        {backend.default ? (
+                          <span className={cn("rounded-sm border px-2 py-0.5 text-[10px]", theme.tabActive)}>
+                            {t("settings.backendDefault")}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className={cn("mt-1", theme.cardSub)}>
+                        {backend.available ? t("settings.backendReady") : backend.reason ?? t("settings.backendUnavailable")}
+                      </div>
+                      <div className={cn("mt-2", theme.cardSub)}>
+                        {t("settings.trustLevel")}: {backend.trustLevel}
+                      </div>
+                      {backend.dependencies?.length ? (
+                        <div className={cn("mt-1", theme.cardSub)}>
+                          {t("settings.dependencies")}: {backend.dependencies.join(", ")}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </SettingBox>
+            </div>
           </section>
         </div>
       </div>

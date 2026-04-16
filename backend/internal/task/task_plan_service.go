@@ -430,6 +430,17 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 		return nil, failure("PLAN_SERIALIZATION_FAILED", err.Error(), nil)
 	}
 	approvedPlanJSON := string(approvedPlanJSONBytes)
+	backendStatus := s.defaultExecutionBackendStatus(ctx)
+	if !backendStatus.Available {
+		return nil, failure(
+			ErrorCodeExecutionBackendUnavailable,
+			"Worker backend is unavailable. You can continue clarification and planning, but plan approval requires a ready execution backend.",
+			map[string]any{
+				"backend": backendStatus,
+				"taskId":  taskID,
+			},
+		)
+	}
 
 	result := &ApprovePlanResult{
 		ApprovalReady: true,

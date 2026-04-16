@@ -307,6 +307,19 @@ export interface DockerHealth {
   imageReady?: boolean
 }
 
+export interface ExecutionBackendStatus {
+  kind: string
+  available: boolean
+  default: boolean
+  trustLevel: string
+  reason?: string
+  dependencies?: string[]
+}
+
+export interface ExecutionBackendsResponse {
+  backends: ExecutionBackendStatus[]
+}
+
 export interface SandboxPolicy {
   workerDefault: string
   previewDefault: string
@@ -332,6 +345,8 @@ export interface AgentDescriptor {
 
 export interface AgentHealthSnapshot {
   available: boolean
+  orchestrationAvailable: boolean
+  executionAvailable: boolean
   runtimeMode: string
   version?: string
   checks: Array<{
@@ -341,6 +356,16 @@ export interface AgentHealthSnapshot {
     details?: Record<string, unknown>
   }>
   failureReason?: {
+    code: string
+    message: string
+    details?: Record<string, unknown>
+  }
+  orchestrationFailureReason?: {
+    code: string
+    message: string
+    details?: Record<string, unknown>
+  }
+  executionFailureReason?: {
     code: string
     message: string
     details?: Record<string, unknown>
@@ -366,6 +391,8 @@ export interface AgentHealthResponse {
 export interface AgentCandidate {
   agentName: string
   available: boolean
+  orchestrationAvailable: boolean
+  executionAvailable: boolean
   runtimeMode: string
   selectable: boolean
   failureReason?: {

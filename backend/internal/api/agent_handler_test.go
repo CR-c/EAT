@@ -59,3 +59,62 @@ func TestAgentEndpointsExposeBuiltInDirectoryAndHealth(t *testing.T) {
 		t.Fatal("expected codex-cli health snapshot")
 	}
 }
+
+func TestAgentEndpointsKeepLeadSelectableWhenWorkerBackendIsUnavailable(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	sandboxManager := newUnavailableSandboxManager()
+	router := NewRouter(NewHandler(Dependencies{
+		DB:             db,
+		Bus:            eventbus.New(),
+		SandboxManager: sandboxManager,
+		AgentService:   newFakeLeadAgentServiceWithSandbox(t, sandboxManager, "已收到。"),
+	}))
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/agents", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("unexpected agent list status: %d body=%s", response.Code, response.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	leadCandidates := payload["leadCandidates"].([]any)
+	var codexCandidate map[string]any
+	for _, item := range leadCandidates {
+		candidate := item.(map[string]any)
+		if candidate["agentName"] == "codex-cli" {
+			codexCandidate = candidate
+			break
+		}
+	}
+	if codexCandidate == nil {
+		t.Fatal("expected codex-cli lead candidate")
+	}
+	if codexCandidate["selectable"] != true {
+		t.Fatalf("expected codex-cli lead candidate to stay selectable: %#v", codexCandidate)
+	}
+	if codexCandidate["executionAvailable"] != false {
+		t.Fatalf("expected codex-cli execution to be unavailable: %#v", codexCandidate)
+	}
+	if codexCandidate["orchestrationAvailable"] != true {
+		t.Fatalf("expected codex-cli orchestration to stay available: %#v", codexCandidate)
+	}
+
+	workerCandidates := payload["workerCandidates"].([]any)
+	for _, item := range workerCandidates {
+		candidate := item.(map[string]any)
+		if candidate["agentName"] == "codex-cli" && candidate["selectable"] != false {
+			t.Fatalf("expected codex-cli worker candidate to be blocked without execution backend: %#v", candidate)
+		}
+	}
+}

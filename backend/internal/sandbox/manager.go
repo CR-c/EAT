@@ -22,6 +22,16 @@ type Health struct {
 	ImageReady    bool   `json:"imageReady,omitempty"`
 }
 
+// ExecutionBackendStatus represents a worker execution backend and its readiness.
+type ExecutionBackendStatus struct {
+	Kind         string   `json:"kind"`
+	Available    bool     `json:"available"`
+	Default      bool     `json:"default"`
+	TrustLevel   string   `json:"trustLevel"`
+	Reason       string   `json:"reason,omitempty"`
+	Dependencies []string `json:"dependencies,omitempty"`
+}
+
 // Policy represents sandbox defaults.
 type Policy struct {
 	WorkerDefault  string `json:"workerDefault"`
@@ -190,6 +200,25 @@ func (m *Manager) DockerHealth(ctx context.Context) Health {
 // Policy returns sandbox defaults.
 func (m *Manager) Policy() Policy {
 	return Policy{WorkerDefault: "DOCKER", PreviewDefault: "DOCKER"}
+}
+
+// ExecutionBackends reports the currently known worker execution backends.
+func (m *Manager) ExecutionBackends(ctx context.Context) []ExecutionBackendStatus {
+	health := m.DockerHealth(ctx)
+	backend := ExecutionBackendStatus{
+		Kind:       "docker",
+		Available:  health.Available,
+		Default:    true,
+		TrustLevel: "SANDBOXED",
+		Dependencies: []string{
+			"docker daemon",
+			m.WorkerImage,
+		},
+	}
+	if !health.Available {
+		backend.Reason = health.Reason
+	}
+	return []ExecutionBackendStatus{backend}
 }
 
 // CreateWorkerSandboxConfig builds a validated sandbox configuration.

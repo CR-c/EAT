@@ -9,13 +9,13 @@
 - Go 后端
 - React + Vite 前端
 - SQLite 本地持久化
-- Docker sandboxed worker execution
+- Docker-backed worker execution with separate lead / execution readiness
 
 本文优先描述“当前主干已经实现了什么”。如果历史文档、设计稿、`prisma/schema.prisma` 与本文冲突，应先回到当前代码、router 和 SQL migrations 复核。
 
 ## 一句话定义
 
-EAT 是一个本地优先、人工监督、以 Git 分支和 Docker 沙箱为执行边界的多 Agent 工程编排工作台。
+EAT 是一个本地优先、人工监督、以 Git 分支和受控执行后端为执行边界的多 Agent 工程编排工作台，当前正式 Worker backend 仍为 Docker。
 
 标准路径是：
 
@@ -242,7 +242,7 @@ Worker 结束后，子任务进入 `REVIEW_PENDING`。随后：
 - 默认挂载只允许 worktree、附件和受控运行时目录
 - 不暴露 `~`、`~/.ssh` 等宿主关键目录
 
-当前实现还有一个重要前置条件：CLI runtime 健康检查会把 Docker Worker sandbox 一并纳入可用性判断。默认配置下，本地缺少 `eat/worker-base:latest` 时，Agent 会被标记为不可用，任务创建与执行链路都会被拦截。
+当前实现已把 Lead orchestration readiness 与 Worker execution readiness 拆开：默认配置下，本地缺少 `eat/worker-base:latest` 时，Lead candidate 仍可被选中，任务也仍可创建并进入澄清 / 规划；但 execution backend 会被标记为 unavailable，`PLAN_REVIEW` 阶段的批准执行会在物化 SubTask 之前被拦截。
 
 ### 预览沙箱
 
@@ -318,6 +318,7 @@ React 前端应用，包括：
 - `GET /api/agents`
 - `GET /api/agents/health`
 - `GET /api/system/health`
+- `GET /api/system/execution-backends`
 - `GET /api/system/docker`
 - `GET /api/system/sandbox-policy`
 - `GET /api/metrics/summary`

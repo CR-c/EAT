@@ -47,13 +47,24 @@ func buildSelectionCandidates(descriptors []agent.Descriptor, healthSnapshots ma
 		}
 
 		health := healthSnapshots[descriptor.Name]
+		roleAvailable := health.ExecutionAvailable
+		roleFailureReason := health.ExecutionFailureReason
+		if lead {
+			roleAvailable = health.OrchestrationAvailable
+			roleFailureReason = health.OrchestrationFailureReason
+		}
+		if roleFailureReason == nil {
+			roleFailureReason = health.FailureReason
+		}
 		result = append(result, map[string]any{
-			"agentName":     descriptor.Name,
-			"available":     health.Available,
-			"capabilities":  descriptor.Capabilities,
-			"failureReason": health.FailureReason,
-			"runtimeMode":   health.RuntimeMode,
-			"selectable":    health.Available && health.RuntimeMode != "STUB",
+			"agentName":              descriptor.Name,
+			"available":              roleAvailable,
+			"capabilities":           descriptor.Capabilities,
+			"executionAvailable":     health.ExecutionAvailable,
+			"failureReason":          roleFailureReason,
+			"orchestrationAvailable": health.OrchestrationAvailable,
+			"runtimeMode":            health.RuntimeMode,
+			"selectable":             roleAvailable && health.RuntimeMode != "STUB",
 		})
 	}
 

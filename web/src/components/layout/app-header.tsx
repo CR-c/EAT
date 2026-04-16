@@ -84,7 +84,7 @@ export function AppHeader() {
         ) : (
           <div className="min-w-0">
             <div className={cn("font-mono text-sm tracking-[0.2em]", theme.pageSub)}>
-              {(system.data?.docker.available ? t("header.localFirst") : t("header.systemOffline"))} {t("common.subtitleSlash")}
+              {(system.data?.status === "healthy" ? t("header.localFirst") : t("header.systemOffline"))} {t("common.subtitleSlash")}
             </div>
             <div className={cn("font-mono text-2xl font-black tracking-widest", theme.pageTitle)}>
               {location.pathname.startsWith("/settings")

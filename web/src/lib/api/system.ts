@@ -3,6 +3,7 @@ import type {
   AgentHealthResponse,
   AgentListResponse,
   DockerHealth,
+  ExecutionBackendsResponse,
   MetricsSummaryResponse,
   SandboxPolicy,
   SystemHealth,
@@ -14,6 +15,10 @@ export function getSystemHealth(signal?: AbortSignal) {
 
 export function getDockerHealth(signal?: AbortSignal) {
   return fetchJson<DockerHealth>("/api/system/docker", { signal })
+}
+
+export function getExecutionBackends(signal?: AbortSignal) {
+  return fetchJson<ExecutionBackendsResponse>("/api/system/execution-backends", { signal })
 }
 
 export function getSandboxPolicy(signal?: AbortSignal) {

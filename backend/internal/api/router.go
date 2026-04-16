@@ -37,6 +37,7 @@ func NewRouter(handler *Handler) http.Handler {
 
 		r.Route("/system", func(r chi.Router) {
 			r.Get("/health", handler.SystemHealth)
+			r.Get("/execution-backends", handler.ExecutionBackends)
 			r.Get("/docker", handler.DockerHealth)
 			r.Get("/sandbox-policy", handler.SandboxPolicy)
 		})

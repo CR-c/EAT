@@ -65,13 +65,17 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*Cre
 
 	healthSnapshots := s.agentService.GetHealth(ctx)
 	agentHealth := healthSnapshots[leadAgentType]
-	if !agentHealth.Available {
+	failureReason := agentHealth.OrchestrationFailureReason
+	if failureReason == nil {
+		failureReason = agentHealth.FailureReason
+	}
+	if !agentHealth.OrchestrationAvailable {
 		return nil, failure(
 			ErrorCodeLeadAgentUnhealthy,
-			"Lead agent is unhealthy and cannot be used for task creation.",
+			"Lead agent orchestration runtime is unavailable and cannot be used for task creation.",
 			map[string]any{
 				"leadAgentType": leadAgentType,
-				"failureReason": agentHealth.FailureReason,
+				"failureReason": failureReason,
 			},
 		)
 	}
