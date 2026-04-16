@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 
 	"eat/backend/internal/tokenusage"
+	"eat/backend/internal/workerbackend"
 )
 
 type Task struct {
@@ -60,6 +61,7 @@ type Session struct {
 	AgentType            string  `json:"agentType"`
 	SessionType          string  `json:"sessionType"`
 	SandboxType          string  `json:"sandboxType"`
+	BackendKind          string  `json:"backendKind"`
 	ContainerID          *string `json:"containerId"`
 	Status               string  `json:"status"`
 	PID                  *int64  `json:"pid"`
@@ -178,6 +180,27 @@ type GateResult struct {
 type Repository struct {
 	db *sql.DB
 	tx *sql.Tx
+}
+
+func decorateSessionRecord(session Session) Session {
+	session.BackendKind = workerbackend.KindFromSessionSandboxType(session.SandboxType)
+	if session.BackendKind == "" {
+		session.BackendKind = workerbackend.NormalizeKind(session.SandboxType)
+	}
+	return session
+}
+
+func decorateSessions(records []Session) []Session {
+	decorated := make([]Session, 0, len(records))
+	for _, record := range records {
+		decorated = append(decorated, decorateSessionRecord(record))
+	}
+	return decorated
+}
+
+func decoratedSessionPointer(session Session) *Session {
+	decorated := decorateSessionRecord(session)
+	return &decorated
 }
 
 type UpdateTaskInput struct {

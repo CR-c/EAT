@@ -38,6 +38,7 @@ func (s *Service) publishSession(taskID, eventName string, session *Session) {
 	s.publish(taskID, eventName, map[string]any{
 		"agentType":            session.AgentType,
 		"attachments":          nil,
+		"backendKind":          session.BackendKind,
 		"containerId":          session.ContainerID,
 		"createdAt":            session.CreatedAt,
 		"endedAt":              session.EndedAt,

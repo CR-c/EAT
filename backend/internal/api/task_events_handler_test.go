@@ -57,6 +57,9 @@ func TestStartClarificationAndPauseEndpointsPublishRealtimeEvents(t *testing.T) 
 	if sessionStartedPayload["taskId"] != "task-events" || sessionStartedPayload["sessionType"] != "LEAD" || sessionStartedPayload["status"] != "RUNNING" {
 		t.Fatalf("unexpected session started payload: %#v", sessionStartedPayload)
 	}
+	if sessionStartedPayload["backendKind"] != "host" {
+		t.Fatalf("expected lead session backendKind=host: %#v", sessionStartedPayload)
+	}
 
 	sessionOutputEvent := mustReadEvent(t, events)
 	if sessionOutputEvent.Name != "session:output" {
@@ -210,6 +213,9 @@ func TestApprovePlanEndpointPublishesSubTaskAssignmentEvents(t *testing.T) {
 	sessionStartedPayload := decodeEventPayload(t, sessionStartedEvent)
 	if sessionStartedPayload["taskId"] != "task-approve-events" || sessionStartedPayload["sessionType"] != "WORKER" || sessionStartedPayload["status"] != "PENDING" {
 		t.Fatalf("unexpected session started payload: %#v", sessionStartedPayload)
+	}
+	if sessionStartedPayload["backendKind"] != "docker" {
+		t.Fatalf("expected worker session backendKind=docker: %#v", sessionStartedPayload)
 	}
 	if sessionStartedPayload["subTaskId"] == nil {
 		t.Fatalf("expected worker session payload to include subTaskId: %#v", sessionStartedPayload)

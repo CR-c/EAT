@@ -49,7 +49,7 @@ func (r *Repository) ListSessionsByTaskID(ctx context.Context, taskID string) ([
 		); err != nil {
 			return nil, err
 		}
-		items = append(items, item)
+		items = append(items, decorateSessionRecord(item))
 	}
 	return items, rows.Err()
 }
@@ -94,7 +94,7 @@ func (r *Repository) ListSessionsBySubTaskID(ctx context.Context, subTaskID stri
 		); err != nil {
 			return nil, err
 		}
-		items = append(items, item)
+		items = append(items, decorateSessionRecord(item))
 	}
 	return items, rows.Err()
 }
@@ -172,7 +172,7 @@ func (r *Repository) CreateSession(ctx context.Context, input CreateSessionInput
 		return nil, err
 	}
 
-	return record, nil
+	return decoratedSessionPointer(*record), nil
 }
 
 func (r *Repository) FindSessionByID(ctx context.Context, sessionID string) (*Session, error) {
@@ -212,7 +212,7 @@ func (r *Repository) FindSessionByID(ctx context.Context, sessionID string) (*Se
 		return nil, err
 	}
 
-	return &session, nil
+	return decoratedSessionPointer(session), nil
 }
 
 func (r *Repository) UpdateSession(ctx context.Context, sessionID string, input UpdateSessionInput) (*Session, error) {
@@ -306,7 +306,7 @@ func (r *Repository) UpdateSession(ctx context.Context, sessionID string, input 
 		return nil, err
 	}
 
-	return &nextSession, nil
+	return decoratedSessionPointer(nextSession), nil
 }
 
 func (r *Repository) AppendSessionOutput(ctx context.Context, sessionID string, chunk string) error {

@@ -92,6 +92,7 @@ export interface TaskSession {
   agentType: string
   sessionType: string
   sandboxType: string
+  backendKind?: string
   containerId?: string | null
   status: string
   pid?: number | null

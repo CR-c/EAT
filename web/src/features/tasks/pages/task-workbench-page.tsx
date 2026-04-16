@@ -1210,6 +1210,7 @@ function patchSession(
     subTaskId: asNullableString(payload.subTaskId),
     agentType: asString(payload.agentType) ?? "",
     sessionType: asString(payload.sessionType) ?? "WORKER",
+    backendKind: asString(payload.backendKind) ?? normalizeBackendKind(asString(payload.sandboxType)),
     sandboxType: asString(payload.sandboxType) ?? "DOCKER",
     containerId: asNullableString(payload.containerId),
     status: asString(payload.status) ?? "PENDING",
@@ -1248,6 +1249,7 @@ function patchSession(
     subTaskId: asNullableString(payload.subTaskId) ?? baseline.subTaskId,
     agentType: asString(payload.agentType) ?? baseline.agentType,
     sessionType: asString(payload.sessionType) ?? baseline.sessionType,
+    backendKind: asString(payload.backendKind) ?? baseline.backendKind ?? normalizeBackendKind(asString(payload.sandboxType) ?? baseline.sandboxType),
     sandboxType: asString(payload.sandboxType) ?? baseline.sandboxType,
     containerId: asNullableString(payload.containerId) ?? baseline.containerId,
     status: asString(payload.status) ?? baseline.status,
@@ -1261,6 +1263,11 @@ function patchSession(
     outputBufferMaxBytes,
     updatedAt: now,
   }
+}
+
+function normalizeBackendKind(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase()
+  return normalized || undefined
 }
 
 function summarizeRuntime(nodes: TaskRuntime["nodes"]): TaskRuntime["summary"] {
