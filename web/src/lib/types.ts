@@ -174,6 +174,7 @@ export interface TaskRuntimeNode {
   subTaskId?: string | null
   title: string
   agentType: string
+  backendKind?: string | null
   status: string
   sessionId?: string | null
   startedAt?: string | null

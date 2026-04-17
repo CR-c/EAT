@@ -142,6 +142,13 @@ func pointerIntValue(session *Session, selector func(*Session) *int64) any {
 	return *value
 }
 
+func sessionBackendKindValue(session *Session) any {
+	if session == nil || strings.TrimSpace(session.BackendKind) == "" {
+		return nil
+	}
+	return session.BackendKind
+}
+
 func failure(code, message string, details map[string]any) *Error {
 	return &Error{Code: code, Message: message, Details: details}
 }

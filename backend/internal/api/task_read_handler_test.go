@@ -149,6 +149,13 @@ func TestTaskReadEndpointsReturnPersistedTaskData(t *testing.T) {
 	if len(taskPayload["subTasks"].([]any)) != 1 {
 		t.Fatalf("unexpected subtasks payload: %#v", taskPayload["subTasks"])
 	}
+	sessionsPayload := taskPayload["sessions"].([]any)
+	if len(sessionsPayload) != 2 {
+		t.Fatalf("unexpected sessions payload: %#v", taskPayload["sessions"])
+	}
+	if sessionsPayload[0].(map[string]any)["backendKind"] != "docker" {
+		t.Fatalf("expected session backendKind=docker: %#v", sessionsPayload[0])
+	}
 	detailTask := taskPayload["task"].(map[string]any)
 	taskTokens := detailTask["tokens"].(map[string]any)
 	if taskTokens["codex-cli"] != float64(2000) {
@@ -159,5 +166,28 @@ func TestTaskReadEndpointsReturnPersistedTaskData(t *testing.T) {
 	}
 	if detailTask["planOrigin"] != "AUTO_GENERATED" {
 		t.Fatalf("unexpected task detail origin: %#v", detailTask)
+	}
+	runtimePayload := taskPayload["runtime"].(map[string]any)
+	nodesPayload := runtimePayload["nodes"].([]any)
+	var foundWorkerRuntimeNode bool
+	for _, rawNode := range nodesPayload {
+		node := rawNode.(map[string]any)
+		if node["nodeType"] == "SUBTASK" {
+			foundWorkerRuntimeNode = true
+			if node["backendKind"] != "docker" {
+				t.Fatalf("expected runtime node backendKind=docker: %#v", node)
+			}
+		}
+	}
+	if !foundWorkerRuntimeNode {
+		t.Fatalf("expected at least one worker runtime node: %#v", nodesPayload)
+	}
+	teamPayload := taskPayload["team"].(map[string]any)
+	membersPayload := teamPayload["members"].([]any)
+	if len(membersPayload) != 1 {
+		t.Fatalf("unexpected team members payload: %#v", membersPayload)
+	}
+	if membersPayload[0].(map[string]any)["latestBackendKind"] != "docker" {
+		t.Fatalf("expected team latestBackendKind=docker: %#v", membersPayload[0])
 	}
 }

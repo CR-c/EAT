@@ -43,7 +43,10 @@ func (s *Service) buildTaskTeamView(taskRecord *Task, sessions []Session, subTas
 			"branchSuffix":     subTask.BranchSuffix,
 			"displayName":      firstNonEmpty(derefString(subTask.DisplayName), subTask.Title),
 			"executionOrder":   executionOrder,
-			"latestSessionId":  pointerStringValue(latestWorkerSession, func(value *Session) *string { return &value.ID }),
+			"latestBackendKind": pointerStringValue(latestWorkerSession, func(value *Session) *string {
+				return stringPointerValue(value.BackendKind)
+			}),
+			"latestSessionId": pointerStringValue(latestWorkerSession, func(value *Session) *string { return &value.ID }),
 			"latestSessionStatus": pointerStringValue(latestWorkerSession, func(value *Session) *string {
 				return stringPointerValue(value.Status)
 			}),
@@ -67,6 +70,9 @@ func (s *Service) buildTaskTeamView(taskRecord *Task, sessions []Session, subTas
 	return map[string]any{
 		"lead": map[string]any{
 			"agentType": taskRecord.LeadAgentType,
+			"backendKind": pointerStringValue(latestLeadSession, func(value *Session) *string {
+				return stringPointerValue(value.BackendKind)
+			}),
 			"lastError": taskRecord.LastError,
 			"sessionId": leadSessionID,
 			"status":    leadStatus,
