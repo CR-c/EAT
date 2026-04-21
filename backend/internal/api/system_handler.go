@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"runtime"
 	"time"
+
+	"eat/backend/internal/workerbackend"
 )
 
 func (h *Handler) SystemHealth(w http.ResponseWriter, r *http.Request) {
@@ -45,5 +47,12 @@ func (h *Handler) ExecutionBackends(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) SandboxPolicy(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, h.sandbox.Policy())
+	policy := h.sandbox.Policy()
+	if h.agentService != nil {
+		if sandboxType := workerbackend.SessionSandboxTypeForKind(h.agentService.DefaultExecutionBackendKind()); sandboxType != "" {
+			policy.WorkerDefault = sandboxType
+			policy.PreviewDefault = sandboxType
+		}
+	}
+	respondJSON(w, http.StatusOK, policy)
 }

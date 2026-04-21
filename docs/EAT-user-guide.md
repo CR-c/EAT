@@ -70,8 +70,10 @@
 - 已安装 Go、Node.js、pnpm、Git、Docker
 - 已安装并登录默认 Lead CLI：`codex-cli`
 - 已构建本地 Worker 镜像：`npm run build:worker-image`
+- 若要启用低隔离 host backend，需显式设置环境变量：`EAT_ENABLE_TRUSTED_HOST_BACKEND=1`
 
 当前默认运行时已经拆分了 Lead Runtime 与 Worker Backend readiness：如果本地缺少 `eat/worker-base:latest`，你仍然可以创建任务并进入澄清 / 规划，但批准执行前必须先把 Worker Backend 配好。
+如果显式开启 `EAT_ENABLE_TRUSTED_HOST_BACKEND=1`，系统会暴露 `HOST` backend 作为 reduced-isolation 降级路径；它只适用于受信任本机开发环境，不能视为与 Docker 同级的隔离方案。
 
 ### 1. 启动服务器
 

@@ -85,13 +85,20 @@ export function SettingsPage() {
             <div className="md:col-span-2">
               <SettingBox icon={Palette} label={t("settings.executionBackends")} theme={theme}>
                 <div className="space-y-3">
-                  {(resource.data?.executionBackends.backends ?? []).map((backend) => (
-                    <div key={backend.kind} className={cn("rounded-sm border p-3 font-mono text-xs", backend.available ? theme.pathBg : "border-red-500/40 bg-red-900/20 text-red-300")}>
+                  {(resource.data?.executionBackends.backends ?? []).map((backend) => {
+                    const isReducedIsolation = backend.trustLevel === "REDUCED_ISOLATION"
+                    return (
+                    <div key={backend.kind} className={cn("rounded-sm border p-3 font-mono text-xs", backend.available ? (isReducedIsolation ? "border-amber-500/40 bg-amber-900/20 text-amber-200" : theme.pathBg) : "border-red-500/40 bg-red-900/20 text-red-300")}>
                       <div className={cn("flex flex-wrap items-center gap-2 text-sm font-bold", theme.cardTitle)}>
                         <span>{backend.kind}</span>
                         {backend.default ? (
                           <span className={cn("rounded-sm border px-2 py-0.5 text-[10px]", theme.tabActive)}>
                             {t("settings.backendDefault")}
+                          </span>
+                        ) : null}
+                        {isReducedIsolation ? (
+                          <span className="rounded-sm border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200">
+                            REDUCED ISOLATION
                           </span>
                         ) : null}
                       </div>
@@ -101,13 +108,19 @@ export function SettingsPage() {
                       <div className={cn("mt-2", theme.cardSub)}>
                         {t("settings.trustLevel")}: {backend.trustLevel}
                       </div>
+                      {isReducedIsolation ? (
+                        <div className="mt-2 text-[11px] text-amber-200">
+                          Host backend 仅用于受信任本机开发环境；它不会提供与 Docker 同级的隔离能力。
+                        </div>
+                      ) : null}
                       {backend.dependencies?.length ? (
                         <div className={cn("mt-1", theme.cardSub)}>
                           {t("settings.dependencies")}: {backend.dependencies.join(", ")}
                         </div>
                       ) : null}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </SettingBox>
             </div>

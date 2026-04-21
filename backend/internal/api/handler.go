@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"eat/backend/internal/agent"
@@ -19,6 +20,7 @@ import (
 	"eat/backend/internal/sandbox"
 	"eat/backend/internal/store"
 	"eat/backend/internal/task"
+	hostbackend "eat/backend/internal/workerbackend/host"
 )
 
 type Dependencies struct {
@@ -55,6 +57,13 @@ func NewHandler(deps Dependencies) *Handler {
 	agentService := deps.AgentService
 	if agentService == nil {
 		agentService = agent.NewService(sandboxManager)
+	}
+	if hostbackend.EnabledFromEnv() {
+		makeDefault := strings.TrimSpace(agentService.DefaultExecutionBackendKind()) == ""
+		if sandboxManager != nil && !sandboxManager.DockerHealth(context.Background()).Available {
+			makeDefault = true
+		}
+		agentService.RegisterExecutionBackend(hostbackend.New(true), makeDefault)
 	}
 	uploadRootPath := filepath.Join(".", "uploads")
 	if deps.UploadRootPath != "" {

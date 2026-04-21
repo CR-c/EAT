@@ -183,8 +183,8 @@ func (s *Service) ExecutionBackends(ctx context.Context) []workerbackend.Status 
 		if strings.TrimSpace(status.Kind) == "" {
 			status.Kind = kind
 		}
-		if strings.TrimSpace(s.defaultBackend) != "" && status.Kind == s.defaultBackend {
-			status.Default = true
+		if strings.TrimSpace(s.defaultBackend) != "" {
+			status.Default = status.Kind == s.defaultBackend
 		}
 		result = append(result, status)
 	}
@@ -256,7 +256,7 @@ func (s *Service) GetHealth(context.Context) map[string]HealthSnapshot {
 				continue
 			}
 		}
-		result[definition.Name] = definition.Health(s.sandbox)
+		result[definition.Name] = definition.Health(s)
 	}
 	return result
 }
@@ -295,7 +295,7 @@ type builtInDefinition struct {
 	Name         string
 	RuntimeMode  string
 	Capabilities CapabilitySet
-	Health       func(*sandbox.Manager) HealthSnapshot
+	Health       func(*Service) HealthSnapshot
 	Spawn        func(ctx context.Context, backend workerbackend.Backend, config SpawnConfig) (workerbackend.RuntimeSession, error)
 }
 
@@ -881,7 +881,7 @@ func mustUserHomeDir() string {
 	return home
 }
 
-func claudeHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
+func claudeHealth(service *Service) HealthSnapshot {
 	snapshot := HealthSnapshot{
 		Available:              true,
 		OrchestrationAvailable: true,
@@ -915,18 +915,7 @@ func claudeHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
 		}
 	}
 
-	if sandboxManager != nil {
-		dockerHealth := sandboxManager.DockerHealth(context.Background())
-		if dockerHealth.Available {
-			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "worker-sandbox", Status: "PASS", Message: "Docker worker sandbox is available for claude-cli sessions."})
-		} else {
-			snapshot.ExecutionAvailable = false
-			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "worker-sandbox", Status: "FAIL", Message: dockerHealth.Reason})
-			if snapshot.ExecutionFailureReason == nil {
-				snapshot.ExecutionFailureReason = &FailureReason{Code: "DOCKER_UNAVAILABLE", Message: dockerHealth.Reason}
-			}
-		}
-	}
+	applyExecutionBackendReadiness(service, "claude-cli", &snapshot)
 
 	snapshot.Available = snapshot.OrchestrationAvailable && snapshot.ExecutionAvailable
 	if snapshot.FailureReason == nil {
@@ -935,7 +924,7 @@ func claudeHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
 	return snapshot
 }
 
-func geminiHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
+func geminiHealth(service *Service) HealthSnapshot {
 	snapshot := HealthSnapshot{
 		Available:              true,
 		OrchestrationAvailable: true,
@@ -990,18 +979,7 @@ func geminiHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
 		}
 	}
 
-	if sandboxManager != nil {
-		dockerHealth := sandboxManager.DockerHealth(context.Background())
-		if dockerHealth.Available {
-			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "worker-sandbox", Status: "PASS", Message: "Docker worker sandbox is available for gemini-cli sessions."})
-		} else {
-			snapshot.ExecutionAvailable = false
-			snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "worker-sandbox", Status: "FAIL", Message: dockerHealth.Reason})
-			if snapshot.ExecutionFailureReason == nil {
-				snapshot.ExecutionFailureReason = &FailureReason{Code: "DOCKER_UNAVAILABLE", Message: dockerHealth.Reason}
-			}
-		}
-	}
+	applyExecutionBackendReadiness(service, "gemini-cli", &snapshot)
 
 	snapshot.Available = snapshot.OrchestrationAvailable && snapshot.ExecutionAvailable
 	if snapshot.FailureReason == nil {
@@ -1010,7 +988,7 @@ func geminiHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
 	return snapshot
 }
 
-func codexHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
+func codexHealth(service *Service) HealthSnapshot {
 	snapshot := HealthSnapshot{
 		Available:              true,
 		OrchestrationAvailable: true,
@@ -1100,29 +1078,7 @@ func codexHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
 		}
 	}
 
-	if sandboxManager != nil {
-		dockerHealth := sandboxManager.DockerHealth(context.Background())
-		if dockerHealth.Available {
-			snapshot.Checks = append(snapshot.Checks, HealthCheck{
-				Name:    "worker-sandbox",
-				Status:  "PASS",
-				Message: "Docker worker sandbox is available for codex-cli sessions.",
-			})
-		} else {
-			snapshot.ExecutionAvailable = false
-			snapshot.Checks = append(snapshot.Checks, HealthCheck{
-				Name:    "worker-sandbox",
-				Status:  "FAIL",
-				Message: dockerHealth.Reason,
-			})
-			if snapshot.ExecutionFailureReason == nil {
-				snapshot.ExecutionFailureReason = &FailureReason{
-					Code:    "DOCKER_UNAVAILABLE",
-					Message: dockerHealth.Reason,
-				}
-			}
-		}
-	}
+	applyExecutionBackendReadiness(service, "codex-cli", &snapshot)
 
 	snapshot.Available = snapshot.OrchestrationAvailable && snapshot.ExecutionAvailable
 	if snapshot.FailureReason == nil {
@@ -1131,7 +1087,7 @@ func codexHealth(sandboxManager *sandbox.Manager) HealthSnapshot {
 	return snapshot
 }
 
-func cliHealth(adapterName, binary string, sandboxManager *sandbox.Manager) HealthSnapshot {
+func cliHealth(adapterName, binary string, service *Service) HealthSnapshot {
 	snapshot := HealthSnapshot{
 		Available:              true,
 		OrchestrationAvailable: true,
@@ -1187,29 +1143,7 @@ func cliHealth(adapterName, binary string, sandboxManager *sandbox.Manager) Heal
 		}
 	}
 
-	if sandboxManager != nil {
-		dockerHealth := sandboxManager.DockerHealth(context.Background())
-		if dockerHealth.Available {
-			snapshot.Checks = append(snapshot.Checks, HealthCheck{
-				Name:    "worker-sandbox",
-				Status:  "PASS",
-				Message: fmt.Sprintf("Docker worker sandbox is available for %s sessions.", adapterName),
-			})
-		} else {
-			snapshot.ExecutionAvailable = false
-			snapshot.Checks = append(snapshot.Checks, HealthCheck{
-				Name:    "worker-sandbox",
-				Status:  "FAIL",
-				Message: dockerHealth.Reason,
-			})
-			if snapshot.ExecutionFailureReason == nil {
-				snapshot.ExecutionFailureReason = &FailureReason{
-					Code:    "DOCKER_UNAVAILABLE",
-					Message: dockerHealth.Reason,
-				}
-			}
-		}
-	}
+	applyExecutionBackendReadiness(service, adapterName, &snapshot)
 
 	snapshot.Available = snapshot.OrchestrationAvailable && snapshot.ExecutionAvailable
 	if snapshot.FailureReason == nil {
@@ -1217,6 +1151,56 @@ func cliHealth(adapterName, binary string, sandboxManager *sandbox.Manager) Heal
 	}
 
 	return snapshot
+}
+
+func applyExecutionBackendReadiness(service *Service, adapterName string, snapshot *HealthSnapshot) {
+	if snapshot == nil {
+		return
+	}
+	statuses := []workerbackend.Status(nil)
+	if service != nil {
+		statuses = service.ExecutionBackends(context.Background())
+	}
+	if len(statuses) == 0 {
+		reason := &FailureReason{Code: "EXECUTION_BACKEND_UNAVAILABLE", Message: "No execution backend is registered."}
+		snapshot.ExecutionAvailable = false
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "worker-backend", Status: "FAIL", Message: reason.Message})
+		if snapshot.ExecutionFailureReason == nil {
+			snapshot.ExecutionFailureReason = reason
+		}
+		return
+	}
+	availableKinds := make([]string, 0, len(statuses))
+	preferred := statuses[0]
+	for _, status := range statuses {
+		if status.Default {
+			preferred = status
+		}
+		if status.Available {
+			availableKinds = append(availableKinds, status.Kind)
+		}
+	}
+	if len(availableKinds) > 0 {
+		snapshot.Checks = append(snapshot.Checks, HealthCheck{
+			Name:    "worker-backend",
+			Status:  "PASS",
+			Message: fmt.Sprintf("Execution backend(s) available for %s: %s.", adapterName, strings.Join(availableKinds, ", ")),
+		})
+		return
+	}
+	message := strings.TrimSpace(preferred.Reason)
+	if message == "" {
+		message = "No registered execution backend is currently available."
+	}
+	code := "EXECUTION_BACKEND_UNAVAILABLE"
+	if workerbackend.NormalizeKind(preferred.Kind) == workerbackend.KindDocker {
+		code = "DOCKER_UNAVAILABLE"
+	}
+	snapshot.ExecutionAvailable = false
+	snapshot.Checks = append(snapshot.Checks, HealthCheck{Name: "worker-backend", Status: "FAIL", Message: message})
+	if snapshot.ExecutionFailureReason == nil {
+		snapshot.ExecutionFailureReason = &FailureReason{Code: code, Message: message}
+	}
 }
 
 func primaryFailureReason(reasons ...*FailureReason) *FailureReason {

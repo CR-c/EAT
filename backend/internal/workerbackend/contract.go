@@ -5,7 +5,10 @@ import (
 	"strings"
 )
 
-const KindDocker = "docker"
+const (
+	KindDocker = "docker"
+	KindHost   = "host"
+)
 
 // RuntimeMetadata captures backend-specific runtime details without leaking a
 // concrete sandbox/container implementation to orchestrator consumers.
@@ -69,6 +72,8 @@ func SessionSandboxTypeForKind(kind string) string {
 	switch normalized {
 	case KindDocker:
 		return "DOCKER"
+	case KindHost:
+		return "HOST"
 	default:
 		return strings.ToUpper(normalized)
 	}
@@ -81,6 +86,8 @@ func KindFromSessionSandboxType(value string) string {
 		return ""
 	case "docker":
 		return KindDocker
+	case "host":
+		return KindHost
 	default:
 		return normalized
 	}

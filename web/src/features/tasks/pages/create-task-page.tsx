@@ -340,6 +340,11 @@ export function CreateTaskPage() {
               当前仍可创建并进入澄清 / 规划；批准执行前需先配置可用的 Worker Backend。
             </div>
           ) : null}
+          {selectedWorkerBackend?.trustLevel === "REDUCED_ISOLATION" ? (
+            <div className="mt-3 rounded-sm border border-amber-500/40 bg-amber-900/20 p-3 font-mono text-xs text-amber-200">
+              当前默认 Worker Backend 为 host / reduced isolation，仅适用于受信任本机开发环境；不要把它当作 Docker 同级隔离。
+            </div>
+          ) : null}
         </section>
 
         <section className={cn("relative rounded-sm border p-5 backdrop-blur-md", theme.cardBg)}>

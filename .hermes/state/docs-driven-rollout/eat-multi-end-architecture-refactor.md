@@ -1,13 +1,13 @@
 # Rollout Run State
 
 项目：EAT 多端控制面 / 可插拔执行后端结构重构
-当前批次：Batch 13 - task 级 backend/profile 只读展示与 operator 可见性
+当前批次：Batch 14 - TrustedHost backend 最小闭环
 执行状态：
 - status: COMPLETED
-- run_started_at: 2026-04-21T12:21:00+08:00
-- completed_at: 2026-04-21T12:40:00+08:00
-- 本轮目标: 把 task 级 `workerBackendKind` / `executionProfile` 从“仅持久化”推进到“operator 可见”，在 runtime/team payload 与 workbench UI 里补齐只读展示
-- 本轮明确未做: TrustedHost backend、桌面壳相关代码、`executionProfile` 驱动 runtime contract、大范围 schema 命名迁移、显式 backend/profile 编辑 UI
+- run_started_at: 2026-04-21T12:41:00+08:00
+- completed_at: 2026-04-21T13:10:00+08:00
+- 本轮目标: 落地最小可用的 `HOST` execution backend：显式开关、默认关闭、reduced-isolation 标记、后端注册、审批可用性接线、系统页/创建页警示与文档同步
+- 本轮明确未做: `executionProfile` 驱动 runtime contract、桌面壳相关代码、大范围 schema 命名迁移、host backend 的额外策略限制（更细粒度文件/网络约束）
 
 已完成批次：
 - Batch 1 - Phase1/2/3 最小闭环（Lead/Docker 解耦 + execution backend API + 创建页/系统页语义改造）
@@ -23,9 +23,10 @@
 - Batch 11 - 评估 schema 级 `sandboxType -> backendKind` 迁移是否值得推进，并收口上层表达
 - Batch 12 - task 级 worker backend / execution profile 持久化与执行接线
 - Batch 13 - task 级 backend/profile 只读展示与 operator 可见性
+- Batch 14 - TrustedHost backend 最小闭环
 
 下一批次：
-- Batch 14 - 决定 `executionProfile` 是否进入 runtime contract（network/mounts/ports），或转入 TrustedHost backend 主线
+- Batch 15 - 决定 `executionProfile` 是否进入 runtime contract（network/mounts/ports），或进入桌面壳 / platform 适配主线
 
 真相源文档：
 - /home/code/EAT/AGENTS.md
@@ -54,33 +55,40 @@
 - `ApprovePlan` 与子任务释放/重派创建 worker session 时，优先按 task 级 backend 决定 `sandboxType`；不再一律跟随系统 default backend。
 - 若 task 绑定的 backend 未注册或不可用，`PLAN_REVIEW` 批准执行会返回 `EXECUTION_BACKEND_UNAVAILABLE`，并在错误详情中暴露 task 级 backend 状态。
 - `GetTaskRuntime` / `GetTaskTeam` 已补 task 级 `workerBackendKind` / `executionProfile` 只读字段，workbench 页会显式展示 task 级 backend/profile 与节点 session backend。
+- 当显式设置 `EAT_ENABLE_TRUSTED_HOST_BACKEND=1` 时：
+  - 系统注册 `host` backend，`trustLevel=REDUCED_ISOLATION`
+  - Docker 不可用时，`host` 会成为 default execution backend
+  - `SandboxPolicy` 会跟随当前 default backend 暴露 `HOST` / `DOCKER`
+  - agent execution readiness 改为按已注册 execution backends 判断，不再把 Docker 当成唯一执行后端
 
 本批改动范围：
-- backend/internal/task/{task_runtime_view.go,task_team_view.go}
-- backend/internal/api/task_contract_handler_test.go
-- web/src/features/tasks/pages/task-workbench-page.tsx
-- web/src/lib/types.ts
+- backend/internal/workerbackend/{contract.go,host/backend.go}
+- backend/internal/agent/service.go
+- backend/internal/api/{handler.go,system_handler.go,router_test.go}
+- web/src/features/{system/pages/settings-page.tsx,tasks/pages/create-task-page.tsx}
+- docs/{EAT-user-guide.md,PRD.md}
+- README.md
 
 本批验证：
-- Ran: `cd /home/code/EAT/backend && rtk go test ./internal/task ./internal/api ./internal/orchestrator`
-- Result: PASS (`Go test: 62 passed in 3 packages`)
+- Ran: `cd /home/code/EAT/backend && rtk go test ./internal/api ./internal/agent ./internal/task ./internal/orchestrator`
+- Result: PASS (`Go test: 67 passed in 4 packages`)
 - Ran: `cd /home/code/EAT/web && rtk pnpm lint && rtk pnpm build`
 - Result: PASS
 
 本批提交：
 - commit: 当前批次 HEAD（见 `git log -1 --oneline`）
-- message: 补齐任务级执行配置的只读展示
+- message: 引入受信任主机执行后端
 
 待恢复输入：
-- 关键文件：`backend/internal/task/task_runtime_view.go`, `backend/internal/task/task_team_view.go`, `web/src/features/tasks/pages/task-workbench-page.tsx`, `web/src/lib/types.ts`
+- 关键文件：`backend/internal/workerbackend/host/backend.go`, `backend/internal/agent/service.go`, `backend/internal/api/system_handler.go`, `web/src/features/system/pages/settings-page.tsx`
 - 关键目标：
   - 决定 `executionProfile` 是否进入 runtime contract（network/mounts/ports）
-  - 决定是否进入 TrustedHost backend 主线
-  - 若继续提升 operator 可见性，再评估是否把 task 级 backend/profile 带入列表卡片或更多 detail 面板
+  - 决定 host backend 是否需要更严格的工作目录/挂载/网络限制
+  - 若继续做多端控制面，则进入 desktop/platform 适配主线
 - 关键风险：
   - `executionProfile` 目前只有持久化与展示语义，没有执行语义
-  - 当前前端没有显式 backend/profile 配置 UI，operator 仍仅会隐式使用当前 default backend 创建任务
-  - schema 底层仍保留历史 `sandboxType` 命名，未来若引入非容器 backend，命名负担会继续上升
+  - host backend 当前是 reduced-isolation 的最小实现，主要依赖 operator 自觉与受信任本机环境
+  - schema 底层仍保留历史 `sandboxType` 命名，未来若引入更多 backend，命名负担会继续上升
 
 blocker：
 - NONE
