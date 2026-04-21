@@ -1,13 +1,13 @@
 # Rollout Run State
 
 项目：EAT 多端控制面 / 可插拔执行后端结构重构
-当前批次：Batch 18 - 平台适配层与桌面壳 bootstrap 文档
+当前批次：Batch 19 - preview 旧 Docker 专用实现清理
 执行状态：
 - status: COMPLETED
-- run_started_at: 2026-04-21T14:01:00+08:00
-- completed_at: 2026-04-21T14:15:00+08:00
-- 本轮目标: 为未来桌面壳收口最小平台适配层，避免前端默认假设纯浏览器同源环境；同时补一份 desktop shell bootstrap 文档
-- 本轮明确未做: 实际 Tauri/Electron 工程、桌面壳启动器、executionProfile 更细粒度 repo/worktree mounts 策略
+- run_started_at: 2026-04-21T14:16:00+08:00
+- completed_at: 2026-04-21T14:25:00+08:00
+- 本轮目标: 清理 preview service 中已经失效的旧 Docker 专用 runner/runtime，实现上统一只保留 `BackendRunner -> workerbackend.Backend` 这条主路径
+- 本轮明确未做: preview product 语义改造、executionProfile 更细粒度 repo/worktree mounts 策略、桌面壳实际工程落地
 
 已完成批次：
 - Batch 1 - Phase1/2/3 最小闭环（Lead/Docker 解耦 + execution backend API + 创建页/系统页语义改造）
@@ -28,9 +28,10 @@
 - Batch 16 - executionProfile 最小端口暴露策略
 - Batch 17 - 附件只读挂载策略
 - Batch 18 - 平台适配层与桌面壳 bootstrap 文档
+- Batch 19 - preview 旧 Docker 专用实现清理
 
 下一批次：
-- Batch 19 - 决定 executionProfile 是否继续扩到更细粒度 repo/worktree mounts 策略，或真正落地桌面壳工程骨架
+- Batch 20 - 决定 executionProfile 是否继续扩到更细粒度 repo/worktree mounts 策略，或真正落地桌面壳工程骨架
 
 真相源文档：
 - /home/code/EAT/AGENTS.md
@@ -81,29 +82,27 @@
   - 统一解析 API baseURL
   - 允许未来桌面壳通过 `window.__EAT_PLATFORM__` 注入 `apiBaseUrl` / `shell`
   - `main.tsx` 会把平台信息写入 `document.documentElement.dataset`
+- preview runtime 当前只保留 `BackendRunner -> workerbackend.Backend` 主路径；历史 `DockerRunner` / `dockerRuntimeSession` 已删除，避免 preview 与 worker runtime 再次双轨分叉
 
 本批改动范围：
-- web/src/lib/{platform.ts,api/client.ts}
-- web/src/main.tsx
-- docs/plans/2026-04-21-desktop-shell-bootstrap.md
-- README.md
+- backend/internal/preview/service.go
 
 本批验证：
-- Ran: `cd /home/code/EAT/web && rtk pnpm lint && rtk pnpm build`
-- Result: PASS
+- Ran: `cd /home/code/EAT/backend && gofmt -w internal/preview/service.go && rtk go test ./internal/preview ./internal/orchestrator`
+- Result: PASS (`Go test: 7 passed in 2 packages`)
 
 本批提交：
 - commit: 当前批次 HEAD（见 `git log -1 --oneline`）
-- message: 预留桌面壳的平台适配层
+- message: 清理预览链路的旧 Docker 残留
 
 待恢复输入：
-- 关键文件：`web/src/lib/platform.ts`, `web/src/lib/api/client.ts`, `docs/plans/2026-04-21-desktop-shell-bootstrap.md`
+- 关键文件：`backend/internal/preview/service.go`, `backend/internal/agent/service.go`, `docs/plans/2026-04-21-desktop-shell-bootstrap.md`
 - 关键目标：
   - 决定 executionProfile 是否继续扩到更细粒度 repo/worktree mounts 策略
   - 或真正落地桌面壳工程骨架（Tauri/Electron）
   - 若继续加强 host backend，则补更严格的工作目录/挂载/网络限制
 - 关键风险：
-  - 当前平台层只解决 baseURL / shell 注入，不包含桌面宿主启动器
+  - 当前 preview 已统一走 BackendRunner，但还没有单独的桌面宿主 preview 语义
   - 当前 executionProfile 已覆盖网络、端口、附件只读挂载，但仍未进入 repo/worktree 的更细粒度 mount policy
   - schema 底层仍保留历史 `sandboxType` 命名，未来若引入更多 backend，命名负担会继续上升
 

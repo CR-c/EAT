@@ -1,12 +1,9 @@
 package preview
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -811,83 +808,6 @@ func (r *BackendRunner) Start(ctx context.Context, input RuntimeInput) (RuntimeS
 			ContainerPort: input.Port,
 		}},
 	})
-}
-
-type DockerRunner struct {
-	Image string
-}
-
-func (r *DockerRunner) Start(ctx context.Context, input RuntimeInput) (RuntimeSession, error) {
-	manager := sandbox.NewManager()
-	image := strings.TrimSpace(r.Image)
-	if image == "" {
-		image = defaultPreviewImage
-	}
-	manager.WorkerImage = image
-	return (&BackendRunner{Backend: dockerbackend.New(manager)}).Start(ctx, input)
-}
-
-type dockerRuntimeSession struct {
-	mu            sync.Mutex
-	cancel        context.CancelFunc
-	containerName string
-	onExit        []func(int)
-	onOutput      []func(string)
-}
-
-func (s *dockerRuntimeSession) OnExit(callback func(int)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.onExit = append(s.onExit, callback)
-}
-
-func (s *dockerRuntimeSession) OnOutput(callback func(string)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.onOutput = append(s.onOutput, callback)
-}
-
-func (s *dockerRuntimeSession) Stop() error {
-	s.cancel()
-	_ = exec.Command("docker", "rm", "-f", s.containerName).Run()
-	return nil
-}
-
-func (s *dockerRuntimeSession) captureOutput(reader io.Reader) {
-	scanner := bufio.NewScanner(reader)
-	for scanner.Scan() {
-		s.dispatchOutput(scanner.Text() + "\n")
-	}
-}
-
-func (s *dockerRuntimeSession) wait(cmd *exec.Cmd) {
-	exitCode := 0
-	if err := cmd.Wait(); err != nil {
-		exitCode = 1
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
-			exitCode = exitErr.ExitCode()
-		}
-	}
-	s.dispatchExit(exitCode)
-}
-
-func (s *dockerRuntimeSession) dispatchOutput(chunk string) {
-	s.mu.Lock()
-	callbacks := append([]func(string){}, s.onOutput...)
-	s.mu.Unlock()
-	for _, callback := range callbacks {
-		callback(chunk)
-	}
-}
-
-func (s *dockerRuntimeSession) dispatchExit(code int) {
-	s.mu.Lock()
-	callbacks := append([]func(int){}, s.onExit...)
-	s.mu.Unlock()
-	for _, callback := range callbacks {
-		callback(code)
-	}
 }
 
 func buildPreviewLaunchCommand(appRoot, command string) string {
