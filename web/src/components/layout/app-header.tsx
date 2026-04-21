@@ -4,6 +4,7 @@ import { Link, useLocation, useParams, useSearchParams } from "react-router-dom"
 
 import { getProject } from "@/lib/api/projects"
 import { getSystemHealth } from "@/lib/api/system"
+import { getPlatformContext } from "@/lib/platform"
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme, getProjectColor } from "@/lib/pilot-theme"
@@ -15,6 +16,7 @@ export function AppHeader() {
   const [searchParams] = useSearchParams()
   const { locale, pilot, setLocale, t } = usePreferences()
   const theme = getPilotTheme(pilot)
+  const platform = getPlatformContext()
   const isRei = pilot === "rei"
 
   const project = useAsyncResource({
@@ -103,6 +105,15 @@ export function AppHeader() {
           isRei ? "border-blue-200/50 bg-white/60 text-blue-600" : "border-purple-500/30 bg-black/40 text-purple-300",
         )}
       >
+        {platform.kind === "desktop-hosted" ? (
+          <div className={cn("rounded-sm border px-2 py-1", theme.pathBg)}>
+            desktop {platform.shell ?? "host"}
+          </div>
+        ) : (
+          <div className={cn("rounded-sm border px-2 py-1", theme.pathBg)}>
+            web
+          </div>
+        )}
         <Languages className="h-4 w-4" />
         <button
           className={cn("rounded-sm px-2 py-1 transition-colors", locale === "zh-CN" ? theme.tabActive : theme.tabInactive)}

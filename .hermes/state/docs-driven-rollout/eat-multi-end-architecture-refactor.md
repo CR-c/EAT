@@ -1,13 +1,13 @@
 # Rollout Run State
 
 项目：EAT 多端控制面 / 可插拔执行后端结构重构
-当前批次：Batch 20 - host backend 工作目录白名单约束
+当前批次：Batch 21 - 平台上下文可见性
 执行状态：
 - status: COMPLETED
-- run_started_at: 2026-04-21T14:26:00+08:00
-- completed_at: 2026-04-21T14:40:00+08:00
-- 本轮目标: 为 reduced-isolation 的 host backend 增加最小但真实的工作目录白名单约束，避免其退化为对任意宿主目录的直接执行
-- 本轮明确未做: executionProfile 更细粒度 repo/worktree mounts 策略、host backend 的更复杂网络/挂载策略、桌面壳实际工程落地
+- run_started_at: 2026-04-21T14:41:00+08:00
+- completed_at: 2026-04-21T14:55:00+08:00
+- 本轮目标: 把前面已落下的 `platform.ts` 能力真正暴露到 UI，让 operator 能直接看到当前是 `web` 还是 `desktop-hosted`、当前 shell 和 API baseURL
+- 本轮明确未做: 实际桌面壳工程、executionProfile 更细粒度 repo/worktree mounts 策略
 
 已完成批次：
 - Batch 1 - Phase1/2/3 最小闭环（Lead/Docker 解耦 + execution backend API + 创建页/系统页语义改造）
@@ -30,9 +30,10 @@
 - Batch 18 - 平台适配层与桌面壳 bootstrap 文档
 - Batch 19 - preview 旧 Docker 专用实现清理
 - Batch 20 - host backend 工作目录白名单约束
+- Batch 21 - 平台上下文可见性
 
 下一批次：
-- Batch 21 - 决定 executionProfile 是否继续扩到更细粒度 repo/worktree mounts 策略，或真正落地桌面壳工程骨架
+- Batch 22 - 决定 executionProfile 是否继续扩到更细粒度 repo/worktree mounts 策略，或真正落地桌面壳工程骨架
 
 真相源文档：
 - /home/code/EAT/AGENTS.md
@@ -84,29 +85,32 @@
   - 统一解析 API baseURL
   - 允许未来桌面壳通过 `window.__EAT_PLATFORM__` 注入 `apiBaseUrl` / `shell`
   - `main.tsx` 会把平台信息写入 `document.documentElement.dataset`
+- 平台信息当前已在 UI 中可见：
+  - Header 会显示 `web` / `desktop <shell>` badge
+  - Settings 页会展示 `mode` / `shell` / `apiBaseUrl`
 - preview runtime 当前只保留 `BackendRunner -> workerbackend.Backend` 主路径；历史 `DockerRunner` / `dockerRuntimeSession` 已删除，避免 preview 与 worker runtime 再次双轨分叉
 
 本批改动范围：
-- backend/internal/workerbackend/host/{backend.go,backend_test.go}
-- docs/{EAT-user-guide.md,PRD.md}
-- README.md
+- web/src/components/layout/app-header.tsx
+- web/src/features/system/pages/settings-page.tsx
+- .hermes/state/docs-driven-rollout/eat-multi-end-architecture-refactor.md
 
 本批验证：
-- Ran: `cd /home/code/EAT/backend && gofmt -w internal/workerbackend/host/backend.go internal/workerbackend/host/backend_test.go && rtk go test ./internal/workerbackend/... ./internal/api ./internal/agent ./internal/task ./internal/orchestrator`
-- Result: PASS (`Go test: 74 passed in 7 packages`)
+- Ran: `cd /home/code/EAT/web && rtk pnpm lint && rtk pnpm build`
+- Result: PASS
 
 本批提交：
 - commit: 当前批次 HEAD（见 `git log -1 --oneline`）
-- message: 收紧受信任主机执行范围
+- message: 展示当前平台上下文
 
 待恢复输入：
-- 关键文件：`backend/internal/workerbackend/host/backend.go`, `backend/internal/agent/service.go`, `docs/plans/2026-04-21-desktop-shell-bootstrap.md`
+- 关键文件：`web/src/lib/platform.ts`, `web/src/components/layout/app-header.tsx`, `web/src/features/system/pages/settings-page.tsx`
 - 关键目标：
   - 决定 executionProfile 是否继续扩到更细粒度 repo/worktree mounts 策略
   - 或真正落地桌面壳工程骨架（Tauri/Electron）
   - 若继续加强 host backend，则补更细粒度网络/挂载限制
 - 关键风险：
-  - host backend 当前已限制 workdir 根，但仍是 reduced-isolation 的最小实现
+  - 当前平台层与 UI 已可见，但仍未包含桌面宿主启动器与进程管理
   - 当前 executionProfile 已覆盖网络、端口、附件只读挂载，但仍未进入 repo/worktree 的更细粒度 mount policy
   - schema 底层仍保留历史 `sandboxType` 命名，未来若引入更多 backend，命名负担会继续上升
 

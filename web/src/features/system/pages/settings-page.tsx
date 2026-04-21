@@ -1,7 +1,8 @@
-import { Gauge, Globe2, Palette } from "lucide-react"
+import { Gauge, Globe2, Monitor, Palette } from "lucide-react"
 import type { ComponentType, ReactNode } from "react"
 
 import { getExecutionBackends, getSandboxPolicy } from "@/lib/api/system"
+import { getPlatformContext } from "@/lib/platform"
 import { useAsyncResource } from "@/hooks/use-async-resource"
 import { getPilotDescription, getPilotTitle } from "@/lib/i18n"
 import { usePreferences } from "@/lib/preferences"
@@ -11,6 +12,7 @@ import { cn } from "@/lib/utils"
 export function SettingsPage() {
   const { locale, pilot, setLocale, setPilot, t } = usePreferences()
   const theme = getPilotTheme(pilot)
+  const platform = getPlatformContext()
   const isRei = pilot === "rei"
 
   const resource = useAsyncResource({
@@ -80,6 +82,20 @@ export function SettingsPage() {
 
             <SettingBox icon={Gauge} label={t("settings.previewDefault")} theme={theme}>
               <div className={cn("font-mono text-sm", theme.cardTitle)}>{resource.data?.policy.previewDefault ?? "—"}</div>
+            </SettingBox>
+
+            <SettingBox icon={Monitor} label="Platform" theme={theme}>
+              <div className={cn("space-y-1 font-mono text-xs", theme.cardSub)}>
+                <div>
+                  mode: <span className={theme.cardTitle}>{platform.kind}</span>
+                </div>
+                <div>
+                  shell: <span className={theme.cardTitle}>{platform.shell ?? "web"}</span>
+                </div>
+                <div>
+                  apiBaseUrl: <span className={theme.cardTitle}>{platform.apiBaseUrl || "same-origin"}</span>
+                </div>
+              </div>
             </SettingBox>
 
             <div className="md:col-span-2">
