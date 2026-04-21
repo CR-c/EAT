@@ -59,6 +59,30 @@ func TestSpawnCodexWorkerPassesOpenAIAPIKeyToExecutionBackend(t *testing.T) {
 	}
 }
 
+func TestSpawnCodexWorkerPreviewProfilePublishesPortAndPreviewEnv(t *testing.T) {
+	t.Setenv("EAT_CODEX_PACKAGE_PATH", t.TempDir())
+	t.Setenv("EAT_CODEX_RUNTIME_ROOT", t.TempDir())
+
+	backend := &captureBackend{}
+	_, err := spawnCodexWorker(context.Background(), backend, SpawnConfig{
+		Prompt:           "preview profile",
+		WorkDir:          t.TempDir(),
+		ExecutionProfile: "web-preview",
+	})
+	if err != nil {
+		t.Fatalf("spawn codex worker: %v", err)
+	}
+	if backend.lastInput.NetworkProfile != "DEFAULT" {
+		t.Fatalf("expected web-preview to use DEFAULT network, got %#v", backend.lastInput.NetworkProfile)
+	}
+	if len(backend.lastInput.PublishedPorts) != 1 || backend.lastInput.PublishedPorts[0].HostPort != 4173 || backend.lastInput.PublishedPorts[0].ContainerPort != 4173 {
+		t.Fatalf("expected web-preview to publish 4173->4173, got %#v", backend.lastInput.PublishedPorts)
+	}
+	if backend.lastInput.Env["PORT"] != "4173" || backend.lastInput.Env["HOST"] != "0.0.0.0" || backend.lastInput.Env["BROWSER"] != "none" {
+		t.Fatalf("expected preview env vars, got %#v", backend.lastInput.Env)
+	}
+}
+
 func TestCodexHealthRequiresWorkerPackageEntrypointForExecutionReadiness(t *testing.T) {
 	binDir := t.TempDir()
 	writeExecutable(t, filepath.Join(binDir, "codex"), "#!/bin/sh\nexit 0\n")

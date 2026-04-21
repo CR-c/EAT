@@ -45,8 +45,8 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/guided-tasks` | 引导式创建任务；支持可选 `workerBackendKind` / `executionProfile`（`default` / `isolated` / `internet` / `host-network`） |
-| POST | `/api/tasks` | 创建任务；支持可选 `workerBackendKind` / `executionProfile`（`default` / `isolated` / `internet` / `host-network`） |
+| POST | `/api/guided-tasks` | 引导式创建任务；支持可选 `workerBackendKind` / `executionProfile`（`default` / `isolated` / `internet` / `host-network` / `web-preview` / `web-preview-host`） |
+| POST | `/api/tasks` | 创建任务；支持可选 `workerBackendKind` / `executionProfile`（`default` / `isolated` / `internet` / `host-network` / `web-preview` / `web-preview-host`） |
 | GET | `/api/tasks/{taskId}` | 获取任务详情 |
 | DELETE | `/api/tasks/{taskId}` | 删除任务 |
 | GET | `/api/tasks/{taskId}/events` | 订阅任务事件流 |

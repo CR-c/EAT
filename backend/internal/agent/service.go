@@ -433,6 +433,7 @@ func spawnCodexWorker(ctx context.Context, backend workerbackend.Backend, config
 	if apiKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY")); apiKey != "" {
 		env["OPENAI_API_KEY"] = apiKey
 	}
+	env = mergeEnvMaps(env, executionProfileEnv(config.ExecutionProfile))
 
 	runtime, err := backend.StartWorker(ctx, workerbackend.StartWorkerInput{
 		WorkDir:         config.WorkDir,
@@ -441,6 +442,7 @@ func spawnCodexWorker(ctx context.Context, backend workerbackend.Backend, config
 		NetworkProfile:  networkProfileForExecutionProfile(config.ExecutionProfile),
 		ReadwriteMounts: uniqueStrings([]string{config.WorkDir, gitRoot, runtimeHomePath}),
 		ReadonlyMounts:  uniqueStrings([]string{codexPackagePath, "/etc/ssl/certs"}),
+		PublishedPorts:  executionProfilePublishedPorts(config.ExecutionProfile),
 	})
 	if err != nil {
 		_ = os.RemoveAll(runtimeHomePath)
@@ -728,10 +730,11 @@ func spawnSandboxedCLIWorker(ctx context.Context, backend workerbackend.Backend,
 	return backend.StartWorker(ctx, workerbackend.StartWorkerInput{
 		WorkDir:         config.WorkDir,
 		Command:         command,
-		Env:             env,
+		Env:             mergeEnvMaps(env, executionProfileEnv(config.ExecutionProfile)),
 		NetworkProfile:  networkProfileForExecutionProfile(config.ExecutionProfile),
 		ReadwriteMounts: uniqueStrings([]string{config.WorkDir, gitRoot, runtimeHomePath}),
 		ReadonlyMounts:  uniqueStrings(readonlyMounts),
+		PublishedPorts:  executionProfilePublishedPorts(config.ExecutionProfile),
 	})
 }
 
@@ -870,13 +873,73 @@ func networkProfileForExecutionProfile(value string) string {
 	switch strings.TrimSpace(strings.ToLower(value)) {
 	case "", "default", "isolated":
 		return "ISOLATED"
-	case "internet":
+	case "internet", "web-preview":
 		return "DEFAULT"
-	case "host-network":
+	case "host-network", "web-preview-host":
 		return "HOST"
 	default:
 		return "ISOLATED"
 	}
+}
+
+func executionProfileEnv(value string) map[string]string {
+	profile := strings.TrimSpace(strings.ToLower(value))
+	env := map[string]string{}
+	if profile != "" {
+		env["EAT_EXECUTION_PROFILE"] = profile
+		env["EAT_EXECUTION_NETWORK_PROFILE"] = networkProfileForExecutionProfile(profile)
+	}
+	switch profile {
+	case "web-preview", "web-preview-host":
+		env["PORT"] = "4173"
+		env["HOST"] = "0.0.0.0"
+		env["BROWSER"] = "none"
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	return env
+}
+
+func executionProfilePublishedPorts(value string) []workerbackend.PortMapping {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case "web-preview":
+		return []workerbackend.PortMapping{{HostPort: 4173, ContainerPort: 4173}}
+	default:
+		return nil
+	}
+}
+
+func mergeEnvMaps(base map[string]string, extra map[string]string) map[string]string {
+	if len(extra) == 0 {
+		return base
+	}
+	merged := make(map[string]string, len(base)+len(extra))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range extra {
+		merged[key] = value
+	}
+	return merged
+}
+
+func executionProfilePromptLines(value string) []string {
+	profile := strings.TrimSpace(strings.ToLower(value))
+	if profile == "" {
+		return nil
+	}
+	lines := []string{
+		"Execution profile: " + profile,
+		"Worker network policy: " + networkProfileForExecutionProfile(profile),
+	}
+	switch profile {
+	case "web-preview":
+		lines = append(lines, "Published ports: 4173->4173", "If you start a preview/dev server, prefer HOST=0.0.0.0 and PORT=4173 (already injected).")
+	case "web-preview-host":
+		lines = append(lines, "If you start a preview/dev server, prefer HOST=0.0.0.0 and PORT=4173 (already injected).")
+	}
+	return lines
 }
 
 func buildGenericWorkerPrompt(config SpawnConfig) string {
@@ -887,6 +950,7 @@ func buildGenericWorkerPrompt(config SpawnConfig) string {
 	if strings.TrimSpace(config.WorkDir) != "" {
 		parts = append(parts, "Working directory: "+config.WorkDir)
 	}
+	parts = append(parts, executionProfilePromptLines(config.ExecutionProfile)...)
 	return strings.TrimSpace(strings.Join(parts, "\n"))
 }
 

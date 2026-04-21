@@ -50,10 +50,10 @@ func normalizeRequiredString(value string) string {
 func normalizeExecutionProfile(value string) (string, error) {
 	normalized := strings.TrimSpace(strings.ToLower(value))
 	switch normalized {
-	case "", "default", "isolated", "internet", "host-network":
+	case "", "default", "isolated", "internet", "host-network", "web-preview", "web-preview-host":
 		return normalized, nil
 	default:
-		return "", fmt.Errorf("executionProfile must be one of: default, isolated, internet, host-network")
+		return "", fmt.Errorf("executionProfile must be one of: default, isolated, internet, host-network, web-preview, web-preview-host")
 	}
 }
 

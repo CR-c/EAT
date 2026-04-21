@@ -186,3 +186,27 @@
   - `host-network` -> `HOST`
 - 非法 profile 在创建任务阶段直接返回 `EXECUTION_PROFILE_INVALID`
 - 暂不驱动 mounts / ports / more advanced runtime policy
+
+## Batch E: 扩展 executionProfile 到最小端口暴露策略
+
+**Objective:** 在不引入复杂 mounts 语义的前提下，为 preview/server 类 worker 任务补齐最小端口暴露策略。
+
+**Files:**
+- Modify: `backend/internal/task/task_support.go`
+- Modify: `backend/internal/agent/{service.go,service_test.go}`
+- Modify: `backend/internal/api/{task_contract_handler_test.go,task_create_handler_test.go}`
+- Modify: `docs/API-REFERENCE.md`
+- Modify: `README.md`
+
+**Implementation notes:**
+- 新增 profile：`web-preview` / `web-preview-host`
+- 保持原有 4 个 profile 兼容不变
+- `web-preview`
+  - `NetworkProfile` = `DEFAULT`
+  - 注入 env：`PORT=4173`, `HOST=0.0.0.0`, `BROWSER=none`
+  - 暴露端口：`4173 -> 4173`
+- `web-preview-host`
+  - `NetworkProfile` = `HOST`
+  - 注入相同预览 env
+  - 不额外发布端口
+- 本轮仍不触碰更复杂 mounts 策略

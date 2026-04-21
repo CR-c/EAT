@@ -1,13 +1,13 @@
 # Rollout Run State
 
 项目：EAT 多端控制面 / 可插拔执行后端结构重构
-当前批次：Batch 15 - executionProfile 最小运行时语义
+当前批次：Batch 16 - executionProfile 最小端口暴露策略
 执行状态：
 - status: COMPLETED
-- run_started_at: 2026-04-21T13:11:00+08:00
-- completed_at: 2026-04-21T13:30:00+08:00
-- 本轮目标: 让 `executionProfile` 真正进入 worker runtime contract，但只收口到最小且可验证的网络档位语义，不同时扩散到 mounts/ports/更复杂策略
-- 本轮明确未做: `executionProfile` 驱动 mounts/ports、更细粒度 host backend 限制、桌面壳相关代码、大范围 schema 命名迁移
+- run_started_at: 2026-04-21T13:31:00+08:00
+- completed_at: 2026-04-21T13:45:00+08:00
+- 本轮目标: 在不引入复杂 mounts 语义的前提下，把 `executionProfile` 从“只控制网络档位”扩展到“最小端口暴露策略”，让 preview/server 类 worker 任务具备更明确的运行时约束
+- 本轮明确未做: `executionProfile` 驱动更细粒度 mounts 策略、host backend 额外安全限制、桌面壳相关代码、大范围 schema 命名迁移
 
 已完成批次：
 - Batch 1 - Phase1/2/3 最小闭环（Lead/Docker 解耦 + execution backend API + 创建页/系统页语义改造）
@@ -25,9 +25,10 @@
 - Batch 13 - task 级 backend/profile 只读展示与 operator 可见性
 - Batch 14 - TrustedHost backend 最小闭环
 - Batch 15 - executionProfile 最小运行时语义
+- Batch 16 - executionProfile 最小端口暴露策略
 
 下一批次：
-- Batch 16 - 决定 executionProfile 是否继续扩到 mounts/ports，或进入桌面壳 / platform 适配主线
+- Batch 17 - 决定 executionProfile 是否继续扩到更细粒度 mounts 策略，或进入桌面壳 / platform 适配主线
 
 真相源文档：
 - /home/code/EAT/AGENTS.md
@@ -52,8 +53,8 @@
   - `tasks` 表新增 `worker_backend_kind` / `execution_profile`
   - task JSON 返回新增 `workerBackendKind` / `executionProfile`
   - 创建任务时若未显式传入 `workerBackendKind`，会固化当前 default backend
-  - `executionProfile` 当前支持：`default` / `isolated` / `internet` / `host-network`
-- `executionProfile` 会在 worker spawn 时映射到 `StartWorkerInput.NetworkProfile`；本轮仍不驱动 mounts/ports 等更高阶 runtime contract
+  - `executionProfile` 当前支持：`default` / `isolated` / `internet` / `host-network` / `web-preview` / `web-preview-host`
+- `executionProfile` 会在 worker spawn 时映射到 `StartWorkerInput.NetworkProfile`，并对 `web-preview` / `web-preview-host` 注入预览端口环境变量；当前仍不驱动更高阶 mounts 策略
 - `ApprovePlan` 与子任务释放/重派创建 worker session 时，优先按 task 级 backend 决定 `sandboxType`；不再一律跟随系统 default backend。
 - 若 task 绑定的 backend 未注册或不可用，`PLAN_REVIEW` 批准执行会返回 `EXECUTION_BACKEND_UNAVAILABLE`，并在错误详情中暴露 task 级 backend 状态。
 - `GetTaskRuntime` / `GetTaskTeam` 已补 task 级 `workerBackendKind` / `executionProfile` 只读字段，workbench 页会显式展示 task 级 backend/profile 与节点 session backend。
@@ -62,14 +63,16 @@
   - Docker 不可用时，`host` 会成为 default execution backend
   - `SandboxPolicy` 会跟随当前 default backend 暴露 `HOST` / `DOCKER`
   - agent execution readiness 改为按已注册 execution backends 判断，不再把 Docker 当成唯一执行后端
-- `executionProfile` 当前正式支持：`default` / `isolated` / `internet` / `host-network`
+- `executionProfile` 当前正式支持：`default` / `isolated` / `internet` / `host-network` / `web-preview` / `web-preview-host`
   - 创建任务阶段会校验非法 profile，并返回 `EXECUTION_PROFILE_INVALID`
   - worker spawn 时会映射到 `StartWorkerInput.NetworkProfile`
   - 当前映射：`default` / `isolated` -> `ISOLATED`，`internet` -> `DEFAULT`，`host-network` -> `HOST`
+  - `web-preview` 会注入 `PORT=4173` / `HOST=0.0.0.0` / `BROWSER=none`，并暴露 `4173 -> 4173`
+  - `web-preview-host` 会注入相同预览环境变量，但走 `HOST` 网络
+  - 当前仍未进入更细粒度 mounts 策略
 
 本批改动范围：
-- backend/internal/task/{task_error_codes.go,task_lifecycle_service.go,task_support.go}
-- backend/internal/orchestrator/{orchestrator.go,task_repository_adapter.go}
+- backend/internal/task/task_support.go
 - backend/internal/agent/{service.go,service_test.go}
 - backend/internal/api/{task_contract_handler_test.go,task_create_handler_test.go}
 - docs/{API-REFERENCE.md,plans/2026-04-21-task-execution-profile-rollout.md}
@@ -77,20 +80,20 @@
 
 本批验证：
 - Ran: `cd /home/code/EAT/backend && rtk go test ./internal/api ./internal/agent ./internal/task ./internal/orchestrator`
-- Result: PASS (`Go test: 68 passed in 4 packages`)
+- Result: PASS (`Go test: 69 passed in 4 packages`)
 
 本批提交：
 - commit: 当前批次 HEAD（见 `git log -1 --oneline`）
-- message: 收口执行配置的最小运行时语义
+- message: 扩展执行配置为端口策略
 
 待恢复输入：
-- 关键文件：`backend/internal/agent/service.go`, `backend/internal/orchestrator/orchestrator.go`, `backend/internal/task/task_support.go`, `docs/plans/2026-04-21-task-execution-profile-rollout.md`
+- 关键文件：`backend/internal/agent/service.go`, `backend/internal/task/task_support.go`, `docs/plans/2026-04-21-task-execution-profile-rollout.md`
 - 关键目标：
-  - 决定 executionProfile 是否继续扩到 mounts/ports
+  - 决定 executionProfile 是否继续扩到更细粒度 mounts 策略
   - 决定 host backend 是否需要更严格的工作目录/挂载/网络限制
   - 若继续做多端控制面，则进入 desktop/platform 适配主线
 - 关键风险：
-  - 当前 executionProfile 只控制网络档位，尚未覆盖 mounts/ports 等更细粒度策略
+  - 当前 executionProfile 已覆盖网络与最小端口暴露，但仍未进入 mounts 等更细粒度策略
   - host backend 当前是 reduced-isolation 的最小实现，主要依赖 operator 自觉与受信任本机环境
   - schema 底层仍保留历史 `sandboxType` 命名，未来若引入更多 backend，命名负担会继续上升
 
