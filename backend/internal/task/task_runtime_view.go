@@ -86,6 +86,8 @@ func (s *Service) buildTaskRuntimeView(taskRecord *Task, sessions []Session, sub
 		"taskStatus":          taskRecord.Status,
 		"workspaceStage":      taskRecord.WorkspaceStage,
 		"workspaceStageLabel": taskRecord.WorkspaceStageLabel,
+		"workerBackendKind":   taskRecord.WorkerBackendKind,
+		"executionProfile":    taskRecord.ExecutionProfile,
 		"nodes":               nodes,
 		"edges":               edges,
 		"summary": map[string]any{

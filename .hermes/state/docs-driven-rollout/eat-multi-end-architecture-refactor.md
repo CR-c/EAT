@@ -1,13 +1,13 @@
 # Rollout Run State
 
 项目：EAT 多端控制面 / 可插拔执行后端结构重构
-当前批次：Batch 12 - task 级 worker backend / execution profile 持久化与执行接线
+当前批次：Batch 13 - task 级 backend/profile 只读展示与 operator 可见性
 执行状态：
 - status: COMPLETED
-- run_started_at: 2026-04-21T11:33:00+08:00
-- completed_at: 2026-04-21T12:20:00+08:00
-- 本轮目标: 为 task 创建链路补齐 `workerBackendKind` / `executionProfile`，让任务在创建时固化执行后端选择，并在计划批准 / 子任务释放时真正按 task 级 backend 物化 worker session
-- 本轮明确未做: TrustedHost backend、桌面壳相关代码、`executionProfile` 驱动 runtime contract、大范围 schema 命名迁移
+- run_started_at: 2026-04-21T12:21:00+08:00
+- completed_at: 2026-04-21T12:40:00+08:00
+- 本轮目标: 把 task 级 `workerBackendKind` / `executionProfile` 从“仅持久化”推进到“operator 可见”，在 runtime/team payload 与 workbench UI 里补齐只读展示
+- 本轮明确未做: TrustedHost backend、桌面壳相关代码、`executionProfile` 驱动 runtime contract、大范围 schema 命名迁移、显式 backend/profile 编辑 UI
 
 已完成批次：
 - Batch 1 - Phase1/2/3 最小闭环（Lead/Docker 解耦 + execution backend API + 创建页/系统页语义改造）
@@ -22,9 +22,10 @@
 - Batch 10 - 在 runtime/team/detail 层补充 backendKind 暴露
 - Batch 11 - 评估 schema 级 `sandboxType -> backendKind` 迁移是否值得推进，并收口上层表达
 - Batch 12 - task 级 worker backend / execution profile 持久化与执行接线
+- Batch 13 - task 级 backend/profile 只读展示与 operator 可见性
 
 下一批次：
-- Batch 13 - 评估是否补 task 级 backend/profile 的只读展示与 operator 可见性，再决定是否进入 TrustedHost backend 或 desktop/platform 主线
+- Batch 14 - 决定 `executionProfile` 是否进入 runtime contract（network/mounts/ports），或转入 TrustedHost backend 主线
 
 真相源文档：
 - /home/code/EAT/AGENTS.md
@@ -52,15 +53,13 @@
   - `executionProfile` 当前仅作 task 级 opaque string 持久化，不驱动 runtime contract
 - `ApprovePlan` 与子任务释放/重派创建 worker session 时，优先按 task 级 backend 决定 `sandboxType`；不再一律跟随系统 default backend。
 - 若 task 绑定的 backend 未注册或不可用，`PLAN_REVIEW` 批准执行会返回 `EXECUTION_BACKEND_UNAVAILABLE`，并在错误详情中暴露 task 级 backend 状态。
+- `GetTaskRuntime` / `GetTaskTeam` 已补 task 级 `workerBackendKind` / `executionProfile` 只读字段，workbench 页会显式展示 task 级 backend/profile 与节点 session backend。
 
 本批改动范围：
-- backend/internal/task/{task_lifecycle_types.go,task_lifecycle_service.go,repository.go,service.go,task_repository.go,task_plan_service.go,task_subtask_service.go}
-- backend/internal/api/{task_contract_handler_test.go,task_lead_only_mode_test.go}
-- prisma/migrations/20260421114500_phase27_task_execution_profile/migration.sql
-- web/src/features/tasks/pages/create-task-page.tsx
+- backend/internal/task/{task_runtime_view.go,task_team_view.go}
+- backend/internal/api/task_contract_handler_test.go
+- web/src/features/tasks/pages/task-workbench-page.tsx
 - web/src/lib/types.ts
-- docs/{API-REFERENCE.md,plans/2026-04-21-task-execution-profile-rollout.md}
-- README.md
 
 本批验证：
 - Ran: `cd /home/code/EAT/backend && rtk go test ./internal/task ./internal/api ./internal/orchestrator`
@@ -70,17 +69,17 @@
 
 本批提交：
 - commit: 当前批次 HEAD（见 `git log -1 --oneline`）
-- message: 收口任务级执行后端与执行配置占位
+- message: 补齐任务级执行配置的只读展示
 
 待恢复输入：
-- 关键文件：`backend/internal/task/repository.go`, `backend/internal/task/task_runtime_view.go`, `backend/internal/task/task_team_view.go`, `web/src/lib/types.ts`, `docs/plans/2026-04-21-task-execution-profile-rollout.md`
+- 关键文件：`backend/internal/task/task_runtime_view.go`, `backend/internal/task/task_team_view.go`, `web/src/features/tasks/pages/task-workbench-page.tsx`, `web/src/lib/types.ts`
 - 关键目标：
-  - 评估是否要在 task detail / runtime / team 视图里补 task 级 `workerBackendKind` / `executionProfile` 的只读展示
   - 决定 `executionProfile` 是否进入 runtime contract（network/mounts/ports）
   - 决定是否进入 TrustedHost backend 主线
+  - 若继续提升 operator 可见性，再评估是否把 task 级 backend/profile 带入列表卡片或更多 detail 面板
 - 关键风险：
-  - `executionProfile` 目前只有持久化语义，没有执行语义
-  - 当前前端没有显式 backend/profile 配置 UI，operator 仅会隐式使用当前 default backend
+  - `executionProfile` 目前只有持久化与展示语义，没有执行语义
+  - 当前前端没有显式 backend/profile 配置 UI，operator 仍仅会隐式使用当前 default backend 创建任务
   - schema 底层仍保留历史 `sandboxType` 命名，未来若引入非容器 backend，命名负担会继续上升
 
 blocker：

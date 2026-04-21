@@ -74,6 +74,12 @@ func TestCanonicalTaskRuntimeAndDiffEndpoints(t *testing.T) {
 	if runtimePayload["workspaceStage"] != "CLARIFYING" {
 		t.Fatalf("unexpected runtime stage: %#v", runtimePayload["workspaceStage"])
 	}
+	if runtimePayload["workerBackendKind"] != "docker" {
+		t.Fatalf("expected runtime workerBackendKind=docker, payload=%#v", runtimePayload)
+	}
+	if runtimePayload["executionProfile"] != "preview-default" {
+		t.Fatalf("expected runtime executionProfile=preview-default, payload=%#v", runtimePayload)
+	}
 	if len(runtimePayload["nodes"].([]any)) == 0 {
 		t.Fatalf("expected runtime nodes, payload=%#v", runtimePayload)
 	}

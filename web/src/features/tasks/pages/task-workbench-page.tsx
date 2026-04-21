@@ -445,6 +445,12 @@ function WorkbenchTopBar({
             <div className={cn("mr-2 rounded-sm border px-2 py-1 font-mono text-[0.65rem]", theme.pathBg)}>
               {translate(locale, `task.create.taskType.${task.taskType || "NORMAL"}`)}
             </div>
+            <div className={cn("mr-2 rounded-sm border px-2 py-1 font-mono text-[0.65rem]", theme.pathBg)}>
+              backend {task.workerBackendKind ?? "docker"}
+            </div>
+            <div className={cn("mr-2 rounded-sm border px-2 py-1 font-mono text-[0.65rem]", theme.pathBg)}>
+              profile {task.executionProfile ?? "default"}
+            </div>
             <div className={cn("rounded-sm border px-2 py-1 font-mono text-[0.65rem]", theme.pathBg)}>
               {translate(locale, `task.create.planOrigin.${task.planOrigin || "NONE"}`)}
             </div>
@@ -780,7 +786,14 @@ function ExecutingView({
                   <Bot className="mr-1 h-3 w-3 opacity-50" />
                   {node.agent}
                 </span>
-                {node.branch ? <span className={cn("max-w-[120px] truncate rounded-sm border px-1.5 py-0.5", theme.pathBg)}>{node.branch}</span> : null}
+                <div className="ml-2 flex items-center gap-2 overflow-hidden">
+                  {node.backendKind ? (
+                    <span className={cn("max-w-[90px] truncate rounded-sm border px-1.5 py-0.5", theme.pathBg)}>
+                      {node.backendKind}
+                    </span>
+                  ) : null}
+                  {node.branch ? <span className={cn("max-w-[120px] truncate rounded-sm border px-1.5 py-0.5", theme.pathBg)}>{node.branch}</span> : null}
+                </div>
               </div>
             </button>
           ))}
@@ -792,8 +805,19 @@ function ExecutingView({
             <Terminal className="mr-2 h-4 w-4" />
             bash - {activeNode?.id ?? "LEAD_AGENT"}
           </div>
-          <div className="rounded-sm border border-white/10 px-2 py-0.5 text-slate-400">
-            {detail.board ? t("task.workbench.boardLinked") : t("task.workbench.localBuffer")}
+          <div className="flex items-center gap-2">
+            <div className="rounded-sm border border-white/10 px-2 py-0.5 text-slate-400">
+              target {detail.task.workerBackendKind ?? detail.runtime.workerBackendKind ?? "docker"}
+            </div>
+            <div className="rounded-sm border border-white/10 px-2 py-0.5 text-slate-400">
+              active {activeNode?.backendKind ?? "pending"}
+            </div>
+            <div className="rounded-sm border border-white/10 px-2 py-0.5 text-slate-400">
+              profile {detail.task.executionProfile ?? "default"}
+            </div>
+            <div className="rounded-sm border border-white/10 px-2 py-0.5 text-slate-400">
+              {detail.board ? t("task.workbench.boardLinked") : t("task.workbench.localBuffer")}
+            </div>
           </div>
         </div>
         <div className={cn("flex-1 overflow-y-auto p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap", theme.terminalBg)}>
@@ -1471,6 +1495,7 @@ function groupPlanNodes(nodes: PlanNode[]) {
 
 interface ExecutionNode {
   agent: string
+  backendKind?: string
   branch?: string
   id: string
   logs: string
@@ -1485,6 +1510,7 @@ function getExecutionNodes(detail?: TaskDetail, runtime?: TaskRuntime, locale: "
   if (runtime?.nodes?.length) {
     return runtime.nodes.map((node) => ({
       agent: node.agentType,
+      backendKind: node.backendKind ?? undefined,
       branch: node.branchName ?? undefined,
       id: node.id,
       logs: node.logsPreview || translate(locale, "task.workbench.runtimeNoLogs"),
@@ -1501,6 +1527,7 @@ function getExecutionNodes(detail?: TaskDetail, runtime?: TaskRuntime, locale: "
   const leadSession = detail.sessions.find((session) => session.sessionType === "LEAD")
   const leadNode: ExecutionNode = {
     agent: detail.task.leadAgentType,
+    backendKind: leadSession?.backendKind ?? undefined,
     branch: detail.task.taskBranchName ?? undefined,
     id: "LEAD_AGENT",
     logs: leadSession?.outputBuffer || translate(locale, "task.workbench.runtimeLeadWaiting"),
@@ -1512,6 +1539,7 @@ function getExecutionNodes(detail?: TaskDetail, runtime?: TaskRuntime, locale: "
     const session = detail.sessions.find((item) => item.subTaskId === subTask.id)
     return {
       agent: subTask.agentType,
+      backendKind: session?.backendKind ?? undefined,
       branch: subTask.branchName ?? undefined,
       id: subTask.branchSuffix || subTask.id,
       logs:

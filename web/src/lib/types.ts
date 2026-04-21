@@ -200,6 +200,8 @@ export interface TaskRuntime {
   taskStatus: string
   workspaceStage: string
   workspaceStageLabel: string
+  workerBackendKind?: string | null
+  executionProfile?: string | null
   nodes: TaskRuntimeNode[]
   edges: TaskRuntimeEdge[]
   summary: {

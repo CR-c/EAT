@@ -79,10 +79,12 @@ func (s *Service) buildTaskTeamView(taskRecord *Task, sessions []Session, subTas
 		},
 		"members": members,
 		"task": map[string]any{
-			"id":             taskRecord.ID,
-			"status":         taskRecord.Status,
-			"taskBranchName": taskRecord.TaskBranchName,
-			"title":          taskRecord.Title,
+			"id":                taskRecord.ID,
+			"status":            taskRecord.Status,
+			"taskBranchName":    taskRecord.TaskBranchName,
+			"title":             taskRecord.Title,
+			"workerBackendKind": taskRecord.WorkerBackendKind,
+			"executionProfile":  taskRecord.ExecutionProfile,
 		},
 	}
 }
