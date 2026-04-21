@@ -29,6 +29,7 @@ type TaskRepository interface {
 	FindSubTaskByID(ctx context.Context, subTaskID string) (*SubTaskRecord, error)
 	ListSubTasksByTaskID(ctx context.Context, taskID string) ([]SubTaskRecord, error)
 	ListSessionsBySubTaskID(ctx context.Context, subTaskID string) ([]SessionRecord, error)
+	ListAttachmentsByTaskID(ctx context.Context, taskID string) ([]AttachmentRecord, error)
 	FindProjectByID(ctx context.Context, projectID string) (*ProjectRecord, error)
 	AccumulateSessionTokenUsage(ctx context.Context, input tokenusage.SessionInput) error
 	UpdateSession(ctx context.Context, sessionID string, input UpdateSessionInput) error
@@ -67,6 +68,13 @@ type SubTaskRecord struct {
 type ProjectRecord struct {
 	ID   string
 	Path string
+}
+
+type AttachmentRecord struct {
+	ID       string
+	FileName string
+	FilePath string
+	FileType string
 }
 
 type SessionRecord struct {
@@ -352,8 +360,14 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 		return
 	}
 
+	attachments, err := o.repo.ListAttachmentsByTaskID(ctx, task.ID)
+	if err != nil {
+		o.failSubTaskLaunch(ctx, task, subTask, fmt.Sprintf("Attachments read failed: %s", err.Error()))
+		return
+	}
+
 	// Build prompt
-	prompt := buildWorkerPrompt(task, &subTask)
+	prompt := buildWorkerPrompt(task, &subTask, attachments)
 
 	launchSession, err := o.resolveLaunchSession(ctx, subTask.ID)
 	if err != nil {
@@ -374,6 +388,7 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 		Prompt:           prompt,
 		WorkDir:          subTask.WorktreePath,
 		BranchName:       subTask.BranchName,
+		Attachments:      toAttachmentRefs(attachments),
 	})
 	if err != nil {
 		o.failSubTaskLaunch(ctx, task, subTask, fmt.Sprintf("Failed to spawn worker: %s", err.Error()))
@@ -952,7 +967,7 @@ func (o *Orchestrator) maybeStartFinalReview(ctx context.Context, taskID string)
 }
 
 // buildWorkerPrompt constructs a detailed prompt for the worker agent.
-func buildWorkerPrompt(task *TaskRecord, subTask *SubTaskRecord) string {
+func buildWorkerPrompt(task *TaskRecord, subTask *SubTaskRecord, attachments []AttachmentRecord) string {
 	parts := []string{
 		fmt.Sprintf("# Task: %s", task.Title),
 		"",
@@ -975,13 +990,37 @@ func buildWorkerPrompt(task *TaskRecord, subTask *SubTaskRecord) string {
 		)
 	}
 
+	if len(attachments) > 0 {
+		parts = append(parts, "", "Attachments available to you (mounted read-only):")
+		for _, attachment := range attachments {
+			parts = append(parts, fmt.Sprintf("- %s (%s) -> %s", attachment.FileName, attachment.FileType, attachment.FilePath))
+		}
+	}
+
 	parts = append(parts, "",
 		"## Instructions",
 		"- Complete your assigned work on the branch provided.",
 		"- Commit all changes with clear, descriptive commit messages.",
 		"- Do not modify files outside the scope of your assignment.",
+		"- Treat mounted attachments as read-only reference material unless the operator explicitly asks you to rewrite them.",
 		"- Exit with code 0 on success.",
 	)
 
 	return strings.Join(parts, "\n")
+}
+
+func toAttachmentRefs(attachments []AttachmentRecord) []agent.AttachmentRef {
+	if len(attachments) == 0 {
+		return nil
+	}
+	result := make([]agent.AttachmentRef, 0, len(attachments))
+	for _, attachment := range attachments {
+		result = append(result, agent.AttachmentRef{
+			AttachmentID: attachment.ID,
+			FileName:     attachment.FileName,
+			FilePath:     attachment.FilePath,
+			FileType:     attachment.FileType,
+		})
+	}
+	return result
 }

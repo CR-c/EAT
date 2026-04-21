@@ -154,6 +154,10 @@ func (r *fakeIntegrationRepo) FindSubTaskByID(ctx context.Context, subTaskID str
 	return &copied, nil
 }
 
+func (r *fakeIntegrationRepo) ListAttachmentsByTaskID(ctx context.Context, taskID string) ([]AttachmentRecord, error) {
+	return nil, nil
+}
+
 func (r *fakeIntegrationRepo) UpdateTask(ctx context.Context, taskID string, input UpdateTaskInput) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -146,6 +146,7 @@ npm start
 说明：
 - 创建任务当前只要求 Lead Runtime 可用
 - Worker Backend 未就绪时，页面会提示“可创建并进入澄清 / 规划；批准执行前需先配置 Worker Backend”
+- 若上传了附件，Worker 执行时会把这些附件作为只读参考材料挂载到执行环境中
 
 #### 示例：Todo List 任务
 

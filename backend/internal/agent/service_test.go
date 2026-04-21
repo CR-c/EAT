@@ -83,6 +83,34 @@ func TestSpawnCodexWorkerPreviewProfilePublishesPortAndPreviewEnv(t *testing.T) 
 	}
 }
 
+func TestSpawnSandboxedCLIWorkerMountsAttachmentsReadonly(t *testing.T) {
+	backend := &captureBackend{}
+	workDir := t.TempDir()
+	runtimeHome := t.TempDir()
+	attachmentPath := filepath.Join(t.TempDir(), "brief.md")
+	if err := os.WriteFile(attachmentPath, []byte("# brief\n"), 0o644); err != nil {
+		t.Fatalf("write attachment: %v", err)
+	}
+	_, err := spawnSandboxedCLIWorker(context.Background(), backend, SpawnConfig{
+		Prompt:      "use attachment",
+		WorkDir:     workDir,
+		Attachments: []AttachmentRef{{AttachmentID: "att-1", FileName: "brief.md", FilePath: attachmentPath, FileType: "DOCUMENT"}},
+	}, runtimeHome, []string{"/bin/sh"}, []string{"/bin/sh", "-lc", "echo ok"}, map[string]string{})
+	if err != nil {
+		t.Fatalf("spawn sandboxed cli worker: %v", err)
+	}
+	mounted := false
+	for _, mount := range backend.lastInput.ReadonlyMounts {
+		if mount == attachmentPath {
+			mounted = true
+			break
+		}
+	}
+	if !mounted {
+		t.Fatalf("expected attachment path in readonly mounts, got %#v", backend.lastInput.ReadonlyMounts)
+	}
+}
+
 func TestCodexHealthRequiresWorkerPackageEntrypointForExecutionReadiness(t *testing.T) {
 	binDir := t.TempDir()
 	writeExecutable(t, filepath.Join(binDir, "codex"), "#!/bin/sh\nexit 0\n")

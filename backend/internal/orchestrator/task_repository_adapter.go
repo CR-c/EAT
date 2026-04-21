@@ -97,6 +97,23 @@ func (a *TaskRepositoryAdapter) ListSessionsBySubTaskID(ctx context.Context, sub
 	return result, nil
 }
 
+func (a *TaskRepositoryAdapter) ListAttachmentsByTaskID(ctx context.Context, taskID string) ([]AttachmentRecord, error) {
+	records, err := a.taskRepository.ListAttachmentsByTaskID(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]AttachmentRecord, 0, len(records))
+	for _, record := range records {
+		result = append(result, AttachmentRecord{
+			ID:       record.ID,
+			FileName: record.FileName,
+			FilePath: record.FilePath,
+			FileType: record.FileType,
+		})
+	}
+	return result, nil
+}
+
 func (a *TaskRepositoryAdapter) FindProjectByID(ctx context.Context, projectID string) (*ProjectRecord, error) {
 	record, err := a.projectRepository.FindProjectByID(ctx, projectID)
 	if err != nil || record == nil {

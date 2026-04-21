@@ -441,7 +441,7 @@ func spawnCodexWorker(ctx context.Context, backend workerbackend.Backend, config
 		Env:             env,
 		NetworkProfile:  networkProfileForExecutionProfile(config.ExecutionProfile),
 		ReadwriteMounts: uniqueStrings([]string{config.WorkDir, gitRoot, runtimeHomePath}),
-		ReadonlyMounts:  uniqueStrings([]string{codexPackagePath, "/etc/ssl/certs"}),
+		ReadonlyMounts:  uniqueStrings(append([]string{codexPackagePath, "/etc/ssl/certs"}, attachmentPaths(config.Attachments)...)),
 		PublishedPorts:  executionProfilePublishedPorts(config.ExecutionProfile),
 	})
 	if err != nil {
@@ -726,6 +726,7 @@ func spawnSandboxedCLIWorker(ctx context.Context, backend workerbackend.Backend,
 			readonlyMounts = append(readonlyMounts, resolved)
 		}
 	}
+	readonlyMounts = append(readonlyMounts, attachmentPaths(config.Attachments)...)
 
 	return backend.StartWorker(ctx, workerbackend.StartWorkerInput{
 		WorkDir:         config.WorkDir,
@@ -922,6 +923,23 @@ func mergeEnvMaps(base map[string]string, extra map[string]string) map[string]st
 		merged[key] = value
 	}
 	return merged
+}
+
+func attachmentPaths(attachments []AttachmentRef) []string {
+	if len(attachments) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(attachments))
+	for _, attachment := range attachments {
+		if strings.TrimSpace(attachment.FilePath) == "" {
+			continue
+		}
+		paths = append(paths, attachment.FilePath)
+		if resolved, err := filepath.EvalSymlinks(attachment.FilePath); err == nil && resolved != attachment.FilePath {
+			paths = append(paths, resolved)
+		}
+	}
+	return uniqueStrings(paths)
 }
 
 func executionProfilePromptLines(value string) []string {

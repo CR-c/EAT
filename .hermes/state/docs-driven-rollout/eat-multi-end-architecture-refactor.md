@@ -1,13 +1,13 @@
 # Rollout Run State
 
 项目：EAT 多端控制面 / 可插拔执行后端结构重构
-当前批次：Batch 16 - executionProfile 最小端口暴露策略
+当前批次：Batch 17 - 附件只读挂载策略
 执行状态：
 - status: COMPLETED
-- run_started_at: 2026-04-21T13:31:00+08:00
-- completed_at: 2026-04-21T13:45:00+08:00
-- 本轮目标: 在不引入复杂 mounts 语义的前提下，把 `executionProfile` 从“只控制网络档位”扩展到“最小端口暴露策略”，让 preview/server 类 worker 任务具备更明确的运行时约束
-- 本轮明确未做: `executionProfile` 驱动更细粒度 mounts 策略、host backend 额外安全限制、桌面壳相关代码、大范围 schema 命名迁移
+- run_started_at: 2026-04-21T13:46:00+08:00
+- completed_at: 2026-04-21T14:00:00+08:00
+- 本轮目标: 把 task 附件真正接进 worker 执行环境，以只读挂载形式提供给 agent 读取，作为 executionProfile 之后的第一条真实 mounts 策略
+- 本轮明确未做: executionProfile 更细粒度 repo/worktree mounts 策略、host backend 对 mounts 的强约束、桌面壳相关代码、大范围 schema 命名迁移
 
 已完成批次：
 - Batch 1 - Phase1/2/3 最小闭环（Lead/Docker 解耦 + execution backend API + 创建页/系统页语义改造）
@@ -26,9 +26,10 @@
 - Batch 14 - TrustedHost backend 最小闭环
 - Batch 15 - executionProfile 最小运行时语义
 - Batch 16 - executionProfile 最小端口暴露策略
+- Batch 17 - 附件只读挂载策略
 
 下一批次：
-- Batch 17 - 决定 executionProfile 是否继续扩到更细粒度 mounts 策略，或进入桌面壳 / platform 适配主线
+- Batch 18 - 决定 executionProfile 是否继续扩到更细粒度 repo/worktree mounts 策略，或进入桌面壳 / platform 适配主线
 
 真相源文档：
 - /home/code/EAT/AGENTS.md
@@ -69,31 +70,34 @@
   - 当前映射：`default` / `isolated` -> `ISOLATED`，`internet` -> `DEFAULT`，`host-network` -> `HOST`
   - `web-preview` 会注入 `PORT=4173` / `HOST=0.0.0.0` / `BROWSER=none`，并暴露 `4173 -> 4173`
   - `web-preview-host` 会注入相同预览环境变量，但走 `HOST` 网络
-  - 当前仍未进入更细粒度 mounts 策略
+  - 当前仍未进入更细粒度 repo/worktree mounts 策略
+- task attachments 已接入 worker mount contract：
+  - orchestrator 在 launchSubTask 时会读取 task attachments
+  - worker prompt 会明确列出可读附件
+  - agent 执行时会把附件文件路径作为只读挂载传给 execution backend
 
 本批改动范围：
-- backend/internal/task/task_support.go
+- backend/internal/orchestrator/{orchestrator.go,task_repository_adapter.go,integration_engine_test.go}
 - backend/internal/agent/{service.go,service_test.go}
-- backend/internal/api/{task_contract_handler_test.go,task_create_handler_test.go}
-- docs/{API-REFERENCE.md,plans/2026-04-21-task-execution-profile-rollout.md}
+- docs/{EAT-user-guide.md}
 - README.md
 
 本批验证：
 - Ran: `cd /home/code/EAT/backend && rtk go test ./internal/api ./internal/agent ./internal/task ./internal/orchestrator`
-- Result: PASS (`Go test: 69 passed in 4 packages`)
+- Result: PASS (`Go test: 70 passed in 4 packages`)
 
 本批提交：
 - commit: 当前批次 HEAD（见 `git log -1 --oneline`）
-- message: 扩展执行配置为端口策略
+- message: 让执行环境只读挂载任务附件
 
 待恢复输入：
-- 关键文件：`backend/internal/agent/service.go`, `backend/internal/task/task_support.go`, `docs/plans/2026-04-21-task-execution-profile-rollout.md`
+- 关键文件：`backend/internal/orchestrator/orchestrator.go`, `backend/internal/agent/service.go`, `docs/plans/2026-04-21-task-execution-profile-rollout.md`
 - 关键目标：
-  - 决定 executionProfile 是否继续扩到更细粒度 mounts 策略
+  - 决定 executionProfile 是否继续扩到更细粒度 repo/worktree mounts 策略
   - 决定 host backend 是否需要更严格的工作目录/挂载/网络限制
   - 若继续做多端控制面，则进入 desktop/platform 适配主线
 - 关键风险：
-  - 当前 executionProfile 已覆盖网络与最小端口暴露，但仍未进入 mounts 等更细粒度策略
+  - 当前 mounts 策略已覆盖附件只读挂载，但仍未进入 repo/worktree 的更细粒度 mount policy
   - host backend 当前是 reduced-isolation 的最小实现，主要依赖 operator 自觉与受信任本机环境
   - schema 底层仍保留历史 `sandboxType` 命名，未来若引入更多 backend，命名负担会继续上升
 
