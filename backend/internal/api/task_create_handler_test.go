@@ -172,3 +172,43 @@ func TestCreateTaskEndpointAllowsLeadOnlyModeWhenWorkerBackendIsUnavailable(t *t
 		t.Fatalf("unexpected task payload: %#v", payload["task"])
 	}
 }
+
+func TestCreateTaskEndpointRejectsInvalidExecutionProfile(t *testing.T) {
+	tempDir := t.TempDir()
+
+	db, err := store.Open(filepath.Join(tempDir, "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	repoPath := createGitRepository(t, tempDir, "task-invalid-profile-repo", "main")
+	if _, err := db.Exec(`
+		INSERT INTO projects (id, name, path, default_branch, created_at, updated_at)
+		VALUES ('project-invalid-profile', 'Invalid Profile Project', ?, 'main', '2026-03-24T00:00:00Z', '2026-03-24T00:00:00Z')
+	`, repoPath); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+
+	router := NewRouter(NewHandler(Dependencies{
+		DB:             db,
+		Bus:            eventbus.New(),
+		UploadRootPath: filepath.Join(tempDir, "uploads"),
+	}))
+
+	response := performJSONRequest(router, http.MethodPost, "/api/tasks", map[string]any{
+		"projectId":        "project-invalid-profile",
+		"title":            "Invalid profile",
+		"description":      "Should fail fast on unknown executionProfile.",
+		"leadAgentType":    "codex-cli",
+		"baseBranch":       "main",
+		"executionProfile": "preview-default",
+	})
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("unexpected status: %d body=%s", response.Code, response.Body.String())
+	}
+	payload := decodeJSONMap(t, response.Body.Bytes())
+	if payload["error"].(map[string]any)["code"] != "EXECUTION_PROFILE_INVALID" {
+		t.Fatalf("unexpected error payload: %#v", payload)
+	}
+}

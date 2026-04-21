@@ -27,13 +27,14 @@ func (a *TaskRepositoryAdapter) FindTaskByID(ctx context.Context, taskID string)
 		return nil, err
 	}
 	return &TaskRecord{
-		ID:             record.ID,
-		ProjectID:      record.ProjectID,
-		Title:          record.Title,
-		Status:         record.Status,
-		BaseCommitSha:  record.BaseCommitSHA,
-		BaseBranch:     record.BaseBranch,
-		TaskBranchName: derefString(record.TaskBranchName),
+		ID:               record.ID,
+		ProjectID:        record.ProjectID,
+		Title:            record.Title,
+		Status:           record.Status,
+		BaseCommitSha:    record.BaseCommitSHA,
+		BaseBranch:       record.BaseBranch,
+		TaskBranchName:   derefString(record.TaskBranchName),
+		ExecutionProfile: derefString(record.ExecutionProfile),
 	}, nil
 }
 

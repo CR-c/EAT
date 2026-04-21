@@ -43,7 +43,7 @@ func TestCanonicalTaskRuntimeAndDiffEndpoints(t *testing.T) {
 		"baseBranch":        "main",
 		"taskBranchName":    "feature/runtime-diff",
 		"workerBackendKind": "docker",
-		"executionProfile":  "preview-default",
+		"executionProfile":  "internet",
 	})
 	if createResponse.Code != http.StatusCreated {
 		t.Fatalf("unexpected create status: %d body=%s", createResponse.Code, createResponse.Body.String())
@@ -53,8 +53,8 @@ func TestCanonicalTaskRuntimeAndDiffEndpoints(t *testing.T) {
 	if taskPayload["workerBackendKind"] != "docker" {
 		t.Fatalf("expected workerBackendKind=docker, payload=%#v", taskPayload)
 	}
-	if taskPayload["executionProfile"] != "preview-default" {
-		t.Fatalf("expected executionProfile=preview-default, payload=%#v", taskPayload)
+	if taskPayload["executionProfile"] != "internet" {
+		t.Fatalf("expected executionProfile=internet, payload=%#v", taskPayload)
 	}
 	taskID := taskPayload["id"].(string)
 
@@ -77,8 +77,8 @@ func TestCanonicalTaskRuntimeAndDiffEndpoints(t *testing.T) {
 	if runtimePayload["workerBackendKind"] != "docker" {
 		t.Fatalf("expected runtime workerBackendKind=docker, payload=%#v", runtimePayload)
 	}
-	if runtimePayload["executionProfile"] != "preview-default" {
-		t.Fatalf("expected runtime executionProfile=preview-default, payload=%#v", runtimePayload)
+	if runtimePayload["executionProfile"] != "internet" {
+		t.Fatalf("expected runtime executionProfile=internet, payload=%#v", runtimePayload)
 	}
 	if len(runtimePayload["nodes"].([]any)) == 0 {
 		t.Fatalf("expected runtime nodes, payload=%#v", runtimePayload)

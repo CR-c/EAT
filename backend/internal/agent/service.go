@@ -22,13 +22,14 @@ import (
 
 // SpawnConfig holds parameters for spawning an agent session.
 type SpawnConfig struct {
-	BackendKind string
-	Prompt      string
-	WorkDir     string
-	BranchName  string
-	SessionType string // "WORKER" or "LEAD"
-	Sandbox     *sandbox.SandboxConfig
-	Attachments []AttachmentRef
+	BackendKind      string
+	ExecutionProfile string
+	Prompt           string
+	WorkDir          string
+	BranchName       string
+	SessionType      string // "WORKER" or "LEAD"
+	Sandbox          *sandbox.SandboxConfig
+	Attachments      []AttachmentRef
 }
 
 // AttachmentRef is a reference to a task attachment.
@@ -437,7 +438,7 @@ func spawnCodexWorker(ctx context.Context, backend workerbackend.Backend, config
 		WorkDir:         config.WorkDir,
 		Command:         command,
 		Env:             env,
-		NetworkProfile:  "ISOLATED",
+		NetworkProfile:  networkProfileForExecutionProfile(config.ExecutionProfile),
 		ReadwriteMounts: uniqueStrings([]string{config.WorkDir, gitRoot, runtimeHomePath}),
 		ReadonlyMounts:  uniqueStrings([]string{codexPackagePath, "/etc/ssl/certs"}),
 	})
@@ -728,7 +729,7 @@ func spawnSandboxedCLIWorker(ctx context.Context, backend workerbackend.Backend,
 		WorkDir:         config.WorkDir,
 		Command:         command,
 		Env:             env,
-		NetworkProfile:  "ISOLATED",
+		NetworkProfile:  networkProfileForExecutionProfile(config.ExecutionProfile),
 		ReadwriteMounts: uniqueStrings([]string{config.WorkDir, gitRoot, runtimeHomePath}),
 		ReadonlyMounts:  uniqueStrings(readonlyMounts),
 	})
@@ -863,6 +864,19 @@ func buildClaudePrompt(config SpawnConfig) string {
 
 func buildGeminiPrompt(config SpawnConfig) string {
 	return buildGenericWorkerPrompt(config)
+}
+
+func networkProfileForExecutionProfile(value string) string {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case "", "default", "isolated":
+		return "ISOLATED"
+	case "internet":
+		return "DEFAULT"
+	case "host-network":
+		return "HOST"
+	default:
+		return "ISOLATED"
+	}
 }
 
 func buildGenericWorkerPrompt(config SpawnConfig) string {

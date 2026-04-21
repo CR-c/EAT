@@ -41,13 +41,14 @@ type TaskRepository interface {
 
 // Minimal record types the orchestrator needs.
 type TaskRecord struct {
-	ID             string
-	ProjectID      string
-	Title          string
-	Status         string
-	BaseCommitSha  string
-	BaseBranch     string
-	TaskBranchName string
+	ID               string
+	ProjectID        string
+	Title            string
+	Status           string
+	BaseCommitSha    string
+	BaseBranch       string
+	TaskBranchName   string
+	ExecutionProfile string
 }
 
 type SubTaskRecord struct {
@@ -368,10 +369,11 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 
 	// Spawn agent session
 	runtime, err := o.agents.SpawnSession(ctx, subTask.AgentType, agent.SpawnConfig{
-		BackendKind: backendKind,
-		Prompt:      prompt,
-		WorkDir:     subTask.WorktreePath,
-		BranchName:  subTask.BranchName,
+		BackendKind:      backendKind,
+		ExecutionProfile: task.ExecutionProfile,
+		Prompt:           prompt,
+		WorkDir:          subTask.WorktreePath,
+		BranchName:       subTask.BranchName,
 	})
 	if err != nil {
 		o.failSubTaskLaunch(ctx, task, subTask, fmt.Sprintf("Failed to spawn worker: %s", err.Error()))

@@ -31,7 +31,10 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*Cre
 	if workerBackendKind == "" {
 		workerBackendKind = s.resolveTaskWorkerBackendKind(ctx, nil)
 	}
-	executionProfile := normalizeRequiredString(input.ExecutionProfile)
+	executionProfile, profileError := normalizeExecutionProfile(input.ExecutionProfile)
+	if profileError != nil {
+		return nil, failure(ErrorCodeExecutionProfileInvalid, profileError.Error(), map[string]any{"executionProfile": input.ExecutionProfile})
+	}
 
 	if projectID == "" {
 		return nil, failure(ErrorCodeProjectNotFound, "Project is required.", nil)

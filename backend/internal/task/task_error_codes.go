@@ -17,6 +17,7 @@ const (
 	ErrorCodeDescriptionRequired         = "DESCRIPTION_REQUIRED"
 	ErrorCodeExecutionAgentUnavailable   = "EXECUTION_AGENT_UNAVAILABLE"
 	ErrorCodeExecutionBackendUnavailable = "EXECUTION_BACKEND_UNAVAILABLE"
+	ErrorCodeExecutionProfileInvalid     = "EXECUTION_PROFILE_INVALID"
 	ErrorCodeInvalidAttachmentPayload    = "INVALID_ATTACHMENT_PAYLOAD"
 	ErrorCodeLeadAgentInvalid            = "LEAD_AGENT_INVALID"
 	ErrorCodeLeadAgentRequired           = "LEAD_AGENT_REQUIRED"

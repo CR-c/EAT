@@ -1,6 +1,7 @@
 package task
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -44,6 +45,16 @@ func decorateTask(taskRecord *Task) *Task {
 
 func normalizeRequiredString(value string) string {
 	return strings.TrimSpace(value)
+}
+
+func normalizeExecutionProfile(value string) (string, error) {
+	normalized := strings.TrimSpace(strings.ToLower(value))
+	switch normalized {
+	case "", "default", "isolated", "internet", "host-network":
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("executionProfile must be one of: default, isolated, internet, host-network")
+	}
 }
 
 func normalizeStringList(values []string) []string {

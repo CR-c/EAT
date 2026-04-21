@@ -41,8 +41,9 @@ func TestSpawnCodexWorkerPassesOpenAIAPIKeyToExecutionBackend(t *testing.T) {
 
 	backend := &captureBackend{}
 	runtime, err := spawnCodexWorker(context.Background(), backend, SpawnConfig{
-		Prompt:  "test prompt",
-		WorkDir: t.TempDir(),
+		Prompt:           "test prompt",
+		WorkDir:          t.TempDir(),
+		ExecutionProfile: "internet",
 	})
 	if err != nil {
 		t.Fatalf("spawn codex worker: %v", err)
@@ -52,6 +53,9 @@ func TestSpawnCodexWorkerPassesOpenAIAPIKeyToExecutionBackend(t *testing.T) {
 	}
 	if backend.lastInput.Env["OPENAI_API_KEY"] != "test-openai-key" {
 		t.Fatalf("expected OPENAI_API_KEY to be forwarded, got %#v", backend.lastInput.Env)
+	}
+	if backend.lastInput.NetworkProfile != "DEFAULT" {
+		t.Fatalf("expected executionProfile=internet to map to DEFAULT network, got %#v", backend.lastInput.NetworkProfile)
 	}
 }
 

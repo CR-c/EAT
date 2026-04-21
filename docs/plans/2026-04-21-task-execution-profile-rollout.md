@@ -44,7 +44,7 @@
 ### Explicitly out of scope for this round
 - `TrustedHostBackend`
 - desktop shell / `web/src/lib/platform.ts`
-- `executionProfile` 驱动 runtime mounts/network/ports
+- `executionProfile` 驱动 mounts/ports 等更高阶 runtime contract
 - schema 全面命名迁移（`sandboxType -> backendKind`）
 - 额外新增复杂 UI 配置面板
 
@@ -165,3 +165,24 @@
 1. 评估是否补一个只读 backend/profile 展示到任务详情或 runtime 视图
 2. 再决定是否推进 `TrustedHostBackend`
 3. 最后才考虑 desktop/platform 抽象
+
+## Batch D: 让 executionProfile 进入最小运行时语义
+
+**Objective:** 让 `executionProfile` 不再只是占位字段，而是影响 worker 的网络档位。
+
+**Files:**
+- Modify: `backend/internal/task/task_lifecycle_service.go`
+- Modify: `backend/internal/task/task_support.go`
+- Modify: `backend/internal/task/task_error_codes.go`
+- Modify: `backend/internal/orchestrator/{orchestrator.go,task_repository_adapter.go}`
+- Modify: `backend/internal/agent/{service.go,service_test.go}`
+- Modify: `backend/internal/api/{task_contract_handler_test.go,task_create_handler_test.go}`
+
+**Implementation notes:**
+- `executionProfile` 允许值：`default` / `isolated` / `internet` / `host-network`
+- 本轮只映射到 `StartWorkerInput.NetworkProfile`
+  - `default` / `isolated` -> `ISOLATED`
+  - `internet` -> `DEFAULT`
+  - `host-network` -> `HOST`
+- 非法 profile 在创建任务阶段直接返回 `EXECUTION_PROFILE_INVALID`
+- 暂不驱动 mounts / ports / more advanced runtime policy
