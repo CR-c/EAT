@@ -11,6 +11,7 @@ import (
 
 	"eat/backend/internal/agent"
 	"eat/backend/internal/git"
+	"eat/backend/internal/workerbackend"
 	"github.com/google/uuid"
 )
 
@@ -26,6 +27,11 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*Cre
 		baseBranchMode = "new"
 	}
 	baseBranchStartPoint := normalizeRequiredString(input.BaseBranchStartPoint)
+	workerBackendKind := workerbackend.NormalizeKind(input.WorkerBackendKind)
+	if workerBackendKind == "" {
+		workerBackendKind = s.resolveTaskWorkerBackendKind(ctx, nil)
+	}
+	executionProfile := normalizeRequiredString(input.ExecutionProfile)
 
 	if projectID == "" {
 		return nil, failure(ErrorCodeProjectNotFound, "Project is required.", nil)
@@ -139,13 +145,15 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskRequest) (*Cre
 	}
 
 	taskRecord, err := s.repository.CreateTask(ctx, CreateTaskRecordInput{
-		ProjectID:      projectID,
-		Title:          title,
-		Description:    description,
-		LeadAgentType:  leadAgentType,
-		BaseBranch:     resolvedBaseBranch,
-		BaseCommitSHA:  baseCommitSHA,
-		TaskBranchName: taskBranchName,
+		ProjectID:         projectID,
+		Title:             title,
+		Description:       description,
+		LeadAgentType:     leadAgentType,
+		BaseBranch:        resolvedBaseBranch,
+		BaseCommitSHA:     baseCommitSHA,
+		TaskBranchName:    taskBranchName,
+		WorkerBackendKind: stringPointerValue(workerBackendKind),
+		ExecutionProfile:  stringPointerValue(executionProfile),
 	})
 	if err != nil {
 		return nil, failure("TASK_CREATE_FAILED", err.Error(), nil)

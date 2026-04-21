@@ -430,7 +430,7 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 		return nil, failure("PLAN_SERIALIZATION_FAILED", err.Error(), nil)
 	}
 	approvedPlanJSON := string(approvedPlanJSONBytes)
-	backendStatus := s.defaultExecutionBackendStatus(ctx)
+	backendStatus := s.executionBackendStatusForTask(ctx, taskRecord)
 	if !backendStatus.Available {
 		return nil, failure(
 			ErrorCodeExecutionBackendUnavailable,
@@ -445,7 +445,7 @@ func (s *Service) ApprovePlan(ctx context.Context, taskID string) (*ApprovePlanR
 		return nil, executionValidationError
 	}
 
-	backendSandboxType := s.defaultWorkerSessionSandboxType(ctx)
+	backendSandboxType := s.workerSessionSandboxTypeForTask(ctx, taskRecord)
 
 	result := &ApprovePlanResult{
 		ApprovalReady: true,

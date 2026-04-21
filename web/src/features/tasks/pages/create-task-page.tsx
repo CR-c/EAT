@@ -160,6 +160,7 @@ export function CreateTaskPage() {
         projectId: project.data.project.id,
         taskBranchName: taskBranch,
         title,
+        workerBackendKind: selectedWorkerBackend?.kind,
       }
       const response = creationMode === "guided" && templateId
         ? await createGuidedTask({

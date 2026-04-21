@@ -11,33 +11,35 @@ import (
 func (r *Repository) CreateTask(ctx context.Context, input CreateTaskRecordInput) (*Task, error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	taskRecord := &Task{
-		ID:               uuid.NewString(),
-		ProjectID:        input.ProjectID,
-		Title:            input.Title,
-		Description:      input.Description,
-		LeadAgentType:    input.LeadAgentType,
-		BaseBranch:       input.BaseBranch,
-		BaseCommitSHA:    input.BaseCommitSHA,
-		TaskBranchName:   input.TaskBranchName,
-		TaskType:         "NORMAL",
-		PlanOrigin:       nil,
-		Status:           "DRAFT",
-		PlanVersion:      0,
-		CurrentPlanJSON:  nil,
-		ApprovedPlanJSON: nil,
-		LastError:        nil,
-		ArchivedAt:       nil,
-		CreatedAt:        now,
-		UpdatedAt:        now,
-		Version:          0,
+		ID:                uuid.NewString(),
+		ProjectID:         input.ProjectID,
+		Title:             input.Title,
+		Description:       input.Description,
+		LeadAgentType:     input.LeadAgentType,
+		BaseBranch:        input.BaseBranch,
+		BaseCommitSHA:     input.BaseCommitSHA,
+		TaskBranchName:    input.TaskBranchName,
+		WorkerBackendKind: input.WorkerBackendKind,
+		ExecutionProfile:  input.ExecutionProfile,
+		TaskType:          "NORMAL",
+		PlanOrigin:        nil,
+		Status:            "DRAFT",
+		PlanVersion:       0,
+		CurrentPlanJSON:   nil,
+		ApprovedPlanJSON:  nil,
+		LastError:         nil,
+		ArchivedAt:        nil,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+		Version:           0,
 	}
 
 	_, err := r.exec().ExecContext(ctx, `
 		INSERT INTO tasks (
 			id, project_id, title, description, lead_agent_type, base_branch, base_commit_sha,
-			task_branch_name, task_type, plan_origin, status, plan_version, current_plan_json, approved_plan_json,
+			task_branch_name, worker_backend_kind, execution_profile, task_type, plan_origin, status, plan_version, current_plan_json, approved_plan_json,
 			last_error, archived_at, created_at, updated_at, version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		taskRecord.ID,
 		taskRecord.ProjectID,
@@ -47,6 +49,8 @@ func (r *Repository) CreateTask(ctx context.Context, input CreateTaskRecordInput
 		taskRecord.BaseBranch,
 		taskRecord.BaseCommitSHA,
 		taskRecord.TaskBranchName,
+		taskRecord.WorkerBackendKind,
+		taskRecord.ExecutionProfile,
 		taskRecord.TaskType,
 		taskRecord.PlanOrigin,
 		taskRecord.Status,
@@ -101,13 +105,15 @@ func (r *Repository) CreateAttachment(ctx context.Context, input CreateAttachmen
 }
 
 type CreateTaskRecordInput struct {
-	ProjectID      string
-	Title          string
-	Description    string
-	LeadAgentType  string
-	BaseBranch     string
-	BaseCommitSHA  string
-	TaskBranchName *string
+	ProjectID         string
+	Title             string
+	Description       string
+	LeadAgentType     string
+	BaseBranch        string
+	BaseCommitSHA     string
+	TaskBranchName    *string
+	WorkerBackendKind *string
+	ExecutionProfile  *string
 }
 
 type CreateAttachmentInput struct {
@@ -131,6 +137,8 @@ func (r *Repository) FindTaskByID(ctx context.Context, taskID string) (*Task, er
 			base_branch,
 			base_commit_sha,
 			task_branch_name,
+			worker_backend_kind,
+			execution_profile,
 			task_type,
 			plan_origin,
 			status,
@@ -156,6 +164,8 @@ func (r *Repository) FindTaskByID(ctx context.Context, taskID string) (*Task, er
 		&task.BaseBranch,
 		&task.BaseCommitSHA,
 		&task.TaskBranchName,
+		&task.WorkerBackendKind,
+		&task.ExecutionProfile,
 		&task.TaskType,
 		&task.PlanOrigin,
 		&task.Status,
@@ -188,6 +198,8 @@ func (r *Repository) ListTasksByProjectID(ctx context.Context, projectID string,
 			base_branch,
 			base_commit_sha,
 			task_branch_name,
+			worker_backend_kind,
+			execution_profile,
 			task_type,
 			plan_origin,
 			status,
@@ -225,6 +237,8 @@ func (r *Repository) ListTasksByProjectID(ctx context.Context, projectID string,
 			&task.BaseBranch,
 			&task.BaseCommitSHA,
 			&task.TaskBranchName,
+			&task.WorkerBackendKind,
+			&task.ExecutionProfile,
 			&task.TaskType,
 			&task.PlanOrigin,
 			&task.Status,

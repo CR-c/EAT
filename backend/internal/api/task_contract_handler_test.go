@@ -36,18 +36,27 @@ func TestCanonicalTaskRuntimeAndDiffEndpoints(t *testing.T) {
 	}))
 
 	createResponse := performJSONRequest(router, http.MethodPost, "/api/tasks", map[string]any{
-		"projectId":      "project-runtime-diff",
-		"title":          "Runtime Diff",
-		"description":    "Exercise canonical runtime and diff endpoints.",
-		"leadAgentType":  "codex-cli",
-		"baseBranch":     "main",
-		"taskBranchName": "feature/runtime-diff",
+		"projectId":         "project-runtime-diff",
+		"title":             "Runtime Diff",
+		"description":       "Exercise canonical runtime and diff endpoints.",
+		"leadAgentType":     "codex-cli",
+		"baseBranch":        "main",
+		"taskBranchName":    "feature/runtime-diff",
+		"workerBackendKind": "docker",
+		"executionProfile":  "preview-default",
 	})
 	if createResponse.Code != http.StatusCreated {
 		t.Fatalf("unexpected create status: %d body=%s", createResponse.Code, createResponse.Body.String())
 	}
 	createPayload := decodeJSONMap(t, createResponse.Body.Bytes())
-	taskID := createPayload["task"].(map[string]any)["id"].(string)
+	taskPayload := createPayload["task"].(map[string]any)
+	if taskPayload["workerBackendKind"] != "docker" {
+		t.Fatalf("expected workerBackendKind=docker, payload=%#v", taskPayload)
+	}
+	if taskPayload["executionProfile"] != "preview-default" {
+		t.Fatalf("expected executionProfile=preview-default, payload=%#v", taskPayload)
+	}
+	taskID := taskPayload["id"].(string)
 
 	runGit(t, repoPath, "checkout", "feature/runtime-diff")
 	if err := os.WriteFile(filepath.Join(repoPath, "runtime.txt"), []byte("runtime diff\n"), 0o644); err != nil {

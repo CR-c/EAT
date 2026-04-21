@@ -9,6 +9,8 @@ type CreateTaskRequest struct {
 	TaskBranchName       string                  `json:"taskBranchName"`
 	BaseBranchMode       string                  `json:"baseBranchMode"`
 	BaseBranchStartPoint string                  `json:"baseBranchStartPoint"`
+	WorkerBackendKind    string                  `json:"workerBackendKind"`
+	ExecutionProfile     string                  `json:"executionProfile"`
 	Attachments          []AttachmentCreateInput `json:"attachments"`
 }
 

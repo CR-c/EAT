@@ -58,6 +58,8 @@ export interface TaskRecord {
   baseBranch: string
   baseCommitSha: string
   taskBranchName?: string | null
+  workerBackendKind?: string | null
+  executionProfile?: string | null
   taskType?: string
   planOrigin?: string | null
   status: string
@@ -446,6 +448,8 @@ export interface CreateTaskInput {
   taskBranchName?: string
   baseBranchMode?: string
   baseBranchStartPoint?: string
+  workerBackendKind?: string
+  executionProfile?: string
   attachments?: Array<{
     fileName: string
     filePath: string

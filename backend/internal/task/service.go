@@ -2,7 +2,6 @@ package task
 
 import (
 	"context"
-	"strings"
 
 	"eat/backend/internal/agent"
 	"eat/backend/internal/eventbus"
@@ -68,16 +67,14 @@ func (s *Service) notifyIntegrationQueued(taskID string) {
 }
 
 func (s *Service) defaultExecutionBackendStatus(ctx context.Context) workerbackend.Status {
-	if s.agentService != nil {
-		backends := s.agentService.ExecutionBackends(ctx)
-		for _, backend := range backends {
-			if backend.Default {
-				return backend
-			}
+	backends := s.executionBackends(ctx)
+	for _, backend := range backends {
+		if backend.Default {
+			return backend
 		}
-		if len(backends) > 0 {
-			return backends[0]
-		}
+	}
+	if len(backends) > 0 {
+		return backends[0]
 	}
 	return workerbackend.Status{
 		Kind:         workerbackend.KindDocker,
@@ -89,17 +86,55 @@ func (s *Service) defaultExecutionBackendStatus(ctx context.Context) workerbacke
 	}
 }
 
-func (s *Service) defaultWorkerSessionSandboxType(ctx context.Context) string {
-	backendKind := strings.TrimSpace(s.defaultExecutionBackendStatus(ctx).Kind)
-	if backendKind == "" && s.agentService != nil {
-		backendKind = strings.TrimSpace(s.agentService.DefaultExecutionBackendKind())
+func (s *Service) executionBackends(ctx context.Context) []workerbackend.Status {
+	if s == nil || s.agentService == nil {
+		return nil
+	}
+	return s.agentService.ExecutionBackends(ctx)
+}
+
+func (s *Service) resolveTaskWorkerBackendKind(ctx context.Context, taskRecord *Task) string {
+	if taskRecord != nil {
+		if backendKind := workerbackend.NormalizeKind(derefString(taskRecord.WorkerBackendKind)); backendKind != "" {
+			return backendKind
+		}
+	}
+	backendKind := workerbackend.NormalizeKind(s.defaultExecutionBackendStatus(ctx).Kind)
+	if backendKind == "" && s != nil && s.agentService != nil {
+		backendKind = workerbackend.NormalizeKind(s.agentService.DefaultExecutionBackendKind())
 	}
 	if backendKind == "" {
 		backendKind = workerbackend.KindDocker
 	}
+	return backendKind
+}
+
+func (s *Service) executionBackendStatusForTask(ctx context.Context, taskRecord *Task) workerbackend.Status {
+	backendKind := s.resolveTaskWorkerBackendKind(ctx, taskRecord)
+	for _, backend := range s.executionBackends(ctx) {
+		if workerbackend.NormalizeKind(backend.Kind) == backendKind {
+			return backend
+		}
+	}
+	if backendKind == "" {
+		return s.defaultExecutionBackendStatus(ctx)
+	}
+	return workerbackend.Status{
+		Kind:      backendKind,
+		Available: false,
+		Reason:    "execution backend " + backendKind + " is not registered",
+	}
+}
+
+func (s *Service) workerSessionSandboxTypeForTask(ctx context.Context, taskRecord *Task) string {
+	backendKind := s.resolveTaskWorkerBackendKind(ctx, taskRecord)
 	sandboxType := workerbackend.SessionSandboxTypeForKind(backendKind)
 	if sandboxType == "" {
 		return sessionSandboxDocker
 	}
 	return sandboxType
+}
+
+func (s *Service) defaultWorkerSessionSandboxType(ctx context.Context) string {
+	return s.workerSessionSandboxTypeForTask(ctx, nil)
 }

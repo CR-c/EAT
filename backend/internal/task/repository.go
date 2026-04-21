@@ -18,6 +18,8 @@ type Task struct {
 	BaseBranch          string             `json:"baseBranch"`
 	BaseCommitSHA       string             `json:"baseCommitSha"`
 	TaskBranchName      *string            `json:"taskBranchName"`
+	WorkerBackendKind   *string            `json:"workerBackendKind"`
+	ExecutionProfile    *string            `json:"executionProfile"`
 	TaskType            string             `json:"taskType"`
 	PlanOrigin          *string            `json:"planOrigin"`
 	Status              string             `json:"status"`
