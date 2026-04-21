@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "@/lib/platform"
 import type { ApiErrorPayload } from "@/lib/types"
 
 const jsonHeaders = {
@@ -6,7 +7,7 @@ const jsonHeaders = {
 } satisfies HeadersInit
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(resolveApiUrl(path), {
     ...init,
     headers: {
       ...jsonHeaders,

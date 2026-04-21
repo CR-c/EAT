@@ -1,13 +1,13 @@
 # Rollout Run State
 
 项目：EAT 多端控制面 / 可插拔执行后端结构重构
-当前批次：Batch 17 - 附件只读挂载策略
+当前批次：Batch 18 - 平台适配层与桌面壳 bootstrap 文档
 执行状态：
 - status: COMPLETED
-- run_started_at: 2026-04-21T13:46:00+08:00
-- completed_at: 2026-04-21T14:00:00+08:00
-- 本轮目标: 把 task 附件真正接进 worker 执行环境，以只读挂载形式提供给 agent 读取，作为 executionProfile 之后的第一条真实 mounts 策略
-- 本轮明确未做: executionProfile 更细粒度 repo/worktree mounts 策略、host backend 对 mounts 的强约束、桌面壳相关代码、大范围 schema 命名迁移
+- run_started_at: 2026-04-21T14:01:00+08:00
+- completed_at: 2026-04-21T14:15:00+08:00
+- 本轮目标: 为未来桌面壳收口最小平台适配层，避免前端默认假设纯浏览器同源环境；同时补一份 desktop shell bootstrap 文档
+- 本轮明确未做: 实际 Tauri/Electron 工程、桌面壳启动器、executionProfile 更细粒度 repo/worktree mounts 策略
 
 已完成批次：
 - Batch 1 - Phase1/2/3 最小闭环（Lead/Docker 解耦 + execution backend API + 创建页/系统页语义改造）
@@ -27,9 +27,10 @@
 - Batch 15 - executionProfile 最小运行时语义
 - Batch 16 - executionProfile 最小端口暴露策略
 - Batch 17 - 附件只读挂载策略
+- Batch 18 - 平台适配层与桌面壳 bootstrap 文档
 
 下一批次：
-- Batch 18 - 决定 executionProfile 是否继续扩到更细粒度 repo/worktree mounts 策略，或进入桌面壳 / platform 适配主线
+- Batch 19 - 决定 executionProfile 是否继续扩到更细粒度 repo/worktree mounts 策略，或真正落地桌面壳工程骨架
 
 真相源文档：
 - /home/code/EAT/AGENTS.md
@@ -75,30 +76,35 @@
   - orchestrator 在 launchSubTask 时会读取 task attachments
   - worker prompt 会明确列出可读附件
   - agent 执行时会把附件文件路径作为只读挂载传给 execution backend
+- 前端已新增 `web/src/lib/platform.ts`：
+  - 统一回答 `web` / `desktop-hosted` 平台能力
+  - 统一解析 API baseURL
+  - 允许未来桌面壳通过 `window.__EAT_PLATFORM__` 注入 `apiBaseUrl` / `shell`
+  - `main.tsx` 会把平台信息写入 `document.documentElement.dataset`
 
 本批改动范围：
-- backend/internal/orchestrator/{orchestrator.go,task_repository_adapter.go,integration_engine_test.go}
-- backend/internal/agent/{service.go,service_test.go}
-- docs/{EAT-user-guide.md}
+- web/src/lib/{platform.ts,api/client.ts}
+- web/src/main.tsx
+- docs/plans/2026-04-21-desktop-shell-bootstrap.md
 - README.md
 
 本批验证：
-- Ran: `cd /home/code/EAT/backend && rtk go test ./internal/api ./internal/agent ./internal/task ./internal/orchestrator`
-- Result: PASS (`Go test: 70 passed in 4 packages`)
+- Ran: `cd /home/code/EAT/web && rtk pnpm lint && rtk pnpm build`
+- Result: PASS
 
 本批提交：
 - commit: 当前批次 HEAD（见 `git log -1 --oneline`）
-- message: 让执行环境只读挂载任务附件
+- message: 预留桌面壳的平台适配层
 
 待恢复输入：
-- 关键文件：`backend/internal/orchestrator/orchestrator.go`, `backend/internal/agent/service.go`, `docs/plans/2026-04-21-task-execution-profile-rollout.md`
+- 关键文件：`web/src/lib/platform.ts`, `web/src/lib/api/client.ts`, `docs/plans/2026-04-21-desktop-shell-bootstrap.md`
 - 关键目标：
   - 决定 executionProfile 是否继续扩到更细粒度 repo/worktree mounts 策略
-  - 决定 host backend 是否需要更严格的工作目录/挂载/网络限制
-  - 若继续做多端控制面，则进入 desktop/platform 适配主线
+  - 或真正落地桌面壳工程骨架（Tauri/Electron）
+  - 若继续加强 host backend，则补更严格的工作目录/挂载/网络限制
 - 关键风险：
-  - 当前 mounts 策略已覆盖附件只读挂载，但仍未进入 repo/worktree 的更细粒度 mount policy
-  - host backend 当前是 reduced-isolation 的最小实现，主要依赖 operator 自觉与受信任本机环境
+  - 当前平台层只解决 baseURL / shell 注入，不包含桌面宿主启动器
+  - 当前 executionProfile 已覆盖网络、端口、附件只读挂载，但仍未进入 repo/worktree 的更细粒度 mount policy
   - schema 底层仍保留历史 `sandboxType` 命名，未来若引入更多 backend，命名负担会继续上升
 
 blocker：
