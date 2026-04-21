@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	goruntime "runtime"
 	"strings"
 	"sync"
@@ -17,9 +18,11 @@ import (
 )
 
 const (
-	EnableEnvVar       = "EAT_ENABLE_TRUSTED_HOST_BACKEND"
-	defaultTrustLevel  = "REDUCED_ISOLATION"
-	gracefulStopWindow = 3 * time.Second
+	EnableEnvVar            = "EAT_ENABLE_TRUSTED_HOST_BACKEND"
+	AllowedRootsEnvVar      = "EAT_TRUSTED_HOST_ALLOWED_ROOTS"
+	defaultTrustLevel       = "REDUCED_ISOLATION"
+	gracefulStopWindow      = 3 * time.Second
+	defaultWorktreeRootName = ".eat-worktrees"
 )
 
 type Backend struct {
@@ -51,6 +54,8 @@ func (b *Backend) Status(context.Context) workerbackend.Status {
 		TrustLevel: defaultTrustLevel,
 		Dependencies: []string{
 			EnableEnvVar,
+			AllowedRootsEnvVar,
+			filepath.Join(os.TempDir(), defaultWorktreeRootName),
 			"trusted local machine",
 		},
 	}
@@ -73,6 +78,9 @@ func (b *Backend) StartWorker(ctx context.Context, input workerbackend.StartWork
 	}
 	if stat, err := os.Stat(workDir); err != nil || !stat.IsDir() {
 		return nil, fmt.Errorf("trusted host backend workdir %s is not available", workDir)
+	}
+	if !isAllowedWorkDir(workDir) {
+		return nil, fmt.Errorf("trusted host backend only allows workdirs under orchestrator-managed roots; rejected %s", workDir)
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -235,4 +243,54 @@ func mergeEnv(base []string, extra map[string]string) []string {
 		result = append(result, key+"="+value)
 	}
 	return result
+}
+
+func allowedRoots() []string {
+	roots := []string{filepath.Join(os.TempDir(), defaultWorktreeRootName)}
+	if raw := strings.TrimSpace(os.Getenv(AllowedRootsEnvVar)); raw != "" {
+		for _, item := range strings.Split(raw, string(os.PathListSeparator)) {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				continue
+			}
+			roots = append(roots, item)
+		}
+	}
+	return normalizeRoots(roots)
+}
+
+func normalizeRoots(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		cleaned, err := filepath.Abs(strings.TrimSpace(value))
+		if err != nil || cleaned == "" {
+			continue
+		}
+		cleaned = filepath.Clean(cleaned)
+		if _, ok := seen[cleaned]; ok {
+			continue
+		}
+		seen[cleaned] = struct{}{}
+		result = append(result, cleaned)
+	}
+	return result
+}
+
+func isAllowedWorkDir(workDir string) bool {
+	candidate, err := filepath.Abs(strings.TrimSpace(workDir))
+	if err != nil || candidate == "" {
+		return false
+	}
+	candidate = filepath.Clean(candidate)
+	for _, root := range allowedRoots() {
+		if candidate == root {
+			return true
+		}
+		prefix := root + string(os.PathSeparator)
+		if strings.HasPrefix(candidate, prefix) {
+			return true
+		}
+	}
+	return false
 }
