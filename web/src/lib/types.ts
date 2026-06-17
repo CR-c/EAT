@@ -213,6 +213,12 @@ export interface TaskRuntime {
   }
 }
 
+export interface SessionOutput {
+  sessionId: string
+  output: string
+  truncated: boolean
+}
+
 export interface TaskDiffFile {
   path: string
   previousPath?: string | null

@@ -51,6 +51,10 @@ func NewRouter(handler *Handler) http.Handler {
 		r.Post("/guided-tasks", handler.CreateGuidedTask)
 		r.Post("/tasks", handler.CreateTask)
 
+		r.Route("/sessions/{sessionId}", func(r chi.Router) {
+			r.Get("/output", handler.GetSessionOutput)
+		})
+
 		r.Route("/tasks/{taskId}", func(r chi.Router) {
 			r.Get("/", handler.GetTask)
 			r.Get("/events", handler.TaskEvents)

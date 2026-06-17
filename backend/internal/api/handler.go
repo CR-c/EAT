@@ -197,7 +197,7 @@ func mapProjectErrorStatus(code string) int {
 
 func mapTaskErrorStatus(code string) int {
 	switch code {
-	case task.ErrorCodeTaskNotFound, task.ErrorCodeProjectNotFound, task.ErrorCodePlanTemplateNotFound, task.ErrorCodeAttachmentPathNotFound, task.ErrorCodePlanSnapshotNotFound, task.ErrorCodeSubTaskNotFound, "INTEGRATION_RUN_NOT_FOUND", "INTEGRATION_QUEUE_ITEM_NOT_FOUND":
+	case task.ErrorCodeTaskNotFound, task.ErrorCodeProjectNotFound, task.ErrorCodePlanTemplateNotFound, task.ErrorCodeAttachmentPathNotFound, task.ErrorCodePlanSnapshotNotFound, task.ErrorCodeSubTaskNotFound, "SESSION_NOT_FOUND", "INTEGRATION_RUN_NOT_FOUND", "INTEGRATION_QUEUE_ITEM_NOT_FOUND":
 		return http.StatusNotFound
 	case task.ErrorCodeExecutionBackendUnavailable, task.ErrorCodeExecutionAgentUnavailable:
 		return http.StatusConflict

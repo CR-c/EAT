@@ -40,6 +40,7 @@
 | GET | `/api/task-templates` | 获取任务模板列表 |
 | GET | `/api/metrics/summary` | 获取指标摘要 |
 | GET | `/api/metrics/export` | 导出指标明细 |
+| GET | `/api/sessions/{sessionId}/output` | 获取 worker/lead session 的输出缓冲回填，返回 `{ sessionId, output, truncated }` |
 
 ## 任务
 

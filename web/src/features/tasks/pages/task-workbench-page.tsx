@@ -39,6 +39,7 @@ import { useAsyncResource } from "@/hooks/use-async-resource"
 import { usePreferences } from "@/lib/preferences"
 import { getPilotTheme } from "@/lib/pilot-theme"
 import { cn } from "@/lib/utils"
+import { SessionTerminal, type SessionOutputSubscriber } from "@/features/tasks/components/session-terminal"
 import type { SubTaskRecord, TaskDetail, TaskDiff, TaskRecord, TaskRuntime, TaskSession } from "@/lib/types"
 
 type WorkbenchStage = "CLARIFYING" | "PLAN_REVIEW" | "EXECUTING" | "COMPLETED"
@@ -79,6 +80,7 @@ export function TaskWorkbenchPage() {
   const detailRef = useRef<TaskDetail | undefined>(undefined)
   const runtimeRef = useRef<TaskRuntime | undefined>(undefined)
   const reloadTimerRef = useRef<number | null>(null)
+  const sessionOutputSubscribersRef = useRef(new Map<string, Set<(chunk: string) => void>>())
   const reloadActionsRef = useRef({
     detailReload: () => {},
     runtimeReload: () => {},
@@ -163,10 +165,26 @@ export function TaskWorkbenchPage() {
     runtimeRef.current = effectiveRuntime
   }, [effectiveRuntime])
 
+  const subscribeSessionOutput = useMemo<SessionOutputSubscriber>(() => {
+    return (sessionId, callback) => {
+      const subscribers = sessionOutputSubscribersRef.current
+      const callbacks = subscribers.get(sessionId) ?? new Set<(chunk: string) => void>()
+      callbacks.add(callback)
+      subscribers.set(sessionId, callbacks)
+      return () => {
+        callbacks.delete(callback)
+        if (callbacks.size === 0) {
+          subscribers.delete(sessionId)
+        }
+      }
+    }
+  }, [])
+
   useEffect(() => {
     if (!taskId) {
       setLiveDetail(undefined)
       setLiveRuntime(undefined)
+      sessionOutputSubscribersRef.current.clear()
       return
     }
 
@@ -209,6 +227,13 @@ export function TaskWorkbenchPage() {
       const payload = parseSSEPayload(event.data)
       if (!payload) {
         return
+      }
+      if (eventName === "session:output") {
+        const sessionID = asString(payload.sessionId)
+        const chunk = asString(payload.chunk)
+        if (sessionID && chunk) {
+          sessionOutputSubscribersRef.current.get(sessionID)?.forEach((callback) => callback(chunk))
+        }
       }
 
       setLiveDetail((current) =>
@@ -393,6 +418,7 @@ export function TaskWorkbenchPage() {
               detail={effectiveDetail}
               nodes={graphNodes}
               onSelectNode={setActiveNodeId}
+              subscribeSessionOutput={subscribeSessionOutput}
               theme={theme}
             />
           )}
@@ -739,6 +765,7 @@ function ExecutingView({
   detail,
   nodes,
   onSelectNode,
+  subscribeSessionOutput,
   theme,
 }: {
   activeNode?: ExecutionNode
@@ -746,9 +773,11 @@ function ExecutingView({
   detail: TaskDetail
   nodes: ExecutionNode[]
   onSelectNode: (nodeId: string) => void
+  subscribeSessionOutput: SessionOutputSubscriber
   theme: ReturnType<typeof getPilotTheme>
 }) {
   const { t } = usePreferences()
+  const runningWorkerNodes = nodes.filter((node) => node.status === "running" && node.id !== "LEAD_AGENT")
   return (
     <div className="flex h-full w-full overflow-hidden">
       <div className={cn("flex w-1/3 max-w-[320px] shrink-0 flex-col border-r", theme.sidebarBorder, theme.shell)}>
@@ -820,9 +849,41 @@ function ExecutingView({
             </div>
           </div>
         </div>
-        <div className={cn("flex-1 overflow-y-auto p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap", theme.terminalBg)}>
-          {activeNode?.logs ?? t("task.workbench.runtimeNoLogs")}
-          {activeNode?.status === "running" ? <span className="ml-1 inline-block h-4 w-2 animate-pulse bg-current align-middle" /> : null}
+        <div className={cn("flex-1 overflow-y-auto p-5", theme.terminalBg)}>
+          {runningWorkerNodes.length > 0 ? (
+            <div className="grid gap-4 xl:grid-cols-2">
+              {runningWorkerNodes.map((node) => (
+                <div key={node.id} className="overflow-hidden rounded-sm border border-white/10 bg-slate-950/70 shadow-lg shadow-black/20">
+                  <div className="flex h-9 items-center justify-between border-b border-white/10 bg-white/5 px-3 font-mono text-[0.7rem] text-slate-300">
+                    <div className="flex min-w-0 items-center">
+                      <TerminalSquare className="mr-2 h-3.5 w-3.5 shrink-0 text-emerald-300" />
+                      <span className="truncate font-bold">{node.name}</span>
+                    </div>
+                    <span className="ml-3 shrink-0 rounded-sm border border-emerald-400/30 px-1.5 py-0.5 text-emerald-200">
+                      {node.sessionId ? "LIVE" : "WAITING"}
+                    </span>
+                  </div>
+                  {node.sessionId ? (
+                    <SessionTerminal
+                      className="h-64 min-h-64 rounded-none border-0"
+                      sessionId={node.sessionId}
+                      subscribe={subscribeSessionOutput}
+                    />
+                  ) : (
+                    <div className="flex h-64 items-center justify-center px-4 text-center font-mono text-xs text-slate-500">
+                      {t("task.workbench.runtimeNoLogs")}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-full min-h-80 flex-col items-center justify-center text-center font-mono text-sm text-slate-400">
+              <TerminalSquare className="mb-4 h-10 w-10 opacity-30" />
+              {activeNode?.logs ?? t("task.workbench.runtimeNoLogs")}
+              {activeNode?.status === "running" ? <span className="mt-3 inline-block h-4 w-2 animate-pulse bg-current align-middle" /> : null}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1500,6 +1561,7 @@ interface ExecutionNode {
   id: string
   logs: string
   name: string
+  sessionId?: string
   status: "done" | "pending" | "running"
 }
 
@@ -1515,6 +1577,7 @@ function getExecutionNodes(detail?: TaskDetail, runtime?: TaskRuntime, locale: "
       id: node.id,
       logs: node.logsPreview || translate(locale, "task.workbench.runtimeNoLogs"),
       name: node.title,
+      sessionId: node.sessionId ?? undefined,
       status:
         node.status === "RUNNING" || node.status === "EXECUTING"
           ? "running"
@@ -1532,6 +1595,7 @@ function getExecutionNodes(detail?: TaskDetail, runtime?: TaskRuntime, locale: "
     id: "LEAD_AGENT",
     logs: leadSession?.outputBuffer || translate(locale, "task.workbench.runtimeLeadWaiting"),
     name: translate(locale, "task.workbench.runtimeNodeName"),
+    sessionId: leadSession?.id,
     status: detail.task.status === "EXECUTING" ? "running" : detail.task.status === "COMPLETED" ? "done" : "pending",
   }
 
@@ -1550,6 +1614,7 @@ function getExecutionNodes(detail?: TaskDetail, runtime?: TaskRuntime, locale: "
           worktree: subTask.worktreePath ?? translate(locale, "task.workbench.runtimePending"),
         }),
       name: subTask.displayName ?? subTask.title,
+      sessionId: session?.id,
       status:
         subTask.status === "RUNNING"
           ? "running"
