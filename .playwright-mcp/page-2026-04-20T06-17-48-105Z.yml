@@ -1,0 +1,71 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - button [ref=e5]:
+      - img [ref=e6]
+    - generic [ref=e9]:
+      - generic [ref=e11]:
+        - img [ref=e12]
+        - generic [ref=e14]: E.A.T.
+      - generic [ref=e15]: 本地优先
+    - generic [ref=e16]:
+      - generic [ref=e17]: 系统菜单 //
+      - link "[ 控制台 ]" [ref=e18] [cursor=pointer]:
+        - /url: /console
+        - img [ref=e19]
+        - generic [ref=e24]: "[ 控制台 ]"
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - link "[ 项目档案库 ]" [ref=e27] [cursor=pointer]:
+            - /url: /projects
+            - img [ref=e28]
+            - generic [ref=e33]: "[ 项目档案库 ]"
+          - button [ref=e34]:
+            - img [ref=e35]
+        - button "evat" [active] [ref=e38]:
+          - generic [ref=e40]: evat
+    - generic [ref=e41]:
+      - 'button "PILOT: 00_绫波丽" [ref=e42]':
+        - img [ref=e43]
+        - generic [ref=e48]: "PILOT: 00_绫波丽"
+      - link "[ 系统配置 ]" [ref=e49] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e50]
+        - generic [ref=e53]: "[ 系统配置 ]"
+  - generic [ref=e54]:
+    - banner [ref=e55]:
+      - generic [ref=e57]:
+        - generic [ref=e336]: evat
+        - img [ref=e338]
+        - generic [ref=e340]:
+          - link "任务中心" [ref=e341] [cursor=pointer]:
+            - /url: /projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/tasks
+            - img [ref=e342]
+            - text: 任务中心
+          - link "工作台" [ref=e345] [cursor=pointer]:
+            - /url: /projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/workbench
+            - img [ref=e346]
+            - text: 工作台
+      - generic [ref=e60]:
+        - img [ref=e61]
+        - button "zh-CN" [ref=e65]
+        - button "en" [ref=e66]
+    - main [ref=e67]:
+      - generic [ref=e348]:
+        - generic [ref=e349]:
+          - generic [ref=e350]:
+            - generic [ref=e351]: 任务指挥中心 //
+            - heading "任务指挥中心" [level=2] [ref=e352]
+          - link "发布新任务" [ref=e353] [cursor=pointer]:
+            - /url: /projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/tasks/new
+            - img [ref=e354]
+            - text: 发布新任务
+        - generic [ref=e356]:
+          - generic [ref=e357]:
+            - button "全部任务" [ref=e358]
+            - button "活跃作战" [ref=e359]
+            - button "已归档案" [ref=e360]
+          - generic [ref=e361]:
+            - img [ref=e362]
+            - textbox "检索任务代号或名称..." [ref=e365]
+        - generic [ref=e368]: 未检索到符合条件的任务。
+        - generic [ref=e369]: /home/code/evat

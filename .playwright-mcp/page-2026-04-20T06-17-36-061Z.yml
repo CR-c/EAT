@@ -1,0 +1,76 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - button [ref=e5]:
+      - img [ref=e6]
+    - generic [ref=e9]:
+      - generic [ref=e11]:
+        - img [ref=e12]
+        - generic [ref=e14]: E.A.T.
+      - generic [ref=e15]: 本地优先
+    - generic [ref=e16]:
+      - generic [ref=e17]: 系统菜单 //
+      - link "[ 控制台 ]" [ref=e18] [cursor=pointer]:
+        - /url: /console
+        - img [ref=e19]
+        - generic [ref=e24]: "[ 控制台 ]"
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - link "[ 项目档案库 ]" [ref=e27] [cursor=pointer]:
+            - /url: /projects
+            - img [ref=e28]
+            - generic [ref=e33]: "[ 项目档案库 ]"
+          - button [ref=e34]:
+            - img [ref=e35]
+        - button "evat" [ref=e38]:
+          - generic [ref=e40]: evat
+    - generic [ref=e41]:
+      - 'button "PILOT: 00_绫波丽" [ref=e42]':
+        - img [ref=e43]
+        - generic [ref=e48]: "PILOT: 00_绫波丽"
+      - link "[ 系统配置 ]" [ref=e49] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e50]
+        - generic [ref=e53]: "[ 系统配置 ]"
+  - generic [ref=e54]:
+    - banner [ref=e55]:
+      - generic [ref=e57]:
+        - generic [ref=e58]: 系统离线 //
+        - generic [ref=e59]: 系统控制台
+      - generic [ref=e60]:
+        - img [ref=e61]
+        - button "zh-CN" [ref=e65]
+        - button "en" [ref=e66]
+    - main [ref=e67]:
+      - generic [ref=e69]:
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - generic [ref=e72]: 全局概览 //
+            - heading "系统控制台" [level=2] [ref=e73]
+          - generic [ref=e74]:
+            - generic [ref=e75]:
+              - generic [ref=e76]:
+                - img [ref=e77]
+                - text: "0"
+              - generic [ref=e79]: "|"
+              - generic [ref=e80]:
+                - img [ref=e81]
+                - text: 0 个任务
+              - generic [ref=e83]: "|"
+              - generic [ref=e84]:
+                - img [ref=e85]
+                - text: 0 个项目
+            - generic [ref=e90]:
+              - generic [ref=e91]:
+                - img [ref=e93]
+                - text: codex-cli (正在同步本地数据...)
+              - generic [ref=e96]:
+                - img [ref=e98]
+                - text: claude-cli (正在同步本地数据...)
+              - generic [ref=e104]:
+                - img [ref=e106]
+                - text: gemini-cli (正在同步本地数据...)
+        - generic [ref=e109]:
+          - heading "活跃作战区域" [level=3] [ref=e110]:
+            - img [ref=e111]
+            - text: 活跃作战区域
+          - generic [ref=e115]: 当前系统无处于活跃流转态的任务。

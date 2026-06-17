@@ -1,0 +1,145 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - button [ref=e5]:
+      - img [ref=e6]
+    - generic [ref=e9]:
+      - generic [ref=e11]:
+        - img [ref=e12]
+        - generic [ref=e14]: E.A.T.
+      - generic [ref=e15]: 本地优先
+    - generic [ref=e16]:
+      - generic [ref=e17]: 系统菜单 //
+      - link "[ 控制台 ]" [ref=e18] [cursor=pointer]:
+        - /url: /console
+        - img [ref=e19]
+        - generic [ref=e24]: "[ 控制台 ]"
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - link "[ 项目档案库 ]" [ref=e27] [cursor=pointer]:
+            - /url: /projects
+            - img [ref=e28]
+            - generic [ref=e33]: "[ 项目档案库 ]"
+          - button [ref=e34]:
+            - img [ref=e35]
+        - button "evat" [ref=e38]:
+          - generic [ref=e40]: evat
+    - generic [ref=e41]:
+      - 'button "PILOT: 00_绫波丽" [ref=e42]':
+        - img [ref=e43]
+        - generic [ref=e48]: "PILOT: 00_绫波丽"
+      - link "[ 系统配置 ]" [ref=e49] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e50]
+        - generic [ref=e53]: "[ 系统配置 ]"
+  - generic [ref=e54]:
+    - banner [ref=e55]:
+      - generic [ref=e57]:
+        - generic [ref=e336]: evat
+        - img [ref=e338]
+        - generic [ref=e340]:
+          - link "任务中心" [ref=e341] [cursor=pointer]:
+            - /url: /projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/tasks
+            - img [ref=e342]
+            - text: 任务中心
+          - link "工作台" [ref=e345] [cursor=pointer]:
+            - /url: /projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/workbench
+            - img [ref=e346]
+            - text: 工作台
+          - generic [ref=e370]:
+            - img [ref=e371]
+            - text: 发布新任务
+      - generic [ref=e60]:
+        - img [ref=e61]
+        - button "zh-CN" [ref=e65]
+        - button "en" [ref=e66]
+    - main [ref=e67]:
+      - generic [ref=e373]:
+        - generic [ref=e374]:
+          - link [ref=e375] [cursor=pointer]:
+            - /url: /projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/tasks
+            - img [ref=e376]
+          - generic [ref=e378]:
+            - generic [ref=e379]: 发起作业 //
+            - heading "发布新任务" [level=2] [ref=e380]
+        - generic [ref=e381]:
+          - generic [ref=e382]:
+            - generic [ref=e383]: "[ 01_基础信息 ]"
+            - generic [ref=e384]:
+              - generic [ref=e386]:
+                - text: 任务代号
+                - generic [ref=e387]: "*"
+              - textbox "如：实现用户鉴权模块 / 修复支付超时问题" [ref=e388]
+              - generic [ref=e389]:
+                - generic [ref=e391]: 需求描述
+                - textbox "详细描述本次任务的目标、期望行为，或直接粘贴 PRD 链接..." [ref=e392]
+              - generic [ref=e393]:
+                - generic [ref=e395]: 参考附件
+                - generic [ref=e396] [cursor=pointer]:
+                  - img [ref=e397]
+                  - generic [ref=e400]: 点击上传设计图、PRD 等参考文件
+          - generic [ref=e401]:
+            - generic [ref=e402]: PRECHECK
+            - generic [ref=e403]:
+              - generic [ref=e404]:
+                - generic [ref=e405]: Benchmark 仓库
+                - generic [ref=e406]: /home/code/evat
+              - generic [ref=e407]:
+                - generic [ref=e408]: Git 仓库状态
+                - generic [ref=e409]: default=main / dirty=yes
+              - generic [ref=e410]:
+                - generic [ref=e411]: Docker / Worker 镜像
+                - generic [ref=e412]: available=yes / imageReady=yes
+              - generic [ref=e413]:
+                - generic [ref=e414]: Lead Runtime
+                - generic [ref=e415]: claude-cli 可用
+          - generic [ref=e416]:
+            - generic [ref=e417]: "[ 02_代码资源 ]"
+            - generic [ref=e418]:
+              - generic [ref=e419]:
+                - generic [ref=e421]:
+                  - img [ref=e422]
+                  - text: 基线分支
+                - combobox [ref=e426]:
+                  - option "main" [selected]
+                  - option "eat/evat-lb5ts1"
+              - generic [ref=e427]:
+                - generic [ref=e429]:
+                  - img [ref=e430]
+                  - text: 目标工作分支
+                  - generic [ref=e434]: "*"
+                - textbox "输入工作分支名称..." [ref=e435]: eat/evat-kza0kr
+                - generic [ref=e436]: 后端会校验分支名，并在冲突时自动生成唯一分支。
+          - generic [ref=e437]:
+            - generic [ref=e438]: PLAN
+            - generic [ref=e439]:
+              - generic [ref=e441]: 任务类型
+              - generic [ref=e442]:
+                - button "普通任务 先创建任务并进入澄清；在确认需求后，系统自动生成可审阅计划。" [active] [ref=e443]:
+                  - generic [ref=e444]: 普通任务
+                  - generic [ref=e445]: 先创建任务并进入澄清；在确认需求后，系统自动生成可审阅计划。
+                - button "模板任务 创建时直接生成初始计划，更适合 benchmark 和首次验证。" [ref=e446]:
+                  - generic [ref=e447]: 模板任务
+                  - generic [ref=e448]: 创建时直接生成初始计划，更适合 benchmark 和首次验证。
+              - generic [ref=e482]: 当前为普通任务模式：不会在创建时注入模板，系统会在你确认需求后自动生成计划。
+          - generic [ref=e453]:
+            - generic [ref=e454]: "[ 03_领队席 ]"
+            - generic [ref=e455]:
+              - button "claude-cli 偏重审查、追踪风险与补齐说明。 REAL" [ref=e456]:
+                - generic [ref=e457]:
+                  - generic [ref=e459]:
+                    - img [ref=e460]
+                    - generic [ref=e463]: claude-cli
+                  - paragraph [ref=e464]: 偏重审查、追踪风险与补齐说明。
+                - generic [ref=e466]: REAL
+              - button "codex-cli 负责任务编排、代码生成与上下文推进。" [ref=e467]:
+                - generic [ref=e468]:
+                  - generic [ref=e470]:
+                    - img [ref=e471]
+                    - generic [ref=e474]: codex-cli
+                  - paragraph [ref=e475]: 负责任务编排、代码生成与上下文推进。
+        - generic [ref=e476]:
+          - link "放弃" [ref=e477] [cursor=pointer]:
+            - /url: /projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/tasks
+          - button "确认发布" [disabled] [ref=e478]:
+            - img [ref=e479]
+            - text: 确认发布

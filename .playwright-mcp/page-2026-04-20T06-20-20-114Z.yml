@@ -1,0 +1,129 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - button [ref=e5]:
+      - img [ref=e6]
+    - generic [ref=e9]:
+      - generic [ref=e11]:
+        - img [ref=e12]
+        - generic [ref=e14]: E.A.T.
+      - generic [ref=e15]: 本地优先
+    - generic [ref=e16]:
+      - generic [ref=e17]: 系统菜单 //
+      - link "[ 控制台 ]" [ref=e18] [cursor=pointer]:
+        - /url: /console
+        - img [ref=e19]
+        - generic [ref=e24]: "[ 控制台 ]"
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - link "[ 项目档案库 ]" [ref=e27] [cursor=pointer]:
+            - /url: /projects
+            - img [ref=e28]
+            - generic [ref=e33]: "[ 项目档案库 ]"
+          - button [ref=e34]:
+            - img [ref=e35]
+        - button "evat" [ref=e38]:
+          - generic [ref=e40]: evat
+    - generic [ref=e41]:
+      - 'button "PILOT: 00_绫波丽" [ref=e42]':
+        - img [ref=e43]
+        - generic [ref=e48]: "PILOT: 00_绫波丽"
+      - link "[ 系统配置 ]" [ref=e49] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e50]
+        - generic [ref=e53]: "[ 系统配置 ]"
+  - generic [ref=e54]:
+    - banner [ref=e55]:
+      - generic [ref=e57]:
+        - generic [ref=e336]: evat
+        - img [ref=e338]
+        - generic [ref=e340]:
+          - link "任务中心" [ref=e341] [cursor=pointer]:
+            - /url: /projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/tasks
+            - img [ref=e342]
+            - text: 任务中心
+          - link "工作台 <060af4a5-0ff2-4450-8643-7f5b1fcee9f7>" [ref=e487] [cursor=pointer]:
+            - /url: /projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/workbench?taskId=060af4a5-0ff2-4450-8643-7f5b1fcee9f7
+            - img [ref=e346]
+            - text: 工作台 <060af4a5-0ff2-4450-8643-7f5b1fcee9f7>
+      - generic [ref=e60]:
+        - img [ref=e61]
+        - button "zh-CN" [ref=e65]
+        - button "en" [ref=e66]
+    - main [ref=e67]:
+      - generic [ref=e488]:
+        - generic [ref=e489]:
+          - generic [ref=e490]:
+            - link [ref=e491] [cursor=pointer]:
+              - /url: /
+              - img [ref=e492]
+            - generic [ref=e494]: 060af4a5-0ff2-4450-8643-7f5b1fcee9f7
+            - generic [ref=e495]: 浏览器走查澄清测试 2026-04-20 14:18
+            - generic [ref=e496]:
+              - img [ref=e497]
+              - text: eat/evat-kza0kr
+            - generic [ref=e501]: 普通
+            - generic [ref=e502]: 未生成
+          - generic [ref=e503]:
+            - generic [ref=e504]:
+              - generic [ref=e505]: 01_需求澄清
+              - img [ref=e506]
+            - generic [ref=e508]:
+              - generic [ref=e509]: 02_计划审阅
+              - img [ref=e510]
+            - generic [ref=e512]:
+              - generic [ref=e513]: 03_并行执行
+              - img [ref=e514]
+            - generic [ref=e517]: 04_合并收尾
+        - generic [ref=e518]:
+          - generic [ref=e519]:
+            - generic [ref=e520]:
+              - img [ref=e521]
+              - text: 指令终端 //
+            - generic [ref=e524]:
+              - generic [ref=e571]:
+                - generic [ref=e572]:
+                  - img [ref=e573]
+                  - text: 指挥官 // 本地
+                - generic [ref=e578]: 先开始澄清。请不要直接给实现方案，只问我两个最关键、最影响范围判断的问题。
+              - generic [ref=e580]:
+                - generic [ref=e581]:
+                  - img [ref=e582]
+                  - text: 领队席 // 本地编排
+                - generic [ref=e585]: 先确认两个最影响范围判断的问题： 1. 你希望支持哪些时间范围导出：固定范围（如最近7天、30天、自然月）就够，还是必须支持自定义时间区间？ 2. 导出结果主要是给谁分享、以什么形态分享：例如自己留存、发给他人、发到群里；同时是否只允许登录用户导出自己的数据？
+              - generic [ref=e588]:
+                - generic [ref=e589]:
+                  - img [ref=e590]
+                  - text: 指挥官 // 本地
+                - generic [ref=e595]: 先用固定范围就够，支持最近7天、最近30天和本月，不需要自定义区间。分享场景先按“用户自己导出后发给别人”理解，结果形态优先 CSV，如果实现成本低也可以顺手给一个适合手机直接转发的图片摘要。现阶段不做复杂权限体系，但至少不要让未登录状态导出任何个人数据。
+              - generic [ref=e597]:
+                - generic [ref=e598]:
+                  - img [ref=e599]
+                  - text: 领队席 // 本地编排
+                - generic [ref=e602]: "已确认的约束是： - 仅支持固定时间范围：最近7天、最近30天、本月 - 先不做自定义时间区间 - 入口从现有界面触发 - 分享场景按“用户先导出，再自行发给别人”处理 - 导出格式优先 `CSV` - 如果成本很低，可顺带提供一张适合手机转发的图片摘要 - 未登录状态不能导出任何个人数据 - 暂不做更复杂的权限体系 还差一个最影响范围的问题：`CSV` 你要的是“明细导出”还是“汇总导出”？ 例如： - 每笔支出逐行导出 - 按天/按分类汇总导出 - 两者都要"
+            - generic [ref=e533]:
+              - img [ref=e534]
+              - textbox "继续对话以修改规格，无需打回..." [active] [ref=e536]: 第一版只做按分类汇总导出，不做逐笔明细，也不用同时支持两者。分类汇总里至少要有分类名、总金额和该分类记录数。
+              - button [disabled] [ref=e537]:
+                - img [ref=e538]
+          - generic [ref=e541]:
+            - generic [ref=e543]:
+              - img [ref=e544]
+              - text: /eat/task.md
+            - generic [ref=e548]:
+              - heading "任务规格说明：浏览器走查澄清测试 2026-04-20 14:18" [level=1] [ref=e549]
+              - heading "1. 目标与范围" [level=2] [ref=e551]
+              - paragraph [ref=e552]: 我想给 evat 增加一个新的导出能力，但先不要直接规划实现。请先和我做需求澄清。当前已知目标只有三点：1）用户要能从现有界面触发导出；2）导出内容和最近一段时间的支出汇总有关；3）结果最好便于分享。哪些时间范围、导出格式、入口位置、是否需要登录限制，这些我都还没定。请你先只问我最关键的澄清问题。
+              - heading "2. 当前上下文" [level=2] [ref=e554]
+              - listitem [ref=e555]: "任务 ID: 060af4a5-0ff2-4450-8643-7f5b1fcee9f7"
+              - listitem [ref=e556]: "Lead Agent: codex-cli"
+              - listitem [ref=e557]: "基线分支: main"
+              - listitem [ref=e558]: "任务分支: eat/evat-kza0kr"
+              - heading "3. 参考附件" [level=2] [ref=e560]
+              - listitem [ref=e561]: 暂无附件
+              - heading "4. 最近消息" [level=2] [ref=e563]
+              - listitem [ref=e564]: "[AGENT] 先确认两个最影响范围判断的问题： 1. 你希望支持哪些时间范围导出：固定范围（如最近7天、30天、自然月）就够，还是必须支持自定义时间区间？ 2. 导出结果主要是给谁分享、以什么形态分享：例如自己留存、发给他人、发到群里；同时是否只允许登录用户导出自己的数据？"
+              - listitem [ref=e586]: "[USER] 先用固定范围就够，支持最近7天、最近30天和本月，不需要自定义区间。分享场景先按“用户自己导出后发给别人”理解，结果形态优先 CSV，如果实现成本低也可以顺手给一个适合手机直接转发的图片摘要。现阶段不做复杂权限体系，但至少不要让未登录状态导出任何个人数据。"
+              - listitem [ref=e603]: "[AGENT] 已确认的约束是： - 仅支持固定时间范围：最近7天、最近30天、本月 - 先不做自定义时间区间 - 入口从现有界面触发 - 分享场景按“用户先导出，再自行发给别人”处理 - 导出格式优先 `CSV` - 如果成本很低，可顺带提供一张适合手机转发的图片摘要 - 未登录状态不能导出任何个人数据 - 暂不做更复杂的权限体系 还差一个最影响范围的问题：`CSV` 你要的是“明细导出”还是“汇总导出”？ 例如： - 每笔支出逐行导出 - 按天/按分类汇总导出 - 两者都要"
+            - button "确认文档，进入计划审阅" [disabled] [ref=e566]:
+              - img [ref=e567]
+              - text: 确认文档，进入计划审阅

@@ -1,0 +1,111 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - button [ref=e5]:
+      - img [ref=e6]
+    - generic [ref=e9]:
+      - generic [ref=e11]:
+        - img [ref=e12]
+        - generic [ref=e14]: E.A.T.
+      - generic [ref=e15]: 本地优先
+    - generic [ref=e16]:
+      - generic [ref=e17]: 系统菜单 //
+      - link "[ 控制台 ]" [ref=e18] [cursor=pointer]:
+        - /url: /console
+        - img [ref=e19]
+        - generic [ref=e24]: "[ 控制台 ]"
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - link "[ 项目档案库 ]" [ref=e27] [cursor=pointer]:
+            - /url: /projects
+            - img [ref=e28]
+            - generic [ref=e33]: "[ 项目档案库 ]"
+          - button [ref=e34]:
+            - img [ref=e35]
+        - button "evat" [ref=e38]:
+          - generic [ref=e40]: evat
+    - generic [ref=e41]:
+      - 'button "PILOT: 00_绫波丽" [ref=e42]':
+        - img [ref=e43]
+        - generic [ref=e48]: "PILOT: 00_绫波丽"
+      - link "[ 系统配置 ]" [ref=e49] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e50]
+        - generic [ref=e53]: "[ 系统配置 ]"
+  - generic [ref=e54]:
+    - banner [ref=e55]:
+      - generic [ref=e57]:
+        - generic [ref=e336]: evat
+        - img [ref=e338]
+        - generic [ref=e340]:
+          - link "任务中心" [ref=e341] [cursor=pointer]:
+            - /url: /projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/tasks
+            - img [ref=e342]
+            - text: 任务中心
+          - link "工作台 <060af4a5-0ff2-4450-8643-7f5b1fcee9f7>" [ref=e487] [cursor=pointer]:
+            - /url: /projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/workbench?taskId=060af4a5-0ff2-4450-8643-7f5b1fcee9f7
+            - img [ref=e346]
+            - text: 工作台 <060af4a5-0ff2-4450-8643-7f5b1fcee9f7>
+      - generic [ref=e60]:
+        - img [ref=e61]
+        - button "zh-CN" [ref=e65]
+        - button "en" [ref=e66]
+    - main [ref=e67]:
+      - generic [ref=e488]:
+        - generic [ref=e489]:
+          - generic [ref=e490]:
+            - link [ref=e491] [cursor=pointer]:
+              - /url: /
+              - img [ref=e492]
+            - generic [ref=e494]: 060af4a5-0ff2-4450-8643-7f5b1fcee9f7
+            - generic [ref=e495]: 浏览器走查澄清测试 2026-04-20 14:18
+            - generic [ref=e496]:
+              - img [ref=e497]
+              - text: eat/evat-kza0kr
+            - generic [ref=e501]: 普通
+            - generic [ref=e502]: 未生成
+          - generic [ref=e503]:
+            - generic [ref=e504]:
+              - generic [ref=e505]: 01_需求澄清
+              - img [ref=e506]
+            - generic [ref=e508]:
+              - generic [ref=e509]: 02_计划审阅
+              - img [ref=e510]
+            - generic [ref=e512]:
+              - generic [ref=e513]: 03_并行执行
+              - img [ref=e514]
+            - generic [ref=e517]: 04_合并收尾
+        - generic [ref=e518]:
+          - generic [ref=e519]:
+            - generic [ref=e520]:
+              - img [ref=e521]
+              - text: 指令终端 //
+            - generic [ref=e526]:
+              - generic [ref=e527]:
+                - img [ref=e528]
+                - text: 领队席 // 本地编排
+              - generic [ref=e531]: "[系统] 当前尚无澄清消息。请输入首条消息以启动或继续 Lead 澄清流程。"
+            - generic [ref=e533]:
+              - img [ref=e534]
+              - textbox "继续对话以修改规格，无需打回..." [active] [ref=e536]: 先开始澄清。请不要直接给实现方案，只问我两个最关键、最影响范围判断的问题。
+              - button [disabled] [ref=e537]:
+                - img [ref=e538]
+          - generic [ref=e541]:
+            - generic [ref=e543]:
+              - img [ref=e544]
+              - text: /eat/task.md
+            - generic [ref=e548]:
+              - heading "任务规格说明：浏览器走查澄清测试 2026-04-20 14:18" [level=1] [ref=e549]
+              - heading "1. 目标与范围" [level=2] [ref=e551]
+              - paragraph [ref=e552]: 我想给 evat 增加一个新的导出能力，但先不要直接规划实现。请先和我做需求澄清。当前已知目标只有三点：1）用户要能从现有界面触发导出；2）导出内容和最近一段时间的支出汇总有关；3）结果最好便于分享。哪些时间范围、导出格式、入口位置、是否需要登录限制，这些我都还没定。请你先只问我最关键的澄清问题。
+              - heading "2. 当前上下文" [level=2] [ref=e554]
+              - listitem [ref=e555]: "任务 ID: 060af4a5-0ff2-4450-8643-7f5b1fcee9f7"
+              - listitem [ref=e556]: "Lead Agent: codex-cli"
+              - listitem [ref=e557]: "基线分支: main"
+              - listitem [ref=e558]: "任务分支: eat/evat-kza0kr"
+              - heading "3. 参考附件" [level=2] [ref=e560]
+              - listitem [ref=e561]: 暂无附件
+              - heading "4. 最近消息" [level=2] [ref=e563]
+              - listitem [ref=e564]: 尚未开始对话
+            - button "确认文档，进入计划审阅" [disabled] [ref=e566]:
+              - img [ref=e567]
+              - text: 确认文档，进入计划审阅

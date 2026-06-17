@@ -1,0 +1,17 @@
+[GET] http://127.0.0.1:3000/api/projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/tasks?includeArchived=1 => [200] OK
+[GET] http://127.0.0.1:3000/api/projects/3a446c99-3c5e-40b7-a233-bbca27098130/tasks?includeArchived=1 => [200] OK
+[GET] http://127.0.0.1:3000/api/projects/42309265-ae12-47c3-837c-0737800dc99e/tasks?includeArchived=1 => [200] OK
+[GET] http://127.0.0.1:3000/api/projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/tasks?includeArchived=1 => [200] OK
+[POST] http://127.0.0.1:3000/api/tasks => [201] Created
+[GET] http://127.0.0.1:3000/api/projects/beef5b04-ed55-4e19-87cd-0c4826a7cd7b/tasks?includeArchived=1 => [200] OK
+[GET] http://127.0.0.1:3000/api/tasks/060af4a5-0ff2-4450-8643-7f5b1fcee9f7 => [200] OK
+[GET] http://127.0.0.1:3000/api/tasks/060af4a5-0ff2-4450-8643-7f5b1fcee9f7/runtime => [200] OK
+[GET] http://127.0.0.1:3000/api/tasks/060af4a5-0ff2-4450-8643-7f5b1fcee9f7/diff => [200] OK
+[POST] http://127.0.0.1:3000/api/tasks/060af4a5-0ff2-4450-8643-7f5b1fcee9f7/clarification-sessions => [200] OK
+[GET] http://127.0.0.1:3000/api/tasks/060af4a5-0ff2-4450-8643-7f5b1fcee9f7 => [200] OK
+[GET] http://127.0.0.1:3000/api/tasks/060af4a5-0ff2-4450-8643-7f5b1fcee9f7/runtime => [200] OK
+[GET] http://127.0.0.1:3000/api/tasks/060af4a5-0ff2-4450-8643-7f5b1fcee9f7/diff => [200] OK
+[POST] http://127.0.0.1:3000/api/tasks/060af4a5-0ff2-4450-8643-7f5b1fcee9f7/messages => [201] Created
+[GET] http://127.0.0.1:3000/api/tasks/060af4a5-0ff2-4450-8643-7f5b1fcee9f7 => [200] OK
+[GET] http://127.0.0.1:3000/api/tasks/060af4a5-0ff2-4450-8643-7f5b1fcee9f7/runtime => [200] OK
+[GET] http://127.0.0.1:3000/api/tasks/060af4a5-0ff2-4450-8643-7f5b1fcee9f7/diff => [200] OK

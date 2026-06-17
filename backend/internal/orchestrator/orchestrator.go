@@ -195,11 +195,12 @@ type Orchestrator struct {
 	agents   *agent.Service
 	eventBus *eventbus.Bus
 
-	mu       sync.Mutex
-	workers  map[string]*WorkerHandle // subTaskID -> handle
-	closed   bool
-	stopOnce sync.Once
-	stopCh   chan struct{}
+	mu        sync.Mutex
+	workers   map[string]*WorkerHandle // subTaskID -> handle
+	launching map[string]bool          // subTaskID -> reserved while a launch goroutine is in flight
+	closed    bool
+	stopOnce  sync.Once
+	stopCh    chan struct{}
 
 	cancelledSessions sync.Map // sessionID -> bool
 
@@ -214,6 +215,7 @@ func New(repo TaskRepository, agents *agent.Service, bus *eventbus.Bus) *Orchest
 		agents:       agents,
 		eventBus:     bus,
 		workers:      make(map[string]*WorkerHandle),
+		launching:    make(map[string]bool),
 		stopCh:       make(chan struct{}),
 		reviewEngine: &ReviewEngine{},
 		mergeEngine:  &MergeEngine{},
@@ -362,13 +364,19 @@ func (o *Orchestrator) LaunchApprovedSubTasks(ctx context.Context, taskID string
 			continue
 		}
 
-		// Check not already running
+		// Atomically reserve the launch slot so concurrent or duplicate
+		// LaunchApprovedSubTasks calls (e.g. OnPlanApproved + OnWorkerQueued
+		// firing the same callback) cannot both spawn a worker for the same
+		// subtask and race over its single PENDING session.
 		o.mu.Lock()
 		_, alreadyRunning := o.workers[st.ID]
-		o.mu.Unlock()
-		if alreadyRunning {
+		_, alreadyLaunching := o.launching[st.ID]
+		if alreadyRunning || alreadyLaunching {
+			o.mu.Unlock()
 			continue
 		}
+		o.launching[st.ID] = true
+		o.mu.Unlock()
 
 		go o.launchSubTask(ctx, task, st)
 		launched++
@@ -376,6 +384,11 @@ func (o *Orchestrator) LaunchApprovedSubTasks(ctx context.Context, taskID string
 }
 
 func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subTask SubTaskRecord) {
+	// Release the launch reservation when this goroutine returns. On success the
+	// worker is already registered in o.workers (so the alreadyRunning guard takes
+	// over); on failure the subtask is no longer PENDING, so neither path re-launches.
+	defer o.clearLaunching(subTask.ID)
+
 	project, err := o.repo.FindProjectByID(ctx, task.ProjectID)
 	if err != nil || project == nil {
 		o.failSubTaskLaunch(ctx, task, subTask, "Project not found.")
@@ -493,6 +506,7 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 	// Register with worker map
 	o.mu.Lock()
 	o.workers[subTask.ID] = handle
+	delete(o.launching, subTask.ID)
 	o.mu.Unlock()
 
 	// Publish events
@@ -905,6 +919,13 @@ func (o *Orchestrator) progressDependencySchedule(ctx context.Context, taskID st
 	if task.Status == "EXECUTING" {
 		o.LaunchApprovedSubTasks(ctx, taskID)
 	}
+}
+
+// clearLaunching releases a subtask's launch reservation taken in LaunchApprovedSubTasks.
+func (o *Orchestrator) clearLaunching(subTaskID string) {
+	o.mu.Lock()
+	delete(o.launching, subTaskID)
+	o.mu.Unlock()
 }
 
 func (o *Orchestrator) failSubTaskLaunch(ctx context.Context, task *TaskRecord, subTask SubTaskRecord, message string) {

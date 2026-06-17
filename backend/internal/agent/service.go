@@ -792,15 +792,19 @@ func copyDir(src, dst string) error {
 	for _, entry := range entries {
 		srcPath := filepath.Join(src, entry.Name())
 		dstPath := filepath.Join(dst, entry.Name())
-		if entry.IsDir() {
+		// Resolve through symlinks so the runtime home gets a usable copy.
+		// Skip entries that can't be resolved — e.g. a dangling symlink like
+		// ~/.claude/debug/latest pointing at an already-rotated log file — so a
+		// single broken link does not abort the whole worker runtime-home prep.
+		info, err := os.Stat(srcPath)
+		if err != nil {
+			continue
+		}
+		if info.IsDir() {
 			if err := copyDir(srcPath, dstPath); err != nil {
 				return err
 			}
 			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return fmt.Errorf("read info for %s: %w", srcPath, err)
 		}
 		if err := copyFile(srcPath, dstPath, info.Mode()); err != nil {
 			return err
@@ -815,6 +819,11 @@ func copyFile(src, dst string, mode os.FileMode) error {
 	}
 	input, err := os.Open(src)
 	if err != nil {
+		// Tolerate a source that vanished between listing and copy (rotated
+		// log, dangling symlink) rather than failing the whole runtime-home prep.
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return fmt.Errorf("open %s: %w", src, err)
 	}
 	defer input.Close()
