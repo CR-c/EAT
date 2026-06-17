@@ -77,3 +77,54 @@ func TestSessionOutputEndpointReturnsNotFound(t *testing.T) {
 		t.Fatalf("unexpected error payload: %#v", payload)
 	}
 }
+
+func TestSessionOutputEndpointRejectsTaskMismatch(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "eat.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`
+		INSERT INTO projects (id, name, path, default_branch, created_at, updated_at)
+		VALUES ('project-session-output', 'Project One', '/tmp/project-one', 'main', '2026-03-24T00:00:00Z', '2026-03-24T00:00:00Z');
+		INSERT INTO tasks (
+			id, project_id, title, description, lead_agent_type, base_branch, base_commit_sha,
+			task_branch_name, status, plan_version, current_plan_json, approved_plan_json, last_error,
+			archived_at, created_at, updated_at, version
+		) VALUES (
+			'task-session-owner', 'project-session-output', 'Owner Task', '', 'codex-cli', 'main', 'abc123',
+			'eat-owner', 'EXECUTING', 1, NULL, NULL, NULL, NULL,
+			'2026-03-24T00:00:01Z', '2026-03-24T00:00:02Z', 0
+		), (
+			'task-session-other', 'project-session-output', 'Other Task', '', 'codex-cli', 'main', 'abc123',
+			'eat-other', 'EXECUTING', 1, NULL, NULL, NULL, NULL,
+			'2026-03-24T00:00:01Z', '2026-03-24T00:00:02Z', 0
+		);
+		INSERT INTO agent_sessions (
+			id, task_id, sub_task_id, agent_type, session_type, sandbox_type, container_id,
+			status, pid, started_at, ended_at, exit_code, log_path, first_output_at,
+			output_buffer, output_buffer_max_bytes, created_at, updated_at
+		) VALUES (
+			'session-output-owned', 'task-session-owner', NULL, 'codex-cli', 'WORKER', 'DOCKER', NULL,
+			'RUNNING', NULL, '2026-03-24T00:00:03Z', NULL, NULL, NULL, '2026-03-24T00:00:03Z',
+			'owner output', 65536, '2026-03-24T00:00:03Z', '2026-03-24T00:00:04Z'
+		)
+	`); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	router := NewRouter(NewHandler(Dependencies{
+		DB:  db,
+		Bus: eventbus.New(),
+	}))
+
+	response := performJSONRequest(router, http.MethodGet, "/api/sessions/session-output-owned/output?taskId=task-session-other", nil)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("unexpected status: %d body=%s", response.Code, response.Body.String())
+	}
+	payload := decodeJSONMap(t, response.Body.Bytes())
+	if payload["error"].(map[string]any)["code"] != "SESSION_FORBIDDEN" {
+		t.Fatalf("unexpected error payload: %#v", payload)
+	}
+}

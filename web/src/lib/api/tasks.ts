@@ -73,8 +73,9 @@ export function getTaskPreview(taskId: string, signal?: AbortSignal) {
   return fetchJson<TaskPreview>(`/api/tasks/${taskId}/preview`, { signal })
 }
 
-export function getSessionOutput(sessionId: string, signal?: AbortSignal) {
-  return fetchJson<SessionOutput>(`/api/sessions/${sessionId}/output`, { signal })
+export function getSessionOutput(sessionId: string, options: { signal?: AbortSignal; taskId?: string } = {}) {
+  const search = options.taskId ? `?taskId=${encodeURIComponent(options.taskId)}` : ""
+  return fetchJson<SessionOutput>(`/api/sessions/${sessionId}/output${search}`, { signal: options.signal })
 }
 
 export function startTaskPreview(

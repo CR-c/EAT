@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mattn/go-sqlite3"
 )
 
 func (r *Repository) ListSessionsByTaskID(ctx context.Context, taskID string) ([]Session, error) {
@@ -348,4 +349,55 @@ func (r *Repository) AppendSessionOutput(ctx context.Context, sessionID string, 
 		sessionID,
 	)
 	return err
+}
+
+func (r *Repository) ClaimSessionMailboxBlock(ctx context.Context, sessionID string, fingerprint string) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	fingerprint = strings.TrimSpace(fingerprint)
+	if sessionID == "" || fingerprint == "" {
+		return false, nil
+	}
+	if err := r.ensureSessionMailboxBlocksTable(ctx); err != nil {
+		return false, err
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := r.exec().ExecContext(ctx, `
+		INSERT INTO session_mailbox_blocks (session_id, fingerprint, created_at)
+		VALUES (?, ?, ?)
+	`, sessionID, fingerprint, now)
+	if err != nil {
+		if isSQLiteConstraintError(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *Repository) ensureSessionMailboxBlocksTable(ctx context.Context) error {
+	_, err := r.exec().ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS session_mailbox_blocks (
+			session_id TEXT NOT NULL,
+			fingerprint TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (session_id, fingerprint),
+			FOREIGN KEY (session_id) REFERENCES agent_sessions(id) ON DELETE CASCADE
+		)
+	`)
+	return err
+}
+
+func isSQLiteConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if strings.Contains(err.Error(), "session_mailbox_blocks.session_id, session_mailbox_blocks.fingerprint") ||
+		strings.Contains(err.Error(), "UNIQUE constraint failed: session_mailbox_blocks") {
+		return true
+	}
+	if sqliteErr, ok := err.(sqlite3.Error); ok {
+		return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey || sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
+	}
+	return false
 }
