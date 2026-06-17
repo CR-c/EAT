@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -29,13 +31,16 @@ type TaskRepository interface {
 	FindSubTaskByID(ctx context.Context, subTaskID string) (*SubTaskRecord, error)
 	ListSubTasksByTaskID(ctx context.Context, taskID string) ([]SubTaskRecord, error)
 	ListSessionsBySubTaskID(ctx context.Context, subTaskID string) ([]SessionRecord, error)
+	FindSessionByID(ctx context.Context, sessionID string) (*SessionRecord, error)
 	ListAttachmentsByTaskID(ctx context.Context, taskID string) ([]AttachmentRecord, error)
+	ListMailboxMessagesForSubTask(ctx context.Context, taskID string, subTaskID string) ([]MailboxMessageRecord, error)
 	FindProjectByID(ctx context.Context, projectID string) (*ProjectRecord, error)
 	AccumulateSessionTokenUsage(ctx context.Context, input tokenusage.SessionInput) error
 	UpdateSession(ctx context.Context, sessionID string, input UpdateSessionInput) error
 	UpdateSubTask(ctx context.Context, subTaskID string, input UpdateSubTaskInput) error
 	UpdateTask(ctx context.Context, taskID string, input UpdateTaskInput) error
 	CreateMessage(ctx context.Context, input CreateMessageInput) error
+	CreateMailboxMessage(ctx context.Context, input CreateMailboxMessageInput) (*MailboxMessageRecord, error)
 	AppendSessionOutput(ctx context.Context, sessionID string, chunk string) error
 	AtomicClaimRetry(ctx context.Context, subTaskID string, maxRetries int) (bool, error)
 }
@@ -78,9 +83,28 @@ type AttachmentRecord struct {
 }
 
 type SessionRecord struct {
-	ID          string
-	SandboxType string
-	Status      string
+	ID           string
+	SandboxType  string
+	Status       string
+	OutputBuffer string
+	CreatedAt    string
+}
+
+type MailboxMessageRecord struct {
+	ID              string
+	TaskID          string
+	SenderType      string
+	SenderSubTaskID *string
+	TargetType      string
+	TargetSubTaskID *string
+	MessageType     string
+	ArtifactRefs    []string
+	FileRefs        []string
+	BranchRef       *string
+	SchemaJSON      map[string]any
+	RequiresAck     bool
+	Content         string
+	CreatedAt       string
 }
 
 type UpdateSessionInput struct {
@@ -114,6 +138,21 @@ type CreateMessageInput struct {
 	SubTaskID string
 	Role      string
 	Content   string
+}
+
+type CreateMailboxMessageInput struct {
+	TaskID          string
+	SenderType      string
+	SenderSubTaskID *string
+	TargetType      string
+	TargetSubTaskID *string
+	MessageType     string
+	ArtifactRefs    []string
+	FileRefs        []string
+	BranchRef       *string
+	SchemaJSON      map[string]any
+	RequiresAck     bool
+	Content         string
 }
 
 // WorkerHandle tracks a running worker.
@@ -366,8 +405,16 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 		return
 	}
 
+	// Mailbox handoffs are advisory prompt context, not a launch precondition.
+	// A transient read failure must not fail the whole subtask launch.
+	mailboxMessages, err := o.repo.ListMailboxMessagesForSubTask(ctx, task.ID, subTask.ID)
+	if err != nil {
+		log.Printf("orchestrator: mailbox handoff read failed, launching without handoffs: task=%s subtask=%s err=%v", task.ID, subTask.ID, err)
+		mailboxMessages = nil
+	}
+
 	// Build prompt
-	prompt := buildWorkerPrompt(task, &subTask, attachments)
+	prompt := buildWorkerPrompt(task, &subTask, attachments, mailboxMessages)
 
 	launchSession, err := o.resolveLaunchSession(ctx, subTask.ID)
 	if err != nil {
@@ -484,6 +531,7 @@ func (o *Orchestrator) handleWorkerExit(ctx context.Context, taskID, subTaskID, 
 	o.mu.Unlock()
 
 	_, wasCancelled := o.cancelledSessions.LoadAndDelete(sessionID)
+	o.collectMailboxMessagesFromWorkerOutput(ctx, taskID, subTaskID, sessionID)
 
 	var sessionStatus string
 	var subTaskStatus string
@@ -546,6 +594,112 @@ func (o *Orchestrator) handleWorkerExit(ctx context.Context, taskID, subTaskID, 
 	// Progress dependency schedule - launch more subtasks if deps satisfied
 	o.progressDependencySchedule(ctx, taskID)
 	o.maybeStartFinalReview(ctx, taskID)
+}
+
+func (o *Orchestrator) collectMailboxMessagesFromWorkerOutput(ctx context.Context, taskID, subTaskID, sessionID string) {
+	session, err := o.repo.FindSessionByID(ctx, sessionID)
+	if err != nil || session == nil || strings.TrimSpace(session.OutputBuffer) == "" {
+		if err != nil {
+			log.Printf("orchestrator: read worker output for mailbox extraction failed: task=%s subtask=%s session=%s err=%v", taskID, subTaskID, sessionID, err)
+		}
+		return
+	}
+
+	messages := parseMailboxMessagesFromOutput(session.OutputBuffer, taskID, subTaskID)
+	for _, input := range messages {
+		message, createErr := o.repo.CreateMailboxMessage(ctx, input)
+		if createErr != nil {
+			log.Printf("orchestrator: create mailbox message failed: task=%s subtask=%s session=%s err=%v", taskID, subTaskID, sessionID, createErr)
+			continue
+		}
+		o.publishMailboxMessage(taskID, message)
+	}
+}
+
+var mailboxBlockPattern = regexp.MustCompile("(?s)```eat:mailbox\\s*(.*?)\\s*```")
+
+type workerMailboxPayload struct {
+	Type            string         `json:"type"`
+	TargetType      string         `json:"targetType"`
+	TargetSubTaskID string         `json:"targetSubTaskId"`
+	Content         string         `json:"content"`
+	BranchRef       string         `json:"branchRef"`
+	ArtifactRefs    []string       `json:"artifactRefs"`
+	FileRefs        []string       `json:"fileRefs"`
+	SchemaJSON      map[string]any `json:"schemaJson"`
+	RequiresAck     bool           `json:"requiresAck"`
+}
+
+func parseMailboxMessagesFromOutput(output string, taskID string, senderSubTaskID string) []CreateMailboxMessageInput {
+	matches := mailboxBlockPattern.FindAllStringSubmatch(output, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	result := make([]CreateMailboxMessageInput, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+
+		var payload workerMailboxPayload
+		if err := json.Unmarshal([]byte(strings.TrimSpace(match[1])), &payload); err != nil {
+			log.Printf("orchestrator: skip invalid eat:mailbox block: %v", err)
+			continue
+		}
+
+		content := strings.TrimSpace(payload.Content)
+		if content == "" {
+			log.Printf("orchestrator: skip eat:mailbox block with empty content")
+			continue
+		}
+
+		// Normalize to the canonical upper-case enum so worker-emitted values like
+		// "blocker" or "subtask" still match downstream routing/board comparisons.
+		messageType := strings.ToUpper(strings.TrimSpace(payload.Type))
+		if messageType == "" {
+			messageType = "NOTE"
+		}
+		targetType := strings.ToUpper(strings.TrimSpace(payload.TargetType))
+		if targetType == "" {
+			targetType = "LEAD"
+		}
+
+		sender := senderSubTaskID
+		result = append(result, CreateMailboxMessageInput{
+			TaskID:          taskID,
+			SenderType:      "SUBTASK",
+			SenderSubTaskID: &sender,
+			TargetType:      targetType,
+			TargetSubTaskID: stringPointerValue(strings.TrimSpace(payload.TargetSubTaskID)),
+			MessageType:     messageType,
+			ArtifactRefs:    append([]string(nil), payload.ArtifactRefs...),
+			FileRefs:        append([]string(nil), payload.FileRefs...),
+			BranchRef:       stringPointerValue(strings.TrimSpace(payload.BranchRef)),
+			SchemaJSON:      cloneJSONMap(payload.SchemaJSON),
+			RequiresAck:     payload.RequiresAck,
+			Content:         content,
+		})
+	}
+	return result
+}
+
+func (o *Orchestrator) publishMailboxMessage(taskID string, message *MailboxMessageRecord) {
+	if message == nil {
+		return
+	}
+	o.publish(taskID, "mailbox:message", map[string]any{
+		"message": message,
+		"taskId":  taskID,
+	})
+	o.publish(taskID, "board:activity", map[string]any{
+		"createdAt": message.CreatedAt,
+		"id":        "mailbox:" + message.ID,
+		"kind":      "MAILBOX_MESSAGE",
+		"subTaskId": nullableString(message.TargetSubTaskID, message.SenderSubTaskID),
+		"summary":   firstNonEmpty(message.Content, message.MessageType),
+		"taskId":    taskID,
+	})
 }
 
 func (o *Orchestrator) progressDependencySchedule(ctx context.Context, taskID string) {
@@ -967,7 +1121,7 @@ func (o *Orchestrator) maybeStartFinalReview(ctx context.Context, taskID string)
 }
 
 // buildWorkerPrompt constructs a detailed prompt for the worker agent.
-func buildWorkerPrompt(task *TaskRecord, subTask *SubTaskRecord, attachments []AttachmentRecord) string {
+func buildWorkerPrompt(task *TaskRecord, subTask *SubTaskRecord, attachments []AttachmentRecord, mailboxMessages []MailboxMessageRecord) string {
 	parts := []string{
 		fmt.Sprintf("# Task: %s", task.Title),
 		"",
@@ -997,16 +1151,46 @@ func buildWorkerPrompt(task *TaskRecord, subTask *SubTaskRecord, attachments []A
 		}
 	}
 
+	if len(mailboxMessages) > 0 {
+		parts = append(parts, "", "## Team Handoffs (read before you start)")
+		for _, message := range mailboxMessages {
+			parts = append(parts, formatMailboxPromptLine(message))
+		}
+	}
+
 	parts = append(parts, "",
 		"## Instructions",
 		"- Complete your assigned work on the branch provided.",
 		"- Commit all changes with clear, descriptive commit messages.",
 		"- Do not modify files outside the scope of your assignment.",
 		"- Treat mounted attachments as read-only reference material unless the operator explicitly asks you to rewrite them.",
+		"- If you need to hand off API/DB contracts, blockers, or delivery readiness to the Lead or another subtask, write an `eat:mailbox` JSON block to stdout with schema: type, targetType, targetSubTaskId, content, branchRef.",
 		"- Exit with code 0 on success.",
 	)
 
 	return strings.Join(parts, "\n")
+}
+
+func formatMailboxPromptLine(message MailboxMessageRecord) string {
+	messageType := strings.TrimSpace(message.MessageType)
+	if messageType == "" {
+		messageType = "NOTE"
+	}
+
+	sender := "Lead"
+	if message.SenderSubTaskID != nil && strings.TrimSpace(*message.SenderSubTaskID) != "" {
+		sender = strings.TrimSpace(*message.SenderSubTaskID)
+	}
+	targetSuffix := ""
+	if message.TargetType == "SUBTASK" && message.TargetSubTaskID != nil {
+		targetSuffix = " -> you"
+	}
+
+	line := fmt.Sprintf("- [%s from %s%s] %s", messageType, sender, targetSuffix, strings.TrimSpace(message.Content))
+	if message.BranchRef != nil && strings.TrimSpace(*message.BranchRef) != "" {
+		line += fmt.Sprintf(" (branch: %s)", strings.TrimSpace(*message.BranchRef))
+	}
+	return line
 }
 
 func toAttachmentRefs(attachments []AttachmentRecord) []agent.AttachmentRef {

@@ -97,6 +97,20 @@ func (a *TaskRepositoryAdapter) ListSessionsBySubTaskID(ctx context.Context, sub
 	return result, nil
 }
 
+func (a *TaskRepositoryAdapter) FindSessionByID(ctx context.Context, sessionID string) (*SessionRecord, error) {
+	record, err := a.taskRepository.FindSessionByID(ctx, sessionID)
+	if err != nil || record == nil {
+		return nil, err
+	}
+	return &SessionRecord{
+		ID:           record.ID,
+		SandboxType:  record.SandboxType,
+		Status:       record.Status,
+		OutputBuffer: record.OutputBuffer,
+		CreatedAt:    record.CreatedAt,
+	}, nil
+}
+
 func (a *TaskRepositoryAdapter) ListAttachmentsByTaskID(ctx context.Context, taskID string) ([]AttachmentRecord, error) {
 	records, err := a.taskRepository.ListAttachmentsByTaskID(ctx, taskID)
 	if err != nil {
@@ -110,6 +124,18 @@ func (a *TaskRepositoryAdapter) ListAttachmentsByTaskID(ctx context.Context, tas
 			FilePath: record.FilePath,
 			FileType: record.FileType,
 		})
+	}
+	return result, nil
+}
+
+func (a *TaskRepositoryAdapter) ListMailboxMessagesForSubTask(ctx context.Context, taskID string, subTaskID string) ([]MailboxMessageRecord, error) {
+	records, err := a.taskRepository.ListMailboxMessagesForSubTask(ctx, taskID, subTaskID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]MailboxMessageRecord, 0, len(records))
+	for _, record := range records {
+		result = append(result, toMailboxMessageRecord(record))
 	}
 	return result, nil
 }
@@ -221,6 +247,28 @@ func (a *TaskRepositoryAdapter) CreateMessage(ctx context.Context, input CreateM
 		Content:   input.Content,
 	})
 	return err
+}
+
+func (a *TaskRepositoryAdapter) CreateMailboxMessage(ctx context.Context, input CreateMailboxMessageInput) (*MailboxMessageRecord, error) {
+	record, err := a.taskRepository.CreateMailboxMessage(ctx, task.CreateMailboxMessageInput{
+		TaskID:          input.TaskID,
+		SenderType:      input.SenderType,
+		SenderSubTaskID: input.SenderSubTaskID,
+		TargetType:      input.TargetType,
+		TargetSubTaskID: input.TargetSubTaskID,
+		MessageType:     input.MessageType,
+		ArtifactRefs:    input.ArtifactRefs,
+		FileRefs:        input.FileRefs,
+		BranchRef:       input.BranchRef,
+		SchemaJSON:      input.SchemaJSON,
+		RequiresAck:     input.RequiresAck,
+		Content:         input.Content,
+	})
+	if err != nil || record == nil {
+		return nil, err
+	}
+	result := toMailboxMessageRecord(*record)
+	return &result, nil
 }
 
 func (a *TaskRepositoryAdapter) AppendSessionOutput(ctx context.Context, sessionID string, chunk string) error {
@@ -353,4 +401,23 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func toMailboxMessageRecord(record task.MailboxMessage) MailboxMessageRecord {
+	return MailboxMessageRecord{
+		ID:              record.ID,
+		TaskID:          record.TaskID,
+		SenderType:      record.SenderType,
+		SenderSubTaskID: record.SenderSubTaskID,
+		TargetType:      record.TargetType,
+		TargetSubTaskID: record.TargetSubTaskID,
+		MessageType:     record.MessageType,
+		ArtifactRefs:    append([]string(nil), record.ArtifactRefs...),
+		FileRefs:        append([]string(nil), record.FileRefs...),
+		BranchRef:       record.BranchRef,
+		SchemaJSON:      cloneJSONMap(record.SchemaJSON),
+		RequiresAck:     record.RequiresAck,
+		Content:         record.Content,
+		CreatedAt:       record.CreatedAt,
+	}
 }

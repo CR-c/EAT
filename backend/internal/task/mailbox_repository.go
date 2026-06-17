@@ -137,3 +137,57 @@ func (r *Repository) ListMailboxMessagesByTaskID(ctx context.Context, taskID str
 	}
 	return items, rows.Err()
 }
+
+func (r *Repository) ListMailboxMessagesForSubTask(ctx context.Context, taskID string, subTaskID string) ([]MailboxMessage, error) {
+	rows, err := r.exec().QueryContext(ctx, `
+		SELECT
+			id, task_id, sender_type, sender_sub_task_id, target_type, target_sub_task_id,
+			message_type, artifact_refs_json, file_refs_json, branch_ref, schema_json,
+			requires_ack, content, created_at
+		FROM mailbox_messages
+		WHERE task_id = ?
+			AND (
+				(target_type = 'SUBTASK' AND target_sub_task_id = ?)
+				OR message_type IN ('API_CONTRACT', 'DB_CONTRACT')
+				OR requires_ack = 1
+			)
+		ORDER BY created_at ASC, id ASC
+	`, taskID, subTaskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]MailboxMessage, 0)
+	for rows.Next() {
+		var item MailboxMessage
+		var artifactRefsJSON string
+		var fileRefsJSON string
+		var schemaJSONRaw *string
+		var requiresAckInt int64
+		if err := rows.Scan(
+			&item.ID,
+			&item.TaskID,
+			&item.SenderType,
+			&item.SenderSubTaskID,
+			&item.TargetType,
+			&item.TargetSubTaskID,
+			&item.MessageType,
+			&artifactRefsJSON,
+			&fileRefsJSON,
+			&item.BranchRef,
+			&schemaJSONRaw,
+			&requiresAckInt,
+			&item.Content,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.ArtifactRefs = parseStringSliceJSON(artifactRefsJSON)
+		item.FileRefs = parseStringSliceJSON(fileRefsJSON)
+		item.SchemaJSON = parseJSONObjectJSON(schemaJSONRaw)
+		item.RequiresAck = requiresAckInt == 1
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}

@@ -3,6 +3,7 @@ import type {
   CreateGuidedTaskInput,
   CreateTaskInput,
   ReplanRequestInput,
+  SessionOutput,
   TaskDiff,
   SendTaskMessageInput,
   StartClarificationInput,
@@ -70,6 +71,10 @@ export function getTaskDiff(taskId: string, signal?: AbortSignal) {
 
 export function getTaskPreview(taskId: string, signal?: AbortSignal) {
   return fetchJson<TaskPreview>(`/api/tasks/${taskId}/preview`, { signal })
+}
+
+export function getSessionOutput(sessionId: string, signal?: AbortSignal) {
+  return fetchJson<SessionOutput>(`/api/sessions/${sessionId}/output`, { signal })
 }
 
 export function startTaskPreview(
