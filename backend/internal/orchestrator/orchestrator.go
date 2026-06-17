@@ -2,15 +2,20 @@ package orchestrator
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"eat/backend/internal/agent"
+	"eat/backend/internal/domain"
 	"eat/backend/internal/eventbus"
 	"eat/backend/internal/git"
 	"eat/backend/internal/tokenusage"
@@ -42,6 +47,7 @@ type TaskRepository interface {
 	CreateMessage(ctx context.Context, input CreateMessageInput) error
 	CreateMailboxMessage(ctx context.Context, input CreateMailboxMessageInput) (*MailboxMessageRecord, error)
 	AppendSessionOutput(ctx context.Context, sessionID string, chunk string) error
+	ClaimSessionMailboxBlock(ctx context.Context, sessionID string, fingerprint string) (bool, error)
 	AtomicClaimRetry(ctx context.Context, subTaskID string, maxRetries int) (bool, error)
 }
 
@@ -86,6 +92,7 @@ type SessionRecord struct {
 	ID           string
 	SandboxType  string
 	Status       string
+	LogPath      *string
 	OutputBuffer string
 	CreatedAt    string
 }
@@ -465,11 +472,17 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 		pid := int64(runtimeMeta.PID)
 		pidPtr = &pid
 	}
+	logPath, logPathErr := ensureWorkerSessionLogPath(sessionID)
+	if logPathErr != nil {
+		log.Printf("orchestrator: create worker session log failed: task=%s subtask=%s session=%s err=%v", task.ID, subTask.ID, sessionID, logPathErr)
+	}
+
 	_ = o.repo.UpdateSession(ctx, sessionID, UpdateSessionInput{
 		Status:      stringPointer("RUNNING"),
 		ContainerID: containerIDPtr,
 		PID:         pidPtr,
 		StartedAt:   &startedAt,
+		LogPath:     logPath,
 	})
 
 	// Update subtask to RUNNING
@@ -498,7 +511,9 @@ func (o *Orchestrator) launchSubTask(ctx context.Context, task *TaskRecord, subT
 	// Wire output callback
 	runtime.OnOutput(func(chunk string) {
 		handle.touchOutput()
-		_ = o.repo.AppendSessionOutput(ctx, sessionID, chunk)
+		if err := o.appendWorkerSessionOutput(ctx, sessionID, chunk, logPath); err != nil {
+			log.Printf("orchestrator: append worker output failed: task=%s subtask=%s session=%s err=%v", task.ID, subTask.ID, sessionID, err)
+		}
 		for _, usage := range collectSessionTokenUsage(chunk) {
 			usage.SessionID = sessionID
 			usage.TaskID = task.ID
@@ -598,18 +613,44 @@ func (o *Orchestrator) handleWorkerExit(ctx context.Context, taskID, subTaskID, 
 
 func (o *Orchestrator) collectMailboxMessagesFromWorkerOutput(ctx context.Context, taskID, subTaskID, sessionID string) {
 	session, err := o.repo.FindSessionByID(ctx, sessionID)
-	if err != nil || session == nil || strings.TrimSpace(session.OutputBuffer) == "" {
+	if err != nil || session == nil {
 		if err != nil {
 			log.Printf("orchestrator: read worker output for mailbox extraction failed: task=%s subtask=%s session=%s err=%v", taskID, subTaskID, sessionID, err)
 		}
 		return
 	}
 
-	messages := parseMailboxMessagesFromOutput(session.OutputBuffer, taskID, subTaskID)
-	for _, input := range messages {
+	output := session.OutputBuffer
+	if session.LogPath != nil && strings.TrimSpace(*session.LogPath) != "" {
+		if data, readErr := os.ReadFile(*session.LogPath); readErr == nil {
+			output = string(data)
+		} else {
+			log.Printf("orchestrator: read worker full log for mailbox extraction failed, falling back to output buffer: task=%s subtask=%s session=%s path=%s err=%v", taskID, subTaskID, sessionID, *session.LogPath, readErr)
+		}
+	}
+	if strings.TrimSpace(output) == "" {
+		return
+	}
+
+	blocks := parseMailboxBlocksFromOutput(output)
+	for _, block := range blocks {
+		fingerprint := mailboxBlockFingerprint(block.Raw)
+		claimed, claimErr := o.repo.ClaimSessionMailboxBlock(ctx, sessionID, fingerprint)
+		if claimErr != nil {
+			log.Printf("orchestrator: mailbox block idempotency claim failed: task=%s subtask=%s session=%s fingerprint=%s err=%v", taskID, subTaskID, sessionID, fingerprint, claimErr)
+			continue
+		}
+		if !claimed {
+			continue
+		}
+
+		input, ok := mailboxBlockToCreateInput(ctx, o.repo, taskID, subTaskID, block.Payload, sessionID, fingerprint)
+		if !ok {
+			continue
+		}
 		message, createErr := o.repo.CreateMailboxMessage(ctx, input)
 		if createErr != nil {
-			log.Printf("orchestrator: create mailbox message failed: task=%s subtask=%s session=%s err=%v", taskID, subTaskID, sessionID, createErr)
+			log.Printf("orchestrator: create mailbox message failed: task=%s subtask=%s session=%s fingerprint=%s err=%v", taskID, subTaskID, sessionID, fingerprint, createErr)
 			continue
 		}
 		o.publishMailboxMessage(taskID, message)
@@ -617,6 +658,11 @@ func (o *Orchestrator) collectMailboxMessagesFromWorkerOutput(ctx context.Contex
 }
 
 var mailboxBlockPattern = regexp.MustCompile("(?s)```eat:mailbox\\s*(.*?)\\s*```")
+
+type mailboxBlock struct {
+	Raw     string
+	Payload string
+}
 
 type workerMailboxPayload struct {
 	Type            string         `json:"type"`
@@ -631,75 +677,195 @@ type workerMailboxPayload struct {
 }
 
 func parseMailboxMessagesFromOutput(output string, taskID string, senderSubTaskID string) []CreateMailboxMessageInput {
+	blocks := parseMailboxBlocksFromOutput(output)
+	result := make([]CreateMailboxMessageInput, 0, len(blocks))
+	for _, block := range blocks {
+		input, ok := parseMailboxBlockPayload(taskID, senderSubTaskID, block.Payload)
+		if ok {
+			result = append(result, input)
+		}
+	}
+	return result
+}
+
+func parseMailboxBlocksFromOutput(output string) []mailboxBlock {
 	matches := mailboxBlockPattern.FindAllStringSubmatch(output, -1)
 	if len(matches) == 0 {
 		return nil
 	}
-
-	result := make([]CreateMailboxMessageInput, 0, len(matches))
+	result := make([]mailboxBlock, 0, len(matches))
 	for _, match := range matches {
 		if len(match) < 2 {
 			continue
 		}
-
-		var payload workerMailboxPayload
-		if err := json.Unmarshal([]byte(strings.TrimSpace(match[1])), &payload); err != nil {
-			log.Printf("orchestrator: skip invalid eat:mailbox block: %v", err)
-			continue
-		}
-
-		content := strings.TrimSpace(payload.Content)
-		if content == "" {
-			log.Printf("orchestrator: skip eat:mailbox block with empty content")
-			continue
-		}
-
-		// Normalize to the canonical upper-case enum so worker-emitted values like
-		// "blocker" or "subtask" still match downstream routing/board comparisons.
-		messageType := strings.ToUpper(strings.TrimSpace(payload.Type))
-		if messageType == "" {
-			messageType = "NOTE"
-		}
-		targetType := strings.ToUpper(strings.TrimSpace(payload.TargetType))
-		if targetType == "" {
-			targetType = "LEAD"
-		}
-
-		sender := senderSubTaskID
-		result = append(result, CreateMailboxMessageInput{
-			TaskID:          taskID,
-			SenderType:      "SUBTASK",
-			SenderSubTaskID: &sender,
-			TargetType:      targetType,
-			TargetSubTaskID: stringPointerValue(strings.TrimSpace(payload.TargetSubTaskID)),
-			MessageType:     messageType,
-			ArtifactRefs:    append([]string(nil), payload.ArtifactRefs...),
-			FileRefs:        append([]string(nil), payload.FileRefs...),
-			BranchRef:       stringPointerValue(strings.TrimSpace(payload.BranchRef)),
-			SchemaJSON:      cloneJSONMap(payload.SchemaJSON),
-			RequiresAck:     payload.RequiresAck,
-			Content:         content,
+		result = append(result, mailboxBlock{
+			Raw:     match[0],
+			Payload: match[1],
 		})
 	}
 	return result
+}
+
+func parseMailboxBlockPayload(taskID string, senderSubTaskID string, rawPayload string) (CreateMailboxMessageInput, bool) {
+	var payload workerMailboxPayload
+	if err := json.Unmarshal([]byte(strings.TrimSpace(rawPayload)), &payload); err != nil {
+		log.Printf("orchestrator: skip invalid eat:mailbox block: reason=json_parse err=%v", err)
+		return CreateMailboxMessageInput{}, false
+	}
+
+	content := strings.TrimSpace(payload.Content)
+	if content == "" {
+		log.Printf("orchestrator: skip invalid eat:mailbox block: reason=empty_content")
+		return CreateMailboxMessageInput{}, false
+	}
+
+	messageType := strings.ToUpper(strings.TrimSpace(payload.Type))
+	if messageType == "" {
+		messageType = "NOTE"
+	}
+	targetType := strings.ToUpper(strings.TrimSpace(payload.TargetType))
+	if targetType == "" {
+		targetType = "LEAD"
+	}
+
+	sender := senderSubTaskID
+	return CreateMailboxMessageInput{
+		TaskID:          taskID,
+		SenderType:      "SUBTASK",
+		SenderSubTaskID: &sender,
+		TargetType:      targetType,
+		TargetSubTaskID: stringPointerValue(strings.TrimSpace(payload.TargetSubTaskID)),
+		MessageType:     messageType,
+		ArtifactRefs:    append([]string(nil), payload.ArtifactRefs...),
+		FileRefs:        append([]string(nil), payload.FileRefs...),
+		BranchRef:       stringPointerValue(strings.TrimSpace(payload.BranchRef)),
+		SchemaJSON:      cloneJSONMap(payload.SchemaJSON),
+		RequiresAck:     payload.RequiresAck,
+		Content:         content,
+	}, true
+}
+
+func mailboxBlockToCreateInput(ctx context.Context, repo TaskRepository, taskID string, senderSubTaskID string, rawPayload string, sessionID string, fingerprint string) (CreateMailboxMessageInput, bool) {
+	input, ok := parseMailboxBlockPayload(taskID, senderSubTaskID, rawPayload)
+	if !ok {
+		return CreateMailboxMessageInput{}, false
+	}
+	if !isAllowedMailboxMessageType(input.MessageType) {
+		log.Printf("orchestrator: skip invalid eat:mailbox block: reason=invalid_message_type task=%s subtask=%s session=%s fingerprint=%s messageType=%s", taskID, senderSubTaskID, sessionID, fingerprint, input.MessageType)
+		return CreateMailboxMessageInput{}, false
+	}
+	if !isAllowedMailboxTargetType(input.TargetType) {
+		log.Printf("orchestrator: skip invalid eat:mailbox block: reason=invalid_target_type task=%s subtask=%s session=%s fingerprint=%s targetType=%s", taskID, senderSubTaskID, sessionID, fingerprint, input.TargetType)
+		return CreateMailboxMessageInput{}, false
+	}
+	if input.SenderSubTaskID == nil || strings.TrimSpace(*input.SenderSubTaskID) == "" {
+		log.Printf("orchestrator: skip invalid eat:mailbox block: reason=missing_sender task=%s session=%s fingerprint=%s", taskID, sessionID, fingerprint)
+		return CreateMailboxMessageInput{}, false
+	}
+	senderSubTask, err := repo.FindSubTaskByID(ctx, *input.SenderSubTaskID)
+	if err != nil {
+		log.Printf("orchestrator: skip invalid eat:mailbox block: reason=sender_read_failed task=%s subtask=%s session=%s fingerprint=%s err=%v", taskID, senderSubTaskID, sessionID, fingerprint, err)
+		return CreateMailboxMessageInput{}, false
+	}
+	if senderSubTask == nil || senderSubTask.TaskID != taskID {
+		log.Printf("orchestrator: skip invalid eat:mailbox block: reason=sender_not_found task=%s subtask=%s session=%s fingerprint=%s", taskID, senderSubTaskID, sessionID, fingerprint)
+		return CreateMailboxMessageInput{}, false
+	}
+	if input.TargetType == "LEAD" {
+		input.TargetSubTaskID = nil
+		return input, true
+	}
+	if input.TargetSubTaskID == nil || strings.TrimSpace(*input.TargetSubTaskID) == "" {
+		log.Printf("orchestrator: skip invalid eat:mailbox block: reason=missing_target_subtask task=%s subtask=%s session=%s fingerprint=%s", taskID, senderSubTaskID, sessionID, fingerprint)
+		return CreateMailboxMessageInput{}, false
+	}
+	targetSubTask, err := repo.FindSubTaskByID(ctx, *input.TargetSubTaskID)
+	if err != nil {
+		log.Printf("orchestrator: skip invalid eat:mailbox block: reason=target_read_failed task=%s subtask=%s session=%s fingerprint=%s targetSubTaskId=%s err=%v", taskID, senderSubTaskID, sessionID, fingerprint, *input.TargetSubTaskID, err)
+		return CreateMailboxMessageInput{}, false
+	}
+	if targetSubTask == nil || targetSubTask.TaskID != taskID {
+		log.Printf("orchestrator: skip invalid eat:mailbox block: reason=target_not_found task=%s subtask=%s session=%s fingerprint=%s targetSubTaskId=%s", taskID, senderSubTaskID, sessionID, fingerprint, *input.TargetSubTaskID)
+		return CreateMailboxMessageInput{}, false
+	}
+	if targetSubTask.ID == senderSubTask.ID {
+		log.Printf("orchestrator: skip invalid eat:mailbox block: reason=self_target task=%s subtask=%s session=%s fingerprint=%s", taskID, senderSubTaskID, sessionID, fingerprint)
+		return CreateMailboxMessageInput{}, false
+	}
+	return input, true
+}
+
+func isAllowedMailboxTargetType(value string) bool {
+	switch value {
+	case "LEAD", "SUBTASK":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedMailboxMessageType(value string) bool {
+	switch value {
+	case "NOTE", "BLOCKER", "DELIVERABLE_READY", "TEST_REQUEST", "REVIEW_REQUEST", "API_CONTRACT", "DB_CONTRACT":
+		return true
+	default:
+		return false
+	}
+}
+
+func mailboxBlockFingerprint(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
+}
+
+func ensureWorkerSessionLogPath(sessionID string) (*string, error) {
+	root := strings.TrimSpace(os.Getenv("EAT_SESSION_LOG_ROOT"))
+	if root == "" {
+		root = filepath.Join(os.TempDir(), "eat-session-logs")
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(root, sessionID+".log")
+	return &path, nil
+}
+
+func (o *Orchestrator) appendWorkerSessionOutput(ctx context.Context, sessionID string, chunk string, logPath *string) error {
+	if logPath != nil && strings.TrimSpace(*logPath) != "" {
+		path := strings.TrimSpace(*logPath)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			return err
+		}
+		if _, err := file.WriteString(chunk); err != nil {
+			_ = file.Close()
+			return err
+		}
+		if err := file.Close(); err != nil {
+			return err
+		}
+	}
+	return o.repo.AppendSessionOutput(ctx, sessionID, chunk)
 }
 
 func (o *Orchestrator) publishMailboxMessage(taskID string, message *MailboxMessageRecord) {
 	if message == nil {
 		return
 	}
-	o.publish(taskID, "mailbox:message", map[string]any{
-		"message": message,
-		"taskId":  taskID,
-	})
-	o.publish(taskID, "board:activity", map[string]any{
-		"createdAt": message.CreatedAt,
-		"id":        "mailbox:" + message.ID,
-		"kind":      "MAILBOX_MESSAGE",
-		"subTaskId": nullableString(message.TargetSubTaskID, message.SenderSubTaskID),
-		"summary":   firstNonEmpty(message.Content, message.MessageType),
-		"taskId":    taskID,
-	})
+	eventMessage := domain.MailboxEventMessage{
+		ID:              message.ID,
+		TaskID:          message.TaskID,
+		TargetSubTaskID: message.TargetSubTaskID,
+		SenderSubTaskID: message.SenderSubTaskID,
+		MessageType:     message.MessageType,
+		Content:         message.Content,
+		CreatedAt:       message.CreatedAt,
+	}
+	o.publish(taskID, "mailbox:message", domain.MailboxMessageEventPayload(taskID, message))
+	o.publish(taskID, "board:activity", domain.MailboxBoardActivityPayload(taskID, eventMessage))
 }
 
 func (o *Orchestrator) progressDependencySchedule(ctx context.Context, taskID string) {

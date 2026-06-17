@@ -106,6 +106,7 @@ func (a *TaskRepositoryAdapter) FindSessionByID(ctx context.Context, sessionID s
 		ID:           record.ID,
 		SandboxType:  record.SandboxType,
 		Status:       record.Status,
+		LogPath:      record.LogPath,
 		OutputBuffer: record.OutputBuffer,
 		CreatedAt:    record.CreatedAt,
 	}, nil
@@ -273,6 +274,10 @@ func (a *TaskRepositoryAdapter) CreateMailboxMessage(ctx context.Context, input 
 
 func (a *TaskRepositoryAdapter) AppendSessionOutput(ctx context.Context, sessionID string, chunk string) error {
 	return a.taskRepository.AppendSessionOutput(ctx, sessionID, chunk)
+}
+
+func (a *TaskRepositoryAdapter) ClaimSessionMailboxBlock(ctx context.Context, sessionID string, fingerprint string) (bool, error) {
+	return a.taskRepository.ClaimSessionMailboxBlock(ctx, sessionID, fingerprint)
 }
 
 func (a *TaskRepositoryAdapter) AtomicClaimRetry(ctx context.Context, subTaskID string, maxRetries int) (bool, error) {

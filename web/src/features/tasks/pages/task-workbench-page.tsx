@@ -868,6 +868,7 @@ function ExecutingView({
                       className="h-64 min-h-64 rounded-none border-0"
                       sessionId={node.sessionId}
                       subscribe={subscribeSessionOutput}
+                      taskId={detail.task.id}
                     />
                   ) : (
                     <div className="flex h-64 items-center justify-center px-4 text-center font-mono text-xs text-slate-500">

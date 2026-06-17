@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"eat/backend/internal/domain"
 )
 
 func decorateTasks(tasks []Task) []Task {
@@ -72,30 +74,15 @@ func normalizeStringList(values []string) []string {
 }
 
 func cloneJSONMap(value map[string]any) map[string]any {
-	if value == nil {
-		return nil
-	}
-	cloned := make(map[string]any, len(value))
-	for key, item := range value {
-		cloned[key] = item
-	}
-	return cloned
+	return domain.CloneJSONMap(value)
 }
 
 func stringPointerValue(value string) *string {
-	if value == "" {
-		return nil
-	}
-	return &value
+	return domain.StringPointerValue(value)
 }
 
 func nullableString(values ...*string) any {
-	for _, value := range values {
-		if value != nil && *value != "" {
-			return *value
-		}
-	}
-	return nil
+	return domain.NullableString(values...)
 }
 
 func trimStringTo(value string, limit int) string {
@@ -106,12 +93,7 @@ func trimStringTo(value string, limit int) string {
 }
 
 func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
+	return domain.FirstNonEmpty(values...)
 }
 
 func stringValue(value any) string {

@@ -12,9 +12,10 @@ interface SessionTerminalProps {
   className?: string
   sessionId: string
   subscribe: SessionOutputSubscriber
+  taskId?: string
 }
 
-export function SessionTerminal({ className, sessionId, subscribe }: SessionTerminalProps) {
+export function SessionTerminal({ className, sessionId, subscribe, taskId }: SessionTerminalProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -86,7 +87,7 @@ export function SessionTerminal({ className, sessionId, subscribe }: SessionTerm
     }
 
     const controller = new AbortController()
-    void getSessionOutput(sessionId, controller.signal)
+    void getSessionOutput(sessionId, { signal: controller.signal, taskId })
       .then((payload) => {
         if (payload.output) {
           terminal.write(payload.output)
@@ -123,7 +124,7 @@ export function SessionTerminal({ className, sessionId, subscribe }: SessionTerm
       terminalRef.current = null
       fitAddonRef.current = null
     }
-  }, [sessionId, subscribe])
+  }, [sessionId, subscribe, taskId])
 
   return (
     <div className={cn("relative h-56 min-h-56 overflow-hidden rounded-sm border border-white/10 bg-[#0b1020]", className)}>

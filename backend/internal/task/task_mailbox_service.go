@@ -1,6 +1,10 @@
 package task
 
-import "context"
+import (
+	"context"
+
+	"eat/backend/internal/domain"
+)
 
 func (s *Service) SendMailboxMessage(ctx context.Context, taskID string, input SendMailboxMessageRequest) (*SendMailboxMessageResult, *Error) {
 	taskRecord, err := s.repository.FindTaskByID(ctx, taskID)
@@ -94,18 +98,17 @@ func (s *Service) SendMailboxMessage(ctx context.Context, taskID string, input S
 		return nil, failure("MAILBOX_MESSAGE_CREATE_FAILED", err.Error(), nil)
 	}
 
-	s.publish(taskID, "mailbox:message", map[string]any{
-		"message": message,
-		"taskId":  taskID,
-	})
-	s.publish(taskID, "board:activity", map[string]any{
-		"createdAt": message.CreatedAt,
-		"id":        "mailbox:" + message.ID,
-		"kind":      "MAILBOX_MESSAGE",
-		"subTaskId": nullableString(message.TargetSubTaskID, message.SenderSubTaskID),
-		"summary":   firstNonEmpty(message.Content, message.MessageType),
-		"taskId":    taskID,
-	})
+	eventMessage := domain.MailboxEventMessage{
+		ID:              message.ID,
+		TaskID:          message.TaskID,
+		TargetSubTaskID: message.TargetSubTaskID,
+		SenderSubTaskID: message.SenderSubTaskID,
+		MessageType:     message.MessageType,
+		Content:         message.Content,
+		CreatedAt:       message.CreatedAt,
+	}
+	s.publish(taskID, "mailbox:message", domain.MailboxMessageEventPayload(taskID, message))
+	s.publish(taskID, "board:activity", domain.MailboxBoardActivityPayload(taskID, eventMessage))
 	s.publishTeamUpdated(taskID)
 
 	return &SendMailboxMessageResult{Message: message}, nil
